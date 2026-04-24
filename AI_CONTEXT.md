@@ -52,7 +52,7 @@ cd frontend
 npm run dev
 ```
 
-- UI: `http://localhost:3000/login` (seed: `admin@svkk.local` / `admin123!`)
+- UI: `http://localhost:3000/` (login; `/login` redirects here). Seed: `admin@svkk.local` / `admin123!`
 
 ## Logging
 

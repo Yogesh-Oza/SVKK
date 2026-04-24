@@ -49,8 +49,7 @@ export default function SvkkPoliciesPage() {
             {items.length === 0 ? (
               <tr>
                 <td colSpan={4} className="text-muted-foreground px-4 py-8 text-center">
-                  No policies yet — create via API{" "}
-                  <code className="text-xs">POST /api/v1/policies</code>
+                  No policies yet.
                 </td>
               </tr>
             ) : (

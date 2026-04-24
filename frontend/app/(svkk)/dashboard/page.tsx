@@ -30,7 +30,7 @@ export default function SvkkDashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Production API routes are under <code>/api/v1</code>.
+          Overview of policies and claims.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

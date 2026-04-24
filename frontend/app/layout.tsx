@@ -31,7 +31,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: "SVKK Software",
-  description: "SVKK mediclaim — Phase 1",
+  description: "SVKK mediclaim portal",
   icons: {
     icon: "/favicon.png",
   },

@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { loadEnv } from "./config/env.js";
 import { createRootLogger } from "./utils/logger.js";
 import { createApp } from "./app.js";
