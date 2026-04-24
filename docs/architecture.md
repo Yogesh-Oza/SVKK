@@ -9,7 +9,8 @@
 
 - `modules/auth` — login, refresh, logout (refresh rotation via `refreshTokenVersion`).
 - `modules/policy` — create (transaction: party + policy + year + members), CRUD, search.
-- `modules/calculation` — `POST /calculation/live` using versioned charts.
+- `modules/calculation` — `POST /calculation/live` using versioned charts; `GET /calculation/reference/policy-types` and `GET /calculation/reference/charts` for UI dropdowns (same `calculation:live` permission).
+- Policy and claim list/detail enforce **MIS scope** (village + `Policy.createdById` for USER) to avoid IDOR; receipts assert policy scope.
 - `modules/admin` — policy types & policy charts (JSON matrix).
 - `modules/upload` — CSV with `updateMode`, `dryRun`, `checksum` idempotency.
 - `modules/mis` — summary + paginated lists.
