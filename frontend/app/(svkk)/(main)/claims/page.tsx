@@ -26,17 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -96,6 +85,7 @@ export default function SvkkClaimsPage() {
   const [editApproved, setEditApproved] = useState("");
   const [patchBusy, setPatchBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
 
   const missingUrl = !getSvkkApiBase();
   const role = user?.role;
@@ -178,14 +168,15 @@ export default function SvkkClaimsPage() {
     }
     setPatchBusy(true);
     try {
-      const body: { status: ClaimStatus; approvedAmount: number | null } = {
-        status: editStatus,
-        approvedAmount: parseOptionalAmount(editApproved),
-      };
-      if (body.approvedAmount === null && editApproved.trim()) {
+      const approvedParsed = parseOptionalAmount(editApproved);
+      if (editApproved.trim() && approvedParsed === null) {
         toast.error("Approved amount must be a non‑negative number or empty");
         return;
       }
+      const body: { status: ClaimStatus; approvedAmount: number | null } = {
+        status: editStatus,
+        approvedAmount: approvedParsed,
+      };
       const updated = await svkkJson<Claim>(`/claims/${edit.id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -246,12 +237,17 @@ export default function SvkkClaimsPage() {
     }
   }
 
-  async function removeClaim(id: string) {
+  async function removeClaim() {
+    if (!claimToDelete) {
+      return;
+    }
+    const id = claimToDelete.id;
     setDeleteBusy(true);
     try {
       await backendApi.delete(`/claims/${id}`);
       toast.success("Claim deleted");
       setRows((prev) => prev.filter((r) => r.id !== id));
+      setClaimToDelete(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
     } finally {
@@ -383,33 +379,14 @@ export default function SvkkClaimsPage() {
                       </Button>
                     ) : null}
                     {canD ? (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button type="button" variant="destructive" size="sm">
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this claim?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This cannot be undone. Deleting claims is limited to administrators.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              disabled={deleteBusy}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                void removeClaim(c.id);
-                              }}
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setClaimToDelete(c)}
+                      >
+                        Delete
+                      </Button>
                     ) : null}
                   </div>
                 </TableCell>
@@ -429,6 +406,44 @@ export default function SvkkClaimsPage() {
           {loadingMore ? "Loading…" : "Load more"}
         </Button>
       ) : null}
+
+      <Dialog
+        open={!!claimToDelete}
+        onOpenChange={(o) => {
+          if (!o) {
+            setClaimToDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this claim?</DialogTitle>
+            <DialogDescription>
+              This cannot be undone. Deleting claims is limited to administrators.
+              {claimToDelete ? (
+                <span className="mt-2 block font-mono text-xs">{claimToDelete.claimNo}</span>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setClaimToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteBusy}
+              onClick={() => void removeClaim()}
+            >
+              {deleteBusy ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
         <DialogContent>

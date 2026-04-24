@@ -11,16 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -68,6 +65,7 @@ export default function SvkkPolicyDetailPage() {
   const [yearId, setYearId] = useState<string | "">("");
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
   const role = user?.role;
@@ -147,6 +145,7 @@ export default function SvkkPolicyDetailPage() {
     try {
       await backendApi.delete(`/policies/${id}`);
       toast.success("Policy deleted");
+      setConfirmDeleteOpen(false);
       router.replace("/policies");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
@@ -257,32 +256,44 @@ export default function SvkkPolicyDetailPage() {
       ) : null}
 
       {canDel ? (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="sm" disabled={deleteBusy}>
-              Delete policy
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete this policy?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This cannot be undone. Only administrators can delete policies.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(e) => {
-                  e.preventDefault();
-                  void deletePolicy();
-                }}
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={deleteBusy}
+            onClick={() => setConfirmDeleteOpen(true)}
+          >
+            Delete policy
+          </Button>
+          <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete this policy?</DialogTitle>
+                <DialogDescription>
+                  This cannot be undone. Only administrators can delete policies.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setConfirmDeleteOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={deleteBusy}
+                  onClick={() => void deletePolicy()}
+                >
+                  {deleteBusy ? "Deleting…" : "Delete"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       ) : null}
 
       <div className="space-y-2">
