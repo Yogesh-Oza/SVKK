@@ -21,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -34,9 +33,6 @@ import {
   passwordSchema,
   PasswordSchema,
 } from "../utils/reset-password-schema";
-
-const RJ_LOGO =
-  "https://rjtattoostudio.com/wp-content/uploads/2025/04/Black-and-Orange-Typography-T-shirtj-e1742288670418-300x103-1.webp";
 
 const steps = [
   {
@@ -159,7 +155,6 @@ export default function ResetPassword1() {
 
   return (
     <div className="relative grid min-h-screen w-full lg:grid-cols-2">
-      {/* Left Column - RJ Tattoo Studio Branding + Steps */}
       <AuthHero>
         <div className="w-full max-w-md space-y-8">
           <div className="text-center space-y-2">
@@ -245,15 +240,16 @@ export default function ResetPassword1() {
         <div className="mx-auto w-full max-w-[400px] space-y-8">
           {/* Mobile Logo */}
           <div className="flex items-center justify-center gap-3 lg:hidden">
-            <Link href="/" className="relative h-10 w-28 block">
-              <Image
-                src={RJ_LOGO}
-                alt="RJ Tattoo Studio"
-                fill
-                className="object-contain object-left"
-                sizes="112px"
-              />
+            <Link
+              href="/"
+              className="bg-teal-500/15 border-teal-500/40 flex h-10 w-10 items-center justify-center rounded-lg border text-sm font-bold text-teal-600 dark:text-teal-400"
+            >
+              SV
             </Link>
+            <div className="text-left">
+              <p className="text-foreground text-sm font-semibold">SVKK</p>
+              <p className="text-muted-foreground text-xs">Reset access</p>
+            </div>
           </div>
 
           {/* Mobile Steps Indicator */}
@@ -517,7 +513,7 @@ export default function ResetPassword1() {
           </Card>
 
           <p className="text-center text-sm text-zinc-500">
-            RJ Tattoo Studio CRM · Admin Portal
+            Shree Vagad Kala Kendra (SVKK) — mediclaim policy &amp; internal CRM
           </p>
         </div>
       </div>

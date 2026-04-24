@@ -1,84 +1,66 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-
-const RJ_LOGO =
-  "https://rjtattoostudio.com/wp-content/uploads/2025/04/Black-and-Orange-Typography-T-shirtj-e1742288670418-300x103-1.webp";
-const RJ_HERO =
-  "https://rjtattoostudio.com/wp-content/uploads/2025/05/custom-scaled.jpg";
 
 interface AuthHeroProps {
   children?: React.ReactNode;
 }
 
+/**
+ * Branded left panel for CRM auth pages (Shree Vagad Kala Kendra — policy / claims system).
+ */
 export function AuthHero({ children }: AuthHeroProps) {
   return (
     <div className="relative hidden overflow-hidden bg-zinc-950 lg:block">
-      {/* Background image with overlay */}
       <div className="absolute inset-0">
-        <Image
-          src={RJ_HERO}
-          alt="RJ Tattoo Studio"
-          fill
-          className="object-cover opacity-30"
-          priority
-          sizes="(max-width: 1024px) 0vw, 50vw"
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-zinc-950 to-slate-950" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-teal-600/20 via-transparent to-cyan-600/10" />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
+          }}
         />
-        <div className="absolute inset-0 bg-linear-to-b from-zinc-950/95 via-zinc-950/90 to-zinc-950" />
-        <div className="absolute inset-0 bg-linear-to-tr from-orange-600/10 via-transparent to-zinc-900/50" />
+        <div className="absolute top-1/4 right-1/4 h-64 w-64 rounded-full bg-teal-500/15 blur-3xl" />
+        <div className="absolute bottom-1/3 left-1/4 h-48 w-48 rounded-full bg-cyan-500/10 blur-3xl" />
       </div>
 
-      {/* Decorative elements */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)`,
-          backgroundSize: "40px 40px",
-        }}
-      />
-      <div className="absolute top-1/4 right-1/4 h-64 w-64 rounded-full bg-orange-500/20 blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/3 left-1/4 h-48 w-48 rounded-full bg-amber-600/15 blur-3xl animate-[pulse_3s_ease-in-out_infinite_1s]" />
-
       <div className="relative z-10 flex h-full flex-col justify-between p-12">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 group w-fit">
-          <div className="relative h-12 w-32 shrink-0 transition-transform group-hover:scale-105">
-            <Image
-              src={RJ_LOGO}
-              alt="RJ Tattoo Studio"
-              fill
-              className="object-contain object-left"
-              sizes="128px"
-            />
+        <Link href="/" className="group w-fit">
+          <div className="flex items-center gap-3">
+            <div className="bg-teal-500/20 flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-teal-500/40 text-lg font-bold tracking-tight text-teal-300 transition group-hover:border-teal-400/60 group-hover:text-teal-200">
+              SV
+            </div>
+            <div>
+              <p className="text-lg font-semibold tracking-tight text-white">SVKK</p>
+              <p className="text-xs text-zinc-500">Shree Vagad Kala Kendra</p>
+            </div>
           </div>
         </Link>
 
-        {/* Center content */}
         <div className="flex flex-1 flex-col items-center justify-center space-y-8">
           {children ?? (
-            <div className="text-center space-y-4 max-w-md">
-              <p className="text-orange-400/90 text-sm font-medium uppercase tracking-[0.2em]">
-                Looking for Custom Tattoos?
+            <div className="max-w-md space-y-4 text-center">
+              <p className="text-teal-400/90 text-sm font-medium tracking-[0.2em] uppercase">
+                Mediclaim policy platform
               </p>
-              <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
-                Great Art Starts with{" "}
-                <span className="text-orange-400">Great Ink</span>
+              <h2 className="text-3xl leading-tight font-bold text-white md:text-4xl">
+                Policies, premiums &amp;{" "}
+                <span className="text-teal-400">claims</span> in one place
               </h2>
-              <p className="text-zinc-400 text-base">
-                Tap into the primal power and unwavering spirit. We don&apos;t
-                just ink skin—we forge symbols of courage, resilience, and your
-                unique inner battle.
+              <p className="text-base text-zinc-400">
+                Year-wise policies, SVKK ID, chart-based premium calculation, and MIS—built
+                for transparent insurance operations and secure, role-based access.
               </p>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="space-y-2">
           <p className="text-sm text-zinc-500">
-            © {new Date().getFullYear()} RJ Tattoo Studio. Admin Portal.
+            © {new Date().getFullYear()} Shree Vagad Kala Kendra (SVKK). Operations console.
           </p>
         </div>
       </div>

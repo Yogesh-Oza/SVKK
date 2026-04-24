@@ -30,8 +30,8 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Shadcn Admin",
-  description: "Shadcn Admin Dashboard",
+  title: "SVKK — MediClaim & CRM",
+  description: "Shree Vagad Kala Kendra — mediclaim policy operations and internal CRM",
   icons: {
     icon: "/favicon.png",
   },

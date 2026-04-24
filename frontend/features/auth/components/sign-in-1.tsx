@@ -66,13 +66,13 @@ export function SignIn1({ className, ...props }: React.ComponentProps<"div">) {
         <Card className="shadow-lg">
           <CardHeader className="space-y-1 pb-4">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white">
-                SA
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-teal-500/40 bg-teal-500/15 text-sm font-bold text-teal-700 dark:text-teal-300">
+                SV
               </div>
             </div>
             <CardTitle className="text-2xl text-center">Welcome back</CardTitle>
             <CardDescription className="text-center">
-              Enter your credentials to access your account
+              SVKK — sign in to the operations console
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

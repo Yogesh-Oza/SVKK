@@ -14,16 +14,12 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { SignInSchema, signInSchema } from "../utils/sign-in-schema";
-
-const RJ_LOGO =
-  "https://rjtattoostudio.com/wp-content/uploads/2025/04/Black-and-Orange-Typography-T-shirtj-e1742288670418-300x103-1.webp";
 
 export default function SignIn() {
   const searchParams = useSearchParams();
@@ -62,7 +58,6 @@ export default function SignIn() {
 
   return (
     <div className="relative grid min-h-screen w-full lg:grid-cols-2">
-      {/* Left Column - RJ Tattoo Studio Branding */}
       <AuthHero />
 
       {/* Right Column - Sign In Form */}
@@ -70,15 +65,16 @@ export default function SignIn() {
         <div className="mx-auto w-full max-w-[400px] space-y-8">
           {/* Mobile Logo */}
           <div className="flex items-center justify-center gap-3 lg:hidden">
-            <Link href="/" className="relative h-10 w-28 block">
-              <Image
-                src={RJ_LOGO}
-                alt="RJ Tattoo Studio"
-                fill
-                className="object-contain object-left"
-                sizes="112px"
-              />
+            <Link
+              href="/"
+              className="bg-teal-500/15 border-teal-500/40 flex h-10 w-10 items-center justify-center rounded-lg border text-sm font-bold text-teal-600 dark:text-teal-400"
+            >
+              SV
             </Link>
+            <div className="text-left">
+              <p className="text-foreground text-sm font-semibold">SVKK</p>
+              <p className="text-muted-foreground text-xs">MediClaim</p>
+            </div>
           </div>
 
           <div className="space-y-2 text-center lg:text-left">
@@ -86,7 +82,7 @@ export default function SignIn() {
               Welcome back
             </h1>
             <p className="text-zinc-600 dark:text-zinc-400">
-              Sign in to access the RJ Tattoo Studio admin portal
+              Sign in to the SVKK operations console (leads, tasks &amp; admin tools)
             </p>
           </div>
 
@@ -105,7 +101,7 @@ export default function SignIn() {
                       <FormControl>
                         <Input
                           type="email"
-                          placeholder="admin@example.com"
+                          placeholder="you@company.com"
                           disabled={isLoading}
                           className="h-12 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:border-orange-500 focus:ring-orange-500/20"
                           {...field}
@@ -192,7 +188,7 @@ export default function SignIn() {
           </div>
 
           <p className="text-center text-sm text-zinc-500">
-            RJ Tattoo Studio CRM · Admin Portal
+            Shree Vagad Kala Kendra (SVKK) — mediclaim policy &amp; internal CRM
           </p>
         </div>
       </div>
