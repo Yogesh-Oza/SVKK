@@ -4,6 +4,8 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
+import { buildActivityLogWhere } from "../../services/activity-log-scope.service.js";
+
 export function createLogsRouter(env: Env) {
   const r = Router();
   r.use(requireAuth(env));
@@ -19,11 +21,13 @@ export function createLogsRouter(env: Env) {
         })
         .parse(req.query);
 
+      const where = buildActivityLogWhere(
+        { module: q.module, entityId: q.entityId },
+        req.userRole!,
+      );
+
       const rows = await prisma.activityLog.findMany({
-        where: {
-          ...(q.module ? { module: q.module } : {}),
-          ...(q.entityId ? { entityId: q.entityId } : {}),
-        },
+        where,
         take: q.limit + 1,
         ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
         orderBy: { createdAt: "desc" },

@@ -14,11 +14,12 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "upload:csv": ["SUPER_ADMIN", "ADMIN"],
   "logs:read": ["SUPER_ADMIN", "ADMIN"],
   "mis:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
-  "claim:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
-  "claim:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
+  "claim:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
+  "claim:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   "claim:update": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   "claim:delete": ["SUPER_ADMIN", "ADMIN"],
-  "receipt:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
+  /** Data-entry USER: no receipts per product spec. */
+  "receipt:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
 };
 
 /** @internal Exported for unit tests of the permission matrix. */

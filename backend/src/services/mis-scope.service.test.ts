@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildMisVillageWhere, mergeDateRange } from "./mis-scope.service.js";
+import { UserRole } from "@prisma/client";
+import {
+  assertPolicyReadable,
+  buildPolicyReadWhere,
+  buildMisVillageWhere,
+  mergeDateRange,
+} from "./mis-scope.service.js";
 
 describe("buildMisVillageWhere", () => {
   it("full scope without filter returns empty objects", () => {
@@ -29,6 +35,47 @@ describe("buildMisVillageWhere", () => {
   it("restricted with valid filter village matches exact", () => {
     const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, "A");
     expect(w.policy).toEqual({ village: "A" });
+  });
+});
+
+describe("buildPolicyReadWhere", () => {
+  it("USER is scoped to createdById", () => {
+    const w = buildPolicyReadWhere({ kind: "villages", villages: [] }, undefined, "u1", UserRole.USER);
+    expect(w).toEqual({ createdById: "u1" });
+  });
+
+  it("USER can filter by village", () => {
+    const w = buildPolicyReadWhere({ kind: "villages", villages: [] }, "V1", "u1", UserRole.USER);
+    expect(w).toEqual({ createdById: "u1", village: "V1" });
+  });
+
+  it("ADMIN uses village scope from buildMisVillageWhere", () => {
+    const w = buildPolicyReadWhere({ kind: "full" }, "X", "u1", UserRole.ADMIN);
+    expect(w).toEqual({ village: "X" });
+  });
+});
+
+describe("assertPolicyReadable", () => {
+  it("allows USER when they created the policy", () => {
+    expect(() =>
+      assertPolicyReadable(
+        { village: "V1", createdById: "u1" },
+        "u1",
+        UserRole.USER,
+        { kind: "villages", villages: [] },
+      ),
+    ).not.toThrow();
+  });
+
+  it("denies USER for another creator", () => {
+    expect(() =>
+      assertPolicyReadable(
+        { village: "V1", createdById: "other" },
+        "u1",
+        UserRole.USER,
+        { kind: "villages", villages: [] },
+      ),
+    ).toThrow();
   });
 });
 

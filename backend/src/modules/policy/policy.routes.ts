@@ -12,6 +12,11 @@ import {
 } from "./policy.service.js";
 import { createPolicyBodySchema, patchPolicyBodySchema } from "./policy.schemas.js";
 import { AppError } from "../../errors/app-error.js";
+import {
+  assertPolicyReadable,
+  buildPolicyReadWhere,
+  loadMisScope,
+} from "../../services/mis-scope.service.js";
 
 function patchBodyToInput(
   body: z.infer<typeof patchPolicyBodySchema>,
@@ -87,10 +92,18 @@ export function createPolicyRouter(env: Env) {
           cursor: z.string().optional(),
           limit: z.coerce.number().min(1).max(100).default(20),
           search: z.string().optional(),
+          village: z.string().optional(),
         })
         .parse(req.query);
 
-      const where = q.search
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scopeWhere = buildPolicyReadWhere(
+        scope,
+        q.village,
+        req.userId!,
+        req.userRole!,
+      );
+      const searchWhere = q.search
         ? {
             OR: [
               { policyNo: { contains: q.search } },
@@ -99,7 +112,8 @@ export function createPolicyRouter(env: Env) {
               { insuredParty: { mobile: { contains: q.search } } },
             ],
           }
-        : {};
+        : undefined;
+      const where = searchWhere ? { AND: [scopeWhere, searchWhere] } : scopeWhere;
 
       const rows = await prisma.policy.findMany({
         where,
@@ -127,6 +141,7 @@ export function createPolicyRouter(env: Env) {
 
   r.get("/:id", requirePermission("policy:read"), async (req, res, next) => {
     try {
+      const scope = await loadMisScope(req.userId!, req.userRole!);
       const row = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         include: {
@@ -139,6 +154,7 @@ export function createPolicyRouter(env: Env) {
         },
       });
       if (!row) throw new AppError("NOT_FOUND", "Policy not found", 404);
+      assertPolicyReadable(row, req.userId!, req.userRole!, scope);
       res.json(row);
     } catch (e) {
       next(e);
@@ -147,6 +163,14 @@ export function createPolicyRouter(env: Env) {
 
   r.patch("/:id", requirePermission("policy:update"), async (req, res, next) => {
     try {
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const existing = await prisma.policy.findUnique({
+        where: { id: String(req.params.id) },
+        select: { id: true, village: true, createdById: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Policy not found", 404);
+      assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+
       const parsed = patchPolicyBodySchema.parse(req.body);
       const { policy, year } = patchBodyToInput(parsed);
       const row = await updatePolicySections({
@@ -163,6 +187,14 @@ export function createPolicyRouter(env: Env) {
 
   r.delete("/:id", requirePermission("policy:delete"), async (req, res, next) => {
     try {
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const existing = await prisma.policy.findUnique({
+        where: { id: String(req.params.id) },
+        select: { id: true, village: true, createdById: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Policy not found", 404);
+      assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+
       await prisma.policy.delete({ where: { id: String(req.params.id) } });
       res.status(204).end();
     } catch (e) {

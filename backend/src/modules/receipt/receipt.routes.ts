@@ -10,6 +10,7 @@ import { prisma } from "../../lib/prisma.js";
 import { CounterType, type Prisma } from "@prisma/client";
 import { allocateCounter, formatReceiptNo } from "../../services/counter.service.js";
 import { AppError } from "../../errors/app-error.js";
+import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
 
 export function createReceiptRouter(env: Env) {
   const r = Router();
@@ -25,6 +26,7 @@ export function createReceiptRouter(env: Env) {
         })
         .parse(req.body);
 
+      const scope = await loadMisScope(req.userId!, req.userRole!);
       const policy = await prisma.policy.findUnique({
         where: { id: String(req.params.policyId) },
         include: {
@@ -36,6 +38,7 @@ export function createReceiptRouter(env: Env) {
         },
       });
       if (!policy) throw new AppError("NOT_FOUND", "Policy not found", 404);
+      assertPolicyReadable(policy, req.userId!, req.userRole!, scope);
 
       const year = policy.years[0];
       const policyDate = year?.policyEnd ?? year?.policyStart ?? new Date();

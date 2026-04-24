@@ -51,6 +51,80 @@ export function buildMisVillageWhere(
 }
 
 /**
+ * Policy list/detail filter: USER sees only policies they created; others use village scope.
+ */
+export function buildPolicyReadWhere(
+  scope: MisScope,
+  filterVillage: string | undefined,
+  userId: string,
+  role: UserRole,
+): Prisma.PolicyWhereInput {
+  if (role === "USER") {
+    return {
+      createdById: userId,
+      ...(filterVillage ? { village: filterVillage } : {}),
+    };
+  }
+  return buildMisVillageWhere(scope, filterVillage).policy;
+}
+
+/**
+ * Single-policy read: same rules as list (404 if out of scope).
+ * @throws AppError 404
+ */
+export function assertPolicyReadable(
+  policy: { village: string | null; createdById: string | null },
+  userId: string,
+  role: UserRole,
+  scope: MisScope,
+): void {
+  if (role === "USER") {
+    if (policy.createdById !== userId) {
+      throw new AppError("NOT_FOUND", "Policy not found", 404);
+    }
+    return;
+  }
+  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+    return;
+  }
+  if (scope.kind === "full") {
+    return;
+  }
+  if (scope.villages.length === 0) {
+    throw new AppError("NOT_FOUND", "Policy not found", 404);
+  }
+  if (!policy.village || !scope.villages.includes(policy.village)) {
+    throw new AppError("NOT_FOUND", "Policy not found", 404);
+  }
+}
+
+/**
+ * Claim read/update/delete: enforce village scope for SUPERVISOR (403/404 as appropriate).
+ * @throws AppError 404
+ */
+export function assertClaimVillageInScope(
+  claim: { village: string | null },
+  role: UserRole,
+  scope: MisScope,
+): void {
+  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+    return;
+  }
+  if (role === "USER") {
+    throw new AppError("FORBIDDEN", "Insufficient permissions", 403);
+  }
+  if (scope.kind === "full") {
+    return;
+  }
+  if (scope.villages.length === 0) {
+    throw new AppError("NOT_FOUND", "Claim not found", 404);
+  }
+  if (!claim.village || !scope.villages.includes(claim.village)) {
+    throw new AppError("NOT_FOUND", "Claim not found", 404);
+  }
+}
+
+/**
  * Merges optional `createdAt` range (policy / claim `createdAt`) with village filters.
  */
 export function mergeDateRange(

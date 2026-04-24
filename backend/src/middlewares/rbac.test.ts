@@ -34,6 +34,14 @@ describe("rbac matrix", () => {
     expect(isRoleAllowed("policy:delete", "USER")).toBe(false);
   });
 
+  it("denies all claim and receipt actions to USER", () => {
+    expect(isRoleAllowed("claim:create", "USER")).toBe(false);
+    expect(isRoleAllowed("claim:read", "USER")).toBe(false);
+    expect(isRoleAllowed("claim:update", "USER")).toBe(false);
+    expect(isRoleAllowed("claim:delete", "USER")).toBe(false);
+    expect(isRoleAllowed("receipt:create", "USER")).toBe(false);
+  });
+
   it("denies logs:read to SUPERVISOR and USER", () => {
     expect(isRoleAllowed("logs:read", "SUPERVISOR")).toBe(false);
     expect(isRoleAllowed("logs:read", "USER")).toBe(false);

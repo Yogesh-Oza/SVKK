@@ -66,6 +66,7 @@ model User {
   claimsCreated Claim[]       @relation("ClaimCreatedBy")
   claimsApproved Claim[]      @relation("ClaimApprovedBy")
   userVillages  UserVillage[]
+  policiesCreated Policy[]    @relation("PolicyCreatedBy")
 }
 
 /// Villages (or zones) a SUPERVISOR may see in MIS and scoped policy lists. ADMIN/SUPER_ADMIN use full data (no rows required).
@@ -156,6 +157,8 @@ model Policy {
   loanRef        String?      @db.VarChar(120)
   courierTracking String?     @db.VarChar(120)
   remarks        String?      @db.Text
+  createdById    String?
+  createdBy      User?        @relation("PolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -164,6 +167,7 @@ model Policy {
   receipts Receipt[]
 
   @@index([insuredPartyId])
+  @@index([createdById])
 }
 
 model PolicyYear {

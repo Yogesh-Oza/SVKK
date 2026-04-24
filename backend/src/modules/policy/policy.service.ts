@@ -81,6 +81,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       data: {
         insuredPartyId: party.id,
         policyTypeId: input.policyTypeId,
+        createdById: input.actorUserId,
         policyNo: input.policyNo ?? undefined,
         village: input.village ?? undefined,
         pod: input.pod ?? undefined,
