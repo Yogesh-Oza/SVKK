@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPERVISOR
+  USER
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CsvUpdateMode {
+  POD_ONLY
+  POLICY_ONLY
+  FULL
+}
+
+enum CsvJobStatus {
+  PENDING
+  VALIDATING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ChartMode {
+  SINGLE
+  HOLDER_MEMBER
+}
+
+enum PolicyChartKind {
+  COMBINED
+  HOLDER
+  MEMBER
+}
+
+enum CounterType {
+  SVKK_PUBLIC_ID
+  RECEIPT
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  passwordHash         String
+  name                 String
+  role                 UserRole @default(USER)
+  refreshTokenVersion  Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  sessions      UserSession[]
+  activityLogs  ActivityLog[] @relation("ActivityActor")
+  csvJobs       CsvImportJob[]
+  claimsCreated Claim[]       @relation("ClaimCreatedBy")
+  claimsApproved Claim[]      @relation("ClaimApprovedBy")
+}
+
+model UserSession {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceLabel String?
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model InsuredParty {
+  id            String   @id @default(cuid())
+  mobile        String   @unique
+  svkkPublicId  String   @unique
+  name          String
+  email         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  policies Policy[]
+  claims   Claim[]
+}
+
+model PolicyType {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  name        String
+  chartMode   ChartMode @default(SINGLE)
+  description String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  charts  PolicyChart[]
+  policies Policy[]
+}
+
+model PolicyChart {
+  id            String           @id @default(cuid())
+  policyTypeId  String
+  policyType    PolicyType       @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+  version       Int
+  effectiveFrom DateTime
+  chartKind     PolicyChartKind  @default(COMBINED)
+  /// JSON: { bands: { label, minAge, maxAge }[], siColumns: number[], matrix: number[][] }
+  premiumMatrix Json
+  createdAt     DateTime         @default(now())
+
+  policyYears PolicyYear[]
+
+  @@unique([policyTypeId, version, chartKind])
+  @@index([policyTypeId, version])
+}
+
+model Policy {
+  id             String       @id @default(cuid())
+  insuredPartyId String
+  insuredParty   InsuredParty @relation(fields: [insuredPartyId], references: [id], onDelete: Restrict)
+  policyTypeId   String
+  policyType     PolicyType   @relation(fields: [policyTypeId], references: [id])
+  policyNo       String?      @unique
+  village        String?
+  pod            String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  years   PolicyYear[]
+  claims  Claim[]
+  receipts Receipt[]
+
+  @@index([insuredPartyId])
+}
+
+model PolicyYear {
+  id             String      @id @default(cuid())
+  policyId       String
+  policy         Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  yearLabel      String
+  policyChartId  String
+  policyChart    PolicyChart @relation(fields: [policyChartId], references: [id], onDelete: Restrict)
+  policyStart    DateTime?
+  policyEnd      DateTime?
+  sumInsured     Decimal?    @db.Decimal(14, 2)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  members   Member[]
+  receipts  Receipt[]
+
+  @@unique([policyId, yearLabel])
+  @@index([policyChartId])
+}
+
+model Member {
+  id           String     @id @default(cuid())
+  policyYearId String
+  policyYear   PolicyYear @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
+  name         String
+  dob          DateTime
+  relationship String
+  gender       String
+  riderAmount  Decimal    @default(0) @db.Decimal(14, 2)
+
+  @@index([policyYearId])
+}
+
+model Receipt {
+  id           String      @id @default(cuid())
+  policyId     String
+  policy       Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  policyYearId String?
+  policyYear   PolicyYear? @relation(fields: [policyYearId], references: [id], onDelete: SetNull)
+  receiptNo    String      @unique
+  amount       Decimal     @db.Decimal(14, 2)
+  paymentMode  String?
+  s3Key        String?
+  policyDate   DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([policyId])
+}
+
+model Counter {
+  id           String      @id @default(cuid())
+  type         CounterType
+  period       String
+  currentValue Int         @default(0)
+
+  @@unique([type, period])
+}
+
+model RolePermission {
+  id     String   @id @default(cuid())
+  role   UserRole
+  module String
+  action String
+
+  @@unique([role, module, action])
+}
+
+model ActivityLog {
+  id                 String   @id @default(cuid())
+  userId             String?
+  user               User?    @relation("ActivityActor", fields: [userId], references: [id], onDelete: SetNull)
+  module             String
+  action             String
+  entityType         String
+  entityId           String
+  beforeData         Json?
+  afterData          Json?
+  beforePayloadS3Key String?
+  afterPayloadS3Key  String?
+  createdAt          DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+}
+
+model CsvImportJob {
+  id               String         @id @default(cuid())
+  s3Key            String
+  checksum         String
+  updateMode       CsvUpdateMode
+  dryRun           Boolean        @default(false)
+  status           CsvJobStatus   @default(PENDING)
+  errorReportS3Key String?
+  duplicateOfJobId String?
+  forceApplied     Boolean        @default(false)
+  rowCount         Int?
+  successCount     Int?
+  failCount        Int?
+  createdById      String?
+  createdBy        User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime       @default(now())
+  completedAt      DateTime?
+
+  @@index([checksum, updateMode])
+  @@index([createdById])
+}
+
+model Claim {
+  id              String       @id @default(cuid())
+  claimNo         String       @unique
+  svkkPublicId    String
+  insuredPartyId  String?
+  insuredParty    InsuredParty? @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
+  policyId        String?
+  policy          Policy?      @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  policyYear      String
+  patientName     String?
+  status          ClaimStatus  @default(PENDING)
+  claimAmount     Decimal?     @db.Decimal(14, 2)
+  approvedAmount  Decimal?     @db.Decimal(14, 2)
+  village         String?
+  createdById     String?
+  createdBy       User?        @relation("ClaimCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById    String?
+  approvedBy      User?        @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([svkkPublicId, policyYear])
+  @@index([policyId])
+}
+
+model MISSnapshot {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  village       String?
+  totalPolicies Int      @default(0)
+  totalClaims   Int      @default(0)
+  grossPremium  Decimal? @db.Decimal(18, 2)
+  netPremium    Decimal? @db.Decimal(18, 2)
+
+  @@unique([date, village])
+}

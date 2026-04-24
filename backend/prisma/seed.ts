@@ -1,0 +1,110 @@
+import { PrismaClient, UserRole, ChartMode, PolicyChartKind } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+const holderMatrix = {
+  bands: [
+    { label: "0-17", minAge: 0, maxAge: 17 },
+    { label: "18-35", minAge: 18, maxAge: 35 },
+    { label: "36-45", minAge: 36, maxAge: 45 },
+    { label: "46-60", minAge: 46, maxAge: 60 },
+    { label: "61-100", minAge: 61, maxAge: 100 },
+  ],
+  siColumns: [300000, 500000, 1000000],
+  matrix: [
+    [1200, 2000, 3500],
+    [2500, 4000, 7000],
+    [3500, 5700, 9500],
+    [4500, 7200, 12000],
+    [6000, 9000, 15000],
+  ],
+  daughterDiscountPercent: 50,
+};
+
+const memberMatrix = {
+  bands: [
+    { label: "0-17", minAge: 0, maxAge: 17 },
+    { label: "18-35", minAge: 18, maxAge: 35 },
+    { label: "36-45", minAge: 36, maxAge: 45 },
+    { label: "46-60", minAge: 46, maxAge: 60 },
+    { label: "61-100", minAge: 61, maxAge: 100 },
+  ],
+  siColumns: [300000, 500000, 1000000],
+  matrix: [
+    [1200, 2000, 3500],
+    [2500, 4000, 7000],
+    [3500, 4500, 9500],
+    [4500, 7200, 12000],
+    [6000, 9000, 15000],
+  ],
+  daughterDiscountPercent: 50,
+};
+
+async function main() {
+  const passwordHash = await bcrypt.hash("admin123!", 12);
+
+  await prisma.user.upsert({
+    where: { email: "admin@svkk.local" },
+    update: {},
+    create: {
+      email: "admin@svkk.local",
+      passwordHash,
+      name: "Super Admin",
+      role: UserRole.SUPER_ADMIN,
+    },
+  });
+
+  const ash = await prisma.policyType.upsert({
+    where: { key: "asha_kiran" },
+    update: { chartMode: ChartMode.HOLDER_MEMBER },
+    create: {
+      key: "asha_kiran",
+      name: "Asha Kiran",
+      chartMode: ChartMode.HOLDER_MEMBER,
+      description: "Separate holder and member charts",
+    },
+  });
+
+  await prisma.policyChart.deleteMany({ where: { policyTypeId: ash.id, version: 1 } });
+
+  await prisma.policyChart.createMany({
+    data: [
+      {
+        policyTypeId: ash.id,
+        version: 1,
+        effectiveFrom: new Date("2025-01-01"),
+        chartKind: PolicyChartKind.HOLDER,
+        premiumMatrix: holderMatrix,
+      },
+      {
+        policyTypeId: ash.id,
+        version: 1,
+        effectiveFrom: new Date("2025-01-01"),
+        chartKind: PolicyChartKind.MEMBER,
+        premiumMatrix: memberMatrix,
+      },
+    ],
+  });
+
+  const perms = [
+    { role: UserRole.SUPER_ADMIN, module: "*", action: "*" },
+    { role: UserRole.ADMIN, module: "policy", action: "manage" },
+  ];
+  for (const p of perms) {
+    const exists = await prisma.rolePermission.findFirst({
+      where: { role: p.role, module: p.module, action: p.action },
+    });
+    if (!exists) await prisma.rolePermission.create({ data: p });
+  }
+
+  console.log("Seed OK — login admin@svkk.local / admin123!");
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch((e) => {
+    console.error(e);
+    prisma.$disconnect();
+    process.exit(1);
+  });
