@@ -1,6 +1,8 @@
 import { Router } from "express";
 import cookieParser from "cookie-parser";
 import type { Env } from "../../config/env.js";
+import { requireAuth } from "../../middlewares/require-auth.js";
+import { AppError } from "../../errors/app-error.js";
 import {
   assertRefreshVersion,
   revokeAllRefreshTokens,
@@ -16,6 +18,21 @@ const REFRESH_COOKIE = "refreshToken";
 
 export function createAuthRouter(env: Env) {
   const r = Router();
+
+  r.get("/me", requireAuth(env), async (req, res, next) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { id: true, email: true, name: true, role: true },
+      });
+      if (!user) {
+        return next(new AppError("NOT_FOUND", "User not found", 404));
+      }
+      res.json(user);
+    } catch (e) {
+      next(e);
+    }
+  });
 
   r.post("/login", async (req, res, next) => {
     try {

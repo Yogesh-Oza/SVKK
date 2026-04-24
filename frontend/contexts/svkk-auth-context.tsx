@@ -54,10 +54,44 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const t = getSvkkAccessToken();
-    if (t) {
-      setUser(readUserFromStorage());
+    if (!t) {
+      setUser(null);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    const cached = readUserFromStorage();
+    if (cached) {
+      setUser(cached);
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await svkkJson<SvkkUser>("/auth/me");
+        if (cancelled) {
+          return;
+        }
+        setUser(me);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(USER_KEY, JSON.stringify(me));
+        }
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setSvkkAccessToken(null);
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(USER_KEY);
+        }
+        setUser(null);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
