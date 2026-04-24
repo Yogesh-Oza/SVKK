@@ -22,7 +22,7 @@ export default function SvkkLoginPage() {
       const data = await svkkLogin(email, password);
       localStorage.setItem("svkk_access_token", data.accessToken);
       toast.success("Signed in");
-      router.push("/svkk/dashboard");
+      router.push("/dashboard");
     } catch (err) {
       const e = err as Error & { traceId?: string };
       toast.error(e.message, { description: e.traceId ? `Ref: ${e.traceId}` : undefined });

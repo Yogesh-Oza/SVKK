@@ -7,12 +7,12 @@ Shree Vagad Kala Kendra (SVKK) **mediclaim policy** platform: premium engine, po
 ## Stack
 
 - **Backend**: Node 20+, Express 5, TypeScript, Prisma 6, **MySQL**, JWT (access + httpOnly refresh), `pino` logging, Zod validation.
-- **Frontend**: Next.js 16, React 19, Tailwind/shadcn (existing template) + **SVKK** routes under `/svkk/*`.
+- **Frontend**: Next.js 16, React 19, Tailwind/shadcn UI kit + SVKK screens at **`/login`**, **`/dashboard`**, **`/policies`** (source lives in `app/(svkk)/…`; the `(svkk)` segment is not part of the URL).
 
 ## Repo layout
 
 - `backend/` — API (`npm run dev`), Prisma schema, seed.
-- `frontend/` — UI (`pnpm dev` / `npm run dev`).
+- `frontend/` — UI only (no Next.js API routes); calls **`backend`** at `NEXT_PUBLIC_API_URL`. `npm run dev` or `pnpm dev`.
 - `docs/` — architecture, identity, API errors, premium rules, sample CSVs.
 
 ## API base
@@ -52,7 +52,7 @@ cd frontend
 npm run dev
 ```
 
-- UI: `http://localhost:3000/svkk/login` (seed: `admin@svkk.local` / `admin123!`)
+- UI: `http://localhost:3000/login` (seed: `admin@svkk.local` / `admin123!`)
 
 ## Logging
 
@@ -62,9 +62,8 @@ npm run dev
 ## Pending / follow-ups
 
 - Wire S3 for CSV/PDF instead of `UPLOAD_DIR`.
-- Redis queue for large CSV jobs.
+- **No queue layer (no BullMQ/Redis)** in Phase 1: CSV and receipts run **synchronously** in the API process; scale-up would add a worker/queue later if needed.
 - Expand RBAC from static map to DB-driven checks per `RolePermission`.
-- Remove or isolate legacy CRM template routes when SVKK is primary product.
 
 ## Risks
 

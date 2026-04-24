@@ -49,10 +49,10 @@ export default function SvkkDashboardPage() {
       </div>
       <div className="flex flex-wrap gap-3">
         <Button asChild>
-          <Link href="/svkk/policies">Policies</Link>
+          <Link href="/policies">Policies</Link>
         </Button>
         <Button variant="outline" asChild>
-          <Link href="/svkk/login">Login</Link>
+          <Link href="/login">Login</Link>
         </Button>
       </div>
     </div>
