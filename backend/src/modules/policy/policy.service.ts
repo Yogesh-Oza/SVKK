@@ -19,6 +19,25 @@ export interface CreatePolicyInput {
   sumInsured: number;
   policyNo?: string | null;
   village?: string | null;
+  pod?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  contactPhone?: string | null;
+  nomineeName?: string | null;
+  nomineeRelation?: string | null;
+  loanRef?: string | null;
+  courierTracking?: string | null;
+  remarks?: string | null;
+  paymentMode?: string | null;
+  paymentType?: string | null;
+  amountReceived?: number | null;
+  bankName?: string | null;
+  bankAccountLast4?: string | null;
+  utrRef?: string | null;
+  yearRemarks?: string | null;
   members: {
     name: string;
     dob: Date;
@@ -64,6 +83,18 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         policyTypeId: input.policyTypeId,
         policyNo: input.policyNo ?? undefined,
         village: input.village ?? undefined,
+        pod: input.pod ?? undefined,
+        addressLine1: input.addressLine1 ?? undefined,
+        addressLine2: input.addressLine2 ?? undefined,
+        city: input.city ?? undefined,
+        state: input.state ?? undefined,
+        pincode: input.pincode ?? undefined,
+        contactPhone: input.contactPhone ?? undefined,
+        nomineeName: input.nomineeName ?? undefined,
+        nomineeRelation: input.nomineeRelation ?? undefined,
+        loanRef: input.loanRef ?? undefined,
+        courierTracking: input.courierTracking ?? undefined,
+        remarks: input.remarks ?? undefined,
       },
     });
 
@@ -75,6 +106,13 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         policyStart: input.policyStart ?? undefined,
         policyEnd: input.policyEnd ?? undefined,
         sumInsured: input.sumInsured,
+        paymentMode: input.paymentMode ?? undefined,
+        paymentType: input.paymentType ?? undefined,
+        amountReceived: input.amountReceived ?? undefined,
+        bankName: input.bankName ?? undefined,
+        bankAccountLast4: input.bankAccountLast4 ?? undefined,
+        utrRef: input.utrRef ?? undefined,
+        yearRemarks: input.yearRemarks ?? undefined,
       },
     });
 
@@ -148,4 +186,132 @@ export async function resolveChartsForType(
         });
 
   return { chartMode: pt.chartMode, holder, member };
+}
+
+export type PolicySectionPatch = {
+  policyNo?: string | null;
+  village?: string | null;
+  pod?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  contactPhone?: string | null;
+  nomineeName?: string | null;
+  nomineeRelation?: string | null;
+  loanRef?: string | null;
+  courierTracking?: string | null;
+  remarks?: string | null;
+};
+
+export type PolicyYearSectionPatch = {
+  yearLabel: string;
+  policyStart?: Date | null;
+  policyEnd?: Date | null;
+  sumInsured?: number | null;
+  paymentMode?: string | null;
+  paymentType?: string | null;
+  amountReceived?: number | null;
+  bankName?: string | null;
+  bankAccountLast4?: string | null;
+  utrRef?: string | null;
+  yearRemarks?: string | null;
+};
+
+/**
+ * Updates policy and optionally one policy year; writes an activity log with before/after snapshots.
+ */
+export async function updatePolicySections(input: {
+  actorUserId: string;
+  policyId: string;
+  policy: PolicySectionPatch;
+  year?: PolicyYearSectionPatch;
+}) {
+  const existing = await prisma.policy.findUnique({
+    where: { id: input.policyId },
+    include: { years: { orderBy: { yearLabel: "desc" } } },
+  });
+  if (!existing) {
+    throw new AppError("NOT_FOUND", "Policy not found", 404);
+  }
+
+  if (input.year) {
+    const y = existing.years.find((x) => x.yearLabel === input.year!.yearLabel);
+    if (!y) {
+      throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
+    }
+  }
+
+  const pData = Object.fromEntries(
+    Object.entries(input.policy).filter(([, v]) => v !== undefined),
+  ) as Prisma.PolicyUpdateInput;
+  const hasPolicyFields = Object.keys(pData).length > 0;
+  const y = input.year;
+  const hasYearValueFields = y
+    ? [
+        y.policyStart,
+        y.policyEnd,
+        y.sumInsured,
+        y.paymentMode,
+        y.paymentType,
+        y.amountReceived,
+        y.bankName,
+        y.bankAccountLast4,
+        y.utrRef,
+        y.yearRemarks,
+      ].some((v) => v !== undefined)
+    : false;
+  if (!hasPolicyFields && (!y || !hasYearValueFields)) {
+    throw new AppError("NO_CHANGES", "No fields to update", 400);
+  }
+
+  const beforeSnapshot = { policy: existing, yearLabel: input.year?.yearLabel };
+
+  const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    if (hasPolicyFields) {
+      await tx.policy.update({ where: { id: input.policyId }, data: pData });
+    }
+
+    if (input.year) {
+      const y = input.year;
+      const yearData: Prisma.PolicyYearUpdateInput = {
+        ...(y.policyStart !== undefined ? { policyStart: y.policyStart } : {}),
+        ...(y.policyEnd !== undefined ? { policyEnd: y.policyEnd } : {}),
+        ...(y.sumInsured !== undefined ? { sumInsured: y.sumInsured } : {}),
+        ...(y.paymentMode !== undefined ? { paymentMode: y.paymentMode } : {}),
+        ...(y.paymentType !== undefined ? { paymentType: y.paymentType } : {}),
+        ...(y.amountReceived !== undefined ? { amountReceived: y.amountReceived } : {}),
+        ...(y.bankName !== undefined ? { bankName: y.bankName } : {}),
+        ...(y.bankAccountLast4 !== undefined ? { bankAccountLast4: y.bankAccountLast4 } : {}),
+        ...(y.utrRef !== undefined ? { utrRef: y.utrRef } : {}),
+        ...(y.yearRemarks !== undefined ? { yearRemarks: y.yearRemarks } : {}),
+      };
+      if (Object.keys(yearData).length > 0) {
+        await tx.policyYear.update({
+          where: {
+            policyId_yearLabel: { policyId: input.policyId, yearLabel: y.yearLabel },
+          },
+          data: yearData,
+        });
+      }
+    }
+
+    return tx.policy.findUniqueOrThrow({
+      where: { id: input.policyId },
+      include: { years: { orderBy: { yearLabel: "desc" } } },
+    });
+  });
+
+  await writeActivityLog({
+    userId: input.actorUserId,
+    module: "policy",
+    action: "POLICY_UPDATED",
+    entityType: "Policy",
+    entityId: input.policyId,
+    beforeData: beforeSnapshot as unknown as Prisma.InputJsonValue,
+    afterData: { policy: updated, yearLabel: input.year?.yearLabel } as unknown as Prisma.InputJsonValue,
+  });
+
+  return updated;
 }

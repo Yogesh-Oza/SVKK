@@ -11,7 +11,7 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "calculation:live": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
   "admin:charts": ["SUPER_ADMIN", "ADMIN"],
   "admin:policyTypes": ["SUPER_ADMIN", "ADMIN"],
-  "upload:csv": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
+  "upload:csv": ["SUPER_ADMIN", "ADMIN"],
   "logs:read": ["SUPER_ADMIN", "ADMIN"],
   "mis:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   "claim:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
@@ -21,14 +21,21 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "receipt:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
 };
 
+/** @internal Exported for unit tests of the permission matrix. */
+export function isRoleAllowed(
+  key: keyof typeof ALLOWED,
+  role: UserRole,
+): boolean {
+  return Boolean(ALLOWED[key]?.includes(role));
+}
+
 export function requirePermission(key: keyof typeof ALLOWED) {
   return (req: Request, _res: Response, next: NextFunction) => {
     const role = req.userRole;
     if (!role) {
       return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
     }
-    const allowed = ALLOWED[key];
-    if (!allowed?.includes(role)) {
+    if (!isRoleAllowed(key, role)) {
       return next(new AppError("FORBIDDEN", "Insufficient permissions", 403));
     }
     next();

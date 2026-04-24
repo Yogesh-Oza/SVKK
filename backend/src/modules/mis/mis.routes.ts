@@ -4,10 +4,15 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
+import {
+  buildMisVillageWhere,
+  loadMisScope,
+  mergeDateRange,
+} from "../../services/mis-scope.service.js";
 
-export function createMisRouter(env: Env) {
+export function createMisRouter(_env: Env) {
   const r = Router();
-  r.use(requireAuth(env));
+  r.use(requireAuth(_env));
 
   r.get("/summary", requirePermission("mis:read"), async (req, res, next) => {
     try {
@@ -20,24 +25,14 @@ export function createMisRouter(env: Env) {
         })
         .parse(req.query);
 
-      const policyWhere =
-        q.village || q.from || q.to
-          ? {
-              ...(q.village ? { village: q.village } : {}),
-              ...(q.from || q.to
-                ? {
-                    createdAt: {
-                      ...(q.from ? { gte: q.from } : {}),
-                      ...(q.to ? { lte: q.to } : {}),
-                    },
-                  }
-                : {}),
-            }
-          : undefined;
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const villageWheres = buildMisVillageWhere(scope, q.village);
+      const { policy: pWhere, claim: cWhere } = mergeDateRange(villageWheres, q.from, q.to);
 
       const [policyCount, claimAgg] = await prisma.$transaction([
-        prisma.policy.count({ where: policyWhere }),
+        prisma.policy.count({ where: pWhere }),
         prisma.claim.aggregate({
+          where: cWhere,
           _count: { id: true },
           _sum: { claimAmount: true, approvedAmount: true },
         }),
@@ -60,10 +55,15 @@ export function createMisRouter(env: Env) {
         .object({
           limit: z.coerce.number().min(1).max(100).default(20),
           cursor: z.string().optional(),
+          village: z.string().optional(),
         })
         .parse(req.query);
 
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const { policy: villageWhere } = buildMisVillageWhere(scope, q.village);
+
       const rows = await prisma.policy.findMany({
+        where: villageWhere,
         take: q.limit + 1,
         ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
         orderBy: { createdAt: "desc" },

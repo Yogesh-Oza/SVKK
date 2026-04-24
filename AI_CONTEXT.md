@@ -4,6 +4,12 @@
 
 Shree Vagad Kala Kendra (SVKK) **mediclaim policy** platform: premium engine, policies, CSV tools, MIS, claims MVP, receipts.
 
+## Domain: identity and MIS scope
+
+- **`InsuredParty.svkkPublicId`** is the master public ID; policies and claims tie to it.
+- **`UserVillage`**: rows link a **SUPERVISOR** user to one or more village names (strings matching `Policy.village` / `Claim.village`). **ADMIN** and **SUPER_ADMIN** use **full** MIS (no `UserVillage` rows required). Supervisors with **no** villages see **empty** MIS aggregates.
+- **CSV upload** (`upload:csv`): **ADMIN** and **SUPER_ADMIN** only (not SUPERVISOR).
+
 ## Stack
 
 - **Backend**: Node 20+, Express 5, TypeScript, Prisma 6, **MySQL**, JWT (access + httpOnly refresh), `pino` logging, Zod validation.
@@ -52,7 +58,7 @@ cd frontend
 npm run dev
 ```
 
-- UI: `http://localhost:3000/` (login; `/login` redirects here). Seed: `admin@svkk.local` / `admin123!`
+- UI: `http://localhost:3000/` (login; `/login` redirects here). Seed users: `admin@svkk.local` / `admin123!` (Super Admin); `supervisor@svkk.local` / `supervisor123!` (Supervisor, villages `DemoVillageA`, `DemoVillageB`).
 
 ## Logging
 

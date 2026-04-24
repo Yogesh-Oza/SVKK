@@ -4,8 +4,64 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
-import { createPolicyWithYear } from "./policy.service.js";
+import {
+  createPolicyWithYear,
+  updatePolicySections,
+  type PolicySectionPatch,
+  type PolicyYearSectionPatch,
+} from "./policy.service.js";
+import { createPolicyBodySchema, patchPolicyBodySchema } from "./policy.schemas.js";
 import { AppError } from "../../errors/app-error.js";
+
+function patchBodyToInput(
+  body: z.infer<typeof patchPolicyBodySchema>,
+): { policy: PolicySectionPatch; year?: PolicyYearSectionPatch } {
+  const policy: PolicySectionPatch = {};
+  if (body.policyNo !== undefined) policy.policyNo = body.policyNo;
+  if (body.village !== undefined) policy.village = body.village;
+  if (body.pod !== undefined) policy.pod = body.pod;
+  if (body.addressLine1 !== undefined) policy.addressLine1 = body.addressLine1;
+  if (body.addressLine2 !== undefined) policy.addressLine2 = body.addressLine2;
+  if (body.city !== undefined) policy.city = body.city;
+  if (body.state !== undefined) policy.state = body.state;
+  if (body.pincode !== undefined) policy.pincode = body.pincode;
+  if (body.contactPhone !== undefined) policy.contactPhone = body.contactPhone;
+  if (body.nomineeName !== undefined) policy.nomineeName = body.nomineeName;
+  if (body.nomineeRelation !== undefined) policy.nomineeRelation = body.nomineeRelation;
+  if (body.loanRef !== undefined) policy.loanRef = body.loanRef;
+  if (body.courierTracking !== undefined) policy.courierTracking = body.courierTracking;
+  if (body.remarks !== undefined) policy.remarks = body.remarks;
+
+  const y = {
+    yearLabel: body.yearLabel,
+    policyStart: body.policyStart,
+    policyEnd: body.policyEnd,
+    sumInsured: body.sumInsured,
+    paymentMode: body.paymentMode,
+    paymentType: body.paymentType,
+    amountReceived: body.amountReceived,
+    bankName: body.bankName,
+    bankAccountLast4: body.bankAccountLast4,
+    utrRef: body.utrRef,
+    yearRemarks: body.yearRemarks,
+  };
+  const hasYear = y.yearLabel && Object.entries(y).some(([k, v]) => k !== "yearLabel" && v !== undefined);
+  if (!hasYear) {
+    return { policy };
+  }
+  const year: PolicyYearSectionPatch = { yearLabel: y.yearLabel! };
+  if (y.policyStart !== undefined) year.policyStart = y.policyStart;
+  if (y.policyEnd !== undefined) year.policyEnd = y.policyEnd;
+  if (y.sumInsured !== undefined) year.sumInsured = y.sumInsured;
+  if (y.paymentMode !== undefined) year.paymentMode = y.paymentMode;
+  if (y.paymentType !== undefined) year.paymentType = y.paymentType;
+  if (y.amountReceived !== undefined) year.amountReceived = y.amountReceived;
+  if (y.bankName !== undefined) year.bankName = y.bankName;
+  if (y.bankAccountLast4 !== undefined) year.bankAccountLast4 = y.bankAccountLast4;
+  if (y.utrRef !== undefined) year.utrRef = y.utrRef;
+  if (y.yearRemarks !== undefined) year.yearRemarks = y.yearRemarks;
+  return { policy, year };
+}
 
 export function createPolicyRouter(env: Env) {
   const r = Router();
@@ -13,33 +69,7 @@ export function createPolicyRouter(env: Env) {
 
   r.post("/", requirePermission("policy:create"), async (req, res, next) => {
     try {
-      const body = z
-        .object({
-          mobile: z.string().min(1),
-          partyName: z.string().min(1),
-          email: z.string().email().optional().nullable(),
-          policyTypeId: z.string().min(1),
-          yearLabel: z.string().min(1),
-          policyChartId: z.string().min(1),
-          policyStart: z.coerce.date().optional().nullable(),
-          policyEnd: z.coerce.date().optional().nullable(),
-          sumInsured: z.number().positive(),
-          policyNo: z.string().optional().nullable(),
-          village: z.string().optional().nullable(),
-          members: z
-            .array(
-              z.object({
-                name: z.string().min(1),
-                dob: z.coerce.date(),
-                relationship: z.string().min(1),
-                gender: z.string().min(1),
-                riderAmount: z.number().nonnegative().optional(),
-              }),
-            )
-            .min(1),
-        })
-        .parse(req.body);
-
+      const body = createPolicyBodySchema.parse(req.body);
       const out = await createPolicyWithYear({
         actorUserId: req.userId!,
         ...body,
@@ -117,16 +147,13 @@ export function createPolicyRouter(env: Env) {
 
   r.patch("/:id", requirePermission("policy:update"), async (req, res, next) => {
     try {
-      const body = z
-        .object({
-          policyNo: z.string().optional().nullable(),
-          village: z.string().optional().nullable(),
-        })
-        .parse(req.body);
-
-      const row = await prisma.policy.update({
-        where: { id: String(req.params.id) },
-        data: body,
+      const parsed = patchPolicyBodySchema.parse(req.body);
+      const { policy, year } = patchBodyToInput(parsed);
+      const row = await updatePolicySections({
+        actorUserId: req.userId!,
+        policyId: String(req.params.id),
+        policy,
+        year,
       });
       res.json(row);
     } catch (e) {

@@ -55,6 +55,25 @@ async function main() {
     },
   });
 
+  const supervisorHash = await bcrypt.hash("supervisor123!", 12);
+  const supervisor = await prisma.user.upsert({
+    where: { email: "supervisor@svkk.local" },
+    update: { name: "Supervisor One" },
+    create: {
+      email: "supervisor@svkk.local",
+      passwordHash: supervisorHash,
+      name: "Supervisor One",
+      role: UserRole.SUPERVISOR,
+    },
+  });
+
+  await prisma.userVillage.deleteMany({ where: { userId: supervisor.id } });
+  for (const village of ["DemoVillageA", "DemoVillageB"]) {
+    await prisma.userVillage.create({
+      data: { userId: supervisor.id, village },
+    });
+  }
+
   const ash = await prisma.policyType.upsert({
     where: { key: "asha_kiran" },
     update: { chartMode: ChartMode.HOLDER_MEMBER },
@@ -98,7 +117,7 @@ async function main() {
     if (!exists) await prisma.rolePermission.create({ data: p });
   }
 
-  console.log("Seed OK — login admin@svkk.local / admin123!");
+  console.log("Seed OK — admin@svkk.local / admin123! | supervisor@svkk.local / supervisor123!");
 }
 
 main()
