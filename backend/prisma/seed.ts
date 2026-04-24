@@ -117,7 +117,21 @@ async function main() {
     if (!exists) await prisma.rolePermission.create({ data: p });
   }
 
-  console.log("Seed OK — admin@svkk.local / admin123! | supervisor@svkk.local / supervisor123!");
+  const userHash = await bcrypt.hash("user123!", 12);
+  await prisma.user.upsert({
+    where: { email: "user@svkk.local" },
+    update: {},
+    create: {
+      email: "user@svkk.local",
+      passwordHash: userHash,
+      name: "Data Entry",
+      role: UserRole.USER,
+    },
+  });
+
+  console.log(
+    "Seed OK — admin@svkk.local / admin123! | supervisor@svkk.local / supervisor123! | user@svkk.local / user123!",
+  );
 }
 
 main()

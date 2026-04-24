@@ -11,6 +11,39 @@ export function createCalculationRouter(env: Env) {
   const r = Router();
   r.use(requireAuth(env));
 
+  /** Dropdown data for the premium calculator (same permission as /live). */
+  r.get("/reference/policy-types", requirePermission("calculation:live"), async (_req, res, next) => {
+    try {
+      const rows = await prisma.policyType.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, key: true, name: true, chartMode: true, description: true },
+      });
+      res.json(rows);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/reference/charts", requirePermission("calculation:live"), async (req, res, next) => {
+    try {
+      const policyTypeId = z.string().min(1).parse(req.query.policyTypeId);
+      const rows = await prisma.policyChart.findMany({
+        where: { policyTypeId },
+        orderBy: [{ version: "desc" }, { chartKind: "asc" }],
+        select: {
+          id: true,
+          policyTypeId: true,
+          version: true,
+          effectiveFrom: true,
+          chartKind: true,
+        },
+      });
+      res.json(rows);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.post("/live", requirePermission("calculation:live"), async (req, res, next) => {
     try {
       const body = z
