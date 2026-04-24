@@ -1,143 +1,127 @@
-# Contributing to Shadcn Admin
+# Contributing to Studio Admin
 
-Thank you for your interest in contributing to Shadcn Admin. This guide will help you get started with the contribution process.
+Thanks for showing interest in improving **Studio Admin** (repo: `next-shadcn-admin-dashboard`).  
+This guide will help you set up your environment and understand how to contribute.
 
-## Project Structure
+---
 
-The Shadcn Admin project is organized as follows:
+## Overview
 
-- `/app` - Next.js app router pages and layouts
-- `/components` - Shared UI components (shadcn/ui)
-- `/contexts` - React context providers
-- `/db` - Database schema and migrations
-- `/features` - Feature-based modules (auth, dashboard, etc.)
-- `/helpers` - Utility functions
-- `/hooks` - Custom React hooks
-- `/lib` - Core libraries (auth, utils)
-- `/public` - Static assets
-- `/scripts` - Database seeding scripts
+This project is built with **Next.js 16**, **TypeScript**, **Tailwind CSS v4**, and **Shadcn UI**.  
+The goal is to keep the codebase modular, scalable, and easy to extend.
 
-## Development Guidelines
+---
 
-When contributing to Shadcn Admin:
+## Project Layout
 
-- Keep changes focused. Large PRs are harder to review.
-- Ensure all code is type-safe and takes full advantage of TypeScript features.
-- Write clear, self-explanatory code. Use comments only when truly necessary.
-- Follow the existing code style and conventions.
-- Test your changes locally before submitting.
+We use a **colocation-based file system**. Each feature keeps its own pages, components, and logic.
+
+```
+src
+├── app               # Next.js routes (App Router)
+│   ├── (auth)        # Auth layouts & screens
+│   ├── (main)        # Main dashboard routes
+│   │   └── (dashboard)
+│   │       ├── crm
+│   │       ├── finance
+│   │       ├── default
+│   │       └── ...
+│   └── layout.tsx
+├── components        # Shared UI components
+├── hooks             # Reusable hooks
+├── lib               # Config & utilities
+├── styles            # Tailwind / theme setup
+└── types             # TypeScript definitions
+```
+
+If you’d like a more detailed example of this setup, check out the [Next Colocation Template](https://github.com/arhamkhnz/next-colocation-template), where the full structure is explained with examples.
+
+---
 
 ## Getting Started
 
-1. Fork the repository to your GitHub account(Optional)
+### Fork and Clone the Repository
 
-2. Clone your fork locally:
+1. Fork the Repository
+   
+   Click [here](https://github.com/arhamkhnz/next-shadcn-admin-dashboard/fork) to fork the repository.
 
+2. Clone the Repository  
    ```bash
-   git clone https://github.com/Its-Nyein/shadcn-admin.git
-   cd shadcn-admin
+   git clone https://github.com/YOUR_USERNAME/next-shadcn-admin-dashboard.git
+   ```
+   
+3. Navigate into the Project  
+   ```bash
+   cd next-shadcn-admin-dashboard
    ```
 
-3. Install `pnpm` if you haven't already:
-
+4. **Install dependencies**
    ```bash
-   npm install -g pnpm
+   npm install
    ```
 
-4. Install project dependencies:
-
+5. **Run the dev server**
    ```bash
-   pnpm install
+   npm run dev
    ```
+   App will be available at [http://localhost:3000](http://localhost:3000).
 
-5. Create a `.env` file from the example:
+---
 
-   ```bash
-   cp .env.example .env
-   ```
+## Contribution Flow
 
-   Then update `.env` with your values.
+- Always create a new branch before working on changes:
+  ```bash
+  git checkout -b feature/my-update
+  ```
 
-6. Set up the database:
+- Use clear commit messages:
+  ```bash
+  git commit -m "feat: add finance dashboard screen"
+  ```
 
-   ```bash
-   pnpm db:generate
-   pnpm db:migrate
-   ```
+- Open a Pull Request once ready.
+- If your change adds a new UI screen or component, include a screenshot in your PR description.
 
-7. Seed the database:
+---
 
-   ```bash
-   pnpm db:seed
-   ```
+## Where to Contribute
 
-8. Run the development server:
+- **External Pages**: Landing pages or other non-dashboard routes → `src/app/(external)/`  
+- **Auth Screens**: Login, register, and authentication layouts → `src/app/(main)/auth/`  
+- **Dashboard Screens**: Feature dashboards like CRM, Finance, Analytics → `src/app/(main)/dashboard/`
+- **Components**: Reusable UI goes in `src/components/`  
+- **Hooks**: Custom logic goes in `src/hooks/`  
+- **Themes**: New presets under `src/styles/presets/`  
 
-   ```bash
-   pnpm dev
-   ```
+---
 
-## Code Formatting
+## Guidelines
 
-We use Prettier and ESLint for code formatting and linting. Before committing, please ensure your code is properly formatted:
+- Prefer **TypeScript types** over `any`
+- Husky pre-commit hooks are enabled - linting and formatting run automatically when you commit, and if there are errors the commit will be blocked until they are fixed. 
+- Follow **Shadcn UI** style & Tailwind v4 conventions
+- Keep accessibility in mind (ARIA, keyboard nav)
+- Use clear commit messages with conventional prefixes (`feat:`, `fix:`, `chore:`, etc.)
+- Avoid unnecessary dependencies — prefer existing utilities where possible
 
-```bash
-# Format all code
-pnpm format
+---
 
-# Check for linting issues
-pnpm lint
-```
+## Submitting PRs
 
-## Development Workflow
+- Open a Pull Request once your changes are ready.  
+- Ensure your branch is up to date with `main` before submitting.  
+- Reference any related issue in your PR for context.
 
-1. Create a new branch for your changes:
+---
 
-   ```bash
-   git checkout -b type/description
-   # Example: git checkout -b feat/user-profile
-   ```
+## Questions & Support
 
-   Branch type prefixes:
-   - `feat/` - New features
-   - `fix/` - Bug fixes
-   - `docs/` - Documentation changes
-   - `refactor/` - Code refactoring
-   - `chore/` - Build process or tooling changes
+- Report bugs, suggestions, or issues via [GitHub Issues](https://github.com/arhamkhnz/next-shadcn-admin-dashboard/issues)
 
-2. Make your changes following the code style guidelines
+---
 
-3. Ensure the code is properly formatted and linted
+Your contributions keep this project growing. 🚀
 
-4. Commit your changes with a descriptive message:
-
-   ```bash
-   feat: add user profile page
-
-   fix: resolve authentication redirect issue
-   ```
-
-5. Push your branch to your fork
-
-6. Open a pull request against the `main` branch
-
-## Pull Request Process
-
-1. Create a draft pull request early to facilitate discussion
-2. Reference any related issues in your PR description
-3. Ensure all checks pass
-4. Keep your PR focused on a single feature or bug fix
-5. Be responsive to code review feedback
-
-## Code Style
-
-- Follow the existing code style
-- Use TypeScript types and interfaces effectively
-- Keep functions small and focused
-- Use meaningful variable and function names
-- Follow the shadcn/ui component patterns
-- Prefer composition over inheritance
-
-## Questions?
-
-Open an issue for any questions or suggestions.
+**Happy Vibe Coding!**
