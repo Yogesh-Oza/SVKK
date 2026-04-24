@@ -1,11 +1,47 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { getSvkkApiBase } from "@/lib/svkk/config";
-import { svkkJson } from "@/lib/svkk/api";
+import { backendApi, svkkJson } from "@/lib/svkk/api";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import {
+  canCreateReceipt,
+  canDeletePolicy,
+  canUpdatePolicy,
+} from "@/lib/svkk/permissions";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+type PolicyYear = {
+  id: string;
+  yearLabel: string;
+  sumInsured: unknown;
+  policyStart: string | null;
+  policyEnd: string | null;
+  members: { name: string; relationship: string; dob: string }[];
+};
 
 type PolicyDetail = {
   id: string;
@@ -13,22 +49,31 @@ type PolicyDetail = {
   village: string | null;
   insuredParty: { svkkPublicId: string; name: string; mobile: string; email: string | null };
   policyType: { name: string };
-  years: {
-    id: string;
-    yearLabel: string;
-    sumInsured: unknown;
-    policyStart: string | null;
-    policyEnd: string | null;
-    members: { name: string; relationship: string; dob: string }[];
-  }[];
+  years: PolicyYear[];
 };
 
 export default function SvkkPolicyDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { user } = useSvkkAuth();
   const id = String(params.id);
+
   const [row, setRow] = useState<PolicyDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [village, setVillage] = useState("");
+  const [policyNo, setPolicyNo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [receiptAmt, setReceiptAmt] = useState("");
+  const [receiptMode, setReceiptMode] = useState("CASH");
+  const [yearId, setYearId] = useState<string | "">("");
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const missingUrl = !getSvkkApiBase();
+
+  const role = user?.role;
+  const canPatch = role ? canUpdatePolicy(role) : false;
+  const canDel = role ? canDeletePolicy(role) : false;
+  const canRcpt = role ? canCreateReceipt(role) : false;
 
   useEffect(() => {
     if (missingUrl) {
@@ -38,11 +83,77 @@ export default function SvkkPolicyDetailPage() {
       try {
         const p = await svkkJson<PolicyDetail>(`/policies/${id}`);
         setRow(p);
+        setVillage(p.village ?? "");
+        setPolicyNo(p.policyNo ?? "");
+        if (p.years[0]) {
+          setYearId(p.years[0].id);
+        }
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Not found");
       }
     })();
   }, [id, missingUrl]);
+
+  async function savePolicy() {
+    if (!row) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        village: village.trim() || null,
+        policyNo: policyNo.trim() || null,
+      };
+      const updated = await svkkJson<PolicyDetail>(`/policies/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setRow(updated);
+      toast.success("Policy updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function issueReceipt() {
+    const amt = Number(receiptAmt);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setReceiptBusy(true);
+    try {
+      const res = await svkkJson<{ receiptNo: string }>(`/receipts/policies/${id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: amt,
+          paymentMode: receiptMode || null,
+          policyYearId: yearId || null,
+        }),
+      });
+      toast.success(`Receipt ${res.receiptNo} created (PDF saved on server).`);
+      setReceiptAmt("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Receipt failed");
+    } finally {
+      setReceiptBusy(false);
+    }
+  }
+
+  async function deletePolicy() {
+    setDeleteBusy(true);
+    try {
+      await backendApi.delete(`/policies/${id}`);
+      toast.success("Policy deleted");
+      router.replace("/policies");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -55,8 +166,8 @@ export default function SvkkPolicyDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/policies">Back</Link>
         </Button>
@@ -75,11 +186,105 @@ export default function SvkkPolicyDetailPage() {
           <span className="text-muted-foreground">Type: </span>
           {row.policyType.name}
         </p>
-        <p>
-          <span className="text-muted-foreground">Village: </span>
-          {row.village ?? "—"}
-        </p>
       </div>
+
+      {canPatch ? (
+        <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
+          <h2 className="font-medium">Edit policy fields</h2>
+          <div className="space-y-2">
+            <Label>Village</Label>
+            <Input value={village} onChange={(e) => setVillage(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Policy number</Label>
+            <Input value={policyNo} onChange={(e) => setPolicyNo(e.target.value)} />
+          </div>
+          <Button type="button" size="sm" disabled={saving} onClick={() => void savePolicy()}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      ) : null}
+
+      {canRcpt ? (
+        <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
+          <h2 className="font-medium">Issue receipt</h2>
+          <p className="text-muted-foreground text-xs">
+            Creates a receipt record and PDF on the server (paths returned in API for ops use).
+          </p>
+          {row.years.length > 1 ? (
+            <div className="space-y-2">
+              <Label>Policy year</Label>
+              <Select value={yearId} onValueChange={setYearId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {row.years.map((y) => (
+                    <SelectItem key={y.id} value={y.id}>
+                      {y.yearLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <Label>Amount (INR)</Label>
+            <Input
+              value={receiptAmt}
+              onChange={(e) => setReceiptAmt(e.target.value)}
+              inputMode="decimal"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Payment mode</Label>
+            <Select value={receiptMode} onValueChange={setReceiptMode}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">CASH</SelectItem>
+                <SelectItem value="UPI">UPI</SelectItem>
+                <SelectItem value="NEFT">NEFT</SelectItem>
+                <SelectItem value="CHQ">CHQ</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" size="sm" disabled={receiptBusy} onClick={() => void issueReceipt()}>
+            {receiptBusy ? "Submitting…" : "Create receipt"}
+          </Button>
+        </div>
+      ) : null}
+
+      {canDel ? (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" disabled={deleteBusy}>
+              Delete policy
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this policy?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This cannot be undone. Only administrators can delete policies.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  void deletePolicy();
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
+
       <div className="space-y-2">
         <h2 className="text-lg font-medium">Years</h2>
         {row.years.map((y) => (

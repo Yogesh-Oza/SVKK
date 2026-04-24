@@ -27,3 +27,31 @@ const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] =
 export function getSvkkNavForRole(role: SvkkRole) {
   return NAV.filter((n) => n.roles.includes(role));
 }
+
+export function canAccessMis(role: SvkkRole) {
+  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canUpdatePolicy(role: SvkkRole) {
+  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canDeletePolicy(role: SvkkRole) {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canCreateReceipt(role: SvkkRole) {
+  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canUpdateClaim(role: SvkkRole) {
+  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canCreateClaim(role: SvkkRole) {
+  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+export function canDeleteClaim(role: SvkkRole) {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
