@@ -14,7 +14,7 @@ Shree Vagad Kala Kendra (SVKK) **mediclaim policy** platform: premium engine, po
 ## Stack
 
 - **Backend**: Node 20+, Express 5, TypeScript, Prisma 6, **MySQL**, JWT, Zod, `pino` logging.
-- **Frontend**: Next.js 16, React 19, Tailwind/shadcn. SVKK UI lives under the `frontend/app/(svkk)/` route group (URL paths omit `(svkk)`).
+- **Frontend**: Next.js 16, React 19, Tailwind/shadcn. SVKK UI lives under the `frontend/app/(svkk)/` route group (URL paths omit `(svkk)`). **Auth branding**: SVKK Software MEDICLAIM — deep forest green panel (`#064e3b`), soft sky/mint gradient on the form side, white elevated card, black primary CTA; shared `AuthHero` + split grid on `/login` and dashboard `sign-in`.
 
 ## Repo layout (SVKK)
 
