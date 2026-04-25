@@ -1,8 +1,32 @@
+import type { Request } from "express";
 import type { Env } from "../../config/env.js";
 import type { CookieOptions } from "express";
 
 export const REFRESH_COOKIE = "refreshToken" as const;
 export const ACCESS_TOKEN_COOKIE = "accessToken" as const;
+/** Some proxies or older clients store snake_case; we still emit camelCase. */
+const ACCESS_TOKEN_SNAKE = "access_token" as const;
+const REFRESH_SNAKE = "refresh_token" as const;
+
+function firstCookie(req: Request, ...names: string[]): string | undefined {
+  const c = req.cookies as Record<string, string> | undefined;
+  if (!c) return undefined;
+  for (const n of names) {
+    const v = c[n];
+    if (typeof v === "string" && v.length > 0) {
+      return v;
+    }
+  }
+  return undefined;
+}
+
+export function getAccessTokenFromCookies(req: Request): string | undefined {
+  return firstCookie(req, ACCESS_TOKEN_COOKIE, ACCESS_TOKEN_SNAKE);
+}
+
+export function getRefreshTokenFromCookies(req: Request): string | undefined {
+  return firstCookie(req, REFRESH_COOKIE, REFRESH_SNAKE);
+}
 
 /**
  * Cross-origin SPA (e.g. Vercel) calling API (e.g. Render) needs `SameSite=None; Secure`
@@ -48,4 +72,6 @@ export function clearAuthCookies(res: import("express").Response, env: Env) {
   const c = { ...cookieBase(env) };
   res.clearCookie(REFRESH_COOKIE, c);
   res.clearCookie(ACCESS_TOKEN_COOKIE, c);
+  res.clearCookie(REFRESH_SNAKE, c);
+  res.clearCookie(ACCESS_TOKEN_SNAKE, c);
 }

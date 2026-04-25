@@ -15,8 +15,7 @@ import {
 import { prisma } from "../../lib/prisma.js";
 import { z } from "zod";
 import {
-  REFRESH_COOKIE,
-  ACCESS_TOKEN_COOKIE,
+  getRefreshTokenFromCookies,
   setAccessCookie,
   setRefreshCookie,
   clearAuthCookies,
@@ -110,7 +109,7 @@ export function createAuthRouter(env: Env) {
 
   r.post("/refresh", async (req, res, next) => {
     try {
-      const token = req.cookies?.[REFRESH_COOKIE];
+      const token = getRefreshTokenFromCookies(req);
       if (!token) {
         return res.status(401).json({
           code: "NO_REFRESH",
@@ -134,7 +133,7 @@ export function createAuthRouter(env: Env) {
 
   r.post("/logout", async (req, res, next) => {
     try {
-      const token = req.cookies?.[REFRESH_COOKIE];
+      const token = getRefreshTokenFromCookies(req);
       if (token) {
         try {
           const payload = verifyRefreshToken(token, env);
@@ -154,5 +153,10 @@ export function createAuthRouter(env: Env) {
   return r;
 }
 
-export { REFRESH_COOKIE, ACCESS_TOKEN_COOKIE };
+export {
+  getRefreshTokenFromCookies,
+  getAccessTokenFromCookies,
+  REFRESH_COOKIE,
+  ACCESS_TOKEN_COOKIE,
+} from "./auth.cookies.js";
 export const authCookieParser = cookieParser();
