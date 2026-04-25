@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import { apiPost, backendApi, refreshSvkkAccessToken } from "@/lib/api/svkk-client";
+import { apiPost, backendApi, clearStoredTokens, refreshSvkkAccessToken } from "@/lib/api/svkk-client";
+import { getStoredRefreshToken, setStoredTokens } from "@/lib/svkk/token-storage";
 import type { SvkkUser } from "@/lib/svkk/types";
 
 export type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated";
@@ -21,12 +22,14 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async (_, { re
   } catch {
     const at = await refreshSvkkAccessToken();
     if (at === null) {
+      clearStoredTokens();
       return rejectWithValue("unauthenticated");
     }
     try {
       const { data } = await backendApi.get<SvkkUser>("/auth/me");
       return data;
     } catch {
+      clearStoredTokens();
       return rejectWithValue("unauthenticated");
     }
   }
@@ -36,10 +39,17 @@ export const loginWithPassword = createAsyncThunk(
   "auth/login",
   async (args: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const body = await apiPost<{ user: SvkkUser }>("/auth/login", {
+      const body = await apiPost<{
+        user: SvkkUser;
+        accessToken?: string;
+        refreshToken?: string;
+      }>("/auth/login", {
         email: args.email,
         password: args.password,
       });
+      if (body.accessToken && body.refreshToken) {
+        setStoredTokens(body.accessToken, body.refreshToken);
+      }
       return body.user;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Login failed";
@@ -50,9 +60,12 @@ export const loginWithPassword = createAsyncThunk(
 
 export const logoutUser = createAsyncThunk("auth/logout", async () => {
   try {
-    await backendApi.post("/auth/logout");
+    const rt = getStoredRefreshToken();
+    await backendApi.post("/auth/logout", rt ? { refreshToken: rt } : {});
   } catch {
-    /* still clear local state */
+    /* still clear */
+  } finally {
+    clearStoredTokens();
   }
 });
 

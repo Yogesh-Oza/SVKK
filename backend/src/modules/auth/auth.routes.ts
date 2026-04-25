@@ -101,6 +101,8 @@ export function createAuthRouter(env: Env) {
           name: user.name,
           role: user.role,
         },
+        accessToken,
+        refreshToken,
       });
     } catch (e) {
       next(e);
@@ -109,11 +111,12 @@ export function createAuthRouter(env: Env) {
 
   r.post("/refresh", async (req, res, next) => {
     try {
-      const token = getRefreshTokenFromCookies(req);
+      const bodyRt = z.object({ refreshToken: z.string().min(10) }).safeParse(req.body);
+      const token = getRefreshTokenFromCookies(req) || (bodyRt.success ? bodyRt.data.refreshToken : undefined);
       if (!token) {
         return res.status(401).json({
           code: "NO_REFRESH",
-          message: "Refresh cookie missing",
+          message: "Refresh cookie or body token missing",
           traceId: req.traceId,
         });
       }
@@ -124,8 +127,7 @@ export function createAuthRouter(env: Env) {
       setAccessCookie(res, env, accessToken);
       setRefreshCookie(res, env, newRefresh);
       req.log.info({ userId: user.id }, "token refreshed");
-      // Body token helps SPA retry the failed request in the same tick; httpOnly is source of truth.
-      res.json({ accessToken });
+      res.json({ accessToken, refreshToken: newRefresh });
     } catch (e) {
       next(e);
     }
@@ -133,7 +135,9 @@ export function createAuthRouter(env: Env) {
 
   r.post("/logout", async (req, res, next) => {
     try {
-      const token = getRefreshTokenFromCookies(req);
+      const bodyRt = z.object({ refreshToken: z.string().min(10) }).safeParse(req.body);
+      const token =
+        getRefreshTokenFromCookies(req) || (bodyRt.success ? bodyRt.data.refreshToken : undefined);
       if (token) {
         try {
           const payload = verifyRefreshToken(token, env);

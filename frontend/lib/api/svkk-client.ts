@@ -5,25 +5,48 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import {
+  clearStoredTokens,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  setStoredAccessOnly,
+  setStoredTokens,
+} from "@/lib/svkk/token-storage";
 
 type Retriable = InternalAxiosRequestConfig & { _svkkAuthRetry?: boolean };
 
+function isAuthLoginOrPublic(url: string | undefined): boolean {
+  if (!url) {
+    return false;
+  }
+  return url.includes("/auth/login");
+}
+
 /**
- * `POST /auth/refresh` — new access in httpOnly cookie; body `accessToken` is used
- * for an immediate 401 retry when the browser has not yet applied the cookie.
+ * Access + refresh in response body; localStorage when cross-site cookies are not sent (e.g. SameSite=Lax).
  */
 export async function refreshSvkkAccessToken(): Promise<string | null> {
   const base = getSvkkApiBase();
   if (!base) {
     return null;
   }
+  const rt = getStoredRefreshToken();
   try {
-    const { data } = await axios.post<{ accessToken?: string }>(
+    const { data } = await axios.post<{ accessToken?: string; refreshToken?: string }>(
       `${base}/auth/refresh`,
-      null,
-      { withCredentials: true, timeout: 30_000 },
+      rt ? { refreshToken: rt } : null,
+      {
+        withCredentials: true,
+        timeout: 30_000,
+        headers: { "Content-Type": "application/json" },
+      },
     );
     if (data?.accessToken) {
+      if (data.refreshToken) {
+        setStoredTokens(data.accessToken, data.refreshToken);
+      } else {
+        setStoredAccessOnly(data.accessToken);
+      }
       return data.accessToken;
     }
     return "";
@@ -33,7 +56,7 @@ export async function refreshSvkkAccessToken(): Promise<string | null> {
 }
 
 /**
- * SVKK Express API — httpOnly `accessToken` + `refreshToken` cookies, `withCredentials: true`.
+ * SVKK Express API — httpOnly cookies + optional Bearer from localStorage (split-origin).
  * 401: refresh once, retry (Bearer from refresh body if needed for same-tick cookie timing).
  */
 export const backendApi = axios.create({
@@ -54,6 +77,13 @@ backendApi.interceptors.request.use((config) => {
   if (config.data instanceof FormData) {
     const h = AxiosHeaders.from(config.headers);
     h.delete("Content-Type");
+    config.headers = h;
+  }
+
+  const at = getStoredAccessToken();
+  if (at && !isAuthLoginOrPublic(config.url)) {
+    const h = AxiosHeaders.from(config.headers);
+    h.set("Authorization", `Bearer ${at}`);
     config.headers = h;
   }
 
@@ -91,6 +121,8 @@ backendApi.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+export { clearStoredTokens } from "@/lib/svkk/token-storage";
 
 export async function apiGet<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
   const { data } = await backendApi.get<T>(url, config);
