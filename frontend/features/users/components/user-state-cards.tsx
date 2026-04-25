@@ -1,36 +1,37 @@
 import { Card, CardContent } from "@/components/ui/card";
-import type { User } from "../utils/schema";
-import { Shield, Users } from "lucide-react";
+import { SVKK_ROLE_LABELS, type SvkkUserRole, type User } from "../utils/schema";
+import { Shield, UserCircle, Users } from "lucide-react";
 
 interface UserStateCardsProps {
   users: User[];
 }
 
+const ROLE_ICONS: Record<SvkkUserRole, typeof Users> = {
+  USER: UserCircle,
+  SUPERVISOR: Users,
+  ADMIN: Shield,
+  SUPER_ADMIN: Shield,
+};
+
 export function UserStateCards({ users }: UserStateCardsProps) {
   const totalUsers = users.length;
-  const adminCount = users.filter((u) => u.role === "admin").length;
-  const salesCount = users.filter((u) => u.role === "sales").length;
+  const roles: SvkkUserRole[] = ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"];
 
   const metrics = [
     {
-      title: "Total Users",
+      title: "Total users",
       value: totalUsers,
       icon: Users,
     },
-    {
-      title: "Admins",
-      value: adminCount,
-      icon: Shield,
-    },
-    {
-      title: "Sales",
-      value: salesCount,
-      icon: Users,
-    },
+    ...roles.map((role) => ({
+      title: SVKK_ROLE_LABELS[role],
+      value: users.filter((u) => u.role === role).length,
+      icon: ROLE_ICONS[role],
+    })),
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {metrics.map((metric, index) => (
         <Card key={index} className="border">
           <CardContent className="space-y-4 pt-6">

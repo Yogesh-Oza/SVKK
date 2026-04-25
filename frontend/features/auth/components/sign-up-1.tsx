@@ -50,7 +50,7 @@ export function SignUp1({ className, ...props }: React.ComponentProps<"div">) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log("Sign up data:", data);
       toast.success("Account created successfully!");
-      window.location.href = "/leads";
+      window.location.href = "/dashboard";
     } catch {
       toast.error("Failed to create account. Please try again.");
     } finally {

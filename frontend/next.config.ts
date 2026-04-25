@@ -6,6 +6,15 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/favicon.png" }];
   },
+  async redirects() {
+    return [
+      { source: "/leads", destination: "/dashboard", permanent: false },
+      { source: "/leads/:path*", destination: "/dashboard", permanent: false },
+      { source: "/follow-ups", destination: "/dashboard", permanent: false },
+      { source: "/follow-ups/:path*", destination: "/dashboard", permanent: false },
+      { source: "/policies/new", destination: "/calculator", permanent: false },
+    ];
+  },
   images: {
     remotePatterns: [
       {

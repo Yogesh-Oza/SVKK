@@ -1,13 +1,30 @@
-import { SvkkAppShell } from "@/components/svkk/svkk-app-shell";
+import AppSidebar from "@/components/app-sidebar";
+import { DashboardHeader } from "@/components/dashboard-header";
 import { SvkkAuthGate } from "@/components/svkk/svkk-auth-gate";
 import { SvkkRoleGate } from "@/components/svkk/svkk-role-gate";
-import type { ReactNode } from "react";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarConfigProvider } from "@/contexts/sidebar-context";
+import { Suspense, type ReactNode } from "react";
 
+/**
+ * SVKK mediclaim app uses the same shell as the CRM: collapsible sidebar, command header, and main area.
+ * The sidebar merges MediClaim (SVKK) and CRM sections in one list (see AppSidebar).
+ */
 export default function SvkkMainLayout({ children }: { children: ReactNode }) {
   return (
     <SvkkAuthGate>
       <SvkkRoleGate>
-        <SvkkAppShell>{children}</SvkkAppShell>
+        <SidebarConfigProvider>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <Suspense>
+                <DashboardHeader />
+              </Suspense>
+              <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+            </SidebarInset>
+          </SidebarProvider>
+        </SidebarConfigProvider>
       </SvkkRoleGate>
     </SvkkAuthGate>
   );

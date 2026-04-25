@@ -61,7 +61,9 @@ import {
 } from "@/components/ui/table";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import type { User } from "../utils/schema";
+import { apiDelete } from "@/lib/api/svkk-client";
+import { SVKK_ROLE_LABELS, type User } from "../utils/schema";
+import { getSvkkErrorMessage } from "../utils/api-error";
 import { UserFormDialog } from "./user-form-modal";
 
 interface DataTableProps {
@@ -81,18 +83,21 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case "admin":
+      case "SUPER_ADMIN":
         return "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20";
-      case "sales":
+      case "ADMIN":
+        return "text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20";
+      case "SUPERVISOR":
         return "text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20";
+      case "USER":
+        return "text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20";
       default:
         return "text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-900/20";
     }
   };
 
-  const exactFilter = (row: Row<User>, columnId: string, value: string) => {
-    return row.getValue(columnId) === value;
-  };
+  const exactFilter = (row: Row<User>, columnId: string, value: string) =>
+    (row.getValue(columnId) as string) === value;
 
   const handleEditClick = (user: User) => {
     setEditingUser(user);
@@ -112,20 +117,12 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
     }
     setIsDeleting(true);
     try {
-      const res = await fetch(
-        `/api/users/${encodeURIComponent(deleteUser.id)}`,
-        { method: "DELETE" },
-      );
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        toast.error(payload.error ?? "Failed to delete user");
-        return;
-      }
+      await apiDelete(`/users/${encodeURIComponent(deleteUser.id)}`);
       toast.success("User deleted");
       setDeleteUser(null);
       onSuccess?.();
-    } catch {
-      toast.error("Failed to delete user");
+    } catch (e) {
+      toast.error(getSvkkErrorMessage(e, "Failed to delete user"));
     } finally {
       setIsDeleting(false);
     }
@@ -165,10 +162,10 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
       accessorKey: "role",
       header: "Role",
       cell: ({ row }) => {
-        const role = row.getValue("role") as string;
+        const role = row.getValue("role") as User["role"];
         return (
           <Badge variant="secondary" className={getRoleColor(role)}>
-            {role.charAt(0).toUpperCase() + role.slice(1)}
+            {SVKK_ROLE_LABELS[role]}
           </Badge>
         );
       },
@@ -298,9 +295,14 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
               <SelectValue placeholder="Select Role" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="sales">Sales</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
+              {(["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] as const).map(
+                (r) => (
+                  <SelectItem key={r} value={r}>
+                    {SVKK_ROLE_LABELS[r]}
+                  </SelectItem>
+                ),
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -437,7 +439,7 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
             <DialogTitle>Delete User</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete {deleteUser?.name}? This action
-              cannot be undone. Their assigned leads will be unassigned.
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

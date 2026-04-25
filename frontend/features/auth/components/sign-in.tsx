@@ -53,7 +53,7 @@ export default function SignIn() {
       setIsLoading(true);
       await login(data.email, data.password);
       toast.success("Signed in successfully!");
-      const callbackUrl = searchParams.get("callbackUrl") || "/leads";
+      const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
       router.push(callbackUrl);
       router.refresh();
     } catch (error) {

@@ -31,13 +31,17 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import type { User } from "../utils/schema";
+import { apiPatch, apiPost } from "@/lib/api/svkk-client";
 import {
+  SVKK_ROLE_LABELS,
   createUserFormSchema,
   editUserFormSchema,
+  svkkUserRoles,
   type CreateUserFormValues,
   type EditUserFormValues,
+  type User,
 } from "../utils/schema";
+import { getSvkkErrorMessage } from "../utils/api-error";
 
 interface UserFormDialogProps {
   user?: User | null;
@@ -67,7 +71,7 @@ export function UserFormDialog({
       name: "",
       email: "",
       password: "",
-      role: "sales",
+      role: "USER",
     },
   });
 
@@ -76,7 +80,7 @@ export function UserFormDialog({
     defaultValues: {
       name: "",
       email: "",
-      role: "sales",
+      role: "USER",
       password: "",
     },
   });
@@ -95,28 +99,18 @@ export function UserFormDialog({
   async function handleCreate(data: CreateUserFormValues) {
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          password: data.password,
-          role: data.role,
-        }),
+      await apiPost("/users", {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: data.role,
       });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        toast.error(payload.error ?? "Failed to create user");
-        return;
-      }
-
       toast.success("User created successfully");
       createForm.reset();
       setOpen(false);
       onSuccess?.();
-    } catch {
-      toast.error("Failed to create user");
+    } catch (e) {
+      toast.error(getSvkkErrorMessage(e, "Failed to create user"));
     } finally {
       setIsSubmitting(false);
     }
@@ -126,29 +120,19 @@ export function UserFormDialog({
     if (!user) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/users/${encodeURIComponent(user.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          role: data.role,
-          ...(data.password && data.password.length >= 8
-            ? { password: data.password }
-            : {}),
-        }),
+      await apiPatch(`/users/${encodeURIComponent(user.id)}`, {
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        ...(data.password && data.password.length >= 8
+          ? { password: data.password }
+          : {}),
       });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        toast.error(payload.error ?? "Failed to update user");
-        return;
-      }
-
       toast.success("User updated successfully");
       setOpen(false);
       onSuccess?.();
-    } catch {
-      toast.error("Failed to update user");
+    } catch (e) {
+      toast.error(getSvkkErrorMessage(e, "Failed to update user"));
     } finally {
       setIsSubmitting(false);
     }
@@ -206,8 +190,11 @@ export function UserFormDialog({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="sales">Sales</SelectItem>
+                  {svkkUserRoles.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {SVKK_ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -312,8 +299,11 @@ export function UserFormDialog({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="sales">Sales</SelectItem>
+                  {svkkUserRoles.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {SVKK_ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />

@@ -20,6 +20,9 @@ export function getAllowedRolesForPath(pathname: string): readonly SvkkRole[] | 
   if (pathname.startsWith("/logs")) {
     return ADM;
   }
+  if (pathname.startsWith("/users")) {
+    return ["SUPER_ADMIN"];
+  }
   if (pathname.startsWith("/claims")) {
     return SUP;
   }

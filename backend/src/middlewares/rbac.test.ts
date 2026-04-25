@@ -47,6 +47,13 @@ describe("rbac matrix", () => {
     expect(isRoleAllowed("logs:read", "USER")).toBe(false);
   });
 
+  it("allows users:manage only to SUPER_ADMIN", () => {
+    expect(isRoleAllowed("users:manage", "SUPER_ADMIN")).toBe(true);
+    expect(isRoleAllowed("users:manage", "ADMIN")).toBe(false);
+    expect(isRoleAllowed("users:manage", "SUPERVISOR")).toBe(false);
+    expect(isRoleAllowed("users:manage", "USER")).toBe(false);
+  });
+
   it("every role can policy:create, policy:read, calculation:live", () => {
     for (const role of ALL_ROLES) {
       expect(isRoleAllowed("policy:create", role)).toBe(true);

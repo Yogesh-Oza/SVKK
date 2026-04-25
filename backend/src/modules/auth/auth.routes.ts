@@ -52,7 +52,7 @@ export function createAuthRouter(env: Env) {
 
       const password =
         body.password && body.password.length > 0 ? body.password : undefined;
-      const user = await updateMyProfile(req.userId, {
+      const user = await updateMyProfile(req.userId!, {
         name: body.name,
         email: body.email,
         password,

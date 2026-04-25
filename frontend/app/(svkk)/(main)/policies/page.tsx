@@ -69,7 +69,7 @@ export default function SvkkPoliciesPage() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="text-2xl font-semibold">Policies</h1>
         <Button asChild>
-          <Link href="/policies/new">Add policy</Link>
+          <Link href="/calculator">Open premium calculator</Link>
         </Button>
       </div>
       <form

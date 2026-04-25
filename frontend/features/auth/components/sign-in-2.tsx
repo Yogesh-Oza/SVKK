@@ -37,7 +37,7 @@ export function SignIn2({ className, ...props }: React.ComponentProps<"div">) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log("Login data:", data);
       toast.success("Signed in successfully!");
-      window.location.href = "/leads";
+      window.location.href = "/dashboard";
     } catch {
       toast.error("Failed to sign in. Please check your credentials.");
     } finally {

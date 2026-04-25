@@ -7,10 +7,14 @@ import {
   SidebarRail,
   Sidebar as UISidebar,
 } from "@/components/ui/sidebar";
+import { getSvkkNavGroupsForRole } from "@/constants/svkk-sidebar-data";
 import { sidebarData } from "@/constants/sidebar-data";
 import { useAuth } from "@/contexts/auth-context";
 import { useSidebarConfig } from "@/contexts/sidebar-context";
+import type { SvkkRole } from "@/lib/svkk/permissions";
+import { SVKK_ROLE_LABELS } from "@/lib/svkk/role-labels";
 import type { NavGroup as NavGroupType, NavItem } from "@/lib/types";
+import { useAppSelector } from "@/lib/store/hooks";
 import React, { useMemo } from "react";
 import { NavGroup } from "./nav-group";
 import { NavUser } from "./nav-user";
@@ -42,12 +46,26 @@ export default function AppSidebar({
   ...props
 }: React.ComponentProps<typeof UISidebar>) {
   const { user } = useAuth();
+  const sessionUser = useAppSelector((s) => s.auth.user);
   const { config } = useSidebarConfig();
   const isAdmin = user?.role === "admin";
-  const navGroups = useMemo(
-    () => filterNavGroupsByRole(sidebarData.navGroups, isAdmin),
-    [isAdmin]
-  );
+
+  /** One sidebar: MediClaim (SVKK API) links first, then CRM (alerts, tasks, settings, …). */
+  const navGroups = useMemo((): NavGroupType[] => {
+    const crm = filterNavGroupsByRole(sidebarData.navGroups, isAdmin);
+    if (!sessionUser) {
+      return crm;
+    }
+    const svkk = getSvkkNavGroupsForRole(sessionUser.role as SvkkRole);
+    return [...svkk, ...crm];
+  }, [sessionUser, isAdmin]);
+
+  const navUserRole = useMemo(() => {
+    if (sessionUser) {
+      return SVKK_ROLE_LABELS[sessionUser.role as SvkkRole] ?? sessionUser.role;
+    }
+    return user?.role;
+  }, [sessionUser, user?.role]);
 
   return (
     <UISidebar
@@ -71,7 +89,7 @@ export default function AppSidebar({
               name: user.name,
               email: user.email,
               avatar: user.avatar || "",
-              role: user.role,
+              role: navUserRole,
             }}
           />
         )}

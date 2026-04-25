@@ -20,7 +20,7 @@ export default function DashboardClientLayout({
   const user = useAppSelector((s) => s.auth.user);
   const status = useAppSelector((s) => s.auth.status);
   const router = useRouter();
-  const pathname = usePathname() ?? "/leads";
+  const pathname = usePathname() ?? "/dashboard";
 
   useEffect(() => {
     if (status === "loading") {

@@ -8,7 +8,6 @@ import {
   IconPalette,
   IconSettings,
   IconUserCog,
-  IconUsers,
 } from "@tabler/icons-react";
 import { KanbanIcon } from "lucide-react";
 
@@ -17,16 +16,6 @@ export const sidebarData: SidebarData = {
     {
       title: "Dashboard",
       items: [
-        {
-          title: "Leads",
-          url: "/leads",
-          icon: IconUsers,
-        },
-        {
-          title: "Follow-Ups",
-          url: "/follow-ups",
-          icon: IconChecklist,
-        },
         {
           title: "Alerts",
           url: "/alerts",
@@ -52,12 +41,6 @@ export const sidebarData: SidebarData = {
           title: "Tasks",
           url: "/tasks",
           icon: IconChecklist,
-        },
-        {
-          title: "Users",
-          url: "/users",
-          icon: IconUsers,
-          adminOnly: true,
         },
         {
           title: "Calendar",

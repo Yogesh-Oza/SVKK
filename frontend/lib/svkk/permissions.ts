@@ -8,7 +8,8 @@ export type SvkkNavId =
   | "mis"
   | "csv"
   | "admin"
-  | "logs";
+  | "logs"
+  | "users";
 
 const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] = [
   { id: "dashboard", href: "/dashboard", label: "Dashboard", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
@@ -19,6 +20,7 @@ const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] =
   { id: "csv", href: "/upload", label: "CSV upload", roles: ["ADMIN", "SUPER_ADMIN"] },
   { id: "admin", href: "/admin", label: "Admin", roles: ["ADMIN", "SUPER_ADMIN"] },
   { id: "logs", href: "/logs", label: "Activity logs", roles: ["ADMIN", "SUPER_ADMIN"] },
+  { id: "users", href: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
 ];
 
 /**

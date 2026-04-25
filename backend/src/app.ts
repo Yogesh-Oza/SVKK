@@ -13,6 +13,7 @@ import { createLogsRouter } from "./modules/logs/logs.routes.js";
 import { createMisRouter } from "./modules/mis/mis.routes.js";
 import { createClaimRouter } from "./modules/claim/claim.routes.js";
 import { createReceiptRouter } from "./modules/receipt/receipt.routes.js";
+import { createUsersRouter } from "./modules/users/users.routes.js";
 
 export function createApp(env: Env, rootLog: AppLogger) {
   const app = express();
@@ -41,6 +42,7 @@ export function createApp(env: Env, rootLog: AppLogger) {
   v1.use("/mis", createMisRouter(env));
   v1.use("/claims", createClaimRouter(env));
   v1.use("/receipts", createReceiptRouter(env));
+  v1.use("/users", createUsersRouter(env));
 
   v1.use(errorHandler);
 
