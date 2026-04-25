@@ -43,12 +43,6 @@ export async function runNotificationDeliveryCron() {
       leadId: notif.leadId ?? null,
     };
 
-    const userInfo = {
-      id: u.id,
-      email: u.email,
-      whatsappPhone: u.whatsappPhone ?? undefined,
-    };
-
     for (const channel of ["email", "whatsapp"] as const) {
       const existing = await deliveryCol.findOne({
         notificationId: notif.id,
@@ -68,9 +62,21 @@ export async function runNotificationDeliveryCron() {
 
       try {
         if (channel === "email") {
-          const ok = await sendEmailNotification(notification, userInfo);
-          status = ok ? "sent" : "failed";
+          if (!u.email) {
+            error = "User has no email";
+            status = "failed";
+          } else {
+            const ok = await sendEmailNotification(notification, {
+              id: u.id,
+              email: u.email,
+            });
+            status = ok ? "sent" : "failed";
+          }
         } else {
+          const userInfo = {
+            id: u.id,
+            whatsappPhone: u.whatsappPhone ?? null,
+          };
           const ok = await sendWhatsAppInternalAlert(notification, userInfo);
           status = ok ? "sent" : "failed";
         }

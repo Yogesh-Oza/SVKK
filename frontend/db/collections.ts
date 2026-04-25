@@ -22,6 +22,7 @@ export type UserDoc = {
   email?: string;
   name?: string;
   role?: UserRole;
+  whatsappPhone?: string | null;
   [key: string]: unknown;
 };
 
