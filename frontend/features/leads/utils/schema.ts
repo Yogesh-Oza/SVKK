@@ -14,7 +14,6 @@ export const createLeadSchema = z.object({
     }),
   source: z.enum(["whatsapp", "instagram", "manual", "referral", "website"]),
   assignedUserId: z.string().optional(),
-  tattooTypeId: z.string().optional(),
 });
 
 export type CreateLeadFormValues = z.infer<typeof createLeadSchema>;

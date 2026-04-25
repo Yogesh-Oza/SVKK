@@ -17,9 +17,6 @@ function stubForPathname(pathname: string, search: string): object {
   if (pathname === "/api/users") {
     return { users: [] };
   }
-  if (pathname === "/api/tattoo-types") {
-    return { tattooTypes: [] };
-  }
   if (pathname === "/api/notification-preferences") {
     return { email: { enabled: true }, whatsapp: { enabled: false } };
   }

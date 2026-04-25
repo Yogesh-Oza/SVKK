@@ -1,6 +1,7 @@
 "use client";
 
 import type { User } from "@/lib/types";
+import { ReduxStoreProvider } from "@/components/providers/redux-store-provider";
 import {
   type ReactNode,
   createContext,
@@ -52,9 +53,11 @@ function AuthContextInner({ children }: { children: ReactNode }) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   return (
-    <SvkkAuthProvider>
-      <AuthContextInner>{children}</AuthContextInner>
-    </SvkkAuthProvider>
+    <ReduxStoreProvider>
+      <SvkkAuthProvider>
+        <AuthContextInner>{children}</AuthContextInner>
+      </SvkkAuthProvider>
+    </ReduxStoreProvider>
   );
 }
 

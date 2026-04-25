@@ -2,7 +2,6 @@ import { AxiosError, type AxiosRequestConfig, type Method } from "axios";
 import { backendApi } from "./http";
 import { getSvkkApiBase } from "./config";
 
-export { getSvkkAccessToken, setSvkkAccessToken } from "./auth-tokens";
 export { backendApi, apiGet, apiPost, apiPatch, apiPut, apiDelete, refreshSvkkAccessToken } from "./http";
 
 function normalizePath(path: string): string {

@@ -1,10 +1,8 @@
 /**
- * SVKK Express API client (axios + auth helpers).
- * Set `NEXT_PUBLIC_API_URL` to the API root including `/api/v1`.
+ * SVKK Express API: shared Axios in `@/lib/api/svkk-client` (httpOnly cookies + withCredentials).
+ * `NEXT_PUBLIC_API_URL` = API root including `/api/v1`.
  */
 export {
-  getSvkkAccessToken,
-  setSvkkAccessToken,
   refreshSvkkAccessToken,
   svkkFetch,
   svkkJson,
@@ -16,3 +14,4 @@ export {
   apiDelete,
 } from "./api";
 export { getSvkkApiBase } from "./config";
+export type { SvkkUser } from "./types";

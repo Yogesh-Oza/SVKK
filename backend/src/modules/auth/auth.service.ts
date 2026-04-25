@@ -71,3 +71,42 @@ export async function revokeAllRefreshTokens(userId: string) {
     data: { refreshTokenVersion: { increment: 1 } },
   });
 }
+
+type ProfilePatch = { name?: string; email?: string; password?: string | undefined };
+
+export async function updateMyProfile(
+  userId: string,
+  data: ProfilePatch,
+): Promise<User> {
+  const u = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (data.email && data.email.toLowerCase() !== u.email) {
+    const ex = await prisma.user.findFirst({
+      where: { email: data.email.toLowerCase() },
+    });
+    if (ex) {
+      throw new AppError("CONFLICT", "Email is already in use", 409);
+    }
+  }
+
+  const next: {
+    name?: string;
+    email?: string;
+    passwordHash?: string;
+    refreshTokenVersion?: { increment: number };
+  } = {};
+  if (data.name !== undefined) {
+    next.name = data.name;
+  }
+  if (data.email) {
+    next.email = data.email.toLowerCase();
+  }
+  if (data.password && data.password.length >= 8) {
+    next.passwordHash = await bcrypt.hash(data.password, 10);
+    next.refreshTokenVersion = { increment: 1 };
+  }
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: next,
+  });
+}

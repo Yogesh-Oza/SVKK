@@ -1,6 +1,3 @@
-import { db } from "@/db";
-import { USER } from "@/db/collections";
-
 export type UserRole = "admin" | "sales";
 
 export interface SessionWithRole {
@@ -8,30 +5,11 @@ export interface SessionWithRole {
   role: UserRole;
 }
 
+/**
+ * No server session with SVKK httpOnly-on-API auth. Use client Redux or `GET` `/auth/me` from the browser.
+ */
 export async function getSessionWithRole(): Promise<SessionWithRole | null> {
-  const { getServerSession } = await import("@/lib/session");
-  const session = await getServerSession();
-  if (!session?.user?.id) return null;
-
-  const dbUser = await db.collection(USER).findOne<{ role?: string }>({
-    id: session.user.id,
-  });
-  const roleFromSession =
-    typeof (session.user as { role?: unknown }).role === "string"
-      ? ((session.user as { role: string }).role as UserRole)
-      : undefined;
-  const role = (roleFromSession ??
-    (dbUser?.role as UserRole) ??
-    "sales") as UserRole;
-  return {
-    user: {
-      id: session.user.id,
-      name: session.user.name ?? "",
-      email: session.user.email ?? "",
-      image: session.user.image ?? null,
-    },
-    role,
-  };
+  return null;
 }
 
 export function requireAuth(

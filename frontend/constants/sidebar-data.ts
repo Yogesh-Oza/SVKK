@@ -7,7 +7,6 @@ import {
   IconNotification,
   IconPalette,
   IconSettings,
-  IconTable,
   IconUserCog,
   IconUsers,
 } from "@tabler/icons-react";
@@ -99,12 +98,6 @@ export const sidebarData: SidebarData = {
               title: "Display",
               url: "/settings/display",
               icon: IconBrowserCheck,
-            },
-            {
-              title: "Tattoo Types",
-              url: "/settings/tattoo-types",
-              icon: IconTable,
-              adminOnly: true,
             },
           ],
         },

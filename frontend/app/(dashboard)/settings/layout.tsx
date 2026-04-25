@@ -10,26 +10,20 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { Bell, List, Monitor, Palette, UserCog } from "lucide-react";
+import { Bell, Monitor, Palette, UserCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-const allSidebarNavItems = [
-  { title: "Profile", href: "/settings", icon: UserCog, adminOnly: false as const },
-  { title: "Appearance", href: "/settings/appearance", icon: Palette, adminOnly: false as const },
-  { title: "Notifications", href: "/settings/notifications", icon: Bell, adminOnly: false as const },
-  { title: "Display", href: "/settings/display", icon: Monitor, adminOnly: false as const },
-  { title: "Tattoo Types", href: "/settings/tattoo-types", icon: List, adminOnly: true as const },
+const sidebarNavItems = [
+  { title: "Profile", href: "/settings", icon: UserCog },
+  { title: "Appearance", href: "/settings/appearance", icon: Palette },
+  { title: "Notifications", href: "/settings/notifications", icon: Bell },
+  { title: "Display", href: "/settings/display", icon: Monitor },
 ];
 
-function getSidebarNavItems(isAdmin: boolean) {
-  return isAdmin ? allSidebarNavItems : allSidebarNavItems.filter((item) => !item.adminOnly);
-}
-
 interface SidebarNavProps extends React.HTMLAttributes<HTMLElement> {
-  items: typeof allSidebarNavItems;
+  items: typeof sidebarNavItems;
 }
 
 function SidebarNav({ items, className, ...props }: SidebarNavProps) {
@@ -116,10 +110,6 @@ export default function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-  const sidebarNavItems = getSidebarNavItems(isAdmin);
-
   return (
     <div className="-m-4 flex h-[calc(100vh-4rem)] flex-col">
       <div className="shrink-0 px-4 pt-6 lg:px-6">

@@ -66,9 +66,6 @@ export function CreateLeadDialog({
 
   const [countryCode, setCountryCode] = useState("+1");
 
-  const [tattooTypes, setTattooTypes] = useState<{ id: string; name: string }[]>([]);
-  const [loadingTattooTypes, setLoadingTattooTypes] = useState(false);
-
   const form = useForm<CreateLeadFormValues>({
     resolver: zodResolver(createLeadSchema),
     defaultValues: {
@@ -76,26 +73,8 @@ export function CreateLeadDialog({
       phone: "",
       source: "manual",
       assignedUserId: undefined,
-      tattooTypeId: undefined,
     },
   });
-
-  useEffect(() => {
-    if (!open) return;
-    const tid = setTimeout(() => setLoadingTattooTypes(true), 0);
-    fetch("/api/tattoo-types")
-      .then((res) => res.json())
-      .then((data) => {
-        const list = data?.tattooTypes;
-        setTattooTypes(Array.isArray(list) ? list : []);
-      })
-      .catch(() => setTattooTypes([]))
-      .finally(() => {
-        clearTimeout(tid);
-        setLoadingTattooTypes(false);
-      });
-    return () => clearTimeout(tid);
-  }, [open]);
 
   useEffect(() => {
     if (!open || !isAdmin) return;
@@ -123,9 +102,6 @@ export function CreateLeadDialog({
       };
       if (isAdmin && data.assignedUserId) {
         body.assignedUserId = data.assignedUserId;
-      }
-      if (data.tattooTypeId) {
-        body.tattooTypeId = data.tattooTypeId;
       }
 
       const res = await fetch("/api/leads", {
@@ -263,43 +239,6 @@ export function CreateLeadDialog({
                           className="cursor-pointer capitalize"
                         >
                           {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="tattooTypeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tattoo Type (optional)</FormLabel>
-                  <Select
-                    onValueChange={(v) =>
-                      field.onChange(v === "__none__" ? undefined : v)
-                    }
-                    value={field.value ?? "__none__"}
-                    disabled={loadingTattooTypes}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="cursor-pointer">
-                        <SelectValue placeholder="Select tattoo type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="__none__" className="cursor-pointer">
-                        None
-                      </SelectItem>
-                      {tattooTypes.map((t) => (
-                        <SelectItem
-                          key={t.id}
-                          value={t.id}
-                          className="cursor-pointer"
-                        >
-                          {t.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -137,13 +137,6 @@ const searchItems: SearchItem[] = [
     icon: IconBrowserCheck,
   },
   {
-    title: "Tattoo Types",
-    url: "/settings/tattoo-types",
-    group: "Settings",
-    icon: IconTable,
-    adminOnly: true,
-  },
-  {
     title: "Column Pricing",
     url: "/pricing/column",
     group: "Pages",

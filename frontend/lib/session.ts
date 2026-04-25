@@ -1,16 +1,12 @@
-import { authOptions } from "@/lib/nextauth";
-import { getServerSession as getNextAuthServerSession } from "next-auth/next";
-
-export async function getServerSession() {
-  return getNextAuthServerSession(authOptions);
+/**
+ * Legacy shims. Auth is client-side (Redux) + SVKK httpOnly cookies; see `dashboard-client-layout.tsx`.
+ */
+export async function getServerSession(): Promise<null> {
+  return null;
 }
 
 export async function isAuthenticated(): Promise<boolean> {
-  const session = await getServerSession();
-  return !!session?.user?.id;
+  return false;
 }
 
-export async function getSessionWithRole() {
-  const { getSessionWithRole: getWithRole } = await import("@/lib/rbac");
-  return getWithRole();
-}
+export { getSessionWithRole } from "./rbac";

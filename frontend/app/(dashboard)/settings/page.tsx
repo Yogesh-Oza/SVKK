@@ -12,11 +12,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/auth-context";
+import { apiGet, apiPatch } from "@/lib/svkk/api";
+import { setSessionUser } from "@/lib/store/slices/auth-slice";
+import { useAppDispatch } from "@/lib/store/hooks";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { useCallback, useEffect, useState } from "react";
+import type { SvkkUser } from "@/lib/svkk/types";
 
 const profileFormSchema = z
   .object({
@@ -39,7 +44,18 @@ const profileFormSchema = z
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+function mapMeToForm(user: { name: string; email: string }): ProfileFormValues {
+  return {
+    name: user.name,
+    email: user.email,
+    password: "",
+    confirmPassword: "",
+  };
+}
+
 export default function SettingsProfilePage() {
+  const dispatch = useAppDispatch();
+  const { user: crmUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,54 +70,61 @@ export default function SettingsProfilePage() {
     mode: "onChange",
   });
 
+  const crmHint = useMemo(
+    () =>
+      crmUser
+        ? {
+            name: crmUser.name,
+            email: crmUser.email,
+          }
+        : null,
+    [crmUser],
+  );
+
   const fetchMe = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/me");
-      const data = await res.json();
-      if (!res.ok) return;
-      if (data.user) {
-        form.reset({
-          name: data.user.name ?? "",
-          email: data.user.email ?? "",
-          password: "",
-          confirmPassword: "",
-        });
+      const me = await apiGet<SvkkUser>("/auth/me");
+      form.reset(mapMeToForm(me));
+      dispatch(setSessionUser(me));
+    } catch {
+      if (crmHint) {
+        form.reset(mapMeToForm(crmHint));
+      } else {
+        form.reset();
       }
+      toast.error("Could not load profile from the server.");
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, [form, crmHint, dispatch]);
 
   useEffect(() => {
-    fetchMe();
+    void fetchMe();
   }, [fetchMe]);
 
   async function onSubmit(values: ProfileFormValues) {
     setSubmitting(true);
     try {
-      const body: { name?: string; email?: string; password?: string } = {
+      const body: { name: string; email: string; password?: string } = {
         name: values.name,
         email: values.email,
       };
       if (values.password && values.password.length >= 8) {
         body.password = values.password;
       }
-      const res = await fetch("/api/me", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json.error ?? "Failed to update profile");
-        return;
-      }
-      toast.success("Profile updated successfully.");
+      const { user } = await apiPatch<{ user: SvkkUser }>("/auth/me", body);
       form.reset({
-        ...values,
+        name: user.name,
+        email: user.email,
         password: "",
         confirmPassword: "",
       });
+      dispatch(setSessionUser(user));
+      toast.success("Profile updated successfully.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to update profile";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -110,7 +133,7 @@ export default function SettingsProfilePage() {
   if (loading) {
     return (
       <ContentSection title="Profile" desc="Update your account information.">
-        <div className="animate-pulse space-y-4">
+        <div className="space-y-4 animate-pulse">
           <div className="h-10 rounded-md bg-muted" />
           <div className="h-10 rounded-md bg-muted" />
           <div className="h-10 w-24 rounded-md bg-muted" />
@@ -122,7 +145,7 @@ export default function SettingsProfilePage() {
   return (
     <ContentSection
       title="Profile"
-      desc="Update your account information. Changes are saved to your user account."
+      desc="Update your account information. Changes are saved to your user account on the server."
     >
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pb-4">
@@ -131,9 +154,9 @@ export default function SettingsProfilePage() {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Name</FormLabel>
+                <FormLabel>Your name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Your name" {...field} />
+                  <Input placeholder="Your name" autoComplete="name" {...field} />
                 </FormControl>
                 <FormDescription>
                   This is the name shown in the app and in emails.
@@ -149,7 +172,12 @@ export default function SettingsProfilePage() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="you@example.com" {...field} />
+                  <Input
+                    type="email"
+                    placeholder="you@organization.com"
+                    autoComplete="email"
+                    {...field}
+                  />
                 </FormControl>
                 <FormDescription>
                   Your email address for signing in and notifications.

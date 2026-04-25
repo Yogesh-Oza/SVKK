@@ -1,23 +1,19 @@
 "use client";
 
-import { svkkFetch, setSvkkAccessToken, svkkJson, refreshSvkkAccessToken } from "@/lib/svkk/api";
-import type { SvkkRole } from "@/lib/svkk/permissions";
+import { initializeAuth, loginWithPassword, logoutUser } from "@/lib/store/slices/auth-slice";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
+import type { SvkkUser } from "@/lib/svkk/types";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useRef,
   type ReactNode,
 } from "react";
 
-export type SvkkUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: SvkkRole;
-};
+export type { SvkkUser } from "@/lib/svkk/types";
 
 type SvkkAuthState = {
   user: SvkkUser | null;
@@ -29,65 +25,35 @@ type SvkkAuthState = {
 const SvkkAuthContext = createContext<SvkkAuthState | null>(null);
 
 /**
- * Auth state for the SVKK Express API (in-memory access JWT + httpOnly refresh cookie).
+ * SVKK auth: httpOnly cookies on the API origin + Redux for client state.
+ * Bootstraps session via `GET /auth/me` and optional `POST /auth/refresh`.
  */
 export function SvkkAuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SvkkUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  const d = useAppDispatch();
+  const once = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const restored = await refreshSvkkAccessToken();
-        if (cancelled) {
-          return;
-        }
-        if (!restored) {
-          setUser(null);
-          return;
-        }
-        const me = await svkkJson<SvkkUser>("/auth/me");
-        if (cancelled) {
-          return;
-        }
-        setUser(me);
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setSvkkAccessToken(null);
-        setUser(null);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (once.current) {
+      return;
+    }
+    once.current = true;
+    void d(initializeAuth());
+  }, [d]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await svkkJson<{ accessToken: string; user: SvkkUser }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    setSvkkAccessToken(data.accessToken);
-    setUser(data.user);
-  }, []);
+  const user = useAppSelector((s) => s.auth.user);
+  const status = useAppSelector((s) => s.auth.status);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      await d(loginWithPassword({ email, password })).unwrap();
+    },
+    [d],
+  );
 
   const logout = useCallback(async () => {
-    try {
-      await svkkFetch("/auth/logout", { method: "POST" });
-    } catch {
-      /* ignore */
-    } finally {
-      setSvkkAccessToken(null);
-      setUser(null);
-    }
-  }, []);
+    await d(logoutUser()).unwrap();
+  }, [d]);
+
+  const loading = status === "loading";
 
   const value = useMemo(
     () => ({ user, loading, login, logout }),
