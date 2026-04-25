@@ -18,9 +18,10 @@ export function createApp(env: Env, rootLog: AppLogger) {
   const app = express();
 
   app.disable("x-powered-by");
+  const corsOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
       credentials: true,
     }),
   );

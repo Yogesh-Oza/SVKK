@@ -5,6 +5,7 @@
 export {
   getSvkkAccessToken,
   setSvkkAccessToken,
+  refreshSvkkAccessToken,
   svkkFetch,
   svkkJson,
   backendApi,

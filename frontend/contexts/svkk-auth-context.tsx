@@ -1,6 +1,6 @@
 "use client";
 
-import { svkkFetch, getSvkkAccessToken, setSvkkAccessToken, svkkJson } from "@/lib/svkk/api";
+import { svkkFetch, setSvkkAccessToken, svkkJson, refreshSvkkAccessToken } from "@/lib/svkk/api";
 import type { SvkkRole } from "@/lib/svkk/permissions";
 import {
   createContext,
@@ -11,8 +11,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-
-const USER_KEY = "svkk_user";
 
 export type SvkkUser = {
   id: string;
@@ -30,58 +28,35 @@ type SvkkAuthState = {
 
 const SvkkAuthContext = createContext<SvkkAuthState | null>(null);
 
-function readUserFromStorage(): SvkkUser | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = sessionStorage.getItem(USER_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as SvkkUser;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Auth state for the SVKK Express API (JWT access + httpOnly refresh).
+ * Auth state for the SVKK Express API (in-memory access JWT + httpOnly refresh cookie).
  */
 export function SvkkAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SvkkUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const t = getSvkkAccessToken();
-    if (!t) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-    const cached = readUserFromStorage();
-    if (cached) {
-      setUser(cached);
-    }
     let cancelled = false;
     void (async () => {
       try {
+        const restored = await refreshSvkkAccessToken();
+        if (cancelled) {
+          return;
+        }
+        if (!restored) {
+          setUser(null);
+          return;
+        }
         const me = await svkkJson<SvkkUser>("/auth/me");
         if (cancelled) {
           return;
         }
         setUser(me);
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem(USER_KEY, JSON.stringify(me));
-        }
       } catch {
         if (cancelled) {
           return;
         }
         setSvkkAccessToken(null);
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem(USER_KEY);
-        }
         setUser(null);
       } finally {
         if (!cancelled) {
@@ -100,9 +75,6 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     setSvkkAccessToken(data.accessToken);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    }
     setUser(data.user);
   }, []);
 
@@ -113,9 +85,6 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
       /* ignore */
     } finally {
       setSvkkAccessToken(null);
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(USER_KEY);
-      }
       setUser(null);
     }
   }, []);

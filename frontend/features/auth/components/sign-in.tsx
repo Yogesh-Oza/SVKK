@@ -15,18 +15,30 @@ import { useAuth } from "@/contexts/auth-context";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, HeartPulse, Lock, Mail } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { SignInSchema, signInSchema } from "../utils/sign-in-schema";
 
 export default function SignIn() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (!searchParams.get("email") && !searchParams.get("password")) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("email");
+    next.delete("password");
+    const q = next.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router]);
 
   const form = useForm<SignInSchema>({
     resolver: zodResolver(signInSchema),

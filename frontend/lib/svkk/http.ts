@@ -9,6 +9,30 @@ import { getSvkkAccessToken, setSvkkAccessToken } from "./auth-tokens";
 
 type Retriable = InternalAxiosRequestConfig & { _svkkAuthRetry?: boolean };
 
+/** Uses httpOnly `refreshToken` cookie; no JS-readable token storage. */
+export async function refreshSvkkAccessToken(): Promise<boolean> {
+  const base = getSvkkApiBase();
+  if (!base) {
+    return false;
+  }
+  try {
+    const { data } = await axios.post<{ accessToken?: string }>(
+      `${base}/auth/refresh`,
+      null,
+      { withCredentials: true, timeout: 30_000 },
+    );
+    if (data?.accessToken) {
+      setSvkkAccessToken(data.accessToken);
+      return true;
+    }
+    setSvkkAccessToken(null);
+    return false;
+  } catch {
+    setSvkkAccessToken(null);
+    return false;
+  }
+}
+
 /**
  * Shared Axios instance for the Express SVKK API (`NEXT_PUBLIC_API_URL`, includes `/api/v1`).
  * Sends Bearer access token, `withCredentials` for httpOnly refresh cookie, and retries once
@@ -61,29 +85,17 @@ backendApi.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const base = getSvkkApiBase();
-    if (!base) {
-      return Promise.reject(error);
-    }
-
     original._svkkAuthRetry = true;
 
-    try {
-      const { data } = await axios.post<{ accessToken?: string }>(
-        `${base}/auth/refresh`,
-        null,
-        { withCredentials: true, timeout: 30_000 },
-      );
-      if (data?.accessToken) {
-        setSvkkAccessToken(data.accessToken);
+    const ok = await refreshSvkkAccessToken();
+    if (ok) {
+      const t = getSvkkAccessToken();
+      if (t) {
         const h = AxiosHeaders.from(original.headers);
-        h.set("Authorization", `Bearer ${data.accessToken}`);
+        h.set("Authorization", `Bearer ${t}`);
         original.headers = h;
         return backendApi.request(original);
       }
-      setSvkkAccessToken(null);
-    } catch {
-      setSvkkAccessToken(null);
     }
 
     return Promise.reject(error);
