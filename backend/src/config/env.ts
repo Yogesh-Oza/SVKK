@@ -9,6 +9,11 @@ const schema = z.object({
   ACCESS_TOKEN_EXPIRES: z.string().default("15m"),
   REFRESH_TOKEN_EXPIRES: z.string().default("7d"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  /**
+   * `lax` — same site as API (e.g. localhost + localhost). Default.
+   * `none` — SPA on another origin (e.g. Vercel + API on Render). Requires `secure` cookies; set CORS to the exact web origin.
+   */
+  COOKIE_SAME_SITE: z.enum(["lax", "none"]).default("lax"),
   CSV_DUPLICATE_MODE: z.enum(["block", "warn"]).default("block"),
   UPLOAD_DIR: z.string().default("./uploads"),
 });

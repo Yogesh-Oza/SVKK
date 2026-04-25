@@ -1,14 +1,22 @@
 import type { Env } from "../../config/env.js";
+import type { CookieOptions } from "express";
 
 export const REFRESH_COOKIE = "refreshToken" as const;
 export const ACCESS_TOKEN_COOKIE = "accessToken" as const;
 
-const cookieBase = (env: Env) => ({
-  httpOnly: true,
-  secure: env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-});
+/**
+ * Cross-origin SPA (e.g. Vercel) calling API (e.g. Render) needs `SameSite=None; Secure`
+ * or the browser will not attach cookies to XHR/fetch, even with `withCredentials: true`.
+ */
+function cookieBase(env: Env): Pick<CookieOptions, "httpOnly" | "secure" | "sameSite" | "path"> {
+  const none = env.COOKIE_SAME_SITE === "none";
+  return {
+    httpOnly: true,
+    secure: none ? true : env.NODE_ENV === "production",
+    sameSite: none ? "none" : "lax",
+    path: "/",
+  };
+}
 
 export function setRefreshCookie(res: import("express").Response, env: Env, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
@@ -36,11 +44,8 @@ function accessTokenCookieMaxMs(env: Env): number {
   return 15 * 60 * 1000;
 }
 
-export function clearAuthCookies(
-  res: import("express").Response,
-  env: Env,
-) {
-  const c = { path: "/", sameSite: "lax" as const, httpOnly: true, secure: env.NODE_ENV === "production" };
+export function clearAuthCookies(res: import("express").Response, env: Env) {
+  const c = { ...cookieBase(env) };
   res.clearCookie(REFRESH_COOKIE, c);
   res.clearCookie(ACCESS_TOKEN_COOKIE, c);
 }
