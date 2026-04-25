@@ -47,6 +47,9 @@ frontend/
 ## API base
 
 - All routes: **`/api/v1/...`**
+- **Idempotency:** `POST /policies` accepts optional `Idempotency-Key` (UUID). Same key + same normalized body replays the stored **2xx** response; same key + different body → **409** (`IDEMPOTENCY_CONFLICT`).
+- **Optimistic concurrency:** `PATCH /policies/:id` accepts optional `expectedUpdatedAt` (ISO date from `updatedAt`). If the row changed, response is **409** with a conflict message.
+- **Rate limits:** Stricter limiter on `/auth/login`; default API limiter on other `/api/v1` routes (see `backend/src/middlewares/rate-limit.ts`).
 
 ### Auth
 
@@ -60,16 +63,21 @@ frontend/
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/policies` | Search + optional `village`; scoped by role |
-| GET/POST | `/policies` | Create requires `policy:create` |
-| GET/PATCH/DELETE | `/policies/:id` | Scoped read/update/delete |
+| GET | `/policies` | Search + `village`, `yearLabel`, `categoryId`, `policyTypeId`, `month`+`year`, cursor; scoped by role |
+| GET/POST | `/policies` | **POST** create requires `policy:create`; send `Idempotency-Key` for safe retries |
+| GET/PATCH/DELETE | `/policies/:id` | Scoped read/update/soft delete; **PATCH** may send `expectedUpdatedAt` |
+| GET | `/categories` | Policy categories (read) |
 | GET | `/calculation/reference/policy-types` | Same permission as `calculation:live` (dropdown) |
 | GET | `/calculation/reference/charts?policyTypeId=` | Chart list for calculator |
 | POST | `/calculation/live` | Premium calculation |
 | GET | `/claims` | List + optional filters; village-scoped |
 | GET | `/claims/grouped` | Grouped by `svkkPublicId` |
-| GET | `/mis/summary` | Aggregates (scoped) |
+| GET | `/mis/summary` | Aggregates (scoped); query `asOfDate` (default: now) |
+| GET | `/mis/dashboard` | KPI-style metrics; `asOfDate`, optional `village` |
+| GET | `/mis/village-report` | Villages + age buckets; `asOfDate`, optional `village` |
+| GET | `/mis/export/villages.csv` | **Streaming** CSV; same scope/filters as village report |
 | GET | `/mis/policies` | Paginated policy rows for MIS |
+| GET | `/files/medclaim.pdf` | Medclaim PDF; `MEDCLAIM_PDF_PATH` or `backend/static/medclaim.pdf` |
 | POST | `/upload/csv` | `multipart` field `file`; `updateMode`, `dryRun`, `force` |
 | GET | `/logs` | **ADMIN** sees USER+SUPERVISOR actors only; **SUPER_ADMIN** all |
 | POST | `/receipts/policies/:policyId` | PDF receipt (scoped) |
@@ -95,11 +103,20 @@ frontend/
 
 ### Backend (`backend/.env`)
 
-- `DATABASE_URL`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `PORT`, `CORS_ORIGIN`, `CSV_DUPLICATE_MODE`, `UPLOAD_DIR`, `NODE_ENV`
+- `DATABASE_URL` — MySQL connection string
+- `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET` — JWT signing
+- `PORT`, `CORS_ORIGIN`, `NODE_ENV`
+- `CSV_DUPLICATE_MODE`, `UPLOAD_DIR` — CSV upload
+- `JSON_LIMIT` — max JSON body size (bytes)
+- `MAX_UPLOAD_SIZE` — multipart / large payloads (documented; align with `multer` limits)
+- `MEDCLAIM_PDF_PATH` — optional absolute path to medclaim PDF; else `backend/static/medclaim.pdf`
+- `IDEMPOTENCY_TTL_HOURS` — idempotency record retention
+- `APP_TIMEZONE` — default interpretation for `asOfDate` where relevant (e.g. IST)
+- `REDIS_URL` — optional; reserved for future cache (not required to run the API)
 
 ### Frontend
 
-- `NEXT_PUBLIC_API_URL` — e.g. `http://localhost:4000/api/v1`
+- `NEXT_PUBLIC_API_URL` — full API base including `/api/v1`, e.g. `http://localhost:4000/api/v1` (no secrets in `NEXT_PUBLIC_*`)
 
 ## Runbook
 
@@ -129,6 +146,12 @@ npm run dev
 ## Logging
 
 - Every log line includes **`traceId`** (from `x-request-id` or generated UUID).
+
+## Operations: backups and restores
+
+- **Not implemented in app code:** database backups are owned by the **platform** (managed MySQL, RDS, VM cron, or DBA).
+- **Runbook expectation:** daily logical dump or vendor automated backup; test restore on a **quarterly** cadence; document RPO/RTO for the deployment.
+- Optional: archive dumps to object storage (e.g. S3) with retention and access control.
 
 ## Pending / follow-ups
 

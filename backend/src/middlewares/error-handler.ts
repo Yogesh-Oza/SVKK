@@ -13,6 +13,7 @@ export function errorHandler(
   if (err instanceof AppError) {
     req.log?.warn({ err, code: err.code }, err.message);
     return res.status(err.statusCode).json({
+      success: false,
       code: err.code,
       message: err.message,
       traceId,
@@ -22,14 +23,17 @@ export function errorHandler(
   if (err instanceof ZodError) {
     req.log?.warn({ err: err.flatten() }, "validation failed");
     return res.status(400).json({
+      success: false,
       code: "VALIDATION_ERROR",
       message: err.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; "),
+      errors: err.errors,
       traceId,
     });
   }
 
   req.log?.error({ err }, "unhandled error");
   return res.status(500).json({
+    success: false,
     code: "INTERNAL_ERROR",
     message: "An unexpected error occurred",
     traceId,

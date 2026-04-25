@@ -1,8 +1,25 @@
 import { z } from "zod";
+import {
+  AdProductVariant,
+  ChequeStatus,
+  PayMethod,
+  PolicyGrouping,
+} from "@prisma/client";
+
+const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+
+const optionalPan = z
+  .preprocess(
+    (v) => (v === null || v === "" || v === undefined ? undefined : v),
+    z.string().regex(panRegex, "Invalid PAN format").optional(),
+  )
+  .optional();
 
 export const policyHolderSectionSchema = z.object({
   addressLine1: z.string().max(256).optional().nullable(),
   addressLine2: z.string().max(256).optional().nullable(),
+  addressLine3: z.string().max(256).optional().nullable(),
+  addressLine4: z.string().max(256).optional().nullable(),
   city: z.string().max(120).optional().nullable(),
   state: z.string().max(120).optional().nullable(),
   pincode: z.string().max(20).optional().nullable(),
@@ -27,40 +44,121 @@ export const policyYearSectionSchema = z.object({
   yearRemarks: z.string().max(8000).optional().nullable(),
 });
 
+const initialPaymentSchema = z
+  .object({
+    amount: z.number().nonnegative(),
+    method: z.nativeEnum(PayMethod),
+    cheque: z
+      .object({
+        number: z.string().min(1).max(64),
+        bankName: z.string().min(1).max(200),
+        ifsc: z.string().max(20).optional().nullable(),
+        status: z.nativeEnum(ChequeStatus).optional(),
+        reason: z.string().max(8000).optional().nullable(),
+        accountNo: z.string().max(64).optional().nullable(),
+        branch: z.string().max(200).optional().nullable(),
+        nameAsPerCheque: z.string().max(200).optional().nullable(),
+        notOver: z.string().max(50).optional().nullable(),
+        chequeDate: z.coerce.date().optional().nullable(),
+      })
+      .optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (d.method === "CHQ" && !d.cheque) {
+      ctx.addIssue({ code: "custom", message: "cheque is required when method is CHQ" });
+    }
+    if (d.cheque?.status === "DISHONOURED" && !d.cheque?.reason) {
+      ctx.addIssue({ code: "custom", message: "reason is required when cheque status is DISHONOURED" });
+    }
+  });
+
+const memberCreateSchema = z.object({
+  name: z.string().min(1),
+  dob: z.coerce.date(),
+  relationship: z.string().min(1),
+  gender: z.string().min(1).default("M"),
+  riderAmount: z.number().nonnegative().optional(),
+  sumInsured: z.number().nonnegative().nullish().optional(),
+  cumulativeBonus: z.number().nonnegative().nullish().optional(),
+  dateOfJoining: z.coerce.date().nullish().optional(),
+  memberPhone: z.string().max(20).nullish().optional(),
+  basicPremium: z.number().nonnegative().nullish().optional(),
+  ageAtEntry: z.coerce.number().int().min(0).max(150).nullish().optional(),
+});
+
+const adPolicyExtraSchema = z.object({
+  customerId: z.string().max(64).optional().nullable(),
+  /// When set, used instead of an auto-allocated SVKK public id
+  svkkPublicId: z.string().min(1).max(64).optional().nullable(),
+  adProductVariant: z.nativeEnum(AdProductVariant).optional().nullable(),
+  insuranceCompany: z.string().max(200).optional().nullable(),
+  tpa: z.string().max(200).optional().nullable(),
+  categoryText: z.string().max(200).optional().nullable(),
+  holderRelationship: z.string().max(100).optional().nullable(),
+  holderAge: z.coerce.number().int().min(0).max(150).nullish().optional(),
+  personsInsuredCount: z.coerce.number().int().min(0).nullish().optional(),
+  area: z.string().max(200).optional().nullable(),
+  referenceNo: z.string().max(100).optional().nullable(),
+  mobileSecondary: z.string().max(20).optional().nullable(),
+  policyGrouping: z.nativeEnum(PolicyGrouping).optional().nullable(),
+  policyUrl: z.string().max(500).optional().nullable(),
+  loanStatus: z.string().max(10).optional().nullable(),
+  loanAmount: z.number().nonnegative().nullish().optional(),
+  refundChequeAmount: z.number().nonnegative().nullish().optional(),
+  refundChequeNo: z.string().max(64).optional().nullable(),
+  refundChequeDate: z.coerce.date().nullish().optional(),
+  cdAccountUsed: z.boolean().optional().nullable(),
+  cdAmount: z.number().nonnegative().nullish().optional(),
+  courierStatus: z.string().max(10).optional().nullable(),
+  courierDate: z.coerce.date().nullish().optional(),
+  courierAddress: z.string().max(4000).optional().nullable(),
+  periodYearText: z.string().max(20).optional().nullable(),
+  periodMonthText: z.string().max(20).optional().nullable(),
+  holderCumulativeBonus: z.number().nonnegative().nullish().optional(),
+  holderJoiningYear: z.string().max(20).optional().nullable(),
+  holderBasicPremium: z.number().nonnegative().nullish().optional(),
+  vkkPremium: z.number().nonnegative().nullish().optional(),
+  grossPremium: z.number().nonnegative().nullish().optional(),
+  commissionAmount: z.number().nonnegative().nullish().optional(),
+  twoLacFloater: z.number().nonnegative().nullish().optional(),
+  yearPolicyHolderPremium: z.number().nonnegative().nullish().optional(),
+  gaamMahajanVkk: z.number().nonnegative().nullish().optional(),
+  excessShortAmount: z.number().nonnegative().nullish().optional(),
+  diffPaidByHolder: z.number().nonnegative().nullish().optional(),
+});
+
 /** Create policy: year-level financial fields apply to the first `PolicyYear`. */
 export const createPolicyBodySchema = z
   .object({
     mobile: z.string().min(1),
     partyName: z.string().min(1),
     email: z.string().email().optional().nullable(),
+    pan: optionalPan,
+    dateOfBirth: z.coerce.date().optional().nullable(),
     policyTypeId: z.string().min(1),
+    categoryId: z.string().min(1).optional().nullable(),
     yearLabel: z.string().min(1),
     policyChartId: z.string().min(1),
     policyStart: z.coerce.date().optional().nullable(),
     policyEnd: z.coerce.date().optional().nullable(),
     sumInsured: z.number().positive(),
+    /// Expected net premium for reconciliation (defaults to `amountReceived` if provided)
+    expectedNetPremium: z.number().nonnegative().optional().nullable(),
     policyNo: z.string().optional().nullable(),
     village: z.string().optional().nullable(),
     pod: z.string().optional().nullable(),
-    members: z
-      .array(
-        z.object({
-          name: z.string().min(1),
-          dob: z.coerce.date(),
-          relationship: z.string().min(1),
-          gender: z.string().min(1),
-          riderAmount: z.number().nonnegative().optional(),
-        }),
-      )
-      .min(1),
+    members: z.array(memberCreateSchema).min(1),
+    initialPayment: initialPaymentSchema.optional(),
   })
   .merge(policyHolderSectionSchema)
-  .merge(policyYearSectionSchema);
+  .merge(policyYearSectionSchema)
+  .merge(adPolicyExtraSchema);
 
-const yearValueKeys = [
+export const yearValueKeys = [
   "policyStart",
   "policyEnd",
   "sumInsured",
+  "expectedNetPremium",
   "paymentMode",
   "paymentType",
   "amountReceived",
@@ -68,21 +166,37 @@ const yearValueKeys = [
   "bankAccountLast4",
   "utrRef",
   "yearRemarks",
+  "vkkPremium",
+  "grossPremium",
+  "commissionAmount",
+  "twoLacFloater",
+  "yearPolicyHolderPremium",
+  "gaamMahajanVkk",
+  "excessShortAmount",
+  "diffPaidByHolder",
+  "holderCumulativeBonus",
+  "holderJoiningYear",
+  "holderBasicPremium",
 ] as const;
 
 /** Partial update: any subset of policy + optional one year (requires `yearLabel` when any year field is set). */
 export const patchPolicyBodySchema = z
   .object({
+    /// Optimistic concurrency: last known `Policy.updatedAt` (ISO) from `GET` before edit
+    expectedUpdatedAt: z.coerce.date().optional(),
     policyNo: z.string().optional().nullable(),
+    categoryId: z.string().optional().nullable(),
     village: z.string().optional().nullable(),
     pod: z.string().optional().nullable(),
     yearLabel: z.string().optional(),
     policyStart: z.coerce.date().optional().nullable(),
     policyEnd: z.coerce.date().optional().nullable(),
     sumInsured: z.number().positive().optional().nullable(),
+    expectedNetPremium: z.number().nonnegative().optional().nullable(),
   })
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)
+  .merge(adPolicyExtraSchema.partial())
   .superRefine((data, ctx) => {
     const hasYearField = yearValueKeys.some(
       (k) => data[k as keyof typeof data] !== undefined,

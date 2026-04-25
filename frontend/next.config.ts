@@ -12,7 +12,6 @@ const nextConfig: NextConfig = {
       { source: "/leads/:path*", destination: "/dashboard", permanent: false },
       { source: "/follow-ups", destination: "/dashboard", permanent: false },
       { source: "/follow-ups/:path*", destination: "/dashboard", permanent: false },
-      { source: "/policies/new", destination: "/calculator", permanent: false },
     ];
   },
   images: {

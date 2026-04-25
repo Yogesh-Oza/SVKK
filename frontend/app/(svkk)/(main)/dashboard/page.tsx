@@ -7,6 +7,7 @@ import { PremiumReceiptsTable } from "@/features/svkk-dashboard/premium-receipts
 import { PremiumTrendAndBreakdown } from "@/features/svkk-dashboard/premium-trend-and-breakdown";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
+import type { DashboardMetrics } from "@/features/svkk-dashboard/dashboard-metric-cards";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ type MisSummary = {
 export default function SvkkDashboardPage() {
   const { user } = useSvkkAuth();
   const [summary, setSummary] = useState<MisSummary | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardMetrics | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const missingUrl = !getSvkkApiBase();
 
@@ -33,8 +35,13 @@ export default function SvkkDashboardPage() {
     if (!canSeeMis) {
       return;
     }
-    const s = await svkkJson<MisSummary>("/mis/summary");
+    const asOf = new Date().toISOString().slice(0, 10);
+    const [s, d] = await Promise.all([
+      svkkJson<MisSummary>("/mis/summary?asOfDate=" + encodeURIComponent(asOf)),
+      svkkJson<DashboardMetrics>("/mis/dashboard?asOfDate=" + encodeURIComponent(asOf)),
+    ]);
     setSummary(s);
+    setDashboard(d);
   }, [canSeeMis]);
 
   useEffect(() => {
@@ -61,8 +68,8 @@ export default function SvkkDashboardPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Policy dashboard</h1>
           <p className="text-muted-foreground max-w-2xl text-sm">
-            Monitor enrollment, premium flow, and field activity. Charts and the transactions table
-            use sample data; connect MIS to replace the summary cards for supervisors and admins.
+            Supervisors and admins see live MIS scope metrics and premium reconciliation. Charts and
+            the sample receipt table are illustrative.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -80,7 +87,7 @@ export default function SvkkDashboardPage() {
         </div>
       </div>
 
-      <DashboardMetricCards live={summary} canSeeMis={canSeeMis} />
+      <DashboardMetricCards live={summary} dashboard={dashboard} canSeeMis={canSeeMis} />
       {canSeeMis && err ? <p className="text-destructive text-sm">{err}</p> : null}
 
       <PremiumTrendAndBreakdown />

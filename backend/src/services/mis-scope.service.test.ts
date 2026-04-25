@@ -7,22 +7,24 @@ import {
   mergeDateRange,
 } from "./mis-scope.service.js";
 
+const notDeleted = { deletedAt: null } as const;
+
 describe("buildMisVillageWhere", () => {
-  it("full scope without filter returns empty objects", () => {
+  it("full scope without filter only excludes soft-deleted policies; claims have no extra predicate", () => {
     const w = buildMisVillageWhere({ kind: "full" }, undefined);
-    expect(w.policy).toEqual({});
+    expect(w.policy).toEqual(notDeleted);
     expect(w.claim).toEqual({});
   });
 
   it("full scope with village pins both models", () => {
     const w = buildMisVillageWhere({ kind: "full" }, "V1");
-    expect(w.policy).toEqual({ village: "V1" });
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: "V1" }] });
     expect(w.claim).toEqual({ village: "V1" });
   });
 
   it("restricted scope uses IN list", () => {
     const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, undefined);
-    expect(w.policy).toEqual({ village: { in: ["A", "B"] } });
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: { in: ["A", "B"] } }] });
     expect(w.claim).toEqual({ village: { in: ["A", "B"] } });
   });
 
@@ -34,24 +36,25 @@ describe("buildMisVillageWhere", () => {
 
   it("restricted with valid filter village matches exact", () => {
     const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, "A");
-    expect(w.policy).toEqual({ village: "A" });
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: "A" }] });
+    expect(w.claim).toEqual({ village: "A" });
   });
 });
 
 describe("buildPolicyReadWhere", () => {
   it("USER is scoped to createdById", () => {
     const w = buildPolicyReadWhere({ kind: "villages", villages: [] }, undefined, "u1", UserRole.USER);
-    expect(w).toEqual({ createdById: "u1" });
+    expect(w).toEqual({ deletedAt: null, createdById: "u1" });
   });
 
   it("USER can filter by village", () => {
     const w = buildPolicyReadWhere({ kind: "villages", villages: [] }, "V1", "u1", UserRole.USER);
-    expect(w).toEqual({ createdById: "u1", village: "V1" });
+    expect(w).toEqual({ deletedAt: null, createdById: "u1", village: "V1" });
   });
 
   it("ADMIN uses village scope from buildMisVillageWhere", () => {
     const w = buildPolicyReadWhere({ kind: "full" }, "X", "u1", UserRole.ADMIN);
-    expect(w).toEqual({ village: "X" });
+    expect(w).toEqual({ AND: [notDeleted, { village: "X" }] });
   });
 });
 

@@ -14,6 +14,9 @@ import { createMisRouter } from "./modules/mis/mis.routes.js";
 import { createClaimRouter } from "./modules/claim/claim.routes.js";
 import { createReceiptRouter } from "./modules/receipt/receipt.routes.js";
 import { createUsersRouter } from "./modules/users/users.routes.js";
+import { createFilesRouter } from "./modules/files/files.routes.js";
+import { createCategoryRouter } from "./modules/category/category.routes.js";
+import { globalApiRateLimit } from "./middlewares/rate-limit.js";
 
 export function createApp(env: Env, rootLog: AppLogger) {
   const app = express();
@@ -31,9 +34,12 @@ export function createApp(env: Env, rootLog: AppLogger) {
   const v1 = express.Router();
   v1.use(traceIdMiddleware(rootLog));
   v1.use(authCookieParser);
-  v1.use(express.json({ limit: "2mb" }));
+  v1.use(express.json({ limit: env.JSON_LIMIT ?? "2mb" }));
+  v1.use(globalApiRateLimit);
 
   v1.use("/auth", createAuthRouter(env));
+  v1.use("/files", createFilesRouter(env));
+  v1.use("/categories", createCategoryRouter(env));
   v1.use("/policies", createPolicyRouter(env));
   v1.use("/calculation", createCalculationRouter(env));
   v1.use("/admin", createAdminRouter(env));

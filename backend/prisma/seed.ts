@@ -1,4 +1,10 @@
-import { PrismaClient, UserRole, ChartMode, PolicyChartKind } from "@prisma/client";
+import {
+  PrismaClient,
+  UserRole,
+  ChartMode,
+  PolicyChartKind,
+  CategoryType,
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -106,6 +112,36 @@ async function main() {
     ],
   });
 
+  const ad = await prisma.policyType.upsert({
+    where: { key: "ad_policy" },
+    update: { chartMode: ChartMode.HOLDER_MEMBER },
+    create: {
+      key: "ad_policy",
+      name: "AD Policy",
+      chartMode: ChartMode.HOLDER_MEMBER,
+      description: "Data-entry policy (Family Floater / Individual / Asha Kiran) with full AD form",
+    },
+  });
+  await prisma.policyChart.deleteMany({ where: { policyTypeId: ad.id, version: 1 } });
+  await prisma.policyChart.createMany({
+    data: [
+      {
+        policyTypeId: ad.id,
+        version: 1,
+        effectiveFrom: new Date("2025-01-01"),
+        chartKind: PolicyChartKind.HOLDER,
+        premiumMatrix: holderMatrix,
+      },
+      {
+        policyTypeId: ad.id,
+        version: 1,
+        effectiveFrom: new Date("2025-01-01"),
+        chartKind: PolicyChartKind.MEMBER,
+        premiumMatrix: memberMatrix,
+      },
+    ],
+  });
+
   const perms = [
     { role: UserRole.SUPER_ADMIN, module: "*", action: "*" },
     { role: UserRole.ADMIN, module: "policy", action: "manage" },
@@ -115,6 +151,21 @@ async function main() {
       where: { role: p.role, module: p.module, action: p.action },
     });
     if (!exists) await prisma.rolePermission.create({ data: p });
+  }
+
+  const catSeed: { key: string; name: string; type: CategoryType }[] = [
+    { key: "a", name: "Category A", type: CategoryType.GOV },
+    { key: "b", name: "Category B", type: CategoryType.GOV },
+    { key: "c", name: "Category C", type: CategoryType.GOV },
+    { key: "d", name: "Category D", type: CategoryType.GOV },
+    { key: "asha_kiran_cat", name: "Asha Kiran", type: CategoryType.SCHEME },
+  ];
+  for (const c of catSeed) {
+    await prisma.category.upsert({
+      where: { key: c.key },
+      update: { name: c.name, type: c.type },
+      create: c,
+    });
   }
 
   const userHash = await bcrypt.hash("user123!", 12);

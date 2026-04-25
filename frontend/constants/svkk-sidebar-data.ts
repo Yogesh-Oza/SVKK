@@ -1,4 +1,4 @@
-import type { NavGroup } from "@/lib/types";
+import type { NavGroup, NavItem } from "@/lib/types";
 import {
   getSvkkNavForRole,
   type SvkkNavId,
@@ -8,6 +8,7 @@ import {
   IconCalculator,
   IconChartBar,
   IconFileDescription,
+  IconFilePlus,
   IconHistory,
   IconLayoutDashboard,
   IconSettings,
@@ -21,6 +22,7 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   dashboard: IconLayoutDashboard,
   calculator: IconCalculator,
   policies: IconFileDescription,
+  policyNew: IconFilePlus,
   claims: IconStethoscope,
   mis: IconChartBar,
   csv: IconUpload,
@@ -30,14 +32,32 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
 };
 
 /**
- * Sidebar nav for SVKK (same items as the old top bar, with icons).
+ * Sidebar nav for SVKK. "Policies" is a collapsible: All policies + Add policy (full AD form at `/policies/new`).
  */
 export function getSvkkNavGroupsForRole(role: SvkkRole): NavGroup[] {
-  const items = getSvkkNavForRole(role).map((n) => ({
-    title: n.label,
-    url: n.href,
-    icon: ICON_BY_ID[n.id],
-  }));
+  const flat = getSvkkNavForRole(role);
+  const items: NavItem[] = [];
+  for (let i = 0; i < flat.length; i += 1) {
+    const n = flat[i]!;
+    if (n.id === "policies" && flat[i + 1]?.id === "policyNew") {
+      const add = flat[i + 1]!;
+      items.push({
+        title: "Policies",
+        icon: IconFileDescription,
+        items: [
+          { title: "All policies", url: n.href, icon: IconFileDescription },
+          { title: "Add policy", url: add.href, icon: IconFilePlus },
+        ],
+      });
+      i += 1;
+      continue;
+    }
+    items.push({
+      title: n.label,
+      url: n.href,
+      icon: ICON_BY_ID[n.id],
+    });
+  }
   /** Label matches product area; "SVKK" stays only in the logo to avoid a duplicate heading. */
   return [{ title: "MediClaim", items }];
 }

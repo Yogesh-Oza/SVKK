@@ -27,13 +27,16 @@ export async function loadMisScope(userId: string, role: UserRole): Promise<MisS
  * Builds Prisma `where` fragments for `Policy` and `Claim` from scope + optional filter village.
  * @throws AppError 403 if a scoped user requests a village outside their list
  */
+const activePolicy: Prisma.PolicyWhereInput = { deletedAt: null };
+
 export function buildMisVillageWhere(
   scope: MisScope,
   filterVillage: string | undefined,
 ): { policy: Prisma.PolicyWhereInput; claim: Prisma.ClaimWhereInput } {
   if (scope.kind === "full") {
-    const v = filterVillage ? { village: filterVillage } : {};
-    return { policy: v, claim: v };
+    const v = filterVillage ? { AND: [activePolicy, { village: filterVillage }] } : activePolicy;
+    const c = filterVillage ? { village: filterVillage } : {};
+    return { policy: v, claim: c };
   }
   if (scope.villages.length === 0) {
     return { policy: { id: { in: [] } }, claim: { id: { in: [] } } };
@@ -42,10 +45,13 @@ export function buildMisVillageWhere(
     if (!scope.villages.includes(filterVillage)) {
       throw new AppError("FORBIDDEN", "Village not in your scope", 403);
     }
-    return { policy: { village: filterVillage }, claim: { village: filterVillage } };
+    return {
+      policy: { AND: [activePolicy, { village: filterVillage }] },
+      claim: { village: filterVillage },
+    };
   }
   return {
-    policy: { village: { in: scope.villages } },
+    policy: { AND: [activePolicy, { village: { in: scope.villages } }] },
     claim: { village: { in: scope.villages } },
   };
 }
@@ -61,6 +67,7 @@ export function buildPolicyReadWhere(
 ): Prisma.PolicyWhereInput {
   if (role === "USER") {
     return {
+      deletedAt: null,
       createdById: userId,
       ...(filterVillage ? { village: filterVillage } : {}),
     };

@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/table";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
+import { backendApi } from "@/lib/api/svkk-client";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { canAccessMis } from "@/lib/svkk/permissions";
+import { PolicyMemberReportSection } from "@/features/svkk-mis/policy-member-report-section";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 
@@ -33,9 +35,23 @@ type MisPolicyRow = {
   policyType: { name: string };
 };
 
+type VillageReport = {
+  asOfDate: string;
+  villages: {
+    village: string | null;
+    totalPolicies: number;
+    totalMembers: number;
+    sumExpectedPremium: number;
+    totalPaid: number;
+  }[];
+  ageBuckets: { bucket: string; count: number }[];
+};
+
 export default function SvkkMisPage() {
   const { user } = useSvkkAuth();
+  const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));
   const [village, setVillage] = useState("");
+  const [villageReport, setVillageReport] = useState<VillageReport | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<MisPolicyRow[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -49,9 +65,20 @@ export default function SvkkMisPage() {
     if (village.trim()) {
       q.set("village", village.trim());
     }
+    q.set("asOfDate", asOf);
     const s = await svkkJson<Summary>(`/mis/summary?${q.toString()}`);
     setSummary(s);
-  }, [village]);
+  }, [village, asOf]);
+
+  const runVillageReport = useCallback(async () => {
+    const q = new URLSearchParams();
+    q.set("asOfDate", asOf);
+    if (village.trim()) {
+      q.set("village", village.trim());
+    }
+    const r = await svkkJson<VillageReport>(`/mis/village-report?${q.toString()}`);
+    setVillageReport(r);
+  }, [asOf, village]);
 
   const runPolicies = useCallback(
     async (mode: "reset" | "more") => {
@@ -97,6 +124,7 @@ export default function SvkkMisPage() {
             setLoading(true);
             try {
               await runSummary();
+              await runVillageReport();
               await runPolicies("reset");
             } catch (err2) {
               setErr(err2 instanceof Error ? err2.message : "Request failed");
@@ -107,14 +135,60 @@ export default function SvkkMisPage() {
         }}
       >
         <div>
+          <p className="text-muted-foreground mb-1 text-xs">As-of date</p>
+          <Input
+            type="date"
+            value={asOf}
+            onChange={(e) => setAsOf(e.target.value)}
+            className="max-w-xs"
+          />
+        </div>
+        <div>
           <p className="text-muted-foreground mb-1 text-xs">Village (optional)</p>
           <Input value={village} onChange={(e) => setVillage(e.target.value)} className="max-w-xs" />
         </div>
         <Button type="submit" variant="secondary" disabled={loading}>
-          {loading ? "Loading…" : "Load summary &amp; table"}
+          {loading ? "Loading…" : "Load summary & table"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void (async () => {
+              try {
+                const q = new URLSearchParams();
+                q.set("asOfDate", asOf);
+                if (village.trim()) {
+                  q.set("village", village.trim());
+                }
+                const res = await backendApi.get(`/mis/export/villages.csv?${q.toString()}`, {
+                  responseType: "blob",
+                });
+                const blob = new Blob([res.data], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "mis-villages.csv";
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Export failed");
+              }
+            })();
+          }}
+        >
+          Export villages CSV
         </Button>
       </form>
       {err ? <p className="text-destructive text-sm">{err}</p> : null}
+
+      <PolicyMemberReportSection
+        asOf={asOf}
+        village={village}
+        onError={(m) => setErr(m || null)}
+      />
+
       {summary ? (
         <ul className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-4">
           <li className="bg-muted/40 rounded-md border px-3 py-2">Policies: {summary.totalPolicies}</li>
@@ -126,6 +200,40 @@ export default function SvkkMisPage() {
             Approved: {String(summary.totalApprovedAmount)}
           </li>
         </ul>
+      ) : null}
+
+      {villageReport ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-medium">Village report (as-of {villageReport.asOfDate})</h2>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Village</TableHead>
+                <TableHead>Policies</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Expected ₹</TableHead>
+                <TableHead>Paid ₹</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {villageReport.villages.map((v, i) => (
+                <TableRow key={`${v.village ?? "null"}-${i}`}>
+                  <TableCell>{v.village ?? "—"}</TableCell>
+                  <TableCell>{v.totalPolicies}</TableCell>
+                  <TableCell>{v.totalMembers}</TableCell>
+                  <TableCell>{v.sumExpectedPremium.toFixed(2)}</TableCell>
+                  <TableCell>{v.totalPaid.toFixed(2)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {villageReport.ageBuckets.length ? (
+            <div className="text-muted-foreground text-sm">
+              Age bands:{" "}
+              {villageReport.ageBuckets.map((b) => `${b.bucket}: ${b.count}`).join(" · ")}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {rows.length > 0 ? (

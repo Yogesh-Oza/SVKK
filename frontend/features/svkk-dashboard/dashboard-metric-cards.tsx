@@ -6,10 +6,20 @@ import { formatInr } from "./currency";
 import { DUMMY_FOOTPRINT } from "./dummy-data";
 
 type MisSummary = {
+  asOfDate?: string;
   totalPolicies: number;
   totalClaims: number;
   totalClaimAmount: string | number;
   totalApprovedAmount: string | number;
+};
+
+export type DashboardMetrics = {
+  asOfDate: string;
+  totalPolicies: number;
+  policyYearRowsInWindow: number;
+  totalExpectedPremium: number;
+  totalPaidCompleted: number;
+  paymentGap: number;
 };
 
 type CardDef = {
@@ -50,7 +60,38 @@ function Trend({ trend }: { trend: CardDef["trend"] }) {
   );
 }
 
-function liveCardsFrom(summary: MisSummary): CardDef[] {
+function liveCardsFrom(
+  summary: MisSummary,
+  dashboard: DashboardMetrics | null,
+): CardDef[] {
+  if (dashboard) {
+    return [
+      {
+        title: "Policies (scoped)",
+        value: String(dashboard.totalPolicies),
+        sub: "Active window per as-of",
+        trend: { label: "Live", positive: true },
+      },
+      {
+        title: "Expected premium",
+        value: formatInr(dashboard.totalExpectedPremium),
+        sub: "Policy year expectations",
+        trend: { label: "Live" },
+      },
+      {
+        title: "Paid (completed)",
+        value: formatInr(dashboard.totalPaidCompleted),
+        sub: "Payment rows",
+        trend: { label: "Live", positive: true },
+      },
+      {
+        title: "Gap (expected − paid)",
+        value: formatInr(dashboard.paymentGap),
+        sub: "As of " + new Date(dashboard.asOfDate).toLocaleDateString("en-IN"),
+        trend: { label: "Live" },
+      },
+    ];
+  }
   return [
     {
       title: "Policies (scoped)",
@@ -111,12 +152,14 @@ const demoCards: CardDef[] = (() => {
 
 export function DashboardMetricCards({
   live,
+  dashboard,
   canSeeMis,
 }: {
   live: MisSummary | null;
+  dashboard: DashboardMetrics | null;
   canSeeMis: boolean;
 }) {
-  const cards = canSeeMis && live ? liveCardsFrom(live) : demoCards;
+  const cards = canSeeMis && live ? liveCardsFrom(live, dashboard) : demoCards;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

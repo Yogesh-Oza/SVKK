@@ -50,6 +50,51 @@ enum CounterType {
   RECEIPT
 }
 
+/// GOV = government categories; PRIVATE = private; SCHEME = e.g. Asha Kiran
+enum CategoryType {
+  GOV
+  PRIVATE
+  SCHEME
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  PARTIAL
+  REFUNDED
+  FAILED
+}
+
+enum PayMethod {
+  NEFT
+  UPI
+  CHQ
+  CASH
+  OTHER
+}
+
+/// Family floater / individual / Asha Kiran sub-type for AD policy capture
+enum AdProductVariant {
+  FAMILY_FLOATER
+  INDIVIDUAL
+  ASHA_KIRAN
+}
+
+enum PolicyGrouping {
+  SVKK
+  NVKK
+  RTY
+  OTHER
+}
+
+enum ChequeStatus {
+  PENDING
+  PAID
+  UNPAID
+  CLEARED
+  DISHONOURED
+}
+
 model User {
   id                   String   @id @default(cuid())
   email                String   @unique
@@ -60,13 +105,14 @@ model User {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  sessions      UserSession[]
-  activityLogs  ActivityLog[] @relation("ActivityActor")
-  csvJobs       CsvImportJob[]
-  claimsCreated Claim[]       @relation("ClaimCreatedBy")
-  claimsApproved Claim[]      @relation("ClaimApprovedBy")
-  userVillages  UserVillage[]
-  policiesCreated Policy[]    @relation("PolicyCreatedBy")
+  sessions             UserSession[]
+  activityLogs         ActivityLog[] @relation("ActivityActor")
+  csvJobs              CsvImportJob[]
+  claimsCreated        Claim[]       @relation("ClaimCreatedBy")
+  claimsApproved       Claim[]      @relation("ClaimApprovedBy")
+  userVillages         UserVillage[]
+  policiesCreated      Policy[]     @relation("PolicyCreatedBy")
+  idempotencyRecords   IdempotencyRecord[]
 }
 
 /// Villages (or zones) a SUPERVISOR may see in MIS and scoped policy lists. ADMIN/SUPER_ADMIN use full data (no rows required).
@@ -96,15 +142,23 @@ model UserSession {
 
 model InsuredParty {
   id            String   @id @default(cuid())
+  /// External / legacy customer key; searchable
+  customerId    String?  @unique @db.VarChar(64)
   mobile        String   @unique
   svkkPublicId  String   @unique
   name          String
   email         String?
+  /// PAN: validate format in app; optional for incomplete records
+  pan           String?  @db.VarChar(20)
+  dateOfBirth   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   policies Policy[]
   claims   Claim[]
+
+  @@index([pan])
+  @@index([customerId])
 }
 
 model PolicyType {
@@ -118,6 +172,19 @@ model PolicyType {
 
   charts  PolicyChart[]
   policies Policy[]
+}
+
+/// Reference data for A/B/C/D, Asha Kiran, etc.
+model Category {
+  id        String        @id @default(cuid())
+  key       String        @unique
+  name      String
+  type      CategoryType
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  policies  Policy[]
+
+  @@index([type])
 }
 
 model PolicyChart {
@@ -143,11 +210,15 @@ model Policy {
   insuredParty   InsuredParty @relation(fields: [insuredPartyId], references: [id], onDelete: Restrict)
   policyTypeId   String
   policyType     PolicyType   @relation(fields: [policyTypeId], references: [id])
-  policyNo       String?      @unique
+  categoryId     String?
+  category       Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  policyNo       String?
   village        String?
   pod            String?
   addressLine1   String?      @db.VarChar(256)
   addressLine2   String?      @db.VarChar(256)
+  addressLine3   String?      @db.VarChar(256)
+  addressLine4   String?      @db.VarChar(256)
   city           String?      @db.VarChar(120)
   state          String?      @db.VarChar(120)
   pincode        String?      @db.VarChar(20)
@@ -157,17 +228,49 @@ model Policy {
   loanRef        String?      @db.VarChar(120)
   courierTracking String?     @db.VarChar(120)
   remarks        String?      @db.Text
+  adProductVariant AdProductVariant?
+  insuranceCompany String?    @db.VarChar(200)
+  tpa              String?    @db.VarChar(200)
+  categoryText     String?    @db.VarChar(200)
+  holderRelationship String?  @db.VarChar(100)
+  holderAge        Int?
+  personsInsuredCount Int?
+  area             String?    @db.VarChar(200)
+  referenceNo      String?    @db.VarChar(100)
+  mobileSecondary  String?    @db.VarChar(20)
+  policyGrouping   PolicyGrouping?
+  policyUrl        String?    @db.VarChar(500)
+  loanStatus       String?    @db.VarChar(10)
+  loanAmount       Decimal?   @db.Decimal(14, 2)
+  refundChequeAmount Decimal? @db.Decimal(14, 2)
+  refundChequeNo   String?    @db.VarChar(64)
+  refundChequeDate DateTime?
+  cdAccountUsed    Boolean?
+  cdAmount         Decimal?   @db.Decimal(14, 2)
+  courierStatus    String?    @db.VarChar(10)
+  courierDate      DateTime?
+  courierAddress   String?    @db.Text
+  periodYearText   String?    @db.VarChar(20)
+  periodMonthText  String?    @db.VarChar(20)
+  /// Optimistic concurrency (also compare updatedAt on PATCH)
+  version        Int          @default(1)
   createdById    String?
   createdBy      User?        @relation("PolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
 
   years   PolicyYear[]
   claims  Claim[]
   receipts Receipt[]
 
+  @@unique([policyNo, policyTypeId])
   @@index([insuredPartyId])
   @@index([createdById])
+  @@index([village, deletedAt])
+  @@index([categoryId, deletedAt])
+  @@index([policyTypeId, deletedAt])
+  @@index([createdAt, deletedAt])
 }
 
 model PolicyYear {
@@ -180,6 +283,8 @@ model PolicyYear {
   policyStart     DateTime?
   policyEnd       DateTime?
   sumInsured      Decimal?    @db.Decimal(14, 2)
+  /// Target premium for the year; reconciliation: sum(payments) vs this
+  expectedNetPremium Decimal? @db.Decimal(14, 2)
   paymentMode     String?     @db.VarChar(32)
   paymentType     String?     @db.VarChar(32)
   amountReceived  Decimal?    @db.Decimal(14, 2)
@@ -187,14 +292,28 @@ model PolicyYear {
   bankAccountLast4 String?    @db.VarChar(4)
   utrRef          String?     @db.VarChar(100)
   yearRemarks     String?     @db.Text
+  holderCumulativeBonus Decimal? @db.Decimal(14, 2)
+  holderJoiningYear String?   @db.VarChar(20)
+  holderBasicPremium Decimal? @db.Decimal(14, 2)
+  vkkPremium      Decimal?    @db.Decimal(14, 2)
+  grossPremium    Decimal?    @db.Decimal(14, 2)
+  commissionAmount Decimal?   @db.Decimal(14, 2)
+  twoLacFloater   Decimal?    @db.Decimal(14, 2)
+  yearPolicyHolderPremium Decimal? @db.Decimal(14, 2)
+  gaamMahajanVkk  Decimal?    @db.Decimal(14, 2)
+  excessShortAmount Decimal?  @db.Decimal(14, 2)
+  diffPaidByHolder Decimal?   @db.Decimal(14, 2)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
 
   members   Member[]
   receipts  Receipt[]
+  payments  Payment[]
 
   @@unique([policyId, yearLabel])
   @@index([policyChartId])
+  @@index([policyId, deletedAt])
 }
 
 model Member {
@@ -206,8 +325,54 @@ model Member {
   relationship String
   gender       String
   riderAmount  Decimal    @default(0) @db.Decimal(14, 2)
+  sumInsured   Decimal?   @db.Decimal(14, 2)
+  cumulativeBonus Decimal? @db.Decimal(14, 2)
+  dateOfJoining DateTime?
+  memberPhone  String?    @db.VarChar(20)
+  basicPremium Decimal?   @db.Decimal(14, 2)
+  ageAtEntry   Int?
+  deletedAt    DateTime?
 
   @@index([policyYearId])
+  @@index([dob, deletedAt])
+}
+
+/// Physical cheque; linked from Payment when method is CHQ
+model Cheque {
+  id        String         @id @default(cuid())
+  number    String         @db.VarChar(64)
+  bankName  String         @db.VarChar(200)
+  ifsc      String?        @db.VarChar(20)
+  status    ChequeStatus   @default(PENDING)
+  reason    String?        @db.Text
+  accountNo       String?  @db.VarChar(64)
+  branch          String?  @db.VarChar(200)
+  nameAsPerCheque String? @db.VarChar(200)
+  notOver         String?  @db.VarChar(50)
+  chequeDate      DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  payments  Payment[]
+
+  @@index([status])
+}
+
+/// Money applied to a policy year; use for reconciliation vs expectedNetPremium
+model Payment {
+  id             String         @id @default(cuid())
+  policyYearId   String
+  policyYear     PolicyYear     @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
+  amount         Decimal        @db.Decimal(14, 2)
+  status         PaymentStatus  @default(PENDING)
+  method         PayMethod
+  chequeId       String?
+  cheque         Cheque?        @relation(fields: [chequeId], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  @@index([policyYearId, deletedAt, status])
+  @@index([chequeId])
 }
 
 model Receipt {
@@ -260,6 +425,22 @@ model ActivityLog {
 
   @@index([entityType, entityId])
   @@index([userId])
+}
+
+/// POST idempotency: same (userId, idempotencyKey) + same bodyHash → return stored response
+model IdempotencyRecord {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idempotencyKey  String   @db.VarChar(64)
+  bodyHash        String   @db.VarChar(64)
+  responseJson    String   @db.MediumText
+  httpStatus      Int      @default(201)
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  @@unique([userId, idempotencyKey])
+  @@index([expiresAt])
 }
 
 model CsvImportJob {

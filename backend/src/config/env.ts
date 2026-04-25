@@ -16,6 +16,18 @@ const schema = z.object({
   COOKIE_SAME_SITE: z.enum(["lax", "none"]).default("lax"),
   CSV_DUPLICATE_MODE: z.enum(["block", "warn"]).default("block"),
   UPLOAD_DIR: z.string().default("./uploads"),
+  /** Whitelisted path to medclaim static PDF; optional if served from Next public only */
+  MEDCLAIM_PDF_PATH: z.string().optional(),
+  /** Idempotency key retention (POST create policy); default 48h in code if unset */
+  IDEMPOTENCY_TTL_HOURS: z.coerce.number().min(1).max(168).optional(),
+  /** Default timezone label for asOf (document only; use UTC in SQL unless app shifts dates) */
+  APP_TIMEZONE: z.string().optional(),
+  /** Optional Redis for MIS/dashboard cache; omit to disable */
+  REDIS_URL: z.string().optional(),
+  /** JSON body and multipart max in bytes; default 2mb */
+  MAX_UPLOAD_SIZE: z.coerce.number().min(1_000).default(2_000_000),
+  /** Express JSON payload limit, e.g. 2mb */
+  JSON_LIMIT: z.string().default("2mb"),
 });
 
 export type Env = z.infer<typeof schema>;

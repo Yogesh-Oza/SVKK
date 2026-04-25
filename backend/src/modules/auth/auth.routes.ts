@@ -20,6 +20,7 @@ import {
   setRefreshCookie,
   clearAuthCookies,
 } from "./auth.cookies.js";
+import { authRateLimit } from "../../middlewares/rate-limit.js";
 
 export function createAuthRouter(env: Env) {
   const r = Router();
@@ -69,7 +70,7 @@ export function createAuthRouter(env: Env) {
     }
   });
 
-  r.post("/login", async (req, res, next) => {
+  r.post("/login", authRateLimit, async (req, res, next) => {
     try {
       const body = z
         .object({
