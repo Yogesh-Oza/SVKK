@@ -1,0 +1,155 @@
+import type { AdMemberRow } from "./ad-member-types";
+import { emptyMemberRow } from "./ad-member-types";
+import type { PolicyGrouping } from "./ad-policy-types";
+
+export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE";
+
+export type AdPolicyFormValues = {
+  policyNo: string;
+  adProduct: string;
+  customerId: string;
+  svkkPublicId: string;
+  policyHolder: string;
+  panNo: string;
+  company: string;
+  tpa: string;
+  policyStart: string;
+  policyEnd: string;
+  village: string;
+  cat: string;
+  dob: string;
+  age: string;
+  relation: string;
+  person: string;
+  sumInsured: string;
+  comulativeBonus: string;
+  joiningYear: string;
+  basicPremiumPs: string;
+  members: AdMemberRow[];
+  paymentMode: AdPolicyPaymentModeForm;
+  onlineTransactionRef: string;
+  policyChequeNo: string;
+  bank: string;
+  accountNo: string;
+  branch: string;
+  nameAsPerCheque: string;
+  ifsc: string;
+  notOver: string;
+  chequeDate: string;
+  chequeStatus: string;
+  reasonDishonoured: string;
+  vkkPremium: string;
+  coPremium: string;
+  grossPremium: string;
+  commission: string;
+  twoLakhF: string;
+  policyHolderPremium: string;
+  gaamMahajan: string;
+  excessShort: string;
+  diffAmt: string;
+  loanStatus: string;
+  loanAmt: string;
+  nomineeName: string;
+  nomineeRelation: string;
+  address: string;
+  addressTwo: string;
+  addressThree: string;
+  addressFour: string;
+  area: string;
+  city: string;
+  pincode: string;
+  mobileFirst: string;
+  mobileSecond: string;
+  whatsappNo: string;
+  email: string;
+  refundChequeAmt: string;
+  refundChequeNo: string;
+  refundChequeDate: string;
+  cdAccountStatus: string;
+  cdAmount: string;
+  notCourier: string;
+  courierDate: string;
+  courierAddress: string;
+  remark: string;
+  refNo: string;
+  year: string;
+  month: string;
+  policyGrouping: "" | PolicyGrouping;
+  url: string;
+};
+
+export function getAdPolicyInitialValues(): AdPolicyFormValues {
+  return {
+    policyNo: "",
+    adProduct: "Asha-Kiran",
+    customerId: "",
+    svkkPublicId: "",
+    policyHolder: "",
+    panNo: "",
+    company: "",
+    tpa: "",
+    policyStart: "",
+    policyEnd: "",
+    village: "",
+    cat: "",
+    dob: "",
+    age: "",
+    relation: "",
+    person: "",
+    sumInsured: "",
+    comulativeBonus: "",
+    joiningYear: "",
+    basicPremiumPs: "",
+    members: [emptyMemberRow()],
+    paymentMode: "CHEQUE",
+    onlineTransactionRef: "",
+    policyChequeNo: "",
+    bank: "",
+    accountNo: "",
+    branch: "",
+    nameAsPerCheque: "",
+    ifsc: "",
+    notOver: "",
+    chequeDate: "",
+    chequeStatus: "",
+    reasonDishonoured: "",
+    vkkPremium: "",
+    coPremium: "",
+    grossPremium: "",
+    commission: "",
+    twoLakhF: "",
+    policyHolderPremium: "",
+    gaamMahajan: "",
+    excessShort: "",
+    diffAmt: "",
+    loanStatus: "",
+    loanAmt: "",
+    nomineeName: "",
+    nomineeRelation: "",
+    address: "",
+    addressTwo: "",
+    addressThree: "",
+    addressFour: "",
+    area: "",
+    city: "",
+    pincode: "",
+    mobileFirst: "",
+    mobileSecond: "",
+    whatsappNo: "",
+    email: "",
+    refundChequeAmt: "",
+    refundChequeNo: "",
+    refundChequeDate: "",
+    cdAccountStatus: "",
+    cdAmount: "",
+    notCourier: "",
+    courierDate: "",
+    courierAddress: "",
+    remark: "",
+    refNo: "",
+    year: String(new Date().getFullYear()),
+    month: String(new Date().getMonth() + 1),
+    policyGrouping: "",
+    url: "",
+  };
+}
