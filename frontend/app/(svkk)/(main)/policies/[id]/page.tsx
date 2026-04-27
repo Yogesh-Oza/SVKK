@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,8 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getSvkkApiBase } from "@/lib/svkk/config";
 import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
+import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { openPolicyReceiptPrint } from "@/lib/svkk/policy-receipt-print";
@@ -34,22 +35,53 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+type ChequeDetail = {
+  number: string;
+  bankName: string;
+  ifsc?: string | null;
+  accountNo?: string | null;
+  branch?: string | null;
+  nameAsPerCheque?: string | null;
+  notOver?: string | null;
+  chequeDate?: string | null;
+  status?: string | null;
+  reason?: string | null;
+} | null;
+
 type PolicyYear = {
   id: string;
   yearLabel: string;
   sumInsured: unknown;
   vkkPremium: unknown;
+  expectedNetPremium?: unknown;
+  grossPremium?: unknown;
+  commissionAmount?: unknown;
+  twoLacFloater?: unknown;
+  yearPolicyHolderPremium?: unknown;
+  gaamMahajanVkk?: unknown;
+  excessShortAmount?: unknown;
+  diffPaidByHolder?: unknown;
+  holderBasicPremium?: unknown;
   policyStart: string | null;
   policyEnd: string | null;
   bankName: string | null;
+  utrRef?: string | null;
   holderCumulativeBonus: unknown;
   holderJoiningYear: string | null;
-  members: { name: string; relationship: string; dob: string }[];
+  members: Array<{
+    name: string;
+    relationship: string;
+    dob: string;
+    sumInsured?: unknown;
+    cumulativeBonus?: unknown;
+    dateOfJoining?: string | null;
+    memberPhone?: string | null;
+    basicPremium?: unknown;
+    ageAtEntry?: number | null;
+  }>;
   payments?: Array<{
-    cheque: {
-      number: string;
-      bankName: string;
-    } | null;
+    method?: string;
+    cheque: ChequeDetail;
   }>;
 };
 
@@ -75,8 +107,21 @@ type PolicyDetail = {
   city: string | null;
   pincode: string | null;
   contactPhone: string | null;
+  mobileSecondary?: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
+  holderRelationship?: string | null;
+  holderAge?: number | null;
+  loanStatus?: string | null;
+  loanAmount?: unknown;
+  refundChequeAmount?: unknown;
+  refundChequeNo?: string | null;
+  refundChequeDate?: string | null;
+  cdAccountUsed?: boolean | null;
+  cdAmount?: unknown;
+  courierStatus?: string | null;
+  courierDate?: string | null;
+  courierAddress?: string | null;
   updatedAt: string;
   insuredParty: {
     svkkPublicId: string;
@@ -91,6 +136,73 @@ type PolicyDetail = {
   category: { key: string; name: string } | null;
   years: PolicyYear[];
 };
+
+const thClass =
+  "border border-border bg-muted px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-foreground";
+const tdClass = "border border-border px-2 py-2 align-top text-sm";
+
+function dStr(v: unknown): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "string" || typeof v === "number") return String(v);
+  if (typeof v === "object" && v !== null && "toString" in v) {
+    return (v as { toString: () => string }).toString();
+  }
+  return String(v);
+}
+
+function formatNumIn(v: unknown): string {
+  const s = dStr(v).replace(/,/g, "").trim();
+  if (!s) return "";
+  const n = Number(s);
+  if (!Number.isFinite(n)) return s;
+  return n.toLocaleString("en-IN");
+}
+
+function formatDateIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateDmy(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const y = d.getFullYear();
+  return `${day}-${m}-${y}`;
+}
+
+function holderAge(row: PolicyDetail): string {
+  if (row.holderAge != null) return String(row.holderAge);
+  if (!row.insuredParty.dateOfBirth) return "";
+  const d = new Date(row.insuredParty.dateOfBirth);
+  if (Number.isNaN(d.getTime())) return "";
+  const t = new Date();
+  let a = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a -= 1;
+  return a >= 0 ? String(a) : "";
+}
+
+function firstCheque(y: PolicyYear | undefined): ChequeDetail {
+  if (!y?.payments?.length) return null;
+  for (const p of y.payments) {
+    if (p.cheque) return p.cheque;
+  }
+  return null;
+}
+
+function cdUsedLabel(v: boolean | null | undefined): string {
+  if (v === true) return "YES";
+  if (v === false) return "NO";
+  return "";
+}
 
 export default function SvkkPolicyDetailPage() {
   const params = useParams();
@@ -190,13 +302,22 @@ export default function SvkkPolicyDetailPage() {
     return <p className="text-muted-foreground text-sm">Loading…</p>;
   }
 
+  const y = row.years[0];
+  const ch = firstCheque(y);
+  const policyTypeLabel = row.adProductVariant
+    ? adProductFormValueFromApi(row.adProductVariant)
+    : row.policyType.name;
+  const refundDateRaw = row.refundChequeDate ? formatDateIso(row.refundChequeDate) : "";
+  const refundDateDisplay =
+    refundDateRaw === "0000-01-01" || refundDateRaw.startsWith("0000-00") ? "0000-00-00" : refundDateRaw;
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-4">
+    <div className="space-y-6 pb-10">
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/policies">Back</Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Policy</h1>
+        <h1 className="text-2xl font-semibold">View policy</h1>
         <Button
           type="button"
           variant="outline"
@@ -207,222 +328,313 @@ export default function SvkkPolicyDetailPage() {
           {receiptPrintBusy ? "…" : "Print receipt (PDF-style)"}
         </Button>
         {canPatch ? (
-          <Button type="button" size="sm" asChild>
+          <Button type="button" variant="outline" size="sm" asChild>
             <Link href={`/policies/${id}/edit`}>Edit policy</Link>
           </Button>
         ) : null}
       </div>
-      <div className="space-y-1 text-sm">
-        <p>
-          <span className="text-muted-foreground">SVKK ID: </span>
-          <span className="font-mono">{row.insuredParty.svkkPublicId}</span>
-        </p>
-        <p>
-          <span className="text-muted-foreground">Name: </span>
-          {row.insuredParty.name}
-        </p>
-        <p>
-          <span className="text-muted-foreground">Type: </span>
-          {row.policyType.name}
-        </p>
-      </div>
 
-      {(() => {
-        const y = row.years[0];
-        return (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Policy details</CardTitle>
-              </CardHeader>
-              <CardContent className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Policy number</TableHead>
-                      <TableHead>Policy type</TableHead>
-                      <TableHead>Customer ID</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>SVKK ID</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="font-mono text-sm">{row.policyNo ?? "—"}</TableCell>
-                      <TableCell>{row.policyType.name}</TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {row.insuredParty.customerId ?? "—"}
-                      </TableCell>
-                      <TableCell>{row.category?.key ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {row.insuredParty.svkkPublicId}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Insurance company</TableHead>
-                      <TableHead>TPA</TableHead>
-                      <TableHead>Start</TableHead>
-                      <TableHead>End</TableHead>
-                      <TableHead>Persons insured</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>{row.insuranceCompany ?? "—"}</TableCell>
-                      <TableCell>{row.tpa ?? "—"}</TableCell>
-                      <TableCell className="text-sm">
-                        {y?.policyStart
-                          ? new Date(y.policyStart).toLocaleDateString("en-IN")
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {y?.policyEnd
-                          ? new Date(y.policyEnd).toLocaleDateString("en-IN")
-                          : "—"}
-                      </TableCell>
-                      <TableCell>{row.personsInsuredCount ?? "—"}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Sum insured</TableHead>
-                      <TableHead>Cumulative bonus</TableHead>
-                      <TableHead>Joining</TableHead>
-                      <TableHead>Year</TableHead>
-                      <TableHead>Month</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>{y ? String(y.sumInsured ?? "—") : "—"}</TableCell>
-                      <TableCell>
-                        {y ? String(y.holderCumulativeBonus ?? "—") : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">{y?.holderJoiningYear ?? "—"}</TableCell>
-                      <TableCell>{row.periodYearText ?? "—"}</TableCell>
-                      <TableCell>{row.periodMonthText ?? "—"}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Policy grouping</TableHead>
-                      <TableHead>Policy URL</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>{row.policyGrouping ?? "—"}</TableCell>
-                      <TableCell className="max-w-xs truncate text-sm">
-                        {row.policyUrl ?? "—"}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Personal information</CardTitle>
-              </CardHeader>
-              <CardContent className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Policy holder</TableHead>
-                      <TableHead>PAN</TableHead>
-                      <TableHead>Village</TableHead>
-                      <TableHead>DOB</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>{row.insuredParty.name}</TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {row.insuredParty.pan ?? "—"}
-                      </TableCell>
-                      <TableCell>{row.village ?? "—"}</TableCell>
-                      <TableCell className="text-sm">
-                        {row.insuredParty.dateOfBirth
-                          ? new Date(row.insuredParty.dateOfBirth).toLocaleDateString("en-IN")
-                          : "—"}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Address (2–4)</TableHead>
-                      <TableHead>Area</TableHead>
-                      <TableHead>City / PIN</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="max-w-[10rem] text-sm">
-                        {row.addressLine1 ?? "—"}
-                      </TableCell>
-                      <TableCell className="max-w-[12rem] text-sm">
-                        {[row.addressLine2, row.addressLine3, row.addressLine4]
-                          .filter(Boolean)
-                          .join(" ") || "—"}
-                      </TableCell>
-                      <TableCell>{row.area ?? "—"}</TableCell>
-                      <TableCell>
-                        {[row.city, row.pincode].filter(Boolean).join(" · ") || "—"}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Primary mobile</TableHead>
-                      <TableHead>Contact phone</TableHead>
-                      <TableHead>Email</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="font-mono text-sm">
-                        {row.insuredParty.mobile}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {row.contactPhone ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">{row.insuredParty.email ?? "—"}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nominee</TableHead>
-                      <TableHead>Relation</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>{row.nomineeName ?? "—"}</TableCell>
-                      <TableCell>{row.nomineeRelation ?? "—"}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+      <Card className="overflow-hidden">
+        <CardContent className="p-4 sm:p-6">
+          <h4 className="mt-2 mb-3 text-base font-semibold tracking-wide">POLICY DETAILS</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <tbody>
+                <tr>
+                  <th className={thClass}>Policy number</th>
+                  <th className={thClass}>Policy type</th>
+                  <th className={thClass}>Customer ID</th>
+                  <th className={thClass}>Category</th>
+                  <th className={thClass}>SVKK ID</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.policyNo ?? ""}</td>
+                  <td className={tdClass}>{policyTypeLabel}</td>
+                  <td className={tdClass}>{row.insuredParty.customerId ?? ""}</td>
+                  <td className={tdClass}>{row.category?.key ?? ""}</td>
+                  <td className={tdClass}>{row.insuredParty.svkkPublicId}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Insurance company</th>
+                  <th className={thClass}>TPA</th>
+                  <th className={thClass}>Policy start date</th>
+                  <th className={thClass}>Policy expiry date</th>
+                  <th className={thClass}>No. of person insured</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.insuranceCompany ?? ""}</td>
+                  <td className={tdClass}>{row.tpa ?? ""}</td>
+                  <td className={tdClass}>{y?.policyStart ? formatDateIso(y.policyStart) : ""}</td>
+                  <td className={tdClass}>{y?.policyEnd ? formatDateIso(y.policyEnd) : ""}</td>
+                  <td className={tdClass}>
+                    {row.personsInsuredCount != null ? String(row.personsInsuredCount) : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Sum insured</th>
+                  <th className={thClass}>Cumulative bonus</th>
+                  <th className={thClass}>Joining year</th>
+                  <th className={thClass}>Year</th>
+                  <th className={thClass}>Month</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{y ? formatNumIn(y.sumInsured) : ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.holderCumulativeBonus) : ""}</td>
+                  <td className={tdClass}>{y?.holderJoiningYear ?? ""}</td>
+                  <td className={tdClass}>{row.periodYearText ?? ""}</td>
+                  <td className={tdClass}>{row.periodMonthText ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Policy grouping</th>
+                  <th className={thClass} colSpan={4}>
+                    Policy URL
+                  </th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.policyGrouping ?? ""}</td>
+                  <td className={tdClass} colSpan={4}>
+                    <span className="break-all">{row.policyUrl ?? ""}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        );
-      })()}
+
+          <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">PERSONAL INFORMATION</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
+              <tbody>
+                <tr>
+                  <th className={thClass}>Policy holder name</th>
+                  <th className={thClass}>PAN card no</th>
+                  <th className={thClass}>Village</th>
+                  <th className={thClass}>Date of birth</th>
+                  <th className={thClass}>Age</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.insuredParty.name}</td>
+                  <td className={tdClass}>{row.insuredParty.pan ?? ""}</td>
+                  <td className={tdClass}>{row.village ?? ""}</td>
+                  <td className={tdClass}>
+                    {row.insuredParty.dateOfBirth ? formatDateDmy(row.insuredParty.dateOfBirth) : ""}
+                  </td>
+                  <td className={tdClass}>{holderAge(row)}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Relationship</th>
+                  <th className={thClass}>Nominee&apos;s name</th>
+                  <th className={thClass}>Nominee&apos;s relation</th>
+                  <th className={thClass}>Address</th>
+                  <th className={thClass}>Address two</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.holderRelationship ?? ""}</td>
+                  <td className={tdClass}>{row.nomineeName ?? ""}</td>
+                  <td className={tdClass}>{row.nomineeRelation ?? ""}</td>
+                  <td className={tdClass}>{row.addressLine1 ?? ""}</td>
+                  <td className={tdClass}>{row.addressLine2 ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Address three</th>
+                  <th className={thClass}>Address four</th>
+                  <th className={thClass}>Area</th>
+                  <th className={thClass}>City</th>
+                  <th className={thClass}>PIN code</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.addressLine3 ?? ""}</td>
+                  <td className={tdClass}>{row.addressLine4 ?? ""}</td>
+                  <td className={tdClass}>{row.area ?? ""}</td>
+                  <td className={tdClass}>{row.city ?? ""}</td>
+                  <td className={tdClass}>{row.pincode ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Primary mobile no</th>
+                  <th className={thClass}>Secondary mobile no</th>
+                  <th className={thClass} colSpan={3}>
+                    Email ID
+                  </th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.insuredParty.mobile}</td>
+                  <td className={tdClass}>{row.mobileSecondary ?? row.contactPhone ?? ""}</td>
+                  <td className={tdClass} colSpan={3}>
+                    {row.insuredParty.email ?? ""}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">Bank information</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
+              <tbody>
+                <tr>
+                  <th className={thClass}>Policy cheque no</th>
+                  <th className={thClass}>Bank name</th>
+                  <th className={thClass}>Account no</th>
+                  <th className={thClass}>Branch</th>
+                  <th className={thClass}>Name as per cheque</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{ch?.number ?? ""}</td>
+                  <td className={tdClass}>{ch?.bankName ?? y?.bankName ?? ""}</td>
+                  <td className={tdClass}>{ch?.accountNo ?? ""}</td>
+                  <td className={tdClass}>{ch?.branch ?? ""}</td>
+                  <td className={tdClass}>{ch?.nameAsPerCheque ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>IFSC code</th>
+                  <th className={thClass}>Not over</th>
+                  <th className={thClass}>Cheque date</th>
+                  <th className={thClass}>Cheque status</th>
+                  <th className={thClass}>Reason for dishonoured</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{ch?.ifsc ?? ""}</td>
+                  <td className={tdClass}>{ch?.notOver ? formatNumIn(ch.notOver) : dStr(ch?.notOver)}</td>
+                  <td className={tdClass}>
+                    {ch?.chequeDate ? formatDateIso(String(ch.chequeDate)) : ""}
+                  </td>
+                  <td className={tdClass}>{ch?.status ? `${ch.status}` : ""}</td>
+                  <td className={tdClass}>{ch?.reason ?? ""}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">VKK details</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
+              <tbody>
+                <tr>
+                  <th className={thClass}>Policy holder premium</th>
+                  <th className={thClass}>Gaam Mahajan / VKK contribution</th>
+                  <th className={thClass}>Excess / short amount</th>
+                  <th className={thClass}>Diff. amount paid by policyholder</th>
+                  <th className={thClass}>Loan taken</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{y ? formatNumIn(y.yearPolicyHolderPremium) : ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.gaamMahajanVkk) : ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.excessShortAmount) : ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.diffPaidByHolder) : ""}</td>
+                  <td className={tdClass}>{row.loanStatus ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Loan amount</th>
+                  <th className={thClass}>Refund cheque amount</th>
+                  <th className={thClass}>Refund cheque no.</th>
+                  <th className={thClass}>Refund cheque date</th>
+                  <th className={thClass}>CD account used</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{formatNumIn(row.loanAmount)}</td>
+                  <td className={tdClass}>{formatNumIn(row.refundChequeAmount)}</td>
+                  <td className={tdClass}>{row.refundChequeNo ?? ""}</td>
+                  <td className={tdClass}>{refundDateDisplay}</td>
+                  <td className={tdClass}>{cdUsedLabel(row.cdAccountUsed)}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>CD amount</th>
+                  <th className={thClass}>Courier status</th>
+                  <th className={thClass}>Courier date</th>
+                  <th className={thClass}>Address for courier</th>
+                  <th className={thClass}>Remark</th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{formatNumIn(row.cdAmount)}</td>
+                  <td className={tdClass}>{row.courierStatus ?? ""}</td>
+                  <td className={tdClass}>
+                    {row.courierDate ? formatDateIso(row.courierDate) : ""}
+                  </td>
+                  <td className={tdClass}>{row.courierAddress ?? ""}</td>
+                  <td className={tdClass}>{row.remarks ?? ""}</td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Reference no</th>
+                  <th className={thClass}>SVKK premium</th>
+                  <th className={thClass} colSpan={3}>
+                    Net premium
+                  </th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{row.referenceNo ?? ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.vkkPremium) : ""}</td>
+                  <td className={tdClass} colSpan={3}>
+                    {y ? formatNumIn(y.expectedNetPremium) : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th className={thClass}>Gross premium</th>
+                  <th className={thClass}>Commission</th>
+                  <th className={thClass} colSpan={3}>
+                    Premium 1 Lac ind / 2 Lac floater
+                  </th>
+                </tr>
+                <tr>
+                  <td className={tdClass}>{y ? formatNumIn(y.grossPremium) : ""}</td>
+                  <td className={tdClass}>{y ? formatNumIn(y.commissionAmount) : ""}</td>
+                  <td className={tdClass} colSpan={3}>
+                    {y ? formatNumIn(y.twoLacFloater) : ""}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h5 className="mt-8 mb-3 text-sm font-semibold tracking-wide">Members</h5>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className={thClass}>Member name</th>
+                  <th className={thClass}>Relationship</th>
+                  <th className={thClass}>Date of birth</th>
+                  <th className={thClass}>Age</th>
+                  <th className={thClass}>Date of joining</th>
+                  <th className={thClass}>Sum insured</th>
+                  <th className={thClass}>Cumulative bonus</th>
+                  <th className={thClass}>Phone no</th>
+                  <th className={thClass}>Basic premium</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(y?.members ?? []).map((m) => (
+                  <tr key={`${m.name}-${m.dob}`}>
+                    <td className={tdClass}>{m.name}</td>
+                    <td className={tdClass}>{m.relationship}</td>
+                    <td className={tdClass}>{formatDateIso(m.dob)}</td>
+                    <td className={tdClass}>
+                      {m.ageAtEntry != null ? String(m.ageAtEntry) : ""}
+                    </td>
+                    <td className={tdClass}>
+                      {m.dateOfJoining ? formatDateIso(m.dateOfJoining) : ""}
+                    </td>
+                    <td className={tdClass}>{formatNumIn(m.sumInsured)}</td>
+                    <td className={tdClass}>{formatNumIn(m.cumulativeBonus)}</td>
+                    <td className={tdClass}>{m.memberPhone ?? ""}</td>
+                    <td className={tdClass}>{formatNumIn(m.basicPremium)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {canPatch ? (
+            <Button variant="outline" size="sm" className="mt-3" asChild>
+              <Link href={`/policies/${id}/edit`}>Edit policy</Link>
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {row.years.length > 1 ? (
+        <p className="text-muted-foreground text-xs">
+          This policy has {row.years.length} year rows (newest first). Tables above use the latest year.
+        </p>
+      ) : null}
 
       {canRcpt ? (
         <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
@@ -438,9 +650,9 @@ export default function SvkkPolicyDetailPage() {
                   <SelectValue placeholder="Year" />
                 </SelectTrigger>
                 <SelectContent>
-                  {row.years.map((y) => (
-                    <SelectItem key={y.id} value={y.id}>
-                      {y.yearLabel}
+                  {row.years.map((yy) => (
+                    <SelectItem key={yy.id} value={yy.id}>
+                      {yy.yearLabel}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -515,23 +727,6 @@ export default function SvkkPolicyDetailPage() {
           </Dialog>
         </>
       ) : null}
-
-      <div className="space-y-2">
-        <h2 className="text-lg font-medium">Years</h2>
-        {row.years.map((y) => (
-          <div key={y.id} className="bg-muted/40 rounded-md border p-3 text-sm">
-            <p className="font-medium">{y.yearLabel}</p>
-            <p className="text-muted-foreground">Members: {y.members.length}</p>
-            <ul className="mt-1 list-inside list-disc">
-              {y.members.map((m) => (
-                <li key={m.name + m.dob}>
-                  {m.name} — {m.relationship}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
