@@ -236,7 +236,8 @@ model Policy {
   holderAge        Int?
   personsInsuredCount Int?
   area             String?    @db.VarChar(200)
-  referenceNo      String?    @db.VarChar(100)
+  /// Legacy import key; unique when set (MySQL allows multiple NULLs)
+  referenceNo      String?    @unique @db.VarChar(255)
   mobileSecondary  String?    @db.VarChar(20)
   policyGrouping   PolicyGrouping?
   policyUrl        String?    @db.VarChar(500)

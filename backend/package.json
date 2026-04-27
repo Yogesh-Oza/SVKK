@@ -13,6 +13,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "user:create": "tsx scripts/create-user.ts",
+    "legacy-migrate": "tsx scripts/legacy-migrate/run.ts",
     "test": "vitest run",
     "lint": "eslint src --ext .ts"
   },
@@ -26,6 +27,7 @@
     "express-rate-limit": "^8.4.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
+    "mysql2": "^3.22.3",
     "pdf-lib": "^1.17.1",
     "pino": "^9.14.0",
     "pino-http": "^11.0.0",
