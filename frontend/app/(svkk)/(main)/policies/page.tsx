@@ -2,6 +2,19 @@
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,17 +40,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { DataTableViewOptions } from "@/features/tasks/components/data-table-view-options";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
-import {
-  canDeletePolicy,
-  canUpdatePolicy,
-} from "@/lib/svkk/permissions";
+import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { openPolicyReceiptPrint } from "@/lib/svkk/policy-receipt-print";
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type PaginationState,
+  type RowSelectionState,
+  type VisibilityState,
+} from "@tanstack/react-table";
+import { ChevronDown, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, MoreHorizontal, Search } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type ListPolicy = {
@@ -114,6 +136,7 @@ export default function SvkkPoliciesPage() {
 
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
+  const prevSearchApplied = useRef(searchApplied);
   const [village, setVillage] = useState("");
   const [yearLabel, setYearLabel] = useState("");
   const [periodYearText, setPeriodYearText] = useState("");
@@ -129,7 +152,7 @@ export default function SvkkPoliciesPage() {
   const [filterYear, setFilterYear] = useState<string>("");
   const [sort, setSort] = useState("createdAt");
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
 
   const [rows, setRows] = useState<ListPolicy[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -139,13 +162,30 @@ export default function SvkkPoliciesPage() {
   const [policyTypes, setPolicyTypes] = useState<PolicyTypeItem[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    referenceNo: false,
+  });
   const [bulkOpen, setBulkOpen] = useState(false);
   const [rowDeleteId, setRowDeleteId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
 
   const missingUrl = !getSvkkApiBase();
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchApplied(searchDraft.trim());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchDraft]);
+
+  useEffect(() => {
+    if (prevSearchApplied.current !== searchApplied) {
+      prevSearchApplied.current = searchApplied;
+      setPage(1);
+    }
+  }, [searchApplied]);
 
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
@@ -201,7 +241,7 @@ export default function SvkkPoliciesPage() {
       setRows(res.items);
       setTotalPages(res.totalPages);
       setTotal(res.total);
-      setSelected(new Set());
+      setRowSelection({});
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load policies");
     } finally {
@@ -232,25 +272,15 @@ export default function SvkkPoliciesPage() {
     })();
   }, [missingUrl]);
 
-  function toggleAll(checked: boolean) {
-    if (checked) {
-      setSelected(new Set(rows.map((r) => r.id)));
-    } else {
-      setSelected(new Set());
-    }
-  }
-
-  function toggleOne(id: string, checked: boolean) {
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (checked) n.add(id);
-      else n.delete(id);
-      return n;
-    });
-  }
+  const selectedCount = useMemo(
+    () => Object.values(rowSelection).filter(Boolean).length,
+    [rowSelection],
+  );
 
   async function bulkDelete() {
-    const ids = [...selected];
+    const ids = Object.entries(rowSelection)
+      .filter(([, v]) => v)
+      .map(([id]) => id);
     if (ids.length === 0) return;
     setActionBusy(true);
     try {
@@ -294,11 +324,197 @@ export default function SvkkPoliciesPage() {
     }
   }
 
-  function applyFilters(e: React.FormEvent) {
-    e.preventDefault();
-    setSearchApplied(searchDraft.trim());
-    setPage(1);
-  }
+  const pagination: PaginationState = useMemo(
+    () => ({ pageIndex: Math.max(0, page - 1), pageSize }),
+    [page, pageSize],
+  );
+
+  const columns = useMemo<ColumnDef<ListPolicy>[]>(() => {
+    const cols: ColumnDef<ListPolicy>[] = [];
+
+    if (canDel) {
+      cols.push({
+        id: "select",
+        header: ({ table }) => (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Select all"
+            className="translate-y-0.5"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label="Select row"
+            className="translate-y-0.5"
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      });
+    }
+
+    cols.push(
+      {
+        id: "customer",
+        accessorFn: (r) => r.insuredParty.name,
+        header: "Name",
+        cell: ({ row }) => {
+          const p = row.original;
+          const name = p.insuredParty.name;
+          const initials = name
+            .split(" ")
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()
+            .slice(0, 2);
+          return (
+            <div className="flex min-w-0 max-w-[240px] items-center gap-3">
+              <Avatar className="h-8 w-8 shrink-0">
+                <AvatarFallback className="text-xs font-medium">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{name}</p>
+                {p.referenceNo ? (
+                  <p className="text-muted-foreground truncate font-mono text-xs">{p.referenceNo}</p>
+                ) : null}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "customerId",
+        accessorFn: (r) => r.insuredParty.customerId ?? "",
+        header: "Customer ID",
+        cell: ({ row }) => (
+          <span className="font-mono text-sm">
+            {row.original.insuredParty.customerId ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "category",
+        accessorFn: (r) => r.category?.key ?? "",
+        header: "Category",
+        cell: ({ row }) => row.original.category?.key ?? "—",
+      },
+      {
+        id: "policyType",
+        accessorFn: (r) => r.policyType.name,
+        header: "Policy type",
+        cell: ({ row }) => row.original.policyType.name,
+      },
+      {
+        id: "sumInsured",
+        accessorFn: (r) => sumLabel(r.years[0]?.sumInsured),
+        header: "Sum insured",
+        cell: ({ row }) => {
+          const y0 = row.original.years[0];
+          return y0 ? sumLabel(y0.sumInsured) : "—";
+        },
+      },
+      {
+        id: "village",
+        accessorFn: (r) => r.village ?? "",
+        header: "Village",
+        cell: ({ row }) => row.original.village ?? "—",
+      },
+      {
+        id: "mobile",
+        accessorFn: (r) => r.insuredParty.mobile,
+        header: "Mobile",
+        cell: ({ row }) => (
+          <span className="font-mono text-sm whitespace-nowrap">{row.original.insuredParty.mobile}</span>
+        ),
+      },
+      {
+        id: "referenceNo",
+        accessorFn: (r) => r.referenceNo ?? "",
+        header: "Reference",
+        cell: ({ row }) => (
+          <span className="font-mono text-sm">{row.original.referenceNo ?? "—"}</span>
+        ),
+      },
+      {
+        id: "actions",
+        cell: ({ row }) => {
+          const p = row.original;
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <span className="sr-only">Open menu</span>
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuItem className="cursor-pointer" asChild>
+                  <Link href={`/policies/${p.id}`}>View</Link>
+                </DropdownMenuItem>
+                {canEdit ? (
+                  <DropdownMenuItem className="cursor-pointer" asChild>
+                    <Link href={`/policies/${p.id}`}>Edit</Link>
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  disabled={receiptBusyId === p.id}
+                  onClick={() => void printReceiptForRow(p.id)}
+                >
+                  {receiptBusyId === p.id ? "Opening receipt…" : "Receipt"}
+                </DropdownMenuItem>
+                {canDel ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive cursor-pointer"
+                      onClick={() => setRowDeleteId(p.id)}
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+        enableHiding: false,
+      },
+    );
+
+    return cols;
+  }, [canDel, canEdit, receiptBusyId]);
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getRowId: (r) => r.id,
+    manualPagination: true,
+    pageCount: Math.max(1, totalPages),
+    state: {
+      pagination,
+      rowSelection,
+      columnVisibility,
+    },
+    onPaginationChange: (updater) => {
+      const next = typeof updater === "function" ? updater(pagination) : updater;
+      setPage(next.pageIndex + 1);
+      setPageSize(next.pageSize);
+    },
+    onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    enableRowSelection: canDel,
+  });
+
+  const colCount = table.getVisibleLeafColumns().length;
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -318,399 +534,427 @@ export default function SvkkPoliciesPage() {
         </div>
       </div>
 
-      <form onSubmit={applyFilters} className="space-y-4 rounded-lg border bg-muted/20 p-4">
-        <h2 className="text-sm font-medium">Filter &amp; search</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <div className="sm:col-span-2">
-            <Label className="text-xs">Search</Label>
-            <Input
-              placeholder="Name, customer ID, village, ref no, phone, bank, nominee, PAN…"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Sort</Label>
-            <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SORT_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Village</Label>
-            <Select value={village || "__all__"} onValueChange={(v) => setVillage(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All villages" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All villages</SelectItem>
-                {(meta?.villages ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Fiscal year (label)</Label>
-            <Input
-              placeholder="e.g. 2025-26"
-              value={yearLabel}
-              onChange={(e) => setYearLabel(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Policy year (period)</Label>
-            <Select value={periodYearText || "__all__"} onValueChange={(v) => setPeriodYearText(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {(meta?.periodYearTexts ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Month (period text)</Label>
-            <Select value={periodMonthText || "__all__"} onValueChange={(v) => setPeriodMonthText(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {(meta?.periodMonthTexts ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Category</Label>
-            <Select value={categoryIdState || "__all__"} onValueChange={(v) => setCategoryIdState(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.key} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Product (AD)</Label>
-            <Select value={adVariant || "__all__"} onValueChange={(v) => setAdVariant(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                <SelectItem value="FAMILY_FLOATER">Family floater</SelectItem>
-                <SelectItem value="INDIVIDUAL">Individual</SelectItem>
-                <SelectItem value="ASHA_KIRAN">Asha Kiran</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Policy type (chart)</Label>
-            <Select value={policyTypeId || "__all__"} onValueChange={(v) => setPolicyTypeId(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {policyTypes.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Area</Label>
-            <Select value={area || "__all__"} onValueChange={(v) => setArea(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {(meta?.areas ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Sum insured</Label>
-            <Select value={sumInsured || "__all__"} onValueChange={(v) => setSumInsured(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {(meta?.sumInsuredValues ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Policy grouping</Label>
-            <Select value={policyGrouping || "__all__"} onValueChange={(v) => setPolicyGrouping(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {["SVKK", "NVKK", "RTY", "OTHER"].map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Cheque status</Label>
-            <Select value={chequeStatus || "__all__"} onValueChange={(v) => setChequeStatus(v === "__all__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All</SelectItem>
-                {["CLEARED", "DISHONOURED", "PENDING", "PAID", "UNPAID"].map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Created in month (optional)</Label>
-            <div className="flex gap-2">
-              <Select value={filterMonth || "__m__"} onValueChange={(v) => setFilterMonth(v === "__m__" ? "" : v)}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Month" />
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+              <Input
+                placeholder="Search policies…"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                className="h-9 w-[200px] pl-8 lg:w-[280px]"
+                aria-label="Search name, customer ID, village, ref no, phone, bank, nominee, PAN"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="policies-sort" className="text-muted-foreground sr-only sm:not-sr-only sm:whitespace-nowrap">
+                Sort
+              </Label>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger id="policies-sort" className="h-9 w-[160px] cursor-pointer" size="sm">
+                  <SelectValue placeholder="Sort" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__m__">—</SelectItem>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m}
+                  {SORT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                className="w-24"
-                placeholder="Year"
-                inputMode="numeric"
-                value={filterYear}
-                onChange={(e) => setFilterYear(e.target.value)}
-              />
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <DataTableViewOptions table={table} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 cursor-pointer"
+              onClick={() =>
+                toast.message("Export", { description: "Connect exports to your MIS when ready." })
+              }
+            >
+              Export
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Loading…" : "Apply"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setSearchDraft("");
-              setSearchApplied("");
-              setVillage("");
-              setYearLabel("");
-              setPeriodYearText("");
-              setPeriodMonthText("");
-              setCategoryIdState("");
-              setPolicyTypeId("");
-              setAdVariant("");
-              setArea("");
-              setSumInsured("");
-              setPolicyGrouping("");
-              setChequeStatus("");
-              setFilterMonth("");
-              setFilterYear("");
-              setSort("createdAt");
-              setPage(1);
-            }}
-          >
-            Reset
-          </Button>
-        </div>
-      </form>
 
-      {canDel && selected.size > 0 ? (
+        <Collapsible defaultOpen className="space-y-3">
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1 cursor-pointer">
+              <ChevronDown className="size-4" />
+              Advanced filters
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 rounded-lg border bg-muted/20 p-4">
+            <p className="text-muted-foreground text-xs">
+              Filters apply as you change them. Search above uses the same fields as before (name, customer ID, village, ref no, phone, etc.).
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div>
+                <Label className="text-xs">Village</Label>
+                <Select value={village || "__all__"} onValueChange={(v) => setVillage(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All villages" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All villages</SelectItem>
+                    {(meta?.villages ?? []).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Fiscal year (label)</Label>
+                <Input
+                  placeholder="e.g. 2025-26"
+                  value={yearLabel}
+                  onChange={(e) => setYearLabel(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Policy year (period)</Label>
+                <Select value={periodYearText || "__all__"} onValueChange={(v) => setPeriodYearText(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {(meta?.periodYearTexts ?? []).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Month (period text)</Label>
+                <Select value={periodMonthText || "__all__"} onValueChange={(v) => setPeriodMonthText(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {(meta?.periodMonthTexts ?? []).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Category</Label>
+                <Select value={categoryIdState || "__all__"} onValueChange={(v) => setCategoryIdState(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.key} — {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Product (AD)</Label>
+                <Select value={adVariant || "__all__"} onValueChange={(v) => setAdVariant(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    <SelectItem value="FAMILY_FLOATER">Family floater</SelectItem>
+                    <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                    <SelectItem value="ASHA_KIRAN">Asha Kiran</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Policy type (chart)</Label>
+                <Select value={policyTypeId || "__all__"} onValueChange={(v) => setPolicyTypeId(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {policyTypes.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Area</Label>
+                <Select value={area || "__all__"} onValueChange={(v) => setArea(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {(meta?.areas ?? []).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Sum insured</Label>
+                <Select value={sumInsured || "__all__"} onValueChange={(v) => setSumInsured(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {(meta?.sumInsuredValues ?? []).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Policy grouping</Label>
+                <Select value={policyGrouping || "__all__"} onValueChange={(v) => setPolicyGrouping(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {["SVKK", "NVKK", "RTY", "OTHER"].map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Cheque status</Label>
+                <Select value={chequeStatus || "__all__"} onValueChange={(v) => setChequeStatus(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    {["CLEARED", "DISHONOURED", "PENDING", "PAID", "UNPAID"].map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Created in month (optional)</Label>
+                <div className="flex gap-2">
+                  <Select value={filterMonth || "__m__"} onValueChange={(v) => setFilterMonth(v === "__m__" ? "" : v)}>
+                    <SelectTrigger className="flex-1 cursor-pointer">
+                      <SelectValue placeholder="Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__m__">—</SelectItem>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <SelectItem key={m} value={String(m)}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    className="w-24"
+                    placeholder="Year"
+                    inputMode="numeric"
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => {
+                setSearchDraft("");
+                setSearchApplied("");
+                prevSearchApplied.current = "";
+                setVillage("");
+                setYearLabel("");
+                setPeriodYearText("");
+                setPeriodMonthText("");
+                setCategoryIdState("");
+                setPolicyTypeId("");
+                setAdVariant("");
+                setArea("");
+                setSumInsured("");
+                setPolicyGrouping("");
+                setChequeStatus("");
+                setFilterMonth("");
+                setFilterYear("");
+                setSort("createdAt");
+                setPage(1);
+              }}
+            >
+              Reset filters
+            </Button>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+
+      {canDel && selectedCount > 0 ? (
         <div className="flex items-center gap-2">
           <Button type="button" variant="destructive" size="sm" onClick={() => setBulkOpen(true)}>
-            Delete selected ({selected.size})
+            Delete selected ({selectedCount})
           </Button>
         </div>
       ) : null}
 
       {err ? <p className="text-destructive text-sm">{err}</p> : null}
 
-      <div className="rounded-md border">
+      <div className="bg-card rounded-md border">
         <Table>
           <TableHeader>
-            <TableRow>
-              {canDel ? (
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={rows.length > 0 && selected.size === rows.length}
-                    onCheckedChange={(c) => toggleAll(c === true)}
-                    aria-label="Select all"
-                  />
-                </TableHead>
-              ) : null}
-              <TableHead>Name</TableHead>
-              <TableHead>Customer ID</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Policy type</TableHead>
-              <TableHead>Sum insured</TableHead>
-              <TableHead>Village</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id} className="whitespace-nowrap">
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
           </TableHeader>
           <TableBody>
-            {rows.map((p) => {
-              const y0 = p.years[0];
-              return (
-                <TableRow key={p.id}>
-                  {canDel ? (
-                    <TableCell>
-                      <Checkbox
-                        checked={selected.has(p.id)}
-                        onCheckedChange={(c) => toggleOne(p.id, c === true)}
-                        aria-label={`Select ${p.insuredParty.name}`}
-                      />
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={colCount} className="text-muted-foreground h-24 text-center text-sm">
+                  Loading…
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
-                  ) : null}
-                  <TableCell className="font-medium">{p.insuredParty.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{p.insuredParty.customerId ?? "—"}</TableCell>
-                  <TableCell>{p.category?.key ?? "—"}</TableCell>
-                  <TableCell>{p.policyType.name}</TableCell>
-                  <TableCell>{y0 ? sumLabel(y0.sumInsured) : "—"}</TableCell>
-                  <TableCell>{p.village ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-sm">{p.insuredParty.mobile}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/policies/${p.id}`}>View</Link>
-                      </Button>
-                      {canEdit ? (
-                        <Button variant="secondary" size="sm" asChild>
-                          <Link href={`/policies/${p.id}`}>Edit</Link>
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={receiptBusyId === p.id}
-                        onClick={() => void printReceiptForRow(p.id)}
-                      >
-                        {receiptBusyId === p.id ? "…" : "Receipt"}
-                      </Button>
-                      {canDel ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive"
-                          onClick={() => setRowDeleteId(p.id)}
-                        >
-                          Delete
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
+                  ))}
                 </TableRow>
-              );
-            })}
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={colCount} className="text-muted-foreground h-24 text-center text-sm">
+                  No policies match.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
 
-      {rows.length === 0 && !loading ? (
-        <p className="text-muted-foreground text-sm">No policies found.</p>
-      ) : null}
-
-      {total > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p className="text-muted-foreground">
-            Page {page} of {totalPages} ({total} total)
+      <div className="text-muted-foreground flex flex-col gap-3 px-0 sm:flex-row sm:items-center sm:justify-between sm:px-1">
+        <p className="text-sm">
+          {selectedCount} of {rows.length} on this page selected
+          {total > 0 ? ` · ${total} total` : ""}
+        </p>
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-6">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="policies-page-size" className="whitespace-nowrap text-sm">
+              Rows
+            </Label>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => {
+                const n = Number(v);
+                setPageSize(n);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger id="policies-page-size" className="h-8 w-[72px] cursor-pointer" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 30, 50].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="whitespace-nowrap text-sm">
+            Page {page} of {Math.max(1, totalPages)}
+            {total > 0 ? ` (${total} total)` : ""}
           </p>
-          <div className="flex gap-1">
-            <Button type="button" size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(1)}>
-              First
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="size-8 p-0"
+              onClick={() => setPage(1)}
+              disabled={page <= 1 || loading}
+            >
+              <span className="sr-only">First page</span>
+              <ChevronsLeft className="size-4" />
             </Button>
             <Button
               type="button"
-              size="sm"
               variant="outline"
-              disabled={page <= 1}
+              className="size-8 p-0"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
             >
-              Previous
+              <span className="sr-only">Previous</span>
+              <ChevronLeft className="size-4" />
             </Button>
             <Button
               type="button"
-              size="sm"
               variant="outline"
-              disabled={page >= totalPages}
+              className="size-8 p-0"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
             >
-              Next
+              <span className="sr-only">Next</span>
+              <ChevronRight className="size-4" />
             </Button>
             <Button
               type="button"
-              size="sm"
               variant="outline"
-              disabled={page >= totalPages}
+              className="size-8 p-0"
               onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages || loading}
             >
-              Last
+              <span className="sr-only">Last page</span>
+              <ChevronsRight className="size-4" />
             </Button>
           </div>
         </div>
-      ) : null}
+      </div>
 
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete selected policies?</DialogTitle>
             <DialogDescription>
-              This will soft-delete {selected.size} polic{selected.size === 1 ? "y" : "ies"}. This action is reserved for
+              This will soft-delete {selectedCount} polic{selectedCount === 1 ? "y" : "ies"}. This action is reserved for
               administrators.
             </DialogDescription>
           </DialogHeader>

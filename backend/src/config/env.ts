@@ -28,6 +28,15 @@ const schema = z.object({
   MAX_UPLOAD_SIZE: z.coerce.number().min(1_000).default(2_000_000),
   /** Express JSON payload limit, e.g. 2mb */
   JSON_LIMIT: z.string().default("2mb"),
+  /**
+   * Google Drive (service account): folder ID where policy documents are uploaded.
+   * Share the folder with the service account email (Editor). Optional; without it, `/upload/google-drive` returns 503.
+   */
+  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
+  /** Path to service account JSON key file (alternative to GOOGLE_SERVICE_ACCOUNT_JSON). */
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+  /** Full service account JSON as a single line (use \\n in private_key). Optional if GOOGLE_APPLICATION_CREDENTIALS is set. */
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -11,8 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
+import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { FilePlus, FilePenLine, Loader2, Minus, Plus, ArrowLeft, Calculator } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +31,7 @@ import {
   policyDetailToAdFormValues,
   type SvkkPolicyDetailForForm,
 } from "./ad-policy-detail-to-form";
+import { PolicyDriveUploadButton } from "./policy-drive-upload";
 import type { PolicyGrouping } from "./ad-policy-types";
 
 export type { AdMemberRow } from "./ad-member-types";
@@ -91,10 +94,12 @@ export type AdPolicyAddFormProps = {
 
 export function AdPolicyAddForm({ policyId }: AdPolicyAddFormProps = {}) {
   const router = useRouter();
+  const { user } = useSvkkAuth();
   const idPrefix = useId();
   const idemKeyRef = useRef(crypto.randomUUID());
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
+  const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
 
   const [policyTypeId, setPolicyTypeId] = useState("");
   const [policyChartId, setPolicyChartId] = useState("");
@@ -1133,7 +1138,27 @@ export function AdPolicyAddForm({ policyId }: AdPolicyAddFormProps = {}) {
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Policy URL</Label>
-              <Input name="url" value={values.url} onChange={handleChange} onBlur={handleBlur} />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  name="url"
+                  value={values.url}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="min-w-0 flex-1"
+                />
+                {canDriveUpload && !missingUrl ? (
+                  <PolicyDriveUploadButton
+                    policyId={isEdit ? policyId : undefined}
+                    expectedUpdatedAt={isEdit && detail ? detail.updatedAt : undefined}
+                    onUploaded={(url, meta) => {
+                      void setFieldValue("url", url);
+                      if (isEdit && detail && meta?.updatedAt) {
+                        setDetail((d) => (d ? { ...d, updatedAt: meta.updatedAt!, policyUrl: url } : d));
+                      }
+                    }}
+                  />
+                ) : null}
+              </div>
             </div>
           </CardContent>
         </Card>

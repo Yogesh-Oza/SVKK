@@ -13,8 +13,15 @@ import { CsvJobStatus, CsvUpdateMode } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
+import { uploadBufferToGoogleDrive } from "../../services/google-drive.service.js";
+import { updatePolicySections } from "../policy/policy.service.js";
+import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const uploadDrive = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 32 * 1024 * 1024 },
+});
 
 function parseCsvLine(line: string): string[] {
   return line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
@@ -165,6 +172,84 @@ export function createUploadRouter(env: Env) {
           successCount: success,
           failCount: fail,
           errors: errors.slice(0, 50),
+        });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  /**
+   * Multipart: `file` (required), optional `policyId`, optional `expectedUpdatedAt` (ISO, for optimistic PATCH).
+   * Uploads to the shared Drive folder and returns a view link. When `policyId` is set, updates `policy.policyUrl`.
+   */
+  r.post(
+    "/google-drive",
+    requirePermission("upload:google-drive"),
+    uploadDrive.single("file"),
+    async (req, res, next) => {
+      try {
+        if (!req.file?.buffer) {
+          throw new AppError("FILE_REQUIRED", "file is required", 400);
+        }
+
+        const policyId =
+          typeof req.body.policyId === "string" && req.body.policyId.trim()
+            ? req.body.policyId.trim()
+            : undefined;
+        const expectedRaw =
+          typeof req.body.expectedUpdatedAt === "string" ? req.body.expectedUpdatedAt.trim() : "";
+        const expectedUpdatedAt = expectedRaw ? new Date(expectedRaw) : undefined;
+        if (expectedRaw && Number.isNaN(expectedUpdatedAt?.getTime())) {
+          throw new AppError("VALIDATION", "expectedUpdatedAt must be a valid ISO date", 400);
+        }
+
+        const { webViewLink, fileId } = await uploadBufferToGoogleDrive(env, {
+          buffer: req.file.buffer,
+          mimeType: req.file.mimetype || "application/octet-stream",
+          fileName: req.file.originalname || "policy-document",
+        });
+
+        let updatedAt: string | undefined;
+
+        if (policyId) {
+          const scope = await loadMisScope(req.userId!, req.userRole!);
+          const existing = await prisma.policy.findUnique({
+            where: { id: policyId },
+            select: { id: true, village: true, createdById: true },
+          });
+          if (!existing) {
+            throw new AppError("NOT_FOUND", "Policy not found", 404);
+          }
+          assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+
+          const updated = await updatePolicySections({
+            actorUserId: req.userId!,
+            policyId,
+            expectedUpdatedAt:
+              expectedUpdatedAt && !Number.isNaN(expectedUpdatedAt.getTime())
+                ? expectedUpdatedAt
+                : undefined,
+            policy: { policyUrl: webViewLink },
+          });
+          updatedAt = updated.updatedAt.toISOString();
+
+          await writeActivityLog({
+            userId: req.userId!,
+            module: "upload",
+            action: "POLICY_DRIVE_DOC_ATTACHED",
+            entityType: "Policy",
+            entityId: policyId,
+            afterData: { driveFileId: fileId, policyUrl: webViewLink },
+          });
+        }
+
+        res.status(201).json({
+          fileId,
+          webViewLink,
+          policyUrl: webViewLink,
+          policyUpdated: Boolean(policyId),
+          updatedAt,
         });
       } catch (e) {
         next(e);

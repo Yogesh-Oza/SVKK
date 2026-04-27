@@ -12,6 +12,8 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "admin:charts": ["SUPER_ADMIN", "ADMIN"],
   "admin:policyTypes": ["SUPER_ADMIN", "ADMIN"],
   "upload:csv": ["SUPER_ADMIN", "ADMIN"],
+  /** Policy document upload to shared Google Drive folder (service account). */
+  "upload:google-drive": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
   "logs:read": ["SUPER_ADMIN", "ADMIN"],
   "mis:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   "claim:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
