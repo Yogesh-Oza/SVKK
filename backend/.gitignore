@@ -2,6 +2,11 @@ node_modules
 dist
 .env
 uploads
+
+# Google Cloud service account keys (never commit)
+google-cloud-vision.json
+*-service-account*.json
+**/secrets/*.json
 *.log
 scripts/legacy-migrate/logs/
 scripts/legacy-migrate/.migration.lock
