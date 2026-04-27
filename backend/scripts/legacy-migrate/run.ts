@@ -176,6 +176,13 @@ Optional CLI: --legacy-db=techuico_insurance
   console.error(
     `[legacy-migrate] ${dryRun ? "Dry-run" : "Apply"}: processing up to ${metrics.totalPolicyRows} policy rows (see JSON summary when done)…`,
   );
+  /** Apply does one DB transaction per row — can be slow; dry-run is in-memory so wider spacing is fine. */
+  const progressEvery = apply ? 10 : defaultProgressEveryN;
+  if (apply) {
+    console.error(
+      `[legacy-migrate] Apply: progress prints every ${progressEvery} rows; each policy uses a DB transaction (wait if this line is the only output for a while).`,
+    );
+  }
 
   try {
     while (!stopAll && !interrupted) {
@@ -297,7 +304,7 @@ Optional CLI: --legacy-db=techuico_insurance
           }
         }
 
-        if (processed % defaultProgressEveryN === 0) {
+        if (processed % progressEvery === 0) {
           console.error(`Progress: processed ${processed} rows (last ref_no=${lastRefNo})`);
         }
       }
