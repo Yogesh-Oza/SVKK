@@ -13,5 +13,5 @@ export function toAdProductVariant(v: string): AdProductVariant | undefined {
 export const AD_PRODUCT_OPTIONS = [
   { value: "Family-Floater", label: "Family Floater" },
   { value: "Individual", label: "Individual" },
-  { value: "Asha-Kiran", label: "Asha kiran" },
+  { value: "Asha-Kiran", label: "Asha Kiran" },
 ] as const;

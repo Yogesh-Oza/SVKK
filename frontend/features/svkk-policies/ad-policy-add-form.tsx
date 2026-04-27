@@ -412,7 +412,7 @@ export function AdPolicyAddForm() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-10">
+    <div className="mx-auto max-w-6xl space-y-6 pb-10 select-text">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
@@ -448,7 +448,7 @@ export function AdPolicyAddForm() {
         </p>
       ) : null}
 
-      <form onSubmit={onSubmit} className="space-y-6">
+      <form onSubmit={onSubmit} className="space-y-6 select-text">
         {err ? <p className="text-destructive text-sm">{err}</p> : null}
 
         <Card>
