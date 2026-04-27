@@ -8,10 +8,16 @@ import {
   createPolicyWithYear,
   updatePolicySections,
   softDeletePolicy,
+  type InsuredPartySectionPatch,
   type PolicySectionPatch,
   type PolicyYearSectionPatch,
 } from "./policy.service.js";
-import { createPolicyBodySchema, patchPolicyBodySchema, yearValueKeys } from "./policy.schemas.js";
+import {
+  createPolicyBodySchema,
+  patchPolicyBodySchema,
+  yearValueKeys,
+  type PolicyMemberReplaceRow,
+} from "./policy.schemas.js";
 import {
   buildPolicyListWhere,
   distinctFilterOptions,
@@ -34,8 +40,10 @@ function patchBodyToInput(
   expectedUpdatedAt?: Date;
   policy: PolicySectionPatch;
   year?: PolicyYearSectionPatch;
+  insuredParty?: InsuredPartySectionPatch;
+  replaceMembers?: { yearLabel: string; members: PolicyMemberReplaceRow[] };
 } {
-  const { expectedUpdatedAt, ...rest } = body;
+  const { expectedUpdatedAt, insuredParty: partyBody, members: membersBody, ...rest } = body;
   const policy: PolicySectionPatch = {};
   if (rest.policyNo !== undefined) policy.policyNo = rest.policyNo;
   if (rest.categoryId !== undefined) policy.categoryId = rest.categoryId;
@@ -79,11 +87,29 @@ function patchBodyToInput(
   if (rest.periodYearText !== undefined) policy.periodYearText = rest.periodYearText;
   if (rest.periodMonthText !== undefined) policy.periodMonthText = rest.periodMonthText;
 
+  let insuredParty: InsuredPartySectionPatch | undefined;
+  if (partyBody) {
+    const entries = Object.entries(partyBody).filter(([, v]) => v !== undefined);
+    if (entries.length > 0) {
+      insuredParty = Object.fromEntries(entries) as InsuredPartySectionPatch;
+    }
+  }
+
+  const replaceMembers =
+    membersBody != null && membersBody.length > 0 && rest.yearLabel
+      ? { yearLabel: rest.yearLabel, members: membersBody }
+      : undefined;
+
   const raw = rest as Record<string, unknown>;
   const hasYear =
     Boolean(rest.yearLabel) && yearValueKeys.some((k) => raw[k] !== undefined);
   if (!hasYear) {
-    return { policy, ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}) };
+    return {
+      policy,
+      ...(insuredParty ? { insuredParty } : {}),
+      ...(replaceMembers ? { replaceMembers } : {}),
+      ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}),
+    };
   }
   const year: PolicyYearSectionPatch = { yearLabel: rest.yearLabel! };
   for (const k of yearValueKeys) {
@@ -92,7 +118,13 @@ function patchBodyToInput(
       Object.assign(year, { [k]: v });
     }
   }
-  return { policy, year, ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}) };
+  return {
+    policy,
+    year,
+    ...(insuredParty ? { insuredParty } : {}),
+    ...(replaceMembers ? { replaceMembers } : {}),
+    ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}),
+  };
 }
 
 export function createPolicyRouter(env: Env) {
@@ -301,13 +333,15 @@ export function createPolicyRouter(env: Env) {
       assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
 
       const parsed = patchPolicyBodySchema.parse(req.body);
-      const { policy, year, expectedUpdatedAt } = patchBodyToInput(parsed);
+      const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers } = patchBodyToInput(parsed);
       const row = await updatePolicySections({
         actorUserId: req.userId!,
         policyId: String(req.params.id),
         expectedUpdatedAt: expectedUpdatedAt ?? undefined,
         policy,
         year,
+        insuredParty,
+        replaceMembers,
       });
       res.json({
         ...row,

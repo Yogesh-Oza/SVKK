@@ -13,18 +13,22 @@ import {
 } from "@/components/ui/select";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
-import { FilePlus, Loader2, Minus, Plus, ArrowLeft, Calculator } from "lucide-react";
+import { FilePlus, FilePenLine, Loader2, Minus, Plus, ArrowLeft, Calculator } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
 import { AD_PRODUCT_OPTIONS } from "./ad-product-variant";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
-import { submitAdPolicyRequest } from "./ad-policy-submit";
+import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
+import {
+  policyDetailToAdFormValues,
+  type SvkkPolicyDetailForForm,
+} from "./ad-policy-detail-to-form";
 import type { PolicyGrouping } from "./ad-policy-types";
 
 export type { AdMemberRow } from "./ad-member-types";
@@ -80,25 +84,60 @@ const PAYMENT_MODES = [
   { value: "CHEQUE", label: "Cheque" },
 ] as const;
 
-export function AdPolicyAddForm() {
+export type AdPolicyAddFormProps = {
+  /** When set, loads this policy and saves via PATCH (same fields as Add policy). */
+  policyId?: string;
+};
+
+export function AdPolicyAddForm({ policyId }: AdPolicyAddFormProps = {}) {
   const router = useRouter();
   const idPrefix = useId();
   const idemKeyRef = useRef(crypto.randomUUID());
   const missingUrl = !getSvkkApiBase();
+  const isEdit = Boolean(policyId);
 
   const [policyTypeId, setPolicyTypeId] = useState("");
   const [policyChartId, setPolicyChartId] = useState("");
   const [chartOpts, setChartOpts] = useState<ChartRow[]>([]);
   const [apiErr, setApiErr] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SvkkPolicyDetailForForm | null>(null);
+  const [detailErr, setDetailErr] = useState<string | null>(null);
+
+  const initialValues = useMemo(() => {
+    if (isEdit && detail) {
+      return policyDetailToAdFormValues(detail);
+    }
+    return getAdPolicyInitialValues();
+  }, [isEdit, detail]);
 
   const formik = useFormik<AdPolicyFormValues>({
-    initialValues: getAdPolicyInitialValues(),
+    initialValues,
+    enableReinitialize: true,
     validationSchema: adPolicyValidationSchema,
     validateOnBlur: true,
     validateOnChange: true,
     onSubmit: async (values) => {
       setApiErr(null);
+      if (isEdit && policyId && detail) {
+        const y = detail.years[0];
+        if (!y) {
+          setApiErr("This policy has no year row to update.");
+          return;
+        }
+        try {
+          await submitAdPolicyPatchRequest({
+            policyId,
+            values,
+            expectedUpdatedAt: detail.updatedAt,
+            yearLabel: y.yearLabel,
+          });
+          void router.push(`/policies/${policyId}`);
+        } catch (e) {
+          setApiErr(e instanceof Error ? e.message : "Update failed");
+        }
+        return;
+      }
       if (!policyTypeId || !policyChartId) {
         setApiErr("Policy type / chart not loaded.");
         return;
@@ -136,7 +175,7 @@ export function AdPolicyAddForm() {
   }, []);
 
   useEffect(() => {
-    if (missingUrl) {
+    if (missingUrl || isEdit) {
       return;
     }
     void (async () => {
@@ -147,7 +186,22 @@ export function AdPolicyAddForm() {
         setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
       }
     })();
-  }, [missingUrl, loadAdPolicyType]);
+  }, [missingUrl, loadAdPolicyType, isEdit]);
+
+  useEffect(() => {
+    if (missingUrl || !isEdit || !policyId) {
+      return;
+    }
+    void (async () => {
+      setDetailErr(null);
+      try {
+        const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${policyId}`);
+        setDetail(row);
+      } catch (e) {
+        setDetailErr(e instanceof Error ? e.message : "Failed to load policy");
+      }
+    })();
+  }, [missingUrl, isEdit, policyId]);
 
   useEffect(() => {
     void setFieldValue("age", ageFromDob(values.dob));
@@ -176,7 +230,14 @@ export function AdPolicyAddForm() {
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
   }
-  if (loadErr) {
+  if (isEdit) {
+    if (detailErr) {
+      return <p className="text-destructive text-sm">{detailErr}</p>;
+    }
+    if (!detail) {
+      return <p className="text-muted-foreground text-sm">Loading policy…</p>;
+    }
+  } else if (loadErr) {
     return <p className="text-destructive text-sm">{loadErr}</p>;
   }
 
@@ -185,12 +246,17 @@ export function AdPolicyAddForm() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <FilePlus className="text-primary size-6" />
-            <h1 className="text-2xl font-semibold">Add AD policy</h1>
+            {isEdit ? (
+              <FilePenLine className="text-primary size-6" />
+            ) : (
+              <FilePlus className="text-primary size-6" />
+            )}
+            <h1 className="text-2xl font-semibold">{isEdit ? "Edit AD policy" : "Add AD policy"}</h1>
           </div>
           <p className="text-muted-foreground text-sm max-w-2xl">
-            Full data entry for the AD product (Family Floater / Individual / Asha Kiran). Premium
-            calculator is a separate page.
+            {isEdit
+              ? "Same form as Add policy, prefilled from the server. Saving updates this policy and the latest policy year."
+              : "Full data entry for the AD product (Family Floater / Individual / Asha Kiran). Premium calculator is a separate page."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -201,15 +267,15 @@ export function AdPolicyAddForm() {
             </Link>
           </Button>
           <Button type="button" variant="outline" asChild>
-            <Link href="/policies" className="gap-1">
+            <Link href={isEdit && policyId ? `/policies/${policyId}` : "/policies"} className="gap-1">
               <ArrowLeft className="size-4" />
-              Policies
+              {isEdit ? "Back to policy" : "Policies"}
             </Link>
           </Button>
         </div>
       </div>
 
-      {policyChartId ? (
+      {!isEdit && policyChartId ? (
         <p className="text-muted-foreground text-xs">
           Active rate chart: v
           {chartOpts.find((c) => c.id === policyChartId)?.version} —{" "}
@@ -1074,7 +1140,13 @@ export function AdPolicyAddForm() {
 
         <div className="flex justify-end">
           <Button type="submit" disabled={isSubmitting} className="min-w-40">
-            {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Submit"}
+            {isSubmitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : isEdit ? (
+              "Save changes"
+            ) : (
+              "Submit"
+            )}
           </Button>
         </div>
       </form>

@@ -72,7 +72,7 @@ const initialPaymentSchema = z
     }
   });
 
-const memberCreateSchema = z.object({
+export const memberCreateSchema = z.object({
   name: z.string().min(1),
   dob: z.coerce.date(),
   relationship: z.string().min(1),
@@ -85,6 +85,8 @@ const memberCreateSchema = z.object({
   basicPremium: z.number().nonnegative().nullish().optional(),
   ageAtEntry: z.coerce.number().int().min(0).max(150).nullish().optional(),
 });
+
+export type PolicyMemberReplaceRow = z.infer<typeof memberCreateSchema>;
 
 const adPolicyExtraSchema = z.object({
   customerId: z.string().max(64).optional().nullable(),
@@ -179,6 +181,21 @@ export const yearValueKeys = [
   "holderBasicPremium",
 ] as const;
 
+const insuredPartyPatchSchema = z.object({
+  partyName: z.string().min(1).max(200).optional(),
+  mobile: z.string().min(1).max(20).optional(),
+  email: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
+  pan: z
+    .preprocess(
+      (v) => (v === null || v === "" || v === undefined ? null : v),
+      z.union([z.string().regex(panRegex), z.null()]).optional(),
+    )
+    .optional(),
+  dateOfBirth: z.coerce.date().optional().nullable(),
+  customerId: z.string().max(64).optional().nullable(),
+  svkkPublicId: z.string().min(1).max(64).optional().nullable(),
+});
+
 /** Partial update: any subset of policy + optional one year (requires `yearLabel` when any year field is set). */
 export const patchPolicyBodySchema = z
   .object({
@@ -193,6 +210,8 @@ export const patchPolicyBodySchema = z
     policyEnd: z.coerce.date().optional().nullable(),
     sumInsured: z.number().positive().optional().nullable(),
     expectedNetPremium: z.number().nonnegative().optional().nullable(),
+    insuredParty: insuredPartyPatchSchema.optional(),
+    members: z.array(memberCreateSchema).min(1).optional(),
   })
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)
@@ -203,5 +222,8 @@ export const patchPolicyBodySchema = z
     );
     if (hasYearField && !data.yearLabel) {
       ctx.addIssue({ code: "custom", message: "yearLabel is required when updating a policy year" });
+    }
+    if (data.members != null && !data.yearLabel) {
+      ctx.addIssue({ code: "custom", message: "yearLabel is required when replacing members" });
     }
   });

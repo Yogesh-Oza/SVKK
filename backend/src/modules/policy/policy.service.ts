@@ -13,7 +13,7 @@ import { normalizeMobile } from "../../domain/phone.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
-import { createPolicyBodySchema } from "./policy.schemas.js";
+import { createPolicyBodySchema, type PolicyMemberReplaceRow } from "./policy.schemas.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -317,6 +317,16 @@ export async function resolveChartsForType(
   return { chartMode: pt.chartMode, holder, member };
 }
 
+export type InsuredPartySectionPatch = {
+  partyName?: string;
+  mobile?: string;
+  email?: string | null;
+  pan?: string | null;
+  dateOfBirth?: Date | null;
+  customerId?: string | null;
+  svkkPublicId?: string | null;
+};
+
 export type PolicySectionPatch = {
   policyNo?: string | null;
   categoryId?: string | null;
@@ -387,6 +397,108 @@ export type PolicyYearSectionPatch = {
   holderBasicPremium?: number | null;
 };
 
+function slimInsuredPartyPatch(p: InsuredPartySectionPatch): InsuredPartySectionPatch {
+  return Object.fromEntries(
+    Object.entries(p).filter(([, v]) => v !== undefined),
+  ) as InsuredPartySectionPatch;
+}
+
+async function applyInsuredPartyPatch(
+  tx: Prisma.TransactionClient,
+  partyId: string,
+  patch: InsuredPartySectionPatch,
+): Promise<boolean> {
+  const slim = slimInsuredPartyPatch(patch);
+  const data: Prisma.InsuredPartyUpdateInput = {};
+  if (slim.partyName !== undefined) data.name = slim.partyName;
+  if (slim.email !== undefined) data.email = slim.email === "" ? null : slim.email;
+  if (slim.pan !== undefined) data.pan = slim.pan;
+  if (slim.dateOfBirth !== undefined) data.dateOfBirth = slim.dateOfBirth;
+  if (slim.customerId !== undefined) {
+    data.customerId = slim.customerId;
+  }
+  if (slim.svkkPublicId !== undefined && slim.svkkPublicId != null) {
+    data.svkkPublicId = slim.svkkPublicId;
+  }
+  if (slim.mobile !== undefined) {
+    data.mobile = normalizeMobile(slim.mobile);
+  }
+  if (Object.keys(data).length === 0) {
+    return false;
+  }
+
+  const current = await tx.insuredParty.findUniqueOrThrow({ where: { id: partyId } });
+  if (slim.mobile !== undefined) {
+    const m = normalizeMobile(slim.mobile);
+    if (m !== current.mobile) {
+      const clash = await tx.insuredParty.findFirst({ where: { mobile: m, NOT: { id: partyId } } });
+      if (clash) {
+        throw new AppError("CONFLICT", "Mobile number already in use", 409);
+      }
+    }
+  }
+  if (
+    slim.svkkPublicId !== undefined &&
+    slim.svkkPublicId != null &&
+    slim.svkkPublicId !== current.svkkPublicId
+  ) {
+    const clash = await tx.insuredParty.findFirst({
+      where: { svkkPublicId: slim.svkkPublicId, NOT: { id: partyId } },
+    });
+    if (clash) {
+      throw new AppError("CONFLICT", "SVKK ID already in use", 409);
+    }
+  }
+  if (slim.customerId !== undefined && slim.customerId !== current.customerId && slim.customerId) {
+    const clash = await tx.insuredParty.findFirst({
+      where: { customerId: slim.customerId, NOT: { id: partyId } },
+    });
+    if (clash) {
+      throw new AppError("CONFLICT", "Customer ID already in use", 409);
+    }
+  }
+
+  await tx.insuredParty.update({ where: { id: partyId }, data });
+  return true;
+}
+
+async function replaceYearMembers(
+  tx: Prisma.TransactionClient,
+  policyId: string,
+  yearLabel: string,
+  members: PolicyMemberReplaceRow[],
+) {
+  const yearRow = await tx.policyYear.findUnique({
+    where: { policyId_yearLabel: { policyId, yearLabel } },
+  });
+  if (!yearRow || yearRow.deletedAt) {
+    throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
+  }
+  await tx.member.updateMany({
+    where: { policyYearId: yearRow.id, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  for (const m of members) {
+    await tx.member.create({
+      data: {
+        policyYearId: yearRow.id,
+        name: m.name,
+        dob: m.dob,
+        relationship: m.relationship,
+        gender: m.gender,
+        riderAmount: m.riderAmount ?? 0,
+        sumInsured: m.sumInsured != null && m.sumInsured !== undefined ? m.sumInsured : undefined,
+        cumulativeBonus:
+          m.cumulativeBonus != null && m.cumulativeBonus !== undefined ? m.cumulativeBonus : undefined,
+        dateOfJoining: m.dateOfJoining ?? undefined,
+        memberPhone: m.memberPhone ?? undefined,
+        basicPremium: m.basicPremium != null && m.basicPremium !== undefined ? m.basicPremium : undefined,
+        ageAtEntry: m.ageAtEntry != null && m.ageAtEntry !== undefined ? m.ageAtEntry : undefined,
+      },
+    });
+  }
+}
+
 /**
  * Updates policy and optionally one policy year; writes an activity log with before/after snapshots.
  */
@@ -396,10 +508,12 @@ export async function updatePolicySections(input: {
   expectedUpdatedAt?: Date | null;
   policy: PolicySectionPatch;
   year?: PolicyYearSectionPatch;
+  insuredParty?: InsuredPartySectionPatch;
+  replaceMembers?: { yearLabel: string; members: PolicyMemberReplaceRow[] };
 }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: null },
-    include: { years: { orderBy: { yearLabel: "desc" } } },
+    include: { years: { orderBy: { yearLabel: "desc" } }, insuredParty: true },
   });
   if (!existing) {
     throw new AppError("NOT_FOUND", "Policy not found", 404);
@@ -413,6 +527,13 @@ export async function updatePolicySections(input: {
 
   if (input.year) {
     const y = existing.years.find((x) => x.yearLabel === input.year!.yearLabel);
+    if (!y) {
+      throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
+    }
+  }
+
+  if (input.replaceMembers) {
+    const y = existing.years.find((x) => x.yearLabel === input.replaceMembers!.yearLabel);
     if (!y) {
       throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
     }
@@ -449,13 +570,25 @@ export async function updatePolicySections(input: {
         y.holderBasicPremium,
       ].some((v) => v !== undefined)
     : false;
-  if (!hasPolicyFields && (!y || !hasYearValueFields)) {
+  const hasInsuredParty =
+    input.insuredParty != null && Object.keys(slimInsuredPartyPatch(input.insuredParty)).length > 0;
+  const hasReplaceMembers = Boolean(input.replaceMembers?.members.length);
+  if (!hasPolicyFields && (!y || !hasYearValueFields) && !hasInsuredParty && !hasReplaceMembers) {
     throw new AppError("NO_CHANGES", "No fields to update", 400);
   }
 
   const beforeSnapshot = { policy: existing, yearLabel: input.year?.yearLabel };
 
   const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    let bumpVersionWithoutPolicyRow = false;
+
+    if (hasInsuredParty && input.insuredParty) {
+      const did = await applyInsuredPartyPatch(tx, existing.insuredPartyId, input.insuredParty);
+      if (did) {
+        bumpVersionWithoutPolicyRow = true;
+      }
+    }
+
     if (hasPolicyFields) {
       await tx.policy.update({
         where: { id: input.policyId },
@@ -464,46 +597,61 @@ export async function updatePolicySections(input: {
     }
 
     if (input.year) {
-      const y = input.year;
+      const yv = input.year;
       const yearData: Prisma.PolicyYearUpdateInput = {
-        ...(y.policyStart !== undefined ? { policyStart: y.policyStart } : {}),
-        ...(y.policyEnd !== undefined ? { policyEnd: y.policyEnd } : {}),
-        ...(y.sumInsured !== undefined ? { sumInsured: y.sumInsured } : {}),
-        ...(y.expectedNetPremium !== undefined ? { expectedNetPremium: y.expectedNetPremium } : {}),
-        ...(y.paymentMode !== undefined ? { paymentMode: y.paymentMode } : {}),
-        ...(y.paymentType !== undefined ? { paymentType: y.paymentType } : {}),
-        ...(y.amountReceived !== undefined ? { amountReceived: y.amountReceived } : {}),
-        ...(y.bankName !== undefined ? { bankName: y.bankName } : {}),
-        ...(y.bankAccountLast4 !== undefined ? { bankAccountLast4: y.bankAccountLast4 } : {}),
-        ...(y.utrRef !== undefined ? { utrRef: y.utrRef } : {}),
-        ...(y.yearRemarks !== undefined ? { yearRemarks: y.yearRemarks } : {}),
-        ...(y.vkkPremium !== undefined ? { vkkPremium: y.vkkPremium } : {}),
-        ...(y.grossPremium !== undefined ? { grossPremium: y.grossPremium } : {}),
-        ...(y.commissionAmount !== undefined ? { commissionAmount: y.commissionAmount } : {}),
-        ...(y.twoLacFloater !== undefined ? { twoLacFloater: y.twoLacFloater } : {}),
-        ...(y.yearPolicyHolderPremium !== undefined
-          ? { yearPolicyHolderPremium: y.yearPolicyHolderPremium }
+        ...(yv.policyStart !== undefined ? { policyStart: yv.policyStart } : {}),
+        ...(yv.policyEnd !== undefined ? { policyEnd: yv.policyEnd } : {}),
+        ...(yv.sumInsured !== undefined ? { sumInsured: yv.sumInsured } : {}),
+        ...(yv.expectedNetPremium !== undefined ? { expectedNetPremium: yv.expectedNetPremium } : {}),
+        ...(yv.paymentMode !== undefined ? { paymentMode: yv.paymentMode } : {}),
+        ...(yv.paymentType !== undefined ? { paymentType: yv.paymentType } : {}),
+        ...(yv.amountReceived !== undefined ? { amountReceived: yv.amountReceived } : {}),
+        ...(yv.bankName !== undefined ? { bankName: yv.bankName } : {}),
+        ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4: yv.bankAccountLast4 } : {}),
+        ...(yv.utrRef !== undefined ? { utrRef: yv.utrRef } : {}),
+        ...(yv.yearRemarks !== undefined ? { yearRemarks: yv.yearRemarks } : {}),
+        ...(yv.vkkPremium !== undefined ? { vkkPremium: yv.vkkPremium } : {}),
+        ...(yv.grossPremium !== undefined ? { grossPremium: yv.grossPremium } : {}),
+        ...(yv.commissionAmount !== undefined ? { commissionAmount: yv.commissionAmount } : {}),
+        ...(yv.twoLacFloater !== undefined ? { twoLacFloater: yv.twoLacFloater } : {}),
+        ...(yv.yearPolicyHolderPremium !== undefined
+          ? { yearPolicyHolderPremium: yv.yearPolicyHolderPremium }
           : {}),
-        ...(y.gaamMahajanVkk !== undefined ? { gaamMahajanVkk: y.gaamMahajanVkk } : {}),
-        ...(y.excessShortAmount !== undefined ? { excessShortAmount: y.excessShortAmount } : {}),
-        ...(y.diffPaidByHolder !== undefined ? { diffPaidByHolder: y.diffPaidByHolder } : {}),
-        ...(y.holderCumulativeBonus !== undefined
-          ? { holderCumulativeBonus: y.holderCumulativeBonus }
+        ...(yv.gaamMahajanVkk !== undefined ? { gaamMahajanVkk: yv.gaamMahajanVkk } : {}),
+        ...(yv.excessShortAmount !== undefined ? { excessShortAmount: yv.excessShortAmount } : {}),
+        ...(yv.diffPaidByHolder !== undefined ? { diffPaidByHolder: yv.diffPaidByHolder } : {}),
+        ...(yv.holderCumulativeBonus !== undefined
+          ? { holderCumulativeBonus: yv.holderCumulativeBonus }
           : {}),
-        ...(y.holderJoiningYear !== undefined ? { holderJoiningYear: y.holderJoiningYear } : {}),
-        ...(y.holderBasicPremium !== undefined ? { holderBasicPremium: y.holderBasicPremium } : {}),
+        ...(yv.holderJoiningYear !== undefined ? { holderJoiningYear: yv.holderJoiningYear } : {}),
+        ...(yv.holderBasicPremium !== undefined ? { holderBasicPremium: yv.holderBasicPremium } : {}),
       };
       if (Object.keys(yearData).length > 0) {
         await tx.policyYear.update({
           where: {
-            policyId_yearLabel: { policyId: input.policyId, yearLabel: y.yearLabel },
+            policyId_yearLabel: { policyId: input.policyId, yearLabel: yv.yearLabel },
           },
           data: yearData,
         });
+        if (!hasPolicyFields) {
+          bumpVersionWithoutPolicyRow = true;
+        }
       }
     }
 
-    if (!hasPolicyFields && (input.year && hasYearValueFields)) {
+    if (input.replaceMembers) {
+      await replaceYearMembers(
+        tx,
+        input.policyId,
+        input.replaceMembers.yearLabel,
+        input.replaceMembers.members,
+      );
+      if (!hasPolicyFields) {
+        bumpVersionWithoutPolicyRow = true;
+      }
+    }
+
+    if (bumpVersionWithoutPolicyRow && !hasPolicyFields) {
       await tx.policy.update({
         where: { id: input.policyId },
         data: { version: { increment: 1 } },

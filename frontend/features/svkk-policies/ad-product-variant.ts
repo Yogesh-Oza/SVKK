@@ -10,6 +10,20 @@ export function toAdProductVariant(v: string): AdProductVariant | undefined {
   return AD_PRODUCT_MAP[v];
 }
 
+const VARIANT_TO_FORM: Record<AdProductVariant, string> = {
+  FAMILY_FLOATER: "Family-Floater",
+  INDIVIDUAL: "Individual",
+  ASHA_KIRAN: "Asha-Kiran",
+};
+
+/** Maps API `AdProductVariant` enum string to Add-policy form select value. */
+export function adProductFormValueFromApi(v: string | null | undefined): string {
+  if (!v) {
+    return "Asha-Kiran";
+  }
+  return VARIANT_TO_FORM[v as AdProductVariant] ?? "Asha-Kiran";
+}
+
 export const AD_PRODUCT_OPTIONS = [
   { value: "Family-Floater", label: "Family Floater" },
   { value: "Individual", label: "Individual" },

@@ -18,16 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { openPolicyReceiptPrint } from "@/lib/svkk/policy-receipt-print";
@@ -108,9 +100,6 @@ export default function SvkkPolicyDetailPage() {
 
   const [row, setRow] = useState<PolicyDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [village, setVillage] = useState("");
-  const [policyNo, setPolicyNo] = useState("");
-  const [saving, setSaving] = useState(false);
   const [receiptAmt, setReceiptAmt] = useState("");
   const [receiptMode, setReceiptMode] = useState("CASH");
   const [yearId, setYearId] = useState<string | "">("");
@@ -133,8 +122,6 @@ export default function SvkkPolicyDetailPage() {
       try {
         const p = await svkkJson<PolicyDetail>(`/policies/${id}`);
         setRow(p);
-        setVillage(p.village ?? "");
-        setPolicyNo(p.policyNo ?? "");
         if (p.years[0]) {
           setYearId(p.years[0].id);
         }
@@ -143,30 +130,6 @@ export default function SvkkPolicyDetailPage() {
       }
     })();
   }, [id, missingUrl]);
-
-  async function savePolicy() {
-    if (!row) {
-      return;
-    }
-    setSaving(true);
-    try {
-      const body: Record<string, unknown> = {
-        village: village.trim() || null,
-        policyNo: policyNo.trim() || null,
-        expectedUpdatedAt: row.updatedAt,
-      };
-      const updated = await svkkJson<PolicyDetail>(`/policies/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-      setRow(updated);
-      toast.success("Policy updated");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   function printLegacyReceipt() {
     if (!row) return;
@@ -243,6 +206,11 @@ export default function SvkkPolicyDetailPage() {
         >
           {receiptPrintBusy ? "…" : "Print receipt (PDF-style)"}
         </Button>
+        {canPatch ? (
+          <Button type="button" size="sm" asChild>
+            <Link href={`/policies/${id}/edit`}>Edit policy</Link>
+          </Button>
+        ) : null}
       </div>
       <div className="space-y-1 text-sm">
         <p>
@@ -455,23 +423,6 @@ export default function SvkkPolicyDetailPage() {
           </div>
         );
       })()}
-
-      {canPatch ? (
-        <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
-          <h2 className="font-medium">Edit policy fields</h2>
-          <div className="space-y-2">
-            <Label>Village</Label>
-            <Input value={village} onChange={(e) => setVillage(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Policy number</Label>
-            <Input value={policyNo} onChange={(e) => setPolicyNo(e.target.value)} />
-          </div>
-          <Button type="button" size="sm" disabled={saving} onClick={() => void savePolicy()}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      ) : null}
 
       {canRcpt ? (
         <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
