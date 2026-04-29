@@ -246,11 +246,19 @@ export default function SvkkPolicyDetailPage() {
     })();
   }, [id, missingUrl]);
 
-  function printLegacyReceipt() {
+  async function printLegacyReceipt() {
     if (!row) return;
     setReceiptPrintBusy(true);
     try {
-      openPolicyReceiptPrint(row as PolicyDetailForReceipt);
+      const opened = await openPolicyReceiptPrint(row as PolicyDetailForReceipt);
+      if (!opened) {
+        toast.message("Receipt downloaded", {
+          description:
+            "A new tab may have been blocked; the PDF should be in your Downloads folder.",
+        });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not generate receipt PDF");
     } finally {
       setReceiptPrintBusy(false);
     }
@@ -326,7 +334,7 @@ export default function SvkkPolicyDetailPage() {
           variant="outline"
           size="sm"
           disabled={receiptPrintBusy}
-          onClick={() => printLegacyReceipt()}
+          onClick={() => void printLegacyReceipt()}
         >
           {receiptPrintBusy ? "…" : "Print receipt (PDF-style)"}
         </Button>

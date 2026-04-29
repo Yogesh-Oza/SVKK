@@ -2,6 +2,7 @@
  * Legacy-style “computer generated receipt” for browser print (no server PDF).
  * Accepts the JSON shape returned by `GET /policies/:id` (or a compatible subset).
  */
+
 export type PolicyDetailForReceipt = {
   policyNo: string | null;
   referenceNo: string | null;
@@ -113,12 +114,12 @@ export function buildReceiptDocumentHtml(
 </html>`;
 }
 
-export function openPolicyReceiptPrint(p: PolicyDetailForReceipt) {
+export async function openPolicyReceiptPrint(
+  p: PolicyDetailForReceipt,
+): Promise<boolean> {
   const html = buildReceiptDocumentHtml(p);
   const w = window.open("", "_blank", "noopener,noreferrer");
-  if (!w) {
-    return false;
-  }
+  if (!w) return false;
   w.document.write(html);
   w.document.close();
   w.focus();

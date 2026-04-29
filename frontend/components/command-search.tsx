@@ -4,7 +4,6 @@ import {
   IconBarrierBlock,
   IconBrowserCheck,
   IconCalendar,
-  IconChecklist,
   IconCoin,
   IconColumns,
   IconError404,
@@ -18,7 +17,7 @@ import {
   IconUserOff,
   IconUsers,
 } from "@tabler/icons-react";
-import { KanbanIcon, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
@@ -46,11 +45,9 @@ interface CommandSearchProps {
 }
 
 const searchItems: SearchItem[] = [
-  { title: "Tasks", url: "/tasks", group: "Apps", icon: IconChecklist },
   { title: "Alerts", url: "/alerts", group: "Apps", icon: IconNotification, adminOnly: true },
   { title: "Users", url: "/users", group: "Apps", icon: IconUsers, adminOnly: true },
   { title: "Calendar", url: "/calendar", group: "Apps", icon: IconCalendar },
-  { title: "Kanban", url: "/kanban", group: "Apps", icon: KanbanIcon },
   {
     title: "Sign In 1",
     url: "/sign-in-1",

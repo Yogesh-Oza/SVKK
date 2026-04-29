@@ -11,7 +11,7 @@ import type { DashboardMetrics } from "@/features/svkk-dashboard/dashboard-metri
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calculator, FileText, LayoutList, ListChecks, Sparkles } from "lucide-react";
+import { Calculator, FileText, LayoutList, ListChecks } from "lucide-react";
 
 type MisSummary = {
   totalPolicies: number;
@@ -159,17 +159,6 @@ export default function SvkkDashboardPage() {
             </Card>
           </Link>
         ) : null}
-        <Link href="/tasks" className="block">
-          <Card className="hover:bg-muted/50 h-full border-dashed">
-            <CardContent className="flex items-center gap-3 pt-6">
-              <Sparkles className="text-muted-foreground size-5 shrink-0" />
-              <div>
-                <p className="text-sm font-medium">Tasks & workflow</p>
-                <p className="text-muted-foreground text-xs">CRM lists use the same table pattern</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
       </div>
     </div>
   );

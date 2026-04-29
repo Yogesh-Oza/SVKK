@@ -41,10 +41,21 @@ const SORTS: Record<string, Prisma.PolicyOrderByWithRelationInput | Prisma.Polic
   name_desc: { insuredParty: { name: "desc" } },
   village: { village: "asc" },
   "-village": { village: "desc" },
+  village_desc: { village: "desc" },
   policyNo: { policyNo: "asc" },
   "-policyNo": { policyNo: "desc" },
+  policyNo_desc: { policyNo: "desc" },
   referenceNo: { referenceNo: "asc" },
   "-referenceNo": { referenceNo: "desc" },
+  referenceNo_desc: { referenceNo: "desc" },
+  customerId: { insuredParty: { customerId: "asc" } },
+  customerId_desc: { insuredParty: { customerId: "desc" } },
+  categoryKey: { category: { key: "asc" } },
+  categoryKey_desc: { category: { key: "desc" } },
+  policyTypeName: { policyType: { name: "asc" } },
+  policyTypeName_desc: { policyType: { name: "desc" } },
+  mobile: { insuredParty: { mobile: "asc" } },
+  mobile_desc: { insuredParty: { mobile: "desc" } },
 };
 
 function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationInput | Prisma.PolicyOrderByWithRelationInput[] {
@@ -196,6 +207,26 @@ const listInclude = {
     },
   },
 } satisfies Prisma.PolicyInclude;
+
+/** Hard cap to bound memory/time for CSV export; adjust if deployments need more. */
+export const POLICY_LIST_EXPORT_MAX_ROWS = 100_000;
+
+export async function queryPolicyListAll(args: {
+  where: Prisma.PolicyWhereInput;
+  sort: string | undefined;
+}): Promise<
+  Prisma.PolicyGetPayload<{
+    include: typeof listInclude;
+  }>[]
+> {
+  const orderBy = parseOrderBy(args.sort);
+  return prisma.policy.findMany({
+    where: args.where,
+    orderBy,
+    take: POLICY_LIST_EXPORT_MAX_ROWS,
+    include: listInclude,
+  });
+}
 
 export async function queryPolicyList(args: PolicyListArgs) {
   const orderBy = parseOrderBy(args.sort);

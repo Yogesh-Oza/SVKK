@@ -47,7 +47,7 @@ export function DataTableFacetedFilter<TData, TValue>({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 border-dashed cursor-pointer"
+          className="h-8 cursor-pointer border-dashed"
         >
           <PlusCircle />
           {title}
@@ -75,7 +75,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                       <Badge
                         variant="secondary"
                         key={option.value}
-                        className="rounded-sm px-1 font-normal cursor-pointer"
+                        className="cursor-pointer rounded-sm px-1 font-normal"
                       >
                         {option.label}
                       </Badge>
@@ -144,7 +144,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                 <CommandGroup>
                   <CommandItem
                     onSelect={() => column?.setFilterValue(undefined)}
-                    className="justify-center text-center cursor-pointer"
+                    className="cursor-pointer justify-center text-center"
                   >
                     Clear filters
                   </CommandItem>

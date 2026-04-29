@@ -13,20 +13,30 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-interface DataTableColumnHeaderProps<TData, TValue>
-  extends React.HTMLAttributes<HTMLDivElement> {
+interface PoliciesColumnHeaderProps<TData, TValue> {
   column: Column<TData, TValue>;
   title: string;
+  /** Backend `sort` query value for ascending order */
+  sortAsc: string;
+  /** Backend `sort` query value for descending order */
+  sortDesc: string;
+  activeSort: string;
+  onSortChange: (sortKey: string) => void;
+  className?: string;
 }
 
-export function DataTableColumnHeader<TData, TValue>({
+/** Column header matching Tasks table UX (Asc / Desc / Hide), wired to API `sort`. */
+export function PoliciesColumnHeader<TData, TValue>({
   column,
   title,
+  sortAsc,
+  sortDesc,
+  activeSort,
+  onSortChange,
   className,
-}: DataTableColumnHeaderProps<TData, TValue>) {
-  if (!column.getCanSort()) {
-    return <div className={cn(className)}>{title}</div>;
-  }
+}: PoliciesColumnHeaderProps<TData, TValue>) {
+  const sorted =
+    activeSort === sortAsc ? "asc" : activeSort === sortDesc ? "desc" : false;
 
   return (
     <div className={cn("flex items-center space-x-2", className)}>
@@ -35,37 +45,37 @@ export function DataTableColumnHeader<TData, TValue>({
           <Button
             variant="ghost"
             size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent cursor-pointer"
+            className="-ml-3 h-8 cursor-pointer data-[state=open]:bg-accent"
           >
             <span>{title}</span>
-            {column.getIsSorted() === "desc" ? (
-              <ArrowDown />
-            ) : column.getIsSorted() === "asc" ? (
-              <ArrowUp />
+            {sorted === "desc" ? (
+              <ArrowDown className="size-4" />
+            ) : sorted === "asc" ? (
+              <ArrowUp className="size-4" />
             ) : (
-              <ChevronsUpDown />
+              <ChevronsUpDown className="size-4" />
             )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <DropdownMenuItem
-            onClick={() => column.toggleSorting(false)}
             className="cursor-pointer"
+            onClick={() => onSortChange(sortAsc)}
           >
             <ArrowUp className="h-3.5 w-3.5 text-muted-foreground/70" />
             Asc
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => column.toggleSorting(true)}
             className="cursor-pointer"
+            onClick={() => onSortChange(sortDesc)}
           >
             <ArrowDown className="h-3.5 w-3.5 text-muted-foreground/70" />
             Desc
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => column.toggleVisibility(false)}
             className="cursor-pointer"
+            onClick={() => column.toggleVisibility(false)}
           >
             <EyeOff className="h-3.5 w-3.5 text-muted-foreground/70" />
             Hide

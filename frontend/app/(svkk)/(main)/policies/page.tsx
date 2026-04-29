@@ -41,7 +41,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { DataTableViewOptions } from "@/features/tasks/components/data-table-view-options";
+import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
+import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
@@ -114,9 +115,20 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "createdAt_asc", label: "Oldest first" },
   { value: "name", label: "Name A–Z" },
   { value: "name_desc", label: "Name Z–A" },
+  { value: "customerId", label: "Customer ID A–Z" },
+  { value: "customerId_desc", label: "Customer ID Z–A" },
+  { value: "categoryKey", label: "Category A–Z" },
+  { value: "categoryKey_desc", label: "Category Z–A" },
+  { value: "policyTypeName", label: "Policy type A–Z" },
+  { value: "policyTypeName_desc", label: "Policy type Z–A" },
   { value: "village", label: "Village A–Z" },
+  { value: "village_desc", label: "Village Z–A" },
+  { value: "mobile", label: "Mobile A–Z" },
+  { value: "mobile_desc", label: "Mobile Z–A" },
   { value: "policyNo", label: "Policy no. A–Z" },
+  { value: "policyNo_desc", label: "Policy no. Z–A" },
   { value: "referenceNo", label: "Reference no. A–Z" },
+  { value: "referenceNo_desc", label: "Reference no. Z–A" },
 ];
 
 function sumLabel(v: unknown): string {
@@ -170,6 +182,7 @@ export default function SvkkPoliciesPage() {
   const [rowDeleteId, setRowDeleteId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const missingUrl = !getSvkkApiBase();
 
@@ -232,6 +245,45 @@ export default function SvkkPoliciesPage() {
     filterMonth,
     filterYear,
   ]);
+
+  /** Same filters and sort as the table; omit paging so export returns all matching rows. */
+  const exportQueryString = useMemo(() => {
+    const q = new URLSearchParams(queryString);
+    q.delete("page");
+    q.delete("pageSize");
+    return q.toString();
+  }, [queryString]);
+
+  const exportPoliciesCsv = useCallback(async () => {
+    setExportBusy(true);
+    try {
+      const res = await backendApi.get(`/policies/export.csv?${exportQueryString}`, {
+        responseType: "blob",
+      });
+      const truncated = String(res.headers["x-export-truncated"] ?? "").toLowerCase() === "true";
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      a.download = `policies-export-${stamp}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (truncated) {
+        toast.message("Export capped", {
+          description:
+            "More than 100,000 policies matched; the file includes the first 100,000 in the current sort order. Narrow filters if needed.",
+        });
+      } else {
+        toast.success("Policies exported");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  }, [exportQueryString]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -316,13 +368,24 @@ export default function SvkkPoliciesPage() {
     setReceiptBusyId(id);
     try {
       const p = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
-      openPolicyReceiptPrint(p);
+      const opened = await openPolicyReceiptPrint(p);
+      if (!opened) {
+        toast.message("Receipt downloaded", {
+          description:
+            "A new tab may have been blocked; the PDF should be in your Downloads folder.",
+        });
+      }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load policy for receipt");
+      toast.error(e instanceof Error ? e.message : "Could not generate receipt");
     } finally {
       setReceiptBusyId(null);
     }
   }
+
+  const applySort = useCallback((key: string) => {
+    setSort(key);
+    setPage(1);
+  }, []);
 
   const pagination: PaginationState = useMemo(
     () => ({ pageIndex: Math.max(0, page - 1), pageSize }),
@@ -363,7 +426,16 @@ export default function SvkkPoliciesPage() {
       {
         id: "customer",
         accessorFn: (r) => r.insuredParty.name,
-        header: "Name",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Name"
+            sortAsc="name"
+            sortDesc="name_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => {
           const p = row.original;
           const name = p.insuredParty.name;
@@ -391,7 +463,16 @@ export default function SvkkPoliciesPage() {
       {
         id: "customerId",
         accessorFn: (r) => r.insuredParty.customerId ?? "",
-        header: "Customer ID",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Customer ID"
+            sortAsc="customerId"
+            sortDesc="customerId_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => (
           <span className="font-mono text-sm">
             {row.original.insuredParty.customerId ?? "—"}
@@ -401,13 +482,31 @@ export default function SvkkPoliciesPage() {
       {
         id: "category",
         accessorFn: (r) => r.category?.key ?? "",
-        header: "Category",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Category"
+            sortAsc="categoryKey"
+            sortDesc="categoryKey_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => row.original.category?.key ?? "—",
       },
       {
         id: "policyType",
         accessorFn: (r) => r.policyType.name,
-        header: "Policy type",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Policy type"
+            sortAsc="policyTypeName"
+            sortDesc="policyTypeName_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => row.original.policyType.name,
       },
       {
@@ -422,13 +521,31 @@ export default function SvkkPoliciesPage() {
       {
         id: "village",
         accessorFn: (r) => r.village ?? "",
-        header: "Village",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Village"
+            sortAsc="village"
+            sortDesc="village_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => row.original.village ?? "—",
       },
       {
         id: "mobile",
         accessorFn: (r) => r.insuredParty.mobile,
-        header: "Mobile",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Mobile"
+            sortAsc="mobile"
+            sortDesc="mobile_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => (
           <span className="font-mono text-sm whitespace-nowrap">{row.original.insuredParty.mobile}</span>
         ),
@@ -436,7 +553,16 @@ export default function SvkkPoliciesPage() {
       {
         id: "referenceNo",
         accessorFn: (r) => r.referenceNo ?? "",
-        header: "Reference",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Reference"
+            sortAsc="referenceNo"
+            sortDesc="referenceNo_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
         cell: ({ row }) => (
           <span className="font-mono text-sm">{row.original.referenceNo ?? "—"}</span>
         ),
@@ -490,7 +616,7 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [canDel, canEdit, receiptBusyId]);
+  }, [applySort, canDel, canEdit, receiptBusyId, sort]);
 
   const table = useReactTable({
     data: rows,
@@ -551,7 +677,7 @@ export default function SvkkPoliciesPage() {
               <Label htmlFor="policies-sort" className="text-muted-foreground sr-only sm:not-sr-only sm:whitespace-nowrap">
                 Sort
               </Label>
-              <Select value={sort} onValueChange={setSort}>
+              <Select value={sort} onValueChange={applySort}>
                 <SelectTrigger id="policies-sort" className="h-9 w-[160px] cursor-pointer" size="sm">
                   <SelectValue placeholder="Sort" />
                 </SelectTrigger>
@@ -572,11 +698,10 @@ export default function SvkkPoliciesPage() {
               variant="outline"
               size="sm"
               className="h-8 cursor-pointer"
-              onClick={() =>
-                toast.message("Export", { description: "Connect exports to your MIS when ready." })
-              }
+              disabled={loading || exportBusy}
+              onClick={() => void exportPoliciesCsv()}
             >
-              Export
+              {exportBusy ? "Exporting…" : "Export"}
             </Button>
           </div>
         </div>

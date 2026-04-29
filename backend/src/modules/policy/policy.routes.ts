@@ -21,10 +21,12 @@ import {
 import {
   buildPolicyListWhere,
   distinctFilterOptions,
+  POLICY_LIST_EXPORT_MAX_ROWS,
   queryPolicyList,
+  queryPolicyListAll,
   type PolicyListQuery,
 } from "./policy.list.js";
-import { AdProductVariant, ChequeStatus, PolicyGrouping } from "@prisma/client";
+import { AdProductVariant, ChequeStatus, PolicyGrouping, type UserRole } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
@@ -33,6 +35,133 @@ import {
   buildPolicyReadWhere,
   loadMisScope,
 } from "../../services/mis-scope.service.js";
+
+const policyListFiltersSchema = z.object({
+  search: z.string().optional(),
+  village: z.string().optional(),
+  yearLabel: z.string().optional(),
+  periodYearText: z.string().optional(),
+  periodMonthText: z.string().optional(),
+  categoryId: z.string().optional(),
+  categoryKey: z.string().optional(),
+  policyTypeId: z.string().optional(),
+  adProductVariant: z.nativeEnum(AdProductVariant).optional(),
+  month: z.coerce.number().min(1).max(12).optional(),
+  year: z.coerce.number().min(1990).max(2100).optional(),
+  area: z.string().optional(),
+  sumInsured: z.string().optional(),
+  policyGrouping: z.nativeEnum(PolicyGrouping).optional(),
+  chequeStatus: z.nativeEnum(ChequeStatus).optional(),
+  sort: z.string().optional(),
+});
+
+const policyListPagedQuerySchema = policyListFiltersSchema.extend({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): PolicyListQuery {
+  return {
+    search: q.search,
+    village: q.village,
+    yearLabel: q.yearLabel,
+    periodYearText: q.periodYearText,
+    periodMonthText: q.periodMonthText,
+    categoryId: q.categoryId,
+    categoryKey: q.categoryKey,
+    policyTypeId: q.policyTypeId,
+    adProductVariant: q.adProductVariant,
+    month: q.month,
+    year: q.year,
+    area: q.area,
+    sumInsuredStr: q.sumInsured,
+    policyGrouping: q.policyGrouping,
+    chequeStatus: q.chequeStatus,
+    sort: q.sort,
+  };
+}
+
+function csvCell(value: unknown): string {
+  if (value == null) return "";
+  const s =
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? String(value)
+      : value instanceof Date
+        ? value.toISOString()
+        : typeof value === "object" && value !== null && "toString" in value
+          ? String((value as { toString: () => string }).toString())
+          : String(value);
+  if (/[",\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function policiesExportCsv(
+  rows: Awaited<ReturnType<typeof queryPolicyListAll>>,
+  role: UserRole,
+): string {
+  const headers = [
+    "Policy ID",
+    "Name",
+    "Customer ID",
+    "PAN",
+    "Category",
+    "Policy type",
+    "Policy no",
+    "Reference no",
+    "Village",
+    "Mobile",
+    "Area",
+    "Persons insured",
+    "Product (AD)",
+    "Period year",
+    "Period month",
+    "Policy grouping",
+    "Latest year label",
+    "Sum insured",
+    "VKK premium",
+    "Expected net premium",
+    "Remarks",
+    "Created at",
+  ];
+  const lines: string[] = [headers.map(csvCell).join(",")];
+  for (const r of rows) {
+    const party = maskInsuredParty(role, r.insuredParty);
+    const y0 = r.years[0];
+    lines.push(
+      [
+        r.id,
+        party?.name ?? "",
+        party?.customerId ?? "",
+        party?.pan ?? "",
+        r.category ? `${r.category.key} — ${r.category.name}` : "",
+        r.policyType?.name ?? "",
+        r.policyNo ?? "",
+        r.referenceNo ?? "",
+        r.village ?? "",
+        party?.mobile ?? "",
+        r.area ?? "",
+        r.personsInsuredCount ?? "",
+        r.adProductVariant ?? "",
+        r.periodYearText ?? "",
+        r.periodMonthText ?? "",
+        r.policyGrouping ?? "",
+        y0?.yearLabel ?? "",
+        y0?.sumInsured != null ? y0.sumInsured.toString() : "",
+        y0?.vkkPremium != null ? y0.vkkPremium.toString() : "",
+        y0?.expectedNetPremium != null ? y0.expectedNetPremium.toString() : "",
+        r.remarks ?? "",
+        r.createdAt.toISOString(),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  return `\uFEFF${lines.join("\r\n")}`;
+}
 
 function patchBodyToInput(
   body: z.infer<typeof patchPolicyBodySchema>,
@@ -210,50 +339,10 @@ export function createPolicyRouter(env: Env) {
 
   r.get("/", requirePermission("policy:read"), async (req, res, next) => {
     try {
-      const q = z
-        .object({
-          cursor: z.string().optional(),
-          limit: z.coerce.number().min(1).max(100).default(20),
-          page: z.coerce.number().int().min(1).optional(),
-          pageSize: z.coerce.number().int().min(1).max(100).default(20),
-          search: z.string().optional(),
-          village: z.string().optional(),
-          yearLabel: z.string().optional(),
-          periodYearText: z.string().optional(),
-          periodMonthText: z.string().optional(),
-          categoryId: z.string().optional(),
-          categoryKey: z.string().optional(),
-          policyTypeId: z.string().optional(),
-          adProductVariant: z.nativeEnum(AdProductVariant).optional(),
-          month: z.coerce.number().min(1).max(12).optional(),
-          year: z.coerce.number().min(1990).max(2100).optional(),
-          area: z.string().optional(),
-          sumInsured: z.string().optional(),
-          policyGrouping: z.nativeEnum(PolicyGrouping).optional(),
-          chequeStatus: z.nativeEnum(ChequeStatus).optional(),
-          sort: z.string().optional(),
-        })
-        .parse(req.query);
+      const q = policyListPagedQuerySchema.parse(req.query);
 
       const usePage = q.page != null;
-      const listFilter: PolicyListQuery = {
-        search: q.search,
-        village: q.village,
-        yearLabel: q.yearLabel,
-        periodYearText: q.periodYearText,
-        periodMonthText: q.periodMonthText,
-        categoryId: q.categoryId,
-        categoryKey: q.categoryKey,
-        policyTypeId: q.policyTypeId,
-        adProductVariant: q.adProductVariant,
-        month: q.month,
-        year: q.year,
-        area: q.area,
-        sumInsuredStr: q.sumInsured,
-        policyGrouping: q.policyGrouping,
-        chequeStatus: q.chequeStatus,
-        sort: q.sort,
-      };
+      const listFilter = listFilterFromQuery(q);
 
       const scope = await loadMisScope(req.userId!, req.userRole!);
       const where = buildPolicyListWhere(scope, req.userId!, req.userRole!, listFilter);
@@ -286,6 +375,28 @@ export function createPolicyRouter(env: Env) {
           totalPages: out.totalPages,
         });
       }
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/export.csv", requirePermission("policy:read"), async (req, res, next) => {
+    try {
+      const q = policyListFiltersSchema.parse(req.query);
+      const listFilter = listFilterFromQuery(q);
+      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const where = buildPolicyListWhere(scope, req.userId!, req.userRole!, listFilter);
+      const rows = await queryPolicyListAll({ where, sort: listFilter.sort });
+      if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
+        const totalMatching = await prisma.policy.count({ where });
+        if (totalMatching > POLICY_LIST_EXPORT_MAX_ROWS) {
+          res.setHeader("X-Export-Truncated", "true");
+        }
+      }
+      const csv = policiesExportCsv(rows, req.userRole!);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');
+      res.send(csv);
     } catch (e) {
       next(e);
     }

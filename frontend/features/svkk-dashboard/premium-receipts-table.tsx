@@ -1,7 +1,7 @@
 "use client";
 
-import { DataTableFacetedFilter } from "@/features/tasks/components/data-table-filtered";
-import { DataTableViewOptions } from "@/features/tasks/components/data-table-view-options";
+import { DataTableFacetedFilter } from "@/components/data-table/data-table-filtered";
+import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
 import {
   flexRender,
   getCoreRowModel,

@@ -3,13 +3,11 @@ import {
   IconBrowserCheck,
   IconCalendar,
   IconChartBar,
-  IconChecklist,
   IconNotification,
   IconPalette,
   IconSettings,
   IconUserCog,
 } from "@tabler/icons-react";
-import { KanbanIcon } from "lucide-react";
 
 export const sidebarData: SidebarData = {
   navGroups: [
@@ -38,19 +36,9 @@ export const sidebarData: SidebarData = {
       title: "General",
       items: [
         {
-          title: "Tasks",
-          url: "/tasks",
-          icon: IconChecklist,
-        },
-        {
           title: "Calendar",
           url: "/calendar",
           icon: IconCalendar,
-        },
-        {
-          title: "Kanban",
-          url: "/kanban",
-          icon: KanbanIcon,
         },
       ],
     },
