@@ -155,6 +155,7 @@ npm run dev
 
 ## Pending / follow-ups
 
+- Add Policy tabbed UX parity with legacy HTML: section-by-section tabs, dynamic category/month/member-field labeling, and relationship dropdown normalization.
 - S3 for CSV/PDF; optional job queue for large CSVs.
 - Optional DB-driven RBAC from `RolePermission` with cache.
 - CSV `FULL` mode upsert completeness.

@@ -2,19 +2,6 @@
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -42,13 +29,12 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
-import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
-import { openPolicyReceiptPrint } from "@/lib/svkk/policy-receipt-print";
+import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
 import {
   flexRender,
   getCoreRowModel,
@@ -58,9 +44,10 @@ import {
   type RowSelectionState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, MoreHorizontal, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type ListPolicy = {
@@ -105,10 +92,11 @@ type FiltersMeta = {
   sumInsuredValues: string[];
   periodYearTexts: string[];
   periodMonthTexts: string[];
+  policyGroupings: string[];
 };
 
 type CategoryItem = { id: string; key: string; name: string };
-type PolicyTypeItem = { id: string; key: string; name: string };
+type YearActionKind = "edit" | "receipt";
 
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "createdAt", label: "Newest first" },
@@ -141,37 +129,36 @@ function sumLabel(v: unknown): string {
 }
 
 export default function SvkkPoliciesPage() {
+  const router = useRouter();
   const { user } = useSvkkAuth();
   const role = user?.role;
   const canDel = role ? canDeletePolicy(role) : false;
   const canEdit = role ? canUpdatePolicy(role) : false;
+  const canCsvUpload = role === "ADMIN" || role === "SUPER_ADMIN";
 
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
   const prevSearchApplied = useRef(searchApplied);
   const [village, setVillage] = useState("");
   const [yearLabel, setYearLabel] = useState("");
-  const [periodYearText, setPeriodYearText] = useState("");
   const [periodMonthText, setPeriodMonthText] = useState("");
   const [categoryIdState, setCategoryIdState] = useState("");
-  const [policyTypeId, setPolicyTypeId] = useState("");
   const [adVariant, setAdVariant] = useState<string>("");
   const [area, setArea] = useState("");
   const [sumInsured, setSumInsured] = useState("");
   const [policyGrouping, setPolicyGrouping] = useState<string>("");
-  const [chequeStatus, setChequeStatus] = useState<string>("");
-  const [filterMonth, setFilterMonth] = useState<string>("");
-  const [filterYear, setFilterYear] = useState<string>("");
   const [sort, setSort] = useState("createdAt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string>("");
 
   const [rows, setRows] = useState<ListPolicy[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [meta, setMeta] = useState<FiltersMeta | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [policyTypes, setPolicyTypes] = useState<PolicyTypeItem[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -182,7 +169,12 @@ export default function SvkkPoliciesPage() {
   const [rowDeleteId, setRowDeleteId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
+  const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
+  const [rowYearAction, setRowYearAction] = useState<{ policyId: string; kind: YearActionKind } | null>(
+    null,
+  );
 
   const missingUrl = !getSvkkApiBase();
 
@@ -208,23 +200,13 @@ export default function SvkkPoliciesPage() {
     if (searchApplied.trim()) q.set("search", searchApplied.trim());
     if (village.trim()) q.set("village", village.trim());
     if (yearLabel.trim()) q.set("yearLabel", yearLabel.trim());
-    if (periodYearText) q.set("periodYearText", periodYearText);
+    if (yearLabel.trim()) q.set("periodYearText", yearLabel.trim());
     if (periodMonthText) q.set("periodMonthText", periodMonthText);
     if (categoryIdState) q.set("categoryId", categoryIdState);
-    if (policyTypeId) q.set("policyTypeId", policyTypeId);
     if (adVariant) q.set("adProductVariant", adVariant);
     if (area.trim()) q.set("area", area.trim());
     if (sumInsured) q.set("sumInsured", sumInsured);
     if (policyGrouping) q.set("policyGrouping", policyGrouping);
-    if (chequeStatus) q.set("chequeStatus", chequeStatus);
-    if (filterMonth && filterYear) {
-      const m = Number(filterMonth);
-      const y = Number(filterYear);
-      if (m >= 1 && m <= 12 && y >= 1990) {
-        q.set("month", String(m));
-        q.set("year", String(y));
-      }
-    }
     return q.toString();
   }, [
     page,
@@ -233,17 +215,12 @@ export default function SvkkPoliciesPage() {
     searchApplied,
     village,
     yearLabel,
-    periodYearText,
     periodMonthText,
     categoryIdState,
-    policyTypeId,
     adVariant,
     area,
     sumInsured,
     policyGrouping,
-    chequeStatus,
-    filterMonth,
-    filterYear,
   ]);
 
   /** Same filters and sort as the table; omit paging so export returns all matching rows. */
@@ -301,6 +278,30 @@ export default function SvkkPoliciesPage() {
     }
   }, [queryString]);
 
+  const uploadPoliciesCsv = useCallback(async () => {
+    if (!uploadFile) {
+      setUploadMsg("Choose a CSV file first.");
+      return;
+    }
+    setUploadBusy(true);
+    setUploadMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      fd.append("updateMode", "POLICY_ONLY");
+      fd.append("dryRun", "false");
+      fd.append("force", "false");
+      await backendApi.post("/upload/csv", fd);
+      setUploadMsg("CSV uploaded successfully.");
+      setUploadFile(null);
+      await load();
+    } catch (e) {
+      setUploadMsg(e instanceof Error ? e.message : "CSV upload failed");
+    } finally {
+      setUploadBusy(false);
+    }
+  }, [uploadFile, load]);
+
   useEffect(() => {
     if (missingUrl) return;
     void load();
@@ -314,10 +315,6 @@ export default function SvkkPoliciesPage() {
         setMeta(f);
         const cat = await svkkJson<{ items: CategoryItem[] }>("/categories");
         setCategories(cat.items);
-        const pt = await svkkJson<PolicyTypeItem[]>(
-          "/calculation/reference/policy-types",
-        );
-        setPolicyTypes(pt);
       } catch {
         /* non-fatal */
       }
@@ -364,17 +361,27 @@ export default function SvkkPoliciesPage() {
     }
   }
 
-  async function printReceiptForRow(id: string) {
+  function prioritizeYear(
+    p: PolicyDetailForReceipt,
+    selectedYearLabel?: string,
+  ): PolicyDetailForReceipt {
+    if (!selectedYearLabel) return p;
+    const idx = p.years.findIndex((y) => y.yearLabel === selectedYearLabel);
+    if (idx <= 0) return p;
+    const picked = p.years[idx];
+    if (!picked) return p;
+    return {
+      ...p,
+      years: [picked, ...p.years.filter((_, i) => i !== idx)],
+    };
+  }
+
+  async function openReceiptPreviewForRow(id: string, selectedYearLabel?: string) {
     setReceiptBusyId(id);
     try {
       const p = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
-      const opened = await openPolicyReceiptPrint(p);
-      if (!opened) {
-        toast.message("Receipt downloaded", {
-          description:
-            "A new tab may have been blocked; the PDF should be in your Downloads folder.",
-        });
-      }
+      const payload = prioritizeYear(p, selectedYearLabel);
+      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate receipt");
     } finally {
@@ -423,6 +430,25 @@ export default function SvkkPoliciesPage() {
     }
 
     cols.push(
+      {
+        id: "policyNo",
+        accessorFn: (r) => r.policyNo ?? "",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Policy No"
+            sortAsc="policyNo"
+            sortDesc="policyNo_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
+        cell: ({ row }) => (
+          <Link href={`/policies/${row.original.id}`} className="font-medium underline">
+            {row.original.policyNo ?? "—"}
+          </Link>
+        ),
+      },
       {
         id: "customer",
         accessorFn: (r) => r.insuredParty.name,
@@ -572,43 +598,56 @@ export default function SvkkPoliciesPage() {
         cell: ({ row }) => {
           const p = row.original;
           return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem className="cursor-pointer" asChild>
-                  <Link href={`/policies/${p.id}`}>View</Link>
-                </DropdownMenuItem>
-                {canEdit ? (
-                  <DropdownMenuItem className="cursor-pointer" asChild>
-                    <Link href={`/policies/${p.id}`}>Edit</Link>
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  disabled={receiptBusyId === p.id}
-                  onClick={() => void printReceiptForRow(p.id)}
+            <div className="flex flex-wrap gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setRowYearAction(null);
+                  setExpandedPolicyId((curr) => (curr === p.id ? null : p.id));
+                }}
+              >
+                {expandedPolicyId === p.id ? "Hide" : "View"}
+              </Button>
+              {canEdit ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    setExpandedPolicyId(p.id);
+                    setRowYearAction((curr) =>
+                      curr?.policyId === p.id && curr.kind === "edit"
+                        ? null
+                        : { policyId: p.id, kind: "edit" },
+                    );
+                  }}
                 >
-                  {receiptBusyId === p.id ? "Opening receipt…" : "Receipt"}
-                </DropdownMenuItem>
-                {canDel ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive cursor-pointer"
-                      onClick={() => setRowDeleteId(p.id)}
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  Edit
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={receiptBusyId === p.id}
+                onClick={() => {
+                  setExpandedPolicyId(p.id);
+                  setRowYearAction((curr) =>
+                    curr?.policyId === p.id && curr.kind === "receipt"
+                      ? null
+                      : { policyId: p.id, kind: "receipt" },
+                  );
+                }}
+              >
+                Receipt
+              </Button>
+              {canDel ? (
+                <Button size="sm" variant="destructive" onClick={() => setRowDeleteId(p.id)}>
+                  Delete
+                </Button>
+              ) : null}
+            </div>
           );
         },
         enableHiding: false,
@@ -616,7 +655,7 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [applySort, canDel, canEdit, receiptBusyId, sort]);
+  }, [applySort, canDel, canEdit, expandedPolicyId, receiptBusyId, rowYearAction, router, sort]);
 
   const table = useReactTable({
     data: rows,
@@ -660,286 +699,196 @@ export default function SvkkPoliciesPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 flex-wrap items-center gap-2">
-            <div className="relative">
+      <div className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-lg font-semibold">Policy List</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <Label className="text-xs">Upload CSV</Label>
+            <div className="mt-1 flex gap-2">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="block w-full text-sm"
+                disabled={!canCsvUpload}
+                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={!canCsvUpload || !uploadFile || uploadBusy}
+                onClick={() => void uploadPoliciesCsv()}
+              >
+                {uploadBusy ? "Uploading…" : "Upload"}
+              </Button>
+            </div>
+            {uploadMsg ? <p className="text-muted-foreground mt-1 text-xs">{uploadMsg}</p> : null}
+          </div>
+          <div>
+            <Label className="text-xs">Search</Label>
+            <div className="relative mt-1">
               <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
               <Input
-                placeholder="Search policies…"
+                placeholder="Search"
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
-                className="h-9 w-[200px] pl-8 lg:w-[280px]"
-                aria-label="Search name, customer ID, village, ref no, phone, bank, nominee, PAN"
+                className="h-9 pl-8"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="policies-sort" className="text-muted-foreground sr-only sm:not-sr-only sm:whitespace-nowrap">
-                Sort
-              </Label>
-              <Select value={sort} onValueChange={applySort}>
-                <SelectTrigger id="policies-sort" className="h-9 w-[160px] cursor-pointer" size="sm">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <DataTableViewOptions table={table} />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 cursor-pointer"
-              disabled={loading || exportBusy}
-              onClick={() => void exportPoliciesCsv()}
-            >
+          <div>
+            <Label className="text-xs">Select Year</Label>
+            <Select value={yearLabel || "__all__"} onValueChange={(v) => setYearLabel(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Years" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Years</SelectItem>
+                {(meta?.periodYearTexts ?? []).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Category</Label>
+            <Select value={categoryIdState || "__all__"} onValueChange={(v) => setCategoryIdState(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Category</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.key} — {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Policy Type</Label>
+            <Select value={adVariant || "__all__"} onValueChange={(v) => setAdVariant(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Policy Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Policy Type</SelectItem>
+                <SelectItem value="FAMILY_FLOATER">Family Floater</SelectItem>
+                <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                <SelectItem value="ASHA_KIRAN">Asha Kiran</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Month</Label>
+            <Select value={periodMonthText || "__all__"} onValueChange={(v) => setPeriodMonthText(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Month" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Month</SelectItem>
+                {(meta?.periodMonthTexts ?? []).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Area</Label>
+            <Select value={area || "__all__"} onValueChange={(v) => setArea(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Area</SelectItem>
+                {(meta?.areas ?? []).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Village</Label>
+            <Select value={village || "__all__"} onValueChange={(v) => setVillage(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Village" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Village</SelectItem>
+                {(meta?.villages ?? []).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Sum Insured</Label>
+            <Select value={sumInsured || "__all__"} onValueChange={(v) => setSumInsured(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All SI" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All SI</SelectItem>
+                {(meta?.sumInsuredValues ?? []).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Select Group</Label>
+            <Select value={policyGrouping || "__all__"} onValueChange={(v) => setPolicyGrouping(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="mt-1 cursor-pointer">
+                <SelectValue placeholder="All Group" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Group</SelectItem>
+                {(meta?.policyGroupings ?? []).map((g) => (
+                  <SelectItem key={g} value={g}>
+                    {g}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={loading || exportBusy} onClick={() => void exportPoliciesCsv()}>
               {exportBusy ? "Exporting…" : "Export"}
             </Button>
-          </div>
-        </div>
-
-        <Collapsible defaultOpen className="space-y-3">
-          <CollapsibleTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 gap-1 cursor-pointer">
-              <ChevronDown className="size-4" />
-              Advanced filters
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-4 rounded-lg border bg-muted/20 p-4">
-            <p className="text-muted-foreground text-xs">
-              Filters apply as you change them. Search above uses the same fields as before (name, customer ID, village, ref no, phone, etc.).
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              <div>
-                <Label className="text-xs">Village</Label>
-                <Select value={village || "__all__"} onValueChange={(v) => setVillage(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All villages" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All villages</SelectItem>
-                    {(meta?.villages ?? []).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Fiscal year (label)</Label>
-                <Input
-                  placeholder="e.g. 2025-26"
-                  value={yearLabel}
-                  onChange={(e) => setYearLabel(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Policy year (period)</Label>
-                <Select value={periodYearText || "__all__"} onValueChange={(v) => setPeriodYearText(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {(meta?.periodYearTexts ?? []).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Month (period text)</Label>
-                <Select value={periodMonthText || "__all__"} onValueChange={(v) => setPeriodMonthText(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {(meta?.periodMonthTexts ?? []).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Category</Label>
-                <Select value={categoryIdState || "__all__"} onValueChange={(v) => setCategoryIdState(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.key} — {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Product (AD)</Label>
-                <Select value={adVariant || "__all__"} onValueChange={(v) => setAdVariant(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    <SelectItem value="FAMILY_FLOATER">Family floater</SelectItem>
-                    <SelectItem value="INDIVIDUAL">Individual</SelectItem>
-                    <SelectItem value="ASHA_KIRAN">Asha Kiran</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Policy type (chart)</Label>
-                <Select value={policyTypeId || "__all__"} onValueChange={(v) => setPolicyTypeId(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {policyTypes.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Area</Label>
-                <Select value={area || "__all__"} onValueChange={(v) => setArea(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {(meta?.areas ?? []).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Sum insured</Label>
-                <Select value={sumInsured || "__all__"} onValueChange={(v) => setSumInsured(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {(meta?.sumInsuredValues ?? []).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Policy grouping</Label>
-                <Select value={policyGrouping || "__all__"} onValueChange={(v) => setPolicyGrouping(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {["SVKK", "NVKK", "RTY", "OTHER"].map((g) => (
-                      <SelectItem key={g} value={g}>
-                        {g}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Cheque status</Label>
-                <Select value={chequeStatus || "__all__"} onValueChange={(v) => setChequeStatus(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {["CLEARED", "DISHONOURED", "PENDING", "PAID", "UNPAID"].map((g) => (
-                      <SelectItem key={g} value={g}>
-                        {g}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Created in month (optional)</Label>
-                <div className="flex gap-2">
-                  <Select value={filterMonth || "__m__"} onValueChange={(v) => setFilterMonth(v === "__m__" ? "" : v)}>
-                    <SelectTrigger className="flex-1 cursor-pointer">
-                      <SelectValue placeholder="Month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__m__">—</SelectItem>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <SelectItem key={m} value={String(m)}>
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    className="w-24"
-                    placeholder="Year"
-                    inputMode="numeric"
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="cursor-pointer"
               onClick={() => {
                 setSearchDraft("");
                 setSearchApplied("");
                 prevSearchApplied.current = "";
                 setVillage("");
                 setYearLabel("");
-                setPeriodYearText("");
                 setPeriodMonthText("");
                 setCategoryIdState("");
-                setPolicyTypeId("");
                 setAdVariant("");
                 setArea("");
                 setSumInsured("");
                 setPolicyGrouping("");
-                setChequeStatus("");
-                setFilterMonth("");
-                setFilterYear("");
                 setSort("createdAt");
                 setPage(1);
               }}
             >
-              Reset filters
+              Reset
             </Button>
-          </CollapsibleContent>
-        </Collapsible>
+          </div>
+        </div>
       </div>
 
       {canDel && selectedCount > 0 ? (
@@ -952,7 +901,9 @@ export default function SvkkPoliciesPage() {
 
       {err ? <p className="text-destructive text-sm">{err}</p> : null}
 
-      <div className="bg-card rounded-md border">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Grouped Policy Records</h2>
+        <div className="bg-card rounded-md border">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -975,15 +926,104 @@ export default function SvkkPoliciesPage() {
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const original = row.original;
+                return (
+                  <Fragment key={row.id}>
+                    <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {expandedPolicyId === original.id ? (
+                      <TableRow key={`${row.id}-years`}>
+                        <TableCell colSpan={colCount} className="bg-muted/20">
+                          <div className="space-y-3 p-2">
+                            <p className="text-sm font-medium">
+                              {rowYearAction?.policyId === original.id
+                                ? rowYearAction.kind === "edit"
+                                  ? "Select year to edit"
+                                  : "Select year to generate receipt"
+                                : "View year-wise records"}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {original.years.map((y) => (
+                                <Button
+                                  key={`${original.id}-chip-${y.yearLabel}`}
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    if (rowYearAction?.policyId === original.id && rowYearAction.kind === "edit") {
+                                      router.push(
+                                        `/policies/${original.id}/edit?year=${encodeURIComponent(y.yearLabel)}`,
+                                      );
+                                      setRowYearAction(null);
+                                      return;
+                                    }
+                                    if (
+                                      rowYearAction?.policyId === original.id &&
+                                      rowYearAction.kind === "receipt"
+                                    ) {
+                                      void openReceiptPreviewForRow(original.id, y.yearLabel).finally(() => {
+                                        setRowYearAction(null);
+                                      });
+                                      return;
+                                    }
+                                    router.push(`/policies/${original.id}?year=${encodeURIComponent(y.yearLabel)}`);
+                                  }}
+                                >
+                                  {y.yearLabel} · ₹{sumLabel(y.vkkPremium)}
+                                </Button>
+                              ))}
+                            </div>
+                            {rowYearAction?.policyId === original.id ? null : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full min-w-[900px] border-collapse text-sm">
+                                  <thead>
+                                    <tr className="bg-muted/40">
+                                      <th className="border p-2 text-left">Year</th>
+                                      <th className="border p-2 text-left">Policy No</th>
+                                      <th className="border p-2 text-left">Customer ID</th>
+                                      <th className="border p-2 text-left">Holder</th>
+                                      <th className="border p-2 text-left">Village</th>
+                                      <th className="border p-2 text-left">Area</th>
+                                      <th className="border p-2 text-left">Category</th>
+                                      <th className="border p-2 text-left">Month</th>
+                                      <th className="border p-2 text-left">Group</th>
+                                      <th className="border p-2 text-left">SI</th>
+                                      <th className="border p-2 text-left">Premium</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {original.years.map((y) => (
+                                      <tr key={`${original.id}-${y.yearLabel}`}>
+                                        <td className="border p-2">{y.yearLabel}</td>
+                                        <td className="border p-2">{original.policyNo ?? "—"}</td>
+                                        <td className="border p-2">{original.insuredParty.customerId ?? "—"}</td>
+                                        <td className="border p-2">{original.insuredParty.name}</td>
+                                        <td className="border p-2">{original.village ?? "—"}</td>
+                                        <td className="border p-2">{original.area ?? "—"}</td>
+                                        <td className="border p-2">{original.category?.key ?? "—"}</td>
+                                        <td className="border p-2">{original.periodMonthText ?? "—"}</td>
+                                        <td className="border p-2">{original.remarks ?? "—"}</td>
+                                        <td className="border p-2">₹{sumLabel(y.sumInsured)}</td>
+                                        <td className="border p-2">₹{sumLabel(y.vkkPremium)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={colCount} className="text-muted-foreground h-24 text-center text-sm">
@@ -993,6 +1033,7 @@ export default function SvkkPoliciesPage() {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <div className="text-muted-foreground flex flex-col gap-3 px-0 sm:flex-row sm:items-center sm:justify-between sm:px-1">
@@ -1115,6 +1156,34 @@ export default function SvkkPoliciesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={receiptPreviewHtml != null} onOpenChange={(o) => !o && setReceiptPreviewHtml(null)}>
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Receipt Preview</DialogTitle>
+            <DialogDescription>Print the receipt from this popup.</DialogDescription>
+          </DialogHeader>
+          <div className="h-[68vh] overflow-hidden rounded border">
+            <iframe title="Receipt Preview Frame" srcDoc={receiptPreviewHtml ?? ""} className="h-full w-full" />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setReceiptPreviewHtml(null)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const frame = document.querySelector<HTMLIFrameElement>('iframe[title="Receipt Preview Frame"]');
+                frame?.contentWindow?.focus();
+                frame?.contentWindow?.print();
+              }}
+            >
+              Print
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

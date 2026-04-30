@@ -3,7 +3,6 @@ import {
   AdProductVariant,
   ChequeStatus,
   PayMethod,
-  PolicyGrouping,
 } from "@prisma/client";
 
 const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -102,7 +101,7 @@ const adPolicyExtraSchema = z.object({
   area: z.string().max(200).optional().nullable(),
   referenceNo: z.string().max(100).optional().nullable(),
   mobileSecondary: z.string().max(20).optional().nullable(),
-  policyGrouping: z.nativeEnum(PolicyGrouping).optional().nullable(),
+  policyGrouping: z.string().trim().max(64).optional().nullable(),
   policyUrl: z.string().max(500).optional().nullable(),
   loanStatus: z.string().max(10).optional().nullable(),
   loanAmount: z.number().nonnegative().nullish().optional(),

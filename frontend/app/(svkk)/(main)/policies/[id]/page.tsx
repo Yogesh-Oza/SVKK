@@ -5,13 +5,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,18 +15,14 @@ import {
 import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
-import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
-import { openPolicyReceiptPrint } from "@/lib/svkk/policy-receipt-print";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
-  canCreateReceipt,
   canDeletePolicy,
-  canUpdatePolicy,
   canUploadPolicyDrive,
 } from "@/lib/svkk/permissions";
 import { PolicyDriveUploadButton } from "@/features/svkk-policies/policy-drive-upload";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -208,25 +197,21 @@ function cdUsedLabel(v: boolean | null | undefined): string {
 
 export default function SvkkPolicyDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useSvkkAuth();
   const id = String(params.id);
+  const selectedYearLabel = searchParams.get("year")?.trim() ?? "";
 
   const [row, setRow] = useState<PolicyDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [receiptAmt, setReceiptAmt] = useState("");
-  const [receiptMode, setReceiptMode] = useState("CASH");
   const [yearId, setYearId] = useState<string | "">("");
-  const [receiptBusy, setReceiptBusy] = useState(false);
-  const [receiptPrintBusy, setReceiptPrintBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
   const role = user?.role;
-  const canPatch = role ? canUpdatePolicy(role) : false;
   const canDel = role ? canDeletePolicy(role) : false;
-  const canRcpt = role ? canCreateReceipt(role) : false;
   const canDrive = role ? canUploadPolicyDrive(role) : false;
 
   useEffect(() => {
@@ -246,48 +231,13 @@ export default function SvkkPolicyDetailPage() {
     })();
   }, [id, missingUrl]);
 
-  async function printLegacyReceipt() {
-    if (!row) return;
-    setReceiptPrintBusy(true);
-    try {
-      const opened = await openPolicyReceiptPrint(row as PolicyDetailForReceipt);
-      if (!opened) {
-        toast.message("Receipt downloaded", {
-          description:
-            "A new tab may have been blocked; the PDF should be in your Downloads folder.",
-        });
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not generate receipt PDF");
-    } finally {
-      setReceiptPrintBusy(false);
+  useEffect(() => {
+    if (!row || !selectedYearLabel) return;
+    const matched = row.years.find((yy) => yy.yearLabel === selectedYearLabel);
+    if (matched) {
+      setYearId(matched.id);
     }
-  }
-
-  async function issueReceipt() {
-    const amt = Number(receiptAmt);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error("Enter a valid amount");
-      return;
-    }
-    setReceiptBusy(true);
-    try {
-      const res = await svkkJson<{ receiptNo: string }>(`/receipts/policies/${id}`, {
-        method: "POST",
-        body: JSON.stringify({
-          amount: amt,
-          paymentMode: receiptMode || null,
-          policyYearId: yearId || null,
-        }),
-      });
-      toast.success(`Receipt ${res.receiptNo} created (PDF saved on server).`);
-      setReceiptAmt("");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Receipt failed");
-    } finally {
-      setReceiptBusy(false);
-    }
-  }
+  }, [row, selectedYearLabel]);
 
   async function deletePolicy() {
     setDeleteBusy(true);
@@ -313,7 +263,7 @@ export default function SvkkPolicyDetailPage() {
     return <p className="text-muted-foreground text-sm">Loading…</p>;
   }
 
-  const y = row.years[0];
+  const y = row.years.find((item) => item.id === yearId) ?? row.years[0];
   const ch = firstCheque(y);
   const policyTypeLabel = row.adProductVariant
     ? adProductFormValueFromApi(row.adProductVariant)
@@ -325,25 +275,27 @@ export default function SvkkPolicyDetailPage() {
   return (
     <div className="space-y-6 pb-10">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/policies">Back</Link>
-        </Button>
         <h1 className="text-2xl font-semibold">View policy</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={receiptPrintBusy}
-          onClick={() => void printLegacyReceipt()}
-        >
-          {receiptPrintBusy ? "…" : "Print receipt (PDF-style)"}
-        </Button>
-        {canPatch ? (
-          <Button type="button" variant="outline" size="sm" asChild>
-            <Link href={`/policies/${id}/edit`}>Edit policy</Link>
-          </Button>
-        ) : null}
       </div>
+
+      {row.years.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-muted-foreground text-sm">Select year</p>
+          <div className="flex flex-wrap gap-2">
+            {row.years.map((yy) => (
+              <Button
+                key={yy.id}
+                type="button"
+                variant={yy.id === y?.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setYearId(yy.id)}
+              >
+                {yy.yearLabel}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <Card className="overflow-hidden">
         <CardContent className="p-4 sm:p-6">
@@ -659,69 +611,13 @@ export default function SvkkPolicyDetailPage() {
             </table>
           </div>
 
-          {canPatch ? (
-            <Button variant="outline" size="sm" className="mt-3" asChild>
-              <Link href={`/policies/${id}/edit`}>Edit policy</Link>
-            </Button>
-          ) : null}
         </CardContent>
       </Card>
 
       {row.years.length > 1 ? (
         <p className="text-muted-foreground text-xs">
-          This policy has {row.years.length} year rows (newest first). Tables above use the latest year.
+          This policy has {row.years.length} year rows. Click a year above to change all details below.
         </p>
-      ) : null}
-
-      {canRcpt ? (
-        <div className="bg-muted/30 max-w-md space-y-3 rounded-lg border p-4">
-          <h2 className="font-medium">Issue receipt</h2>
-          <p className="text-muted-foreground text-xs">
-            Creates a receipt record and PDF on the server (paths returned in API for ops use).
-          </p>
-          {row.years.length > 1 ? (
-            <div className="space-y-2">
-              <Label>Policy year</Label>
-              <Select value={yearId} onValueChange={setYearId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {row.years.map((yy) => (
-                    <SelectItem key={yy.id} value={yy.id}>
-                      {yy.yearLabel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-          <div className="space-y-2">
-            <Label>Amount (INR)</Label>
-            <Input
-              value={receiptAmt}
-              onChange={(e) => setReceiptAmt(e.target.value)}
-              inputMode="decimal"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Payment mode</Label>
-            <Select value={receiptMode} onValueChange={setReceiptMode}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CASH">CASH</SelectItem>
-                <SelectItem value="UPI">UPI</SelectItem>
-                <SelectItem value="NEFT">NEFT</SelectItem>
-                <SelectItem value="CHQ">CHQ</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="button" size="sm" disabled={receiptBusy} onClick={() => void issueReceipt()}>
-            {receiptBusy ? "Submitting…" : "Create receipt"}
-          </Button>
-        </div>
       ) : null}
 
       {canDel ? (

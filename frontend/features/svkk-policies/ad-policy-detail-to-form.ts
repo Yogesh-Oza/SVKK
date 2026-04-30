@@ -2,7 +2,6 @@ import { adProductFormValueFromApi } from "./ad-product-variant";
 import { emptyMemberRow, type AdMemberRow } from "./ad-member-types";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 import { getAdPolicyInitialValues } from "./ad-policy-form-values";
-import type { PolicyGrouping } from "./ad-policy-types";
 
 type Decimalish = string | number | { toString(): string } | null | undefined;
 
@@ -143,11 +142,8 @@ function ageFromDob(iso: string): string {
   return a >= 0 ? String(a) : "";
 }
 
-function groupingFromApi(g: string | null | undefined): "" | PolicyGrouping {
-  if (g === "SVKK" || g === "NVKK" || g === "RTY" || g === "OTHER") {
-    return g;
-  }
-  return "";
+function groupingFromApi(g: string | null | undefined): string {
+  return g?.trim() ?? "";
 }
 
 /**
@@ -273,6 +269,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     excessShort: decStr(y.excessShortAmount),
     diffAmt: decStr(y.diffPaidByHolder),
     loanStatus: row.loanStatus ?? "",
+    loanNo: "",
     loanAmt: decStr(row.loanAmount),
     nomineeName: row.nomineeName ?? "",
     nomineeRelation: row.nomineeRelation ?? "",

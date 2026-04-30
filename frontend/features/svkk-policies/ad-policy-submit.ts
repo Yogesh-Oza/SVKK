@@ -51,6 +51,9 @@ export async function submitAdPolicyRequest({
   if (values.whatsappNo?.trim()) {
     remarkParts.push(`WhatsApp: ${values.whatsappNo.trim()}`);
   }
+  if (values.loanNo?.trim()) {
+    remarkParts.push(`Loan No: ${values.loanNo.trim()}`);
+  }
   const combinedRemarks = remarkParts.length > 0 ? remarkParts.join("\n\n") : null;
 
   const body: Record<string, unknown> = {
@@ -168,6 +171,8 @@ export async function submitAdPolicyRequest({
     body.paymentMode = "CHQ";
     body.bankName = values.bank.trim() || null;
     body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
+  } else if (values.paymentMode === "CASH") {
+    body.paymentMode = "CASH";
   }
 
   const res = await apiPost<Record<string, unknown>>("/policies", body, {
@@ -217,6 +222,9 @@ export async function submitAdPolicyPatchRequest({
   }
   if (values.whatsappNo?.trim()) {
     remarkParts.push(`WhatsApp: ${values.whatsappNo.trim()}`);
+  }
+  if (values.loanNo?.trim()) {
+    remarkParts.push(`Loan No: ${values.loanNo.trim()}`);
   }
   const combinedRemarks = remarkParts.length > 0 ? remarkParts.join("\n\n") : null;
 
@@ -301,10 +309,12 @@ export async function submitAdPolicyPatchRequest({
   if (values.paymentMode === "ONLINE") {
     body.paymentMode = "UPI";
     body.utrRef = values.onlineTransactionRef.trim() || null;
-  } else {
+  } else if (values.paymentMode === "CHEQUE") {
     body.paymentMode = "CHQ";
     body.bankName = values.bank.trim() || null;
     body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
+  } else if (values.paymentMode === "CASH") {
+    body.paymentMode = "CASH";
   }
 
   await apiPatch(`/policies/${policyId}`, body);

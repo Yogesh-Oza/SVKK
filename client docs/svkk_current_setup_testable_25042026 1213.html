@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SVKK Mediclaim Current Setup Testable HTML</title>
+  <style>
+    :root{--bg:#f3f4f6;--card:#fff;--line:#d1d5db;--text:#0f172a;--muted:#475569;--dark:#0f172a;--soft:#f8fafc;--ok:#ecfdf5;--warn:#fffbeb;}
+    *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1600px;margin:0 auto;padding:18px}
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .header{padding:22px}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:#fff;font-size:12px;font-weight:700}
+    .grid{display:grid;gap:14px}
+    .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .tabs{grid-template-columns:repeat(6,minmax(0,1fr))}
+    .stat{padding:16px;border-radius:22px;border:1px solid #e5e7eb;background:#fff}
+    .stat.dark{background:var(--dark);color:#fff;border-color:var(--dark)}
+    .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.15em;font-weight:700;color:#64748b}
+    .stat.dark .k{color:#cbd5e1}
+    .stat .v{font-size:30px;font-weight:800;margin-top:8px;word-break:break-word}
+    .tab{padding:18px;border-radius:24px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;text-align:left}
+    .tab.active{background:var(--dark);color:#fff;border-color:var(--dark)}
+    .tab .l{font-size:18px;font-weight:800}
+    .tab .s{font-size:13px;margin-top:8px;color:#64748b}
+    .tab.active .s{color:#cbd5e1}
+    .section{overflow:hidden}
+    .section-h{padding:16px 20px;border-bottom:1px solid #e5e7eb;background:var(--soft);display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .section-b{padding:18px}
+    .badge{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:12px;font-weight:800}
+    .notice{padding:12px 14px;border-radius:18px;border:1px solid #86efac;background:var(--ok);color:#166534;font-size:14px;font-weight:600}
+    .warn{padding:12px 14px;border-radius:18px;border:1px solid #fcd34d;background:var(--warn);color:#92400e;font-size:14px;font-weight:600}
+    .row4{display:grid;gap:14px;grid-template-columns:repeat(4,minmax(0,1fr))}
+    .row5{display:grid;gap:14px;grid-template-columns:repeat(5,minmax(0,1fr))}
+    .row6{display:grid;gap:14px;grid-template-columns:repeat(6,minmax(0,1fr))}
+    .field{display:grid;gap:8px}
+    .field label{font-size:13px;font-weight:700;color:#334155}
+    .field input,.field select,.field textarea{min-height:42px;border:1px solid var(--line);border-radius:16px;padding:10px 12px;font-size:14px;background:#fff;color:var(--text);width:100%}
+    .field textarea{min-height:88px;resize:vertical}
+    .field input:disabled,.field select:disabled,.field textarea:disabled{background:#f1f5f9}
+    .member-card{padding:16px;border:1px solid #e5e7eb;border-radius:22px;background:#f8fafc}
+    .btns{display:flex;flex-wrap:wrap;gap:10px}
+    .btn{border:1px solid var(--line);border-radius:16px;padding:11px 16px;background:#fff;font-size:14px;font-weight:800;cursor:pointer}
+    .btn.primary{background:var(--dark);color:#fff;border-color:var(--dark)}
+    .btn.danger{border-color:#fca5a5;color:#b91c1c}
+    .btn.sky{border-color:#93c5fd;color:#0369a1}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:12px 14px;border-top:1px solid #e5e7eb;text-align:left;vertical-align:top}
+    thead th{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#64748b;background:#f8fafc;border-top:none}
+    .table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:22px;background:#fff}
+    .years{display:flex;flex-wrap:wrap;gap:8px}
+    .year-btn{padding:9px 13px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:800;cursor:pointer}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;justify-content:center;align-items:flex-start;padding:18px;overflow:auto}
+    .modal{width:min(100%,1000px);background:#fff;border-radius:28px;box-shadow:0 20px 40px rgba(0,0,0,.18);overflow:hidden}
+    .modal-h{padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .receipt-body{padding:24px;max-width:900px;margin:0 auto}
+    .receipt-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:20px;overflow:hidden}
+    .rrow{display:grid;grid-template-columns:220px 1fr;padding:11px 14px;border-bottom:1px solid #e5e7eb;font-size:14px}
+    .rrow > div:first-child{font-weight:800;color:#334155}
+    .rcol:first-child{border-right:1px solid #e5e7eb}
+    .muted{color:#64748b}
+    .section-links{display:flex;flex-wrap:wrap;gap:8px}
+    .section-link{padding:10px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:800;cursor:pointer}
+    .section-link.active{background:var(--dark);color:#fff;border-color:var(--dark)}
+    .small{font-size:12px}
+    .footnote{font-size:13px;color:#64748b}
+    @media (max-width:1200px){.tabs,.stats,.row6,.row5,.row4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:700px){.tabs,.stats,.row6,.row5,.row4,.receipt-grid{grid-template-columns:1fr}.rcol:first-child{border-right:none}.rrow{grid-template-columns:140px 1fr}}
+    @media print{
+      body{background:#fff}.wrap{padding:0}.no-print{display:none !important}.modal-backdrop{position:static;background:#fff;padding:0}.modal{box-shadow:none;border-radius:0;width:100%}.modal-h{display:none}.receipt-body{padding:20px}
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const STORAGE_KEY = "svkk_offline_test_build_v10";
+const RECEIPT_HEADER_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA1AAAACbCAIAAADjvu2MAAAQAElEQVR4AeydB3hURReG7256ryQhnRZ66L13AQEp0lSKNH9EmkhREKWDgAiISm8ioCC99yIEAoSeBBLSe0jv7f+SCTc327IJKbvJ4TkOc2fOnJl570q+nNm9K86hP0SACBABIkAEiAARIAKVmoCYoz9EgAgQASJABDhCQASIQGUmQIKvMt9d2hsRIAJEgAgQASJABECABB8gkClHgLyIABEgAkSACBAB9SRAgk897xutmggQASJABIhARRGgedWQAAk+NbxptGQiQASIABEgAkSACBSHAAm+4tAiXyJABJQjQF5EgAgQASKgUgRI8KnU7aDFEAEiQASIABEgAkSg9AlUlOAr/Z1QRCJABIgAESACRIAIEAGZBEjwycRCjUSACBABIlA+BGgWIkAEyoMACb7yoExzEAEiQASIABEgAkSgAgmQ4KtA+DS1cgTIiwgQASJABIgAEXg/AiT43o8fjSYCRIAIEAEiQATKhwDN8h4ESPC9BzwaSgSIABEgAkSACBABdSAgDgyPIyMCRIAIVA4CtAsiQASIABGQSUDsYG1CRgSIABEgAkSACBABIlCJCVS1I111yLrSGokAESACRIAIEAEiUKoESPCVKk4KRgSIABEgAupBgFZJBKoWARJ8Vet+026JABEgAkSACBCBKkiABF8VvOm0ZeUIkBcRIAJEgAgQgcpCgARfZbmTtA8iQASIABEgAkSgLAhUipgk+CrFbaRNEAEiQASIABEgAkRAPgESfPLZUA8RIAJEQDkC5EUEiAARUHECJPhU/AbR8ogAESACRIAIEAEi8L4ESPC9L0HlxpMXESACRIAIEAEiQAQqjAAJvgpDTxMTASJABIhA1SNAOyYCFUOABF/FcKdZiQARIAJEgAgQASJQbgRI8JUbapqICChHgLyIABEgAkSACJQ2ARJ8pU2U4hEBIkAEiAARIAJE4P0JlGoEEnylipOCEQEiQASIABEgAkRA9QiQ4FO9e0IrIgJEgAgoR4C8iAARIAJKEiDBpyQociMCRIAIEAEiQASIgLoSIMGnrndOuXWTFxEgAkSACBABIkAEOBJ89CIgAkSACBABIlDpCdAGqzoBEnxV/RVA+ycCRIAIEAEiQAQqPQESfJX+FtMGiYByBMiLCBABIkAEKi8B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";
+const ROLE_PRESETS = {
+  super_admin: { label: "Super Admin", tabs: ["live","admin","future","lookup","add","list"], canManageUsers: true, canEditPolicies: true, canDeletePolicies: true, canGenerateReceipt: true, villageRestricted: false },
+  admin: { label: "Admin", tabs: ["live","admin","future","lookup","add","list"], canManageUsers: false, canEditPolicies: true, canDeletePolicies: true, canGenerateReceipt: true, villageRestricted: false },
+  staff: { label: "Staff", tabs: ["live","lookup","add","list"], canManageUsers: false, canEditPolicies: true, canDeletePolicies: false, canGenerateReceipt: true, villageRestricted: true },
+  user: { label: "User", tabs: ["live","lookup","list"], canManageUsers: false, canEditPolicies: false, canDeletePolicies: false, canGenerateReceipt: false, villageRestricted: false }
+};
+const TAB_META = [
+  { id:"live", label:"Live Calculation", sub:"PHP algorithm version" },
+  { id:"admin", label:"Admin Setup", sub:"Charts, roles and rights" },
+  { id:"future", label:"Future Premium", sub:"Upload CSV, MIS, exports" },
+  { id:"lookup", label:"Lookup", sub:"Read uploaded CSV by policy number" },
+  { id:"add", label:"Add Policy", sub:"Frontend policy entry" },
+  { id:"list", label:"Policy List", sub:"Grouped SVKK records" }
+];
+const defaultCharts = {
+  individual: [
+    { label: "0-17", min: 0, max: 17, premiums: { 100000: 3401, 200000: 4621, 300000: 5089, 400000: 5949, 500000: 6808, 600000: 7352, 700000: 7896, 800000: 8444, 1000000: 9547, 1200000: 10380, 1500000: 11768 } },
+    { label: "18-35", min: 18, max: 35, premiums: { 100000: 5015, 200000: 6707, 300000: 7157, 400000: 7949, 500000: 9068, 600000: 9811, 700000: 10548, 800000: 11284, 1000000: 12744, 1200000: 13866, 1500000: 15702 } },
+    { label: "36-45", min: 36, max: 45, premiums: { 100000: 7122, 200000: 9291, 300000: 10350, 400000: 11918, 500000: 13588, 600000: 14846, 700000: 16132, 800000: 17326, 1000000: 19188, 1200000: 21539, 1500000: 23740 } },
+    { label: "46-60", min: 46, max: 60, premiums: { 100000: 15072, 200000: 18980, 300000: 22498, 400000: 26810, 500000: 31600, 600000: 35422, 700000: 39208, 800000: 42864, 1000000: 49190, 1200000: 55878, 1500000: 66411 } },
+    { label: "61-100", min: 61, max: 100, premiums: { 100000: 25559, 200000: 40199, 300000: 50113, 400000: 59557, 500000: 69002, 600000: 74391, 700000: 79783, 800000: 92258, 1000000: 96072, 1200000: 104301, 1500000: 118028 } }
+  ],
+  family_floater: [
+    { label: "0-9", min: 0, max: 9, premiums: { 200000: 2446, 300000: 2853, 500000: 3185, 800000: 3647, 1000000: 3849, 1200000: 4132, 1500000: 4419 } },
+    { label: "10-17", min: 10, max: 17, premiums: { 200000: 3392, 300000: 3981, 500000: 4462, 800000: 5141, 1000000: 5690, 1200000: 6137, 1500000: 6570 } },
+    { label: "18-35", min: 18, max: 35, premiums: { 200000: 5825, 300000: 6802, 500000: 7548, 800000: 8849, 1000000: 10235, 1200000: 11086, 1500000: 11961 } },
+    { label: "36-45", min: 36, max: 45, premiums: { 200000: 7676, 300000: 8857, 500000: 9379, 800000: 11171, 1000000: 12969, 1200000: 14249, 1500000: 15654 } },
+    { label: "46-60", min: 46, max: 60, premiums: { 200000: 12846, 300000: 15317, 500000: 17842, 800000: 20595, 1000000: 22848, 1200000: 24652, 1500000: 26175 } },
+    { label: "61-100", min: 61, max: 100, premiums: { 200000: 19576, 300000: 23579, 500000: 28220, 800000: 33434, 1000000: 37422, 1200000: 40259, 1500000: 45984 } }
+  ],
+  asha_kiran: {
+    holder: [
+      { label: "18-35", min: 18, max: 35, premiums: { 200000: 6011, 300000: 6469, 500000: 8226, 800000: 10225, 1000000: 11555, 1200000: 12564, 1500000: 14238 } },
+      { label: "36-45", min: 36, max: 45, premiums: { 200000: 9291, 300000: 10350, 500000: 13588, 800000: 17326, 1000000: 19188, 1200000: 21539, 1500000: 23740 } },
+      { label: "46-60", min: 46, max: 60, premiums: { 200000: 18980, 300000: 22498, 500000: 25616, 800000: 42864, 1000000: 49190, 1200000: 55878, 1500000: 66411 } },
+      { label: "61-100", min: 61, max: 100, premiums: { 200000: 40199, 300000: 50113, 500000: 69002, 800000: 92258, 1000000: 96072, 1200000: 104301, 1500000: 118028 } }
+    ],
+    member: [
+      { label: "0-9", min: 0, max: 9, premiums: { 200000: 2446, 300000: 2853, 500000: 3185, 800000: 3647, 1000000: 3849, 1200000: 4132, 1500000: 4419 } },
+      { label: "10-17", min: 10, max: 17, premiums: { 200000: 3392, 300000: 3981, 500000: 4462, 800000: 5141, 1000000: 5690, 1200000: 6137, 1500000: 6570 } },
+      { label: "18-35", min: 18, max: 35, premiums: { 200000: 5825, 300000: 6802, 500000: 7548, 800000: 8849, 1000000: 10235, 1200000: 11086, 1500000: 11961 } },
+      { label: "36-45", min: 36, max: 45, premiums: { 200000: 7676, 300000: 8857, 500000: 9379, 800000: 11171, 1000000: 12969, 1200000: 14249, 1500000: 15654 } },
+      { label: "46-60", min: 46, max: 60, premiums: { 200000: 12846, 300000: 15317, 500000: 17842, 800000: 20595, 1000000: 22848, 1200000: 24652, 1500000: 26175 } },
+      { label: "61-100", min: 61, max: 100, premiums: { 200000: 19576, 300000: 23579, 500000: 28220, 800000: 33434, 1000000: 37422, 1200000: 40259, 1500000: 45984 } }
+    ]
+  }
+};
+const defaultDefs = {
+  individual: { label: "Individual Policy", mode: "same", discount: { type: "count", different: "no", holder: 0, member: 0, daughter: 0, byCount: { 1: 0, 2: 5, 3: 5, 4: 10, 5: 10, 6: 10, 7: 10 } } },
+  family_floater: { label: "Family Floater", mode: "same", discount: { type: "count", different: "no", holder: 0, member: 0, daughter: 0, byCount: { 1: 0, 2: 5, 3: 5, 4: 10, 5: 10, 6: 10, 7: 10 } } },
+  asha_kiran: { label: "Asha Kiran", mode: "different", discount: { type: "daughter", different: "no", holder: 0, member: 0, daughter: 50, byCount: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 } } }
+};
+const defaultPolicies = [
+  { id: "SVKK0023::2025-26::REF-1", formData: { "SVKK ID":"SVKK0023", YEAR:"2025-26", "REF.":"REF-1", "POLICY NO":"PO-14010061252800001424", "CUSTOMER ID":"PO81491024", "POLICY HOLDER NAME":"Ramji Devraj Bauva", "POLICY TYPE":"Family Floater", VILLAGE:"Vanoi", AREA:"Main Area", CATEGORY:"A", MONTH:"April", GROUPING:"SVKK", "SUM INSURED (SI)":"200000", "VKK PREMIUM":"58839", "CO. PREMIUM":"51000", PERSON:"2", "POLICY END DATE":"31.03.2026", "MODE OF PAYMENT":"CHQ", "TRANSACTION DATE":"2025-04-05", "DATE OF PAYMENT / CHQ DATE":"2025-04-05", "CHEQUE CLEARED / DISHONOURED":"Cleared", "HOLDER AGE":"45", "MEMBER 1 AGE":"41" } },
+  { id: "SVKK0023::2024-25::REF-2", formData: { "SVKK ID":"SVKK0023", YEAR:"2024-25", "REF.":"REF-2", "POLICY NO":"PO-14010061252800001424", "CUSTOMER ID":"PO81491024", "POLICY HOLDER NAME":"Ramji Devraj Bauva", "POLICY TYPE":"Family Floater", VILLAGE:"Vanoi", AREA:"Main Area", CATEGORY:"A", MONTH:"April", GROUPING:"SVKK", "SUM INSURED (SI)":"200000", "VKK PREMIUM":"56210", "CO. PREMIUM":"49000", PERSON:"2", "POLICY END DATE":"31.03.2025", "MODE OF PAYMENT":"ONLINE", "TRANSACTION DATE":"2024-04-10", "DATE OF PAYMENT / CHQ DATE":"2024-04-10", "CHEQUE CLEARED / DISHONOURED":"Cleared", "HOLDER AGE":"44", "MEMBER 1 AGE":"40" } },
+  { id: "SVKK0173::2025-26::REF-3", formData: { "SVKK ID":"SVKK0173", YEAR:"2025-26", "REF.":"REF-3", "POLICY NO":"PO-14010061252700000045", "CUSTOMER ID":"7H3881611", "POLICY HOLDER NAME":"Ankit Kuvarji Bauva", "POLICY TYPE":"Asha Kiran", VILLAGE:"Vanoi", AREA:"East Belt", CATEGORY:"A", MONTH:"April", GROUPING:"NVKK", "SUM INSURED (SI)":"200000", "VKK PREMIUM":"7148", "CO. PREMIUM":"6200", PERSON:"3", "POLICY END DATE":"31.03.2026", "MODE OF PAYMENT":"CHQ", "TRANSACTION DATE":"2025-04-11", "DATE OF PAYMENT / CHQ DATE":"2025-04-11", "CHEQUE CLEARED / DISHONOURED":"Dishonoured", "HOLDER AGE":"35", "MEMBER 1 AGE":"33", "MEMBER 2 AGE":"12" } },
+  { id: "SVKK1010::2025-26::REF-4", formData: { "SVKK ID":"SVKK1010", YEAR:"2025-26", "REF.":"REF-4", "POLICY NO":"PO-14010061252800009999", "CUSTOMER ID":"CUST1010", "POLICY HOLDER NAME":"Sejal Gala", "POLICY TYPE":"Individual", VILLAGE:"Bhujpur", AREA:"North Cluster", CATEGORY:"B", MONTH:"August", GROUPING:"SVKK", "SUM INSURED (SI)":"500000", PERSON:"1", "VKK PREMIUM":"16000", "CO. PREMIUM":"13850", "POLICY END DATE":"31.08.2026" } }
+];
+const defaultUsers = [
+  { id:"super-admin", name:"Kiran", role:"super_admin", villages:[] },
+  { id:"admin-amit", name:"Amit", role:"admin", villages:[] },
+  { id:"staff-vanoi", name:"Vanoi Staff", role:"staff", villages:["Vanoi"] },
+  { id:"user-demo", name:"Demo User", role:"user", villages:[] }
+];
+const defaultState = {
+  charts: defaultCharts,
+  defs: defaultDefs,
+  policies: defaultPolicies,
+  users: defaultUsers,
+  session: { currentUserId:"super-admin" },
+  futureRows: [],
+  uploadedPolicyRows: [],
+  deletedPolicyIds: [],
+  receipts: [],
+  receiptCounter: 1
+};
+const ui = {
+  activeTab:"live",
+  liveForm: {
+    policyType:"asha_kiran", memberCount:3, sumInsured:200000, endDate:"14.10.2026",
+    members:[
+      { name:"Policy Holder", dob:"13.10.1987", relationship:"self", gender:"male", addOnRider:0, ageOverride:"", premiumOverride:"", useDirectPremium:false },
+      { name:"Spouse", dob:"05.06.1990", relationship:"spouse", gender:"female", addOnRider:0, ageOverride:"", premiumOverride:"", useDirectPremium:false },
+      { name:"Daughter", dob:"11.08.2014", relationship:"daughter", gender:"female", addOnRider:0, ageOverride:"", premiumOverride:"", useDirectPremium:false }
+    ]
+  },
+  future: { source:"uploaded_csv_policy_list", year:"0", generated:false, msg:"Upload future-premium CSV. Lookup reads from the same uploaded data.", search:"", policy:"all", si:"all", status:"all", fileName:"" },
+  lookup: { no:"", source:"linked_upload", year:"0", result:null },
+  add: { svkkId:"", selectedId:"", mode:"fetch", section:"policy_details", notice:"", form: null },
+  list: { search:"", year:"all", category:"all", type:"all", month:"all", area:"all", village:"all", si:"all", group:"all", expandedSvkk:"", actionMode:"view", uploadMsg:"" },
+  receiptPreview: null
+};
+let state = loadState();
+
+function rolePreset(role){ return ROLE_PRESETS[role] || ROLE_PRESETS.user; }
+function normalizeVillageList(villages){ return [...new Set((villages || []).map(v => String(v || "").trim()).filter(Boolean))]; }
+function getSessionUser(){ const list=state.users||[]; const byId=list.find(u=>u.id===state.session.currentUserId); const user=byId||list[0]||{id:"guest",name:"Guest",role:"user",villages:[]}; return {...user, villages: normalizeVillageList(user.villages)}; }
+function userRoleLabel(role){ return rolePreset(role).label; }
+function escapeHtml(v){ return String(v == null ? "" : v).replace(/[&<>"]/g, s=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[s])); }
+function escAttr(v){ return escapeHtml(v).replace(/'/g,"&#39;"); }
+function loadState(){ try{ const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return structuredClone(defaultState); const obj=JSON.parse(raw); return mergeState(obj); }catch(e){ return structuredClone(defaultState); } }
+function mergeState(obj){
+  return {
+    charts: obj.charts || structuredClone(defaultCharts),
+    defs: obj.defs || structuredClone(defaultDefs),
+    policies: obj.policies || structuredClone(defaultPolicies),
+    users: obj.users || structuredClone(defaultUsers),
+    session: obj.session || { currentUserId:"super-admin" },
+    futureRows: obj.futureRows || [],
+    uploadedPolicyRows: obj.uploadedPolicyRows || [],
+    deletedPolicyIds: obj.deletedPolicyIds || [],
+    receipts: obj.receipts || [],
+    receiptCounter: obj.receiptCounter || 1
+  };
+}
+function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function rs(n){ return new Intl.NumberFormat("en-IN").format(Number(n)||0); }
+function normKey(v){ return String(v||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); }
+function getv(obj, keys){
+  const map={}; Object.entries(obj||{}).forEach(([k,v])=> map[normKey(k)] = v);
+  for(const key of keys){ const val=map[normKey(key)]; if(String(val ?? "").trim() !== "") return val; }
+  return "";
+}
+function money(v){ const n=String(v ?? "").replace(/,/g,"").trim(); return n==="" ? 0 : Number(n)||0; }
+function hasText(v){ return String(v ?? "").trim() !== ""; }
+function normPolicy(v){ const k=normKey(v); return ({individual:"individual",individual_policy:"individual",asha:"asha_kiran",asha_kiran:"asha_kiran",family:"family_floater",family_floater:"family_floater",floater:"family_floater"})[k] || k || "individual"; }
+function isValidDate(d){ return d instanceof Date && !Number.isNaN(d.getTime()); }
+function dateFromParts(y,m,d){ const out=new Date(y,m-1,d); if(!isValidDate(out)) return null; if(out.getFullYear()!==y || out.getMonth()!==m-1 || out.getDate()!==d) return null; return new Date(out.getFullYear(), out.getMonth(), out.getDate()); }
+function dateParse(v){
+  if(v == null || v === "") return null;
+  if(v instanceof Date) return isValidDate(v) ? new Date(v.getFullYear(),v.getMonth(),v.getDate()) : null;
+  if(typeof v === "number" && Number.isFinite(v)){ const base=new Date(1899,11,30); const out=new Date(base.getTime()+Math.round(v)*86400000); return isValidDate(out) ? new Date(out.getFullYear(),out.getMonth(),out.getDate()) : null; }
+  const raw=String(v).trim(); if(!raw) return null;
+  const normalized=raw.replace(/\./g,"-").replace(/\//g,"-");
+  const parts=normalized.split("-").map(s=>s.trim()).filter(Boolean);
+  if(parts.length===3){ if(parts[0].length===4) return dateFromParts(Number(parts[0]),Number(parts[1]),Number(parts[2])); if(parts[2].length===4) return dateFromParts(Number(parts[2]),Number(parts[1]),Number(parts[0])); }
+  const parsed=new Date(raw); return isValidDate(parsed) ? new Date(parsed.getFullYear(),parsed.getMonth(),parsed.getDate()) : null;
+}
+function ymd(d){ return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` : ""; }
+function displayDate(value){ const d=dateParse(value); if(!d) return String(value || "—"); return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`; }
+function todayStamp(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function yearOffsetValue(v){ const n=Number(v); return Number.isFinite(n) ? n : 0; }
+function yearOffsetLabel(v){ const n=yearOffsetValue(v); if(n===0) return "Current Year"; if(n===1) return "Next Year"; return `${n} Yr`; }
+function addYearsToDateString(value, years){ const d=dateParse(value); if(!d) return ""; d.setFullYear(d.getFullYear()+years); return ymd(d); }
+function calcYearFromEnd(end,offset){ const d=dateParse(end); if(!d) return "—"; return d.getFullYear()+yearOffsetValue(offset); }
+function villageMatchesRestriction(user,village){ const preset=rolePreset(user.role); if(!preset.villageRestricted) return true; const allowed=normalizeVillageList(user.villages).map(v=>normKey(v)); const current=normKey(village); if(!allowed.length) return false; return allowed.includes(current); }
+function policyVisibleToUser(user,policy){ return villageMatchesRestriction(user, policy?.formData?.VILLAGE); }
+function rowVisibleToUser(user,row){ return villageMatchesRestriction(user, getv(row,["village"])); }
+function tabAllowedForUser(user,tabId){ return rolePreset(user.role).tabs.includes(tabId); }
+function allVillageOptions(){ return [...new Set([...(state.policies||[]).map(p=>String(p.formData?.VILLAGE||"").trim()), ...(state.uploadedPolicyRows||[]).map(p=>String(p.formData?.VILLAGE||"").trim()), ...(state.futureRows||[]).map(r=>String(getv(r,["village"])||"").trim())].filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
+function customAge(dob,endDate){
+  const b=dateParse(dob), e=dateParse(endDate); if(!b || !e || e < b) return null;
+  let years=e.getFullYear()-b.getFullYear(); const bday=new Date(e.getFullYear(),b.getMonth(),b.getDate()); if(e < bday) years -= 1; return years;
+}
+function relationshipOptions(policy,index){ if(index===0) return ["self"]; if(policy==="asha_kiran") return ["spouse","daughter"]; return ["member","spouse","son","daughter","parent"]; }
+function normalizeMember(member,index,policy){
+  const options=relationshipOptions(policy,index);
+  const relationship=options.includes(member.relationship) ? member.relationship : options[0];
+  const gender=relationship==="daughter" ? "female" : (member.gender || (index===0 ? "male" : ""));
+  const ageOverrideValue=String(member?.ageOverride ?? "").trim();
+  const premiumOverrideValue=String(member?.premiumOverride ?? "").trim();
+  return { name:String(member.name || (index===0 ? "Policy Holder" : `Member ${index}`)), dob:String(member.dob||""), relationship, gender, addOnRider:Number(member.addOnRider)||0, ageOverride: ageOverrideValue === "" ? null : Number(ageOverrideValue), premiumOverride: premiumOverrideValue === "" ? null : Number(premiumOverrideValue), useDirectPremium:Boolean(member?.useDirectPremium) };
+}
+function chartRows(policy,role){ const chart=state.charts[policy]; if(Array.isArray(chart)) return chart; return role==="holder" ? (chart?.holder||[]) : (chart?.member || chart?.holder || []); }
+function siList(policy){ const chart=state.charts[policy]; const rows=Array.isArray(chart) ? chart : [...(chart?.holder||[]), ...(chart?.member||[])]; return [...new Set(rows.flatMap(r=>Object.keys(r.premiums||{}).map(Number)))].filter(Number.isFinite).sort((a,b)=>a-b); }
+function premiumFor(policy, role, age, si){ const rows=chartRows(policy,role); const hit=rows.find(r=>age>=r.min && age<=r.max); if(!hit) return {error:`No age band found for age ${age}`}; const value=hit.premiums?.[String(si)]; if(value == null) return {error:`No premium found for SI ₹${rs(si)} in age band ${hit.label}`}; return {premium:Number(value), band:hit.label}; }
+function discountPct(policy, role, count, rel, gender){
+  const d=state.defs[policy]?.discount || {};
+  if(d.type==="daughter") return rel==="daughter" && gender==="female" ? Number(d.daughter)||0 : 0;
+  if(d.different==="yes") return role==="holder" ? Number(d.holder)||0 : Number(d.member)||0;
+  const c=Math.min(Math.max(Number(count)||1,1),7); return Number(d.byCount?.[c] || 0);
+}
+function memberAge(member,endDate){ if(member.ageOverride != null && Number.isFinite(member.ageOverride)) return Number(member.ageOverride); return customAge(member.dob,endDate); }
+function ashaKiranHolderChartIndex(members,endDate){
+  const eligible=[]; (members||[]).forEach((member,index)=>{ const normalized=normalizeMember(member,index,"asha_kiran"); if(normalized.relationship==="daughter") return; const age=memberAge(normalized,endDate); if(age == null) return; eligible.push({index,age});});
+  if(!eligible.length) return 0; eligible.sort((a,b)=>b.age-a.age || a.index-b.index); return eligible[0].index;
+}
+function quoteFromInput(policyType, memberCount, sumInsured, endDate, members){
+  const safeCount=Math.max(1, Number(memberCount)||1);
+  const safeMembers=(members||[]).slice(0,safeCount).map((m,i)=>normalizeMember(m,i,policyType));
+  const ashaIndex=policyType==="asha_kiran" ? ashaKiranHolderChartIndex(safeMembers,endDate) : 0;
+  const rows=safeMembers.map((member,index)=>{
+    const appliedRole=policyType==="asha_kiran" ? (index===ashaIndex ? "holder":"member") : (index===0 ? "holder":"member");
+    const age=memberAge(member,endDate);
+    const directBasic=member.useDirectPremium && member.premiumOverride != null && Number.isFinite(member.premiumOverride) ? Number(member.premiumOverride) : null;
+    if(age == null && directBasic == null) return {...member, role:appliedRole, age:null, error:"Age could not be calculated."};
+    const premium=directBasic != null ? {premium:directBasic, band:"Direct Premium"} : premiumFor(policyType, appliedRole, age, Number(sumInsured));
+    if(premium.error) return {...member, role:appliedRole, age, error:premium.error};
+    const rider=Number(member.addOnRider)||0;
+    const gross=premium.premium+rider;
+    const pct=directBasic != null ? 0 : discountPct(policyType, appliedRole, safeCount, member.relationship, member.gender);
+    const disc=Math.ceil((gross*pct)/100);
+    const net=Math.ceil(gross-disc);
+    return {...member, role:appliedRole, age, band:premium.band, basic:premium.premium, rider, gross, pct, disc, net};
+  });
+  const basic=rows.reduce((s,r)=>s+(r.basic||0),0), rider=rows.reduce((s,r)=>s+(r.rider||0),0), gross=rows.reduce((s,r)=>s+(r.gross||0),0), disc=rows.reduce((s,r)=>s+(r.disc||0),0);
+  return { rows, basic, rider, gross, disc, net: Math.ceil(gross-disc) };
+}
+function futureMemberCount(row){
+  const direct=Number(getv(row,["member_count","persons","person_count","no_of_person","no_of_persons","no_of_members","number_of_persons"]));
+  if(Number.isFinite(direct) && direct > 0) return direct;
+  let inferred=1;
+  for(let i=2;i<=7;i+=1){
+    const present=hasText(getv(row,[`member_${i}_name`,`member${i}_name`,`member_${i}_dob`,`member${i}_dob`,`member_${i}_age`,`member${i}_age`,`member_${i}_relationship`,`member${i}_relationship`,`member_${i}_relation`,`member${i}_relation`]));
+    if(present) inferred=i;
+  }
+  return inferred;
+}
+function normGender(v, rel, index){ const g=String(v||"").trim().toLowerCase(); if(g==="male" || g==="female") return g; if(rel==="daughter") return "female"; if(index===0) return "male"; return ""; }
+function normRel(v, policy, index){ const key=normKey(v), options=relationshipOptions(policy,index); return options.includes(key) ? key : options[0]; }
+function buildMembersFromFutureRow(row, policy, targetCount){
+  const count=Math.max(1,targetCount||1), out=[];
+  const holderSpecificPremium=getv(row,["holder_basic_premium","holder_premium","policy_holder_premium"]);
+  const genericPremium=getv(row,["basic_premium","premium_amount","premium","vkk_premium","net_premium"]);
+  out.push({ name:getv(row,["holder_name","member_1_name","member1_name","policy_holder_name"])||"Policy Holder", dob:ymd(dateParse(getv(row,["holder_dob","member_1_dob","member1_dob","dob"]))), relationship:"self", gender:normGender(getv(row,["holder_gender","member_1_gender","member1_gender","gender"]),"self",0), addOnRider: money(getv(row,["holder_addon_rider","member_1_addon_rider","member1_addon_rider","holder_rider","rider"])), ageOverride: hasText(getv(row,["holder_age","member_1_age","member1_age","age"])) ? Number(getv(row,["holder_age","member_1_age","member1_age","age"])) : null, premiumOverride: hasText(holderSpecificPremium) ? Number(holderSpecificPremium) : (count===1 && hasText(genericPremium) ? Number(genericPremium) : null), useDirectPremium: hasText(holderSpecificPremium) || (count===1 && hasText(genericPremium)) });
+  for(let i=1;i<count;i+=1){
+    const rel=normRel(getv(row,[`member_${i+1}_relationship`,`member${i+1}_relationship`,`member_${i+1}_relation`,`member${i+1}_relation`]),policy,i);
+    const memberPremium=getv(row,[`member_${i+1}_basic_premium`,`member${i+1}_basic_premium`,`member_${i+1}_premium`,`member${i+1}_premium`]);
+    out.push({ name:getv(row,[`member_${i+1}_name`,`member${i+1}_name`])||`Member ${i}`, dob:ymd(dateParse(getv(row,[`member_${i+1}_dob`,`member${i+1}_dob`]))), relationship:rel, gender:normGender(getv(row,[`member_${i+1}_gender`,`member${i+1}_gender`]),rel,i), addOnRider: money(getv(row,[`member_${i+1}_addon_rider`,`member${i+1}_addon_rider`,`member_${i+1}_rider`,`member${i+1}_rider`])), ageOverride: hasText(getv(row,[`member_${i+1}_age`,`member${i+1}_age`])) ? Number(getv(row,[`member_${i+1}_age`,`member${i+1}_age`])) : null, premiumOverride: hasText(memberPremium) ? Number(memberPremium) : null, useDirectPremium: hasText(memberPremium) });
+  }
+  return out;
+}
+function buildPolicyRowsFromPolicies(policies){
+  return (policies||[]).map((p)=>{
+    const base={ policy_number:p.formData["POLICY NO"], holder_name:p.formData["POLICY HOLDER NAME"], policy_type:p.formData["POLICY TYPE"], sum_insured:p.formData["SUM INSURED (SI)"], svkk_id:p.formData["SVKK ID"], customer_id:p.formData["CUSTOMER ID"], persons:p.formData.PERSON, end_date:p.formData["POLICY END DATE"], year:p.formData.YEAR, village:p.formData.VILLAGE, category:p.formData.CATEGORY, month:p.formData.MONTH, area:p.formData.AREA, grouping:p.formData.GROUPING, holder_dob:p.formData["HOLDER DOB"], holder_age:p.formData["HOLDER AGE"], holder_gender:p.formData["HOLDER GENDER"], holder_basic_premium:Number(p.formData.PERSON||1)===1 ? (p.formData["VKK PREMIUM"] || p.formData["PREMIUM AMOUNT"] || p.formData["NET PREMIUM"] || "") : (p.formData.policy_holder_premium || p.formData["HOLDER PREMIUM"] || "") };
+    for(let i=1;i<=6;i+=1){
+      base[`member_${i+1}_name`]=p.formData[`MEMBER ${i} NAME`] || "";
+      base[`member_${i+1}_dob`]=p.formData[`MEMBER ${i} DOB`] || "";
+      base[`member_${i+1}_relationship`]=p.formData[`MEMBER ${i} RELATION`] || "";
+      base[`member_${i+1}_gender`]=p.formData[`MEMBER ${i} GENDER`] || "";
+      base[`member_${i+1}_age`]=p.formData[`MEMBER ${i} AGE`] || "";
+      base[`member_${i+1}_basic_premium`]=p.formData[`MEMBER ${i} PREMIUM`] || "";
+      base[`member_${i+1}_addon_rider`]=p.formData[`MEMBER ${i} RIDER`] || "";
+    }
+    return base;
+  });
+}
+function resolveSourceRows(sourceKey, futureRows, policies){
+  const uploaded=futureRows||[], policyRows=buildPolicyRowsFromPolicies(policies);
+  if(sourceKey==="policy_list_only") return policyRows;
+  if(sourceKey==="uploaded_csv_only") return uploaded;
+  if(sourceKey==="uploaded_csv_policy_list" || sourceKey==="linked_upload"){ const map=new Map(policyRows.map(row=>[String(row.policy_number||"").trim().toLowerCase(),row])); return uploaded.map(row=>{ const policyNo=String(getv(row,["policy_number","policy_no","policyno"])||"").trim().toLowerCase(); const linked=map.get(policyNo); return linked ? {...linked, ...row} : row; });}
+  return uploaded;
+}
+function sourceLabel(sourceKey){ return ({uploaded_csv_policy_list:"Uploaded CSV + Policy List", uploaded_csv_only:"Uploaded CSV Only", policy_list_only:"Policy List Only", linked_upload:"Linked Uploaded CSV"})[sourceKey] || sourceKey; }
+function buildFutureResults(rawRows, sourceKey, yearOffset){
+  return (rawRows||[]).map((row,idx)=>{ const policy=normPolicy(getv(row,["policy_type","type"])); const declaredCount=futureMemberCount(row); const memberCount=Math.max(1,declaredCount||1); const members=buildMembersFromFutureRow(row,policy,memberCount); const si=money(getv(row,["sum_insured","si"])); const baseStart=getv(row,["start_date","policy_start_date","current_start_date"]); const baseEnd=getv(row,["end_date","policy_end_date","future_end_date","expiry_date"]); const offset=yearOffsetValue(yearOffset); const start=addYearsToDateString(baseStart, offset); const end=addYearsToDateString(baseEnd, offset); const policyNo=getv(row,["policy_number","policy_no","policyno"]) || `POL-${String(idx+1).padStart(4,"0")}`; const holder=getv(row,["holder_name","member_1_name","member1_name","policy_holder_name"]) || "Policy Holder"; const svkkId=getv(row,["svkk_id","svkkid"]) || "—"; const customerId=getv(row,["customer_id","customerid"]) || "—"; const quote=quoteFromInput(policy, memberCount, si, end || baseEnd, members); const status=quote.rows.some(r=>r.error) ? "Issue":"Ready"; return {source:sourceLabel(sourceKey), svkkId, customerId, policyNo, holder, policy, memberCount, si, start, end, calcYear:calcYearFromEnd(end||baseEnd,0), calcDate:todayStamp(), quote, status, village:getv(row,["village"])}; });
+}
+function parseCsv(text){
+  const rows=[]; let row=[], cell="", quoted=false; const src=String(text||"").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+  for(let i=0;i<src.length;i+=1){ const ch=src[i], next=src[i+1];
+    if(quoted){ if(ch === '"' && next === '"'){ cell += '"'; i += 1; } else if(ch === '"'){ quoted=false; } else { cell += ch; } }
+    else if(ch === '"'){ quoted=true; }
+    else if(ch === ','){ row.push(cell); cell=""; }
+    else if(ch === '\n'){ row.push(cell); rows.push(row); row=[]; cell=""; }
+    else { cell += ch; }
+  }
+  row.push(cell); rows.push(row); return rows.filter(r=>r.some(v=>String(v||"").trim() !== ""));
+}
+function toObjects(rows){ if(!rows.length) return []; const headers=(rows[0]||[]).map(x=>String(x||"")); return rows.slice(1).map(r=>Object.fromEntries(headers.map((k,i)=>[k, r[i] ?? ""]))).filter(o=>Object.values(o).some(v=>String(v).trim() !== "")); }
+function buildCsv(rows){
+  if(!rows.length) return "";
+  const heads=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+  const lines=["\uFEFF"+heads.join(",")];
+  rows.forEach(r=>{ lines.push(heads.map(h=>{ const t=String(r[h] ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t; }).join(",")); });
+  return lines.join("\n");
+}
+function downloadCsv(name, rows){ const csv=buildCsv(rows); if(!csv) return; const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+function normalizeUploadedPolicyRows(rows){
+  return (rows||[]).map((row,index)=>({ id:`UPLOAD-${String(getv(row,["svkk_id","svkkid"])||"ROW")}-${String(getv(row,["year"])||index+1)}-${index}`, formData:{
+    "SVKK ID":getv(row,["svkk_id","svkkid"]),
+    YEAR:getv(row,["year"]),
+    "REF.":getv(row,["ref","reference_no","reference"]),
+    "POLICY NO":getv(row,["policy_number","policy_no","policyno"]),
+    "CUSTOMER ID":getv(row,["customer_id","customerid"]),
+    "POLICY HOLDER NAME":getv(row,["holder_name","policy_holder_name","name"]),
+    "POLICY TYPE":getv(row,["policy_type","type","product_name"]),
+    VILLAGE:getv(row,["village"]),
+    AREA:getv(row,["area"]),
+    CATEGORY:getv(row,["category"]),
+    MONTH:getv(row,["month"]),
+    GROUPING:getv(row,["grouping","group"]),
+    "SUM INSURED (SI)":getv(row,["sum_insured","si"]),
+    "VKK PREMIUM":getv(row,["vkk_premium","premium","net_premium"]),
+    "CO. PREMIUM":getv(row,["co_premium","company_premium","gross_premium"]),
+    PERSON:getv(row,["persons","person","no_of_person","member_count"]),
+    "POLICY END DATE":getv(row,["policy_end_date","end_date","expiry_date"]),
+    "TRANSACTION DATE":getv(row,["transaction_date","payment_date"]),
+    "DATE OF PAYMENT / CHQ DATE":getv(row,["date_of_payment_chq_date","cheque_date","payment_date"]),
+    "CHEQUE CLEARED / DISHONOURED":getv(row,["cheque_cleared_dishonoured","status","payment_status"]),
+    "HOLDER AGE":getv(row,["holder_age","age"]),
+    "HOLDER DOB":getv(row,["holder_dob","dob"]),
+    "HOLDER GENDER":getv(row,["holder_gender","gender"]),
+    "HOLDER PREMIUM":getv(row,["holder_basic_premium","holder_premium","policy_holder_premium"]),
+    "MEMBER 1 AGE":getv(row,["member_2_age","member2_age"]),
+    "MEMBER 1 PREMIUM":getv(row,["member_2_basic_premium","member2_basic_premium","member_2_premium","member2_premium"]),
+    "MEMBER 2 AGE":getv(row,["member_3_age","member3_age"]),
+    "MEMBER 2 PREMIUM":getv(row,["member_3_basic_premium","member3_basic_premium","member_3_premium","member3_premium"])
+  }}));
+}
+function makePolicyIdentity(formData){ return [formData["SVKK ID"]||"NO-SVKK", formData.YEAR||"NO-YEAR", formData["POLICY NO"]||formData["REF."]||formData["CUSTOMER ID"]||"NO-POLICY"].join("::"); }
+function makePolicyRecordId(formData,existingId){ return existingId || makePolicyIdentity(formData); }
+function formatReceiptNo(counter,dateValue){ const d=dateParse(dateValue) || new Date(); return `RCP/${d.getFullYear()}/${String(counter).padStart(5,"0")}`; }
+function numberToWordsIndian(num){
+  const n=Math.round(Number(num)||0); if(n===0) return "Zero Rupees Only";
+  const ones=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const tens=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  const belowThousand=(value)=>{ let out=""; if(value>=100){ out += `${ones[Math.floor(value/100)]} Hundred `; value %= 100; } if(value>=20){ out += `${tens[Math.floor(value/10)]} `; value %= 10; } if(value>0) out += `${ones[value]} `; return out.trim(); };
+  let value=n; const parts=[]; const crore=Math.floor(value/10000000); if(crore){ parts.push(`${belowThousand(crore)} Crore`); value%=10000000; } const lakh=Math.floor(value/100000); if(lakh){ parts.push(`${belowThousand(lakh)} Lakh`); value%=100000; } const thousand=Math.floor(value/1000); if(thousand){ parts.push(`${belowThousand(thousand)} Thousand`); value%=1000; } if(value) parts.push(belowThousand(value)); return `${parts.join(" ").trim()} Rupees Only`;
+}
+function buildReceiptRecord(formData, receiptNo, generatedBy){
+  const premiumAmount=money(formData["PREMIUM AMOUNT"]||formData["VKK PREMIUM"]||formData["NET PREMIUM"]||formData["CO. PREMIUM"]);
+  const amountReceived=money(formData["AMOUNT RECEIVED"]||formData["VKK PREMIUM"]||formData["NET PREMIUM"]||premiumAmount);
+  const paymentDate=formData["DATE OF PAYMENT / CHQ DATE"] || formData["TRANSACTION DATE"] || todayStamp();
+  const recordDate=todayStamp();
+  const receiptForm={...formData, "RECEIPT NO":receiptNo, "RECEIPT DATE":recordDate, "PREMIUM AMOUNT":String(premiumAmount||0), "AMOUNT RECEIVED":String(amountReceived||0), "DATE OF PAYMENT / CHQ DATE":paymentDate};
+  return { id:`${makePolicyIdentity(receiptForm)}::${receiptNo}`, policyKey:makePolicyIdentity(receiptForm), receiptNo, createdAt:recordDate, generatedBy, formData:receiptForm, amountInWords:numberToWordsIndian(amountReceived || premiumAmount) };
+}
+function ensureReceiptForForm(formData){
+  const user=getSessionUser(); const policyKey=makePolicyIdentity(formData); const existing=(state.receipts||[]).find(item=>item.policyKey===policyKey); const hasExistingNumber=String(formData["RECEIPT NO"] || "").trim() !== "";
+  const receiptNo=(existing?.receiptNo) || formData["RECEIPT NO"] || formatReceiptNo(state.receiptCounter, formData["TRANSACTION DATE"] || formData["DATE OF PAYMENT / CHQ DATE"] || todayStamp());
+  const record=buildReceiptRecord(formData, receiptNo, user.name);
+  const idx=state.receipts.findIndex(item=>item.policyKey===policyKey);
+  if(idx>=0) state.receipts[idx]=record; else state.receipts.unshift(record);
+  if(!existing && !hasExistingNumber) state.receiptCounter += 1;
+  persist(); return record;
+}
+function openReceipt(formData){ const record=ensureReceiptForForm(formData); ui.receiptPreview=record; render(); }
+function buildBlankForm(){
+  const blank={"SVKK ID":"","YEAR":"","REF.":"","RECEIPT NO":"","POLICY NO":"","CUSTOMER ID":"","POLICY HOLDER NAME":"","POLICY TYPE":"individual","CATEGORY":"","MONTH":"","VILLAGE":"","AREA":"","GROUPING":"","SUM INSURED (SI)":"200000","PERSON":"1","CO. PREMIUM":"","VKK PREMIUM":"","GROSS PREMIUM":"","NET PREMIUM":"","DISCOUNT":"","COMMISSION":"","PREMIUM AMOUNT":"","AMOUNT RECEIVED":"","vkk_premium":"","co_premium":"","gross_premium":"","two_lakh_f":"","policy_holder_premium":"","Gaam_mahajan_vkk_refund":"","excess_short_amt":"","diff_amt_paid_policy_holder":"","POLICY END DATE":"","ADDRESS":"","MOBILE":"","EMAIL":"","MODE OF PAYMENT":"","TRANSACTION DETAIL":"","TRANSACTION DATE":"","DATE OF PAYMENT / CHQ DATE":"","CHEQUE CLEARED / DISHONOURED":"","RETURN CHARGES":"","SECONDARY TRANSACTION DETAIL":"","NOMINEE NAME":"","NOMINEE RELATION":"","LOAN NO":"","NOT OVER":"","COURIER":"","COURIER COMPANY":"","POD":"","REMARK":"","HOLDER DOB":"","HOLDER GENDER":"male","HOLDER AGE":"","HOLDER RIDER":"0","HOLDER PREMIUM":""};
+  for(let i=1;i<=6;i+=1){
+    blank[`MEMBER ${i} NAME`]="";
+    blank[`MEMBER ${i} DOB`]="";
+    blank[`MEMBER ${i} RELATION`]="member";
+    blank[`MEMBER ${i} GENDER`]="";
+    blank[`MEMBER ${i} AGE`]="";
+    blank[`MEMBER ${i} RIDER`]="0";
+    blank[`MEMBER ${i} PREMIUM`]="";
+  }
+  return blank;
+}
+ui.add.form = buildBlankForm();
+
+function getFieldOptions(field, policyType){
+  if(field==="POLICY TYPE") return [{value:"individual",label:"Individual"},{value:"family_floater",label:"Family Floater"},{value:"asha_kiran",label:"Asha Kiran"}];
+  if(field==="CATEGORY") return [{value:"",label:"Select Category"},{value:"A",label:"A"},{value:"B",label:"B"},{value:"C",label:"C"},{value:"D",label:"D"}];
+  if(field==="MONTH") return ["","April","May","June","July","August","September","October","November","December","January","February","March"].map(v=>({value:v,label:v||"Select Month"}));
+  if(field==="PERSON") return Array.from({length:7},(_,i)=>({value:String(i+1),label:String(i+1)}));
+  if(field==="MODE OF PAYMENT") return [{value:"",label:"Select Mode"},{value:"ONLINE",label:"ONLINE"},{value:"CASH",label:"CASH"},{value:"CHQ",label:"CHQ"}];
+  if(field==="CHEQUE CLEARED / DISHONOURED") return [{value:"",label:"Select Status"},{value:"Cleared",label:"Cleared"},{value:"Dishonoured",label:"Dishonoured"},{value:"Honoured",label:"Honoured"},{value:"Processing",label:"Processing"}];
+  if(field==="HOLDER GENDER") return [{value:"",label:"Select Gender"},{value:"male",label:"Male"},{value:"female",label:"Female"}];
+  if(field.startsWith("MEMBER ") && field.endsWith(" RELATION")){ const num=Number(field.split(" ")[1])||1; return relationshipOptions(normPolicy(policyType), num).map(option=>({value:option,label:option.charAt(0).toUpperCase()+option.slice(1)}));}
+  if(field.startsWith("MEMBER ") && field.endsWith(" GENDER")) return [{value:"",label:"Select Gender"},{value:"male",label:"Male"},{value:"female",label:"Female"}];
+  return null;
+}
+
+function cardStat(label, value, dark=false){ return `<div class="stat ${dark?'dark':''}"><div class="k">${escapeHtml(label)}</div><div class="v">${escapeHtml(value)}</div></div>`; }
+function fieldHtml(id, label, value, onchange, options, disabled=false, type="text"){
+  if(options){
+    return `<div class="field"><label>${escapeHtml(label)}</label><select ${disabled?'disabled':''} onchange="${onchange}">${options.map(opt=>`<option value="${escAttr(opt.value ?? opt)}" ${(String(opt.value ?? opt)===String(value ?? ''))?'selected':''}>${escapeHtml(opt.label ?? opt)}</option>`).join("")}</select></div>`;
+  }
+  if(type==="textarea"){
+    return `<div class="field"><label>${escapeHtml(label)}</label><textarea ${disabled?'disabled':''} oninput="${onchange}">${escapeHtml(value ?? "")}</textarea></div>`;
+  }
+  return `<div class="field"><label>${escapeHtml(label)}</label><input type="${type}" value="${escAttr(value ?? "")}" ${disabled?'disabled':''} oninput="${onchange}"></div>`;
+}
+function memberTable(rows){
+  return `<div class="table-wrap"><table><thead><tr>${["Person","Role","Age","Basic","Rider","Discount","Net"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr><td><b>${escapeHtml(r.name || r.person || "")}</b></td><td>${escapeHtml(r.role || r.relationship || "")}</td><td>${escapeHtml(r.age ?? "—")}</td><td>${escapeHtml(r.error ? r.error : `₹${rs(r.basic || 0)}`)}</td><td>${escapeHtml(r.error ? "—" : `₹${rs(r.rider || 0)}`)}</td><td>${escapeHtml(r.error ? "—" : `${r.pct || 0}%`)}</td><td><b>${escapeHtml(r.error ? "—" : `₹${rs(r.net || 0)}`)}</b></td></tr>`).join("")}</tbody></table></div>`;
+}
+function sessionUser(){ return getSessionUser(); }
+
+function visiblePoliciesCombined(){
+  const user=sessionUser();
+  return [...(state.policies||[]), ...(state.uploadedPolicyRows||[])]
+    .filter(p => !state.deletedPolicyIds.includes(p.id))
+    .filter(p => policyVisibleToUser(user, p));
+}
+function currentAllowedTabs(){ const user=sessionUser(); return TAB_META.filter(t=>tabAllowedForUser(user, t.id)); }
+
+const Actions = {
+  setCurrentUser(id){ state.session.currentUserId=id; const allowed=currentAllowedTabs(); if(!allowed.some(t=>t.id===ui.activeTab)) ui.activeTab=allowed[0]?.id || "live"; persist(); render(); },
+  setTab(id){ ui.activeTab=id; render(); },
+  resetData(){ if(confirm("Reset local test data?")){ localStorage.removeItem(STORAGE_KEY); state=structuredClone(defaultState); ui.activeTab="live"; ui.receiptPreview=null; ui.liveForm={policyType:"asha_kiran", memberCount:3, sumInsured:200000, endDate:"14.10.2026", members:[{name:"Policy Holder",dob:"13.10.1987",relationship:"self",gender:"male",addOnRider:0},{name:"Spouse",dob:"05.06.1990",relationship:"spouse",gender:"female",addOnRider:0},{name:"Daughter",dob:"11.08.2014",relationship:"daughter",gender:"female",addOnRider:0}]}; ui.add={svkkId:"", selectedId:"", mode:"fetch", section:"policy_details", notice:"", form:buildBlankForm()}; ui.future={source:"uploaded_csv_policy_list", year:"0", generated:false, msg:"Upload future-premium CSV. Lookup reads from the same uploaded data.", search:"", policy:"all", si:"all", status:"all", fileName:""}; ui.lookup={no:"", source:"linked_upload", year:"0", result:null}; ui.list={search:"", year:"all", category:"all", type:"all", month:"all", area:"all", village:"all", si:"all", group:"all", expandedSvkk:"", actionMode:"view", uploadMsg:""}; render(); } },
+  closeReceipt(){ ui.receiptPreview=null; render(); },
+  printReceipt(){ window.print(); },
+
+  setLiveField(key,val){
+    if(key==="policyType"){ ui.liveForm.policyType=val; this.ensureLiveMembers(); }
+    else if(key==="memberCount"){ ui.liveForm.memberCount=Math.max(1, Number(val)||1); this.ensureLiveMembers(); }
+    else if(key==="sumInsured"){ ui.liveForm.sumInsured=Number(val)||0; }
+    else ui.liveForm[key]=val;
+    render();
+  },
+  ensureLiveMembers(){
+    const count=Math.max(1, Number(ui.liveForm.memberCount)||1), policy=ui.liveForm.policyType; const next=[...(ui.liveForm.members||[])];
+    while(next.length < count){ const idx=next.length; const rel=idx===0 ? "self" : policy==="asha_kiran" ? (idx===1 ? "spouse":"daughter") : "member"; next.push({name:idx===0 ? "Policy Holder" : `Member ${idx}`, dob:"", relationship:rel, gender:rel==="daughter" ? "female":"", addOnRider:0}); }
+    ui.liveForm.members=next.slice(0,count).map((m,i)=>normalizeMember(m,i,policy));
+  },
+  setLiveMember(index,key,val){ const m=ui.liveForm.members[index]; if(!m) return; if(key==="addOnRider") m[key]=Number(val)||0; else m[key]=val; render(); },
+
+  setFutureField(key,val){ ui.future[key]=val; render(); },
+  async uploadFutureCsv(input){
+    const file=input.files?.[0]; if(!file) return; ui.future.fileName=file.name;
+    const text=await file.text(); const rows=toObjects(parseCsv(text)); state.futureRows=rows; persist(); ui.future.msg=`${rows.length} rows loaded.`; ui.future.generated=true; render();
+  },
+  generateFuture(){ ui.future.generated=true; render(); },
+  exportFutureSummary(){
+    const rows=getFilteredFutureResults().map(r=>({policy_number:r.policyNo,holder_name:r.holder,policy_type:r.policy,sum_insured:r.si,member_count:r.memberCount,village:r.village,start_date:r.start,end_date:r.end,basic_premium:r.quote.basic,add_on_rider:r.quote.rider,gross_premium:r.quote.gross,discount:r.quote.disc,net_premium:r.quote.net,status:r.status}));
+    downloadCsv("future-summary.csv",rows);
+  },
+  exportFutureDetail(){
+    const rows=getFilteredFutureResults().flatMap(r=>r.quote.rows.map(m=>({svkk_id:r.svkkId,customer_id:r.customerId,policy_number:r.policyNo,holder_name:r.holder,policy_type:r.policy,sum_insured:r.si,member_count:r.memberCount,village:r.village,person_name:m.name,role:m.role,relationship:m.relationship,gender:m.gender,dob:m.dob,age:m.age ?? "",band:m.band || "",basic_premium:m.basic || 0,add_on_rider:m.rider || 0,gross_premium:m.gross || 0,discount_percent:m.pct || 0,discount_amount:m.disc || 0,net_premium:m.net || 0,status:m.error || "Ready"})));
+    downloadCsv("future-detail.csv",rows);
+  },
+
+  setLookupField(key,val){ ui.lookup[key]=val; render(); },
+  doLookup(){
+    const token=String(ui.lookup.no || "").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+    const rows=resolveSourceRows(ui.lookup.source, state.futureRows, state.policies).filter(r=>rowVisibleToUser(sessionUser(), r));
+    const results=buildFutureResults(rows, ui.lookup.source, ui.lookup.year);
+    ui.lookup.result=results.find(r=>String(r.policyNo).toLowerCase().replace(/[^a-z0-9]/g,"")===token) || null;
+    render();
+  },
+
+  updateUserName(id,val){ if(!rolePreset(sessionUser().role).canManageUsers) return; const u=state.users.find(x=>x.id===id); if(u){ u.name=val; persist(); render(); } },
+  updateUserRole(id,val){ if(!rolePreset(sessionUser().role).canManageUsers) return; const u=state.users.find(x=>x.id===id); if(u){ u.role=val; if(val!=="staff") u.villages=[]; persist(); render(); } },
+  updateUserVillages(id,val){ if(!rolePreset(sessionUser().role).canManageUsers) return; const u=state.users.find(x=>x.id===id); if(u){ u.villages=val.split(",").map(s=>s.trim()).filter(Boolean); persist(); render(); } },
+  addStaffUser(){ if(!rolePreset(sessionUser().role).canManageUsers) return; const firstVillage=allVillageOptions()[0]; state.users.push({id:`staff-${Date.now()}`,name:`Staff ${state.users.length+1}`,role:"staff",villages:firstVillage?[firstVillage]:[]}); persist(); render(); },
+  addUser(){ if(!rolePreset(sessionUser().role).canManageUsers) return; state.users.push({id:`user-${Date.now()}`,name:`User ${state.users.length+1}`,role:"user",villages:[]}); persist(); render(); },
+
+  setAddSvkkId(val){ ui.add.svkkId=val; render(); },
+  selectAddRecord(id){ ui.add.selectedId=id; render(); },
+  startNewPolicy(){
+    const role=rolePreset(sessionUser().role); if(!role.canEditPolicies){ ui.add.notice="This role cannot add or edit policy records."; render(); return; }
+    ui.add.mode="new"; ui.add.notice="New policy entry mode is open. All fields are editable."; ui.add.form=buildBlankForm(); if(role.villageRestricted) ui.add.form.VILLAGE=normalizeVillageList(sessionUser().villages)[0] || ""; render();
+  },
+  fetchOldPolicy(){
+    const rec=this.selectedAddPolicy(); if(!rec) return; ui.add.mode="fetch"; ui.add.form={...buildBlankForm(), ...rec.formData}; ui.add.notice=`Loaded ${rec.formData.YEAR} for SVKK ID ${rec.formData["SVKK ID"]}.`; render();
+  },
+  carryForward(){
+    const rec=this.selectedAddPolicy(); const role=rolePreset(sessionUser().role); if(!rec) return; if(!role.canEditPolicies){ ui.add.notice="This role cannot add or edit policy records."; render(); return; }
+    ui.add.mode="new"; ui.add.form={...buildBlankForm(), ...rec.formData, YEAR:nextYearText(rec.formData.YEAR), "REF.":"", "RECEIPT NO":"", "POLICY NO":""}; ui.add.notice=`Carry forward prepared from ${rec.formData.YEAR} to ${nextYearText(rec.formData.YEAR)}.`; render();
+  },
+  selectedAddPolicy(){
+    const list=addMatchingPolicies(); return list.find(p=>p.id===ui.add.selectedId) || list[0] || null;
+  },
+  setAddSection(id){ ui.add.section=id; render(); },
+  updateAddField(field,val){
+    ui.add.form[field]=val;
+    if(field==="PERSON"){ const count=Math.max(1, Number(val)||1); if(count<1) ui.add.form[field]="1"; }
+    render();
+  },
+  savePolicy(isUpdate){
+    const role=rolePreset(sessionUser().role); if(!role.canEditPolicies){ ui.add.notice="This role cannot add or edit policy records."; render(); return; }
+    const working=displayAddForm();
+    if(!villageMatchesRestriction(sessionUser(), working.VILLAGE)){ ui.add.notice=`Staff restriction: allowed villages are ${normalizeVillageList(sessionUser().villages).join(", ") || "None assigned"}.`; render(); return; }
+    if(!working["SVKK ID"]) working["SVKK ID"]=`SVKK${String((state.policies.length||0)+1).padStart(4,"0")}`;
+    if(!working.YEAR) working.YEAR=`${new Date().getFullYear()}-${String((new Date().getFullYear()+1)%100).padStart(2,"0")}`;
+    const receipt=ensureReceiptForForm(working); working["RECEIPT NO"]=receipt.receiptNo;
+    const recordId=makePolicyRecordId(working, isUpdate ? ui.add.selectedId : "");
+    const nextRecord={id:recordId, formData:working};
+    const foundIndex=state.policies.findIndex(item=>item.id===recordId || item.id===ui.add.selectedId);
+    if(foundIndex>=0) state.policies[foundIndex]=nextRecord; else state.policies.unshift(nextRecord);
+    ui.add.selectedId=recordId; ui.add.form={...working}; ui.add.mode="fetch"; ui.add.notice=`${isUpdate ? "Policy updated":"Policy saved"} and receipt ${receipt.receiptNo} auto generated.`; persist(); openReceipt(working); render();
+  },
+  previewReceiptFromAdd(){
+    if(!rolePreset(sessionUser().role).canGenerateReceipt){ ui.add.notice="This role cannot generate receipts."; render(); return; }
+    const receipt=ensureReceiptForForm(displayAddForm()); ui.add.form["RECEIPT NO"]=receipt.receiptNo; persist(); openReceipt({...displayAddForm(), "RECEIPT NO":receipt.receiptNo});
+  },
+
+  async uploadPolicyListCsv(input){
+    const file=input.files?.[0]; if(!file) return;
+    const text=await file.text(); const rows=toObjects(parseCsv(text)); state.uploadedPolicyRows=normalizeUploadedPolicyRows(rows); persist(); ui.list.uploadMsg=`${state.uploadedPolicyRows.length} pre-valid records uploaded into Policy List.`; render();
+  },
+  setListFilter(key,val){ ui.list[key]=val; render(); },
+  toggleGroup(svkkId, mode){ ui.list.expandedSvkk=(ui.list.expandedSvkk===svkkId && ui.list.actionMode===mode) ? "" : svkkId; ui.list.actionMode=mode; render(); },
+  deleteGroup(svkkId){
+    if(!rolePreset(sessionUser().role).canDeletePolicies) return;
+    const groups=filteredPolicyGroups(); const group=groups.find(g=>g.svkkId===svkkId); if(!group) return;
+    group.years.forEach(item=>{ if(!state.deletedPolicyIds.includes(item.id)) state.deletedPolicyIds.push(item.id); }); persist(); if(ui.list.expandedSvkk===svkkId) ui.list.expandedSvkk=""; render();
+  },
+  openReceiptByRecord(id){
+    const rec=visiblePoliciesCombined().find(p=>p.id===id); if(rec) openReceipt(rec.formData);
+  },
+  editRecord(id){
+    const rec=visiblePoliciesCombined().find(p=>p.id===id); if(!rec) return;
+    ui.add.mode="fetch"; ui.add.selectedId=rec.id; ui.add.form={...buildBlankForm(), ...rec.formData}; ui.add.notice=`Loaded ${rec.formData.YEAR} for editing.`; ui.activeTab="add"; render();
+  }
+};
+window.Actions = Actions;
+
+function nextYearText(yearText){
+  const text=String(yearText||""); const parts=text.split("-").map(p=>p.trim()).filter(Boolean); if(parts.length!==2) return text;
+  const start=Number(parts[0]), end=Number(parts[1]); if(!Number.isFinite(start)||!Number.isFinite(end)) return text;
+  const nextStart=start+1; const nextEnd=String(parts[1]).length===2 ? String((end+1)%100).padStart(2,"0") : String(end+1); return `${nextStart}-${nextEnd}`;
+}
+function addMatchingPolicies(){
+  const token=String(ui.add.svkkId || "").trim().toLowerCase(); const visible=visiblePoliciesCombined();
+  return token ? visible.filter(p=>String(p.formData["SVKK ID"] || "").toLowerCase().includes(token)) : visible;
+}
+function addSelectedPolicy(){ const list=addMatchingPolicies(); return list.find(p=>p.id===ui.add.selectedId) || list[0] || null; }
+function addYearsForSelected(){ const rec=addSelectedPolicy(); if(!rec) return []; return visiblePoliciesCombined().filter(p=>p.formData["SVKK ID"]===rec.formData["SVKK ID"]).sort((a,b)=>String(b.formData.YEAR||"").localeCompare(String(a.formData.YEAR||""))); }
+function addPolicyQuote(){
+  const f=ui.add.form || buildBlankForm(); const policyType=normPolicy(f["POLICY TYPE"]); const memberCount=Math.max(1, Number(f.PERSON)||1); const members=[{name:f["POLICY HOLDER NAME"]||"Policy Holder", dob:f["HOLDER DOB"]||"", relationship:"self", gender:String(f["HOLDER GENDER"]||"male").toLowerCase(), addOnRider:0}];
+  for(let i=1;i<memberCount;i+=1){ members.push({name:f[`MEMBER ${i} NAME`]||`Member ${i}`, dob:f[`MEMBER ${i} DOB`]||"", relationship:String(f[`MEMBER ${i} RELATION`] || (policyType==="asha_kiran" ? (i===1 ? "spouse":"daughter") : "member")).toLowerCase(), gender:String(f[`MEMBER ${i} GENDER`]||"").toLowerCase(), addOnRider:0}); }
+  return quoteFromInput(policyType, memberCount, money(f["SUM INSURED (SI)"]), f["POLICY END DATE"] || "", members);
+}
+function displayAddForm(){
+  const blank=buildBlankForm(); const form=ui.add.form || blank; const q=addPolicyQuote(); const gross=q.gross, net=q.net, disc=q.disc; const holderNet=money(q.rows?.[0]?.net || q.rows?.[0]?.basic || 0);
+  const coPremiumValue=hasText(form.co_premium) ? money(form.co_premium) : hasText(form["CO. PREMIUM"]) ? money(form["CO. PREMIUM"]) : 0;
+  const grossPremiumValue=hasText(form.gross_premium) ? money(form.gross_premium) : hasText(form["GROSS PREMIUM"]) ? money(form["GROSS PREMIUM"]) : (coPremiumValue || gross || 0);
+  const vkkPremiumValue=hasText(form.vkk_premium) ? money(form.vkk_premium) : hasText(form["VKK PREMIUM"]) ? money(form["VKK PREMIUM"]) : net;
+  const twoLakhFValue=hasText(form.two_lakh_f) ? money(form.two_lakh_f) : 0;
+  const policyHolderPremiumValue=hasText(form.policy_holder_premium) ? money(form.policy_holder_premium) : holderNet;
+  const gaamMahajanVkkRefundValue=hasText(form.Gaam_mahajan_vkk_refund) ? money(form.Gaam_mahajan_vkk_refund) : (twoLakhFValue - policyHolderPremiumValue);
+  const excessShortAmtValue=hasText(form.excess_short_amt) ? money(form.excess_short_amt) : (vkkPremiumValue - coPremiumValue);
+  const diffAmtPaidPolicyHolderValue=hasText(form.diff_amt_paid_policy_holder) ? money(form.diff_amt_paid_policy_holder) : (coPremiumValue - twoLakhFValue + policyHolderPremiumValue);
+  const premiumAmountValue=hasText(form["PREMIUM AMOUNT"]) ? money(form["PREMIUM AMOUNT"]) : vkkPremiumValue;
+  const amountReceivedValue=hasText(form["AMOUNT RECEIVED"]) ? money(form["AMOUNT RECEIVED"]) : vkkPremiumValue;
+  const netPremiumValue=hasText(form["NET PREMIUM"]) ? money(form["NET PREMIUM"]) : (net || 0);
+  const discountValue=hasText(form.DISCOUNT) ? money(form.DISCOUNT) : (disc || 0);
+  const commissionBase=grossPremiumValue || gross || 0;
+  const commissionValue=hasText(form.COMMISSION) ? money(form.COMMISSION) : Math.ceil((commissionBase*15)/100);
+  return {...blank, ...form, "CO. PREMIUM":String(coPremiumValue||0), co_premium:String(coPremiumValue||0), "GROSS PREMIUM":String(grossPremiumValue||0), gross_premium:String(grossPremiumValue||0), "VKK PREMIUM":String(vkkPremiumValue||0), vkk_premium:String(vkkPremiumValue||0), "NET PREMIUM":String(netPremiumValue||0), DISCOUNT:String(discountValue||0), COMMISSION:String(commissionValue||0), "PREMIUM AMOUNT":String(premiumAmountValue||0), "AMOUNT RECEIVED":String(amountReceivedValue||0), two_lakh_f:String(twoLakhFValue||0), policy_holder_premium:String(policyHolderPremiumValue||0), Gaam_mahajan_vkk_refund:String(gaamMahajanVkkRefundValue||0), excess_short_amt:String(excessShortAmtValue||0), diff_amt_paid_policy_holder:String(diffAmtPaidPolicyHolderValue||0)};
+}
+function currentFutureResults(){
+  const rows=resolveSourceRows(ui.future.source, state.futureRows, state.policies).filter(r=>rowVisibleToUser(sessionUser(), r));
+  return buildFutureResults(rows, ui.future.source, ui.future.year);
+}
+function getFilteredFutureResults(){
+  return currentFutureResults().filter(r=>{
+    if(ui.future.policy!=="all" && r.policy !== ui.future.policy) return false;
+    if(ui.future.si!=="all" && String(r.si) !== String(ui.future.si)) return false;
+    if(ui.future.status!=="all" && r.status !== ui.future.status) return false;
+    if(!ui.future.search.trim()) return true;
+    const hay=[r.svkkId,r.customerId,r.holder,r.policyNo,r.policy,r.si,r.memberCount,r.calcYear,r.calcDate,r.status,r.village].join(" ").toLowerCase();
+    return hay.includes(ui.future.search.toLowerCase());
+  });
+}
+function filteredPolicyGroups(){
+  const combined=visiblePoliciesCombined(); const grouped=new Map();
+  combined.forEach(policy=>{ const key=policy.formData["SVKK ID"] || policy.id; if(!grouped.has(key)) grouped.set(key,[]); grouped.get(key).push(policy); });
+  const base=[...grouped.entries()].map(([svkkId,items])=>({svkkId, years:[...items].sort((a,b)=>String(b.formData.YEAR||"").localeCompare(String(a.formData.YEAR||"")))}));
+  const matchFilters=(policy)=>{
+    const f=policy.formData || {};
+    if(ui.list.year!=="all" && f.YEAR !== ui.list.year) return false;
+    if(ui.list.category!=="all" && f.CATEGORY !== ui.list.category) return false;
+    if(ui.list.type!=="all" && f["POLICY TYPE"] !== ui.list.type) return false;
+    if(ui.list.month!=="all" && f.MONTH !== ui.list.month) return false;
+    if(ui.list.area!=="all" && f.AREA !== ui.list.area) return false;
+    if(ui.list.village!=="all" && f.VILLAGE !== ui.list.village) return false;
+    if(ui.list.si!=="all" && String(f["SUM INSURED (SI)"]) !== String(ui.list.si)) return false;
+    if(ui.list.group!=="all" && f.GROUPING !== ui.list.group) return false;
+    if(!ui.list.search.trim()) return true;
+    return Object.values(f).join(" ").toLowerCase().includes(ui.list.search.toLowerCase());
+  };
+  return base.map(group=>{ const years=group.years.filter(matchFilters); return years.length ? {...group, years, latest:years[0]} : null; }).filter(Boolean);
+}
+
+function renderHeader(){
+  const user=sessionUser(), tabs=currentAllowedTabs();
+  return `<div class="card header">
+    <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,820px);align-items:end">
+      <div>
+        <div class="pill">SVKK Static Test Build</div>
+        <div style="font-size:38px;font-weight:900;margin-top:14px;line-height:1.1">SVKK Mediclaim Current Setup Testable HTML</div>
+        <div class="footnote" style="margin-top:10px;max-width:900px">This is a static server-ready testing build based on the current canvas logic. It uses browser localStorage for data, so it is for checking flow and UI behavior on your server, not PHP/database production.</div>
+      </div>
+      <div class="grid stats">
+        ${cardStat("Accessible Modules", String(tabs.length))}
+        ${cardStat("Charts Loaded", String(Object.keys(state.charts).length))}
+        ${cardStat("Receipts", String(state.receipts.length))}
+        ${cardStat("Current Role", userRoleLabel(user.role), true)}
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <div class="small muted" style="font-weight:800;letter-spacing:.12em;text-transform:uppercase">Current user</div>
+      <select onchange="Actions.setCurrentUser(this.value)" style="min-height:40px;border:1px solid #d1d5db;border-radius:12px;padding:0 12px">${state.users.map(u=>`<option value="${escAttr(u.id)}" ${u.id===user.id?'selected':''}>${escapeHtml(u.name)} · ${escapeHtml(userRoleLabel(u.role))}</option>`).join("")}</select>
+      <div class="pill">${escapeHtml(user.name)}</div>
+      ${rolePreset(user.role).villageRestricted ? `<div class="pill" style="border-color:#fcd34d;background:#fffbeb;color:#92400e">Village Only: ${escapeHtml(normalizeVillageList(user.villages).join(", ") || "None assigned")}</div>` : `<div class="pill" style="border-color:#86efac;background:#ecfdf5;color:#166534">No Village Restriction</div>`}
+      <button class="btn no-print" onclick="Actions.resetData()">Reset Local Data</button>
+    </div>
+  </div>`;
+}
+function renderTabs(){
+  const tabs=currentAllowedTabs();
+  return `<div class="grid tabs no-print">${tabs.map(tab=>`<button class="tab ${ui.activeTab===tab.id?'active':''}" onclick="Actions.setTab('${tab.id}')"><div class="l">${escapeHtml(tab.label)}</div><div class="s">${escapeHtml(tab.sub)}</div></button>`).join("")}</div>`;
+}
+function renderLive(){
+  Actions.ensureLiveMembers();
+  const q=quoteFromInput(ui.liveForm.policyType, ui.liveForm.memberCount, ui.liveForm.sumInsured, ui.liveForm.endDate, ui.liveForm.members);
+  const policyOptions=[{value:"individual",label:"Individual Policy"},{value:"family_floater",label:"Family Floater"},{value:"asha_kiran",label:"Asha Kiran"}];
+  const siOptions=siList(ui.liveForm.policyType).map(v=>({value:String(v),label:`₹${rs(v)}`}));
+  return `<div class="grid">
+    <div class="grid" style="grid-template-columns:560px minmax(0,1fr)">
+      <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Live Premium Calculation</div></div><div class="section-b">
+        <div class="row4">
+          ${fieldHtml('live-policy',"Policy Type",ui.liveForm.policyType,"Actions.setLiveField('policyType',this.value)",policyOptions)}
+          ${fieldHtml('live-count',"No. of Person",String(ui.liveForm.memberCount),"Actions.setLiveField('memberCount',this.value)",Array.from({length:7},(_,i)=>({value:String(i+1),label:String(i+1)})))}
+          ${fieldHtml('live-si',"Sum Insured",String(ui.liveForm.sumInsured),"Actions.setLiveField('sumInsured',this.value)",siOptions)}
+          ${fieldHtml('live-end',"Policy End Date",ui.liveForm.endDate,"Actions.setLiveField('endDate',this.value)")}
+        </div>
+        <div class="grid" style="margin-top:14px">${ui.liveForm.members.slice(0,Math.max(1,Number(ui.liveForm.memberCount)||1)).map((m,index)=>`
+          <div class="member-card">
+            <div style="font-size:14px;font-weight:800;margin-bottom:10px">${index===0 ? "Policy Holder" : `Member ${index}`}</div>
+            <div class="row5">
+              ${fieldHtml('',"Name",m.name,`Actions.setLiveMember(${index},'name',this.value)`)}
+              ${fieldHtml('',"DOB",m.dob,`Actions.setLiveMember(${index},'dob',this.value)`)}
+              ${fieldHtml('',"Relationship",m.relationship,`Actions.setLiveMember(${index},'relationship',this.value)`,relationshipOptions(ui.liveForm.policyType,index).map(v=>({value:v,label:v.charAt(0).toUpperCase()+v.slice(1)})))}
+              ${fieldHtml('',"Gender",m.gender,`Actions.setLiveMember(${index},'gender',this.value)`,[{value:"",label:"Select Gender"},{value:"male",label:"Male"},{value:"female",label:"Female"}])}
+              ${fieldHtml('',"Add On Rider",String(m.addOnRider || 0),`Actions.setLiveMember(${index},'addOnRider',this.value)`)}
+            </div>
+          </div>`).join("")}
+        </div>
+      </div></div>
+      <div class="grid">
+        <div class="grid row5">${cardStat("Basic Premium",`₹ ${rs(q.basic)}`)}${cardStat("Rider",`₹ ${rs(q.rider)}`)}${cardStat("Gross",`₹ ${rs(q.gross)}`)}${cardStat("Discount",`₹ ${rs(q.disc)}`)}${cardStat("Net Premium",`₹ ${rs(q.net)}`,true)}</div>
+        <div class="notice">This tab follows the same age, chart, holder/member, daughter discount, and rounding logic used in the current preview.</div>
+        <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Member-wise Result Table</div></div><div class="section-b">${memberTable(q.rows)}</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderAdmin(){
+  const user=sessionUser(), currentRole=rolePreset(user.role), villageOptions=allVillageOptions();
+  return `<div class="grid">
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Admin Setup</div></div><div class="section-b">
+      <div class="notice">Built-in premium charts are already loaded in this static test file. Use this page mainly to check role structure and rights flow.</div>
+    </div></div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Role Structure and Rights</div><div class="badge">${escapeHtml(userRoleLabel(user.role))}</div></div><div class="section-b">
+      <div class="footnote" style="margin-bottom:14px">Super Admin can manage users and rights. Staff can be restricted village-wise. When staff village restriction is active, policy list, lookup, add policy and related records are limited to assigned villages only.</div>
+      <div class="grid">${state.users.map(u=>{ const preset=rolePreset(u.role); const villagesText=normalizeVillageList(u.villages).join(", "); return `<div class="card" style="padding:16px"><div class="row4">
+        ${fieldHtml('',"User Name",u.name,`Actions.updateUserName('${escAttr(u.id)}',this.value)`,null,!currentRole.canManageUsers)}
+        ${fieldHtml('',"Role",u.role,`Actions.updateUserRole('${escAttr(u.id)}',this.value)`,Object.keys(ROLE_PRESETS).map(r=>({value:r,label:userRoleLabel(r)}),),!currentRole.canManageUsers)}
+        ${fieldHtml('',"Village Restriction",villagesText,`Actions.updateUserVillages('${escAttr(u.id)}',this.value)`,null,!currentRole.canManageUsers || u.role !== "staff")}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+        <div class="pill">Tabs: ${escapeHtml(preset.tabs.join(", "))}</div>
+        <div class="pill">Edit: ${preset.canEditPolicies ? 'YES':'NO'}</div>
+        <div class="pill">Delete: ${preset.canDeletePolicies ? 'YES':'NO'}</div>
+        <div class="pill">Receipt: ${preset.canGenerateReceipt ? 'YES':'NO'}</div>
+        <div class="pill" style="border-color:${preset.villageRestricted ? '#fcd34d' : '#86efac'};background:${preset.villageRestricted ? '#fffbeb' : '#ecfdf5'};color:${preset.villageRestricted ? '#92400e' : '#166534'}">Village Restriction: ${preset.villageRestricted ? escapeHtml(villagesText || 'Assign village') : 'No'}</div>
+      </div></div>`; }).join("")}</div>
+      ${currentRole.canManageUsers ? `<div class="btns" style="margin-top:14px"><button class="btn primary" onclick="Actions.addStaffUser()">Add Staff User</button><button class="btn" onclick="Actions.addUser()">Add User</button></div>` : ``}
+      ${villageOptions.length ? `<div class="footnote" style="margin-top:14px">Available villages in data: ${escapeHtml(villageOptions.join(", "))}</div>` : ``}
+    </div></div>
+  </div>`;
+}
+function renderFuture(){
+  const user=sessionUser(), role=rolePreset(user.role), results=currentFutureResults(), filtered=getFilteredFutureResults();
+  const mis=(ui.future.generated ? results : []).reduce((acc,row)=>{ acc.policies+=1; acc.members+=row.memberCount; acc.basic+=row.quote.basic; acc.gross+=row.quote.gross; acc.disc+=row.quote.disc; acc.net+=row.quote.net; return acc; }, {policies:0,members:0,basic:0,gross:0,disc:0,net:0});
+  const policyOptions=[...new Set(results.map(r=>r.policy).filter(Boolean))];
+  const siOptions=[...new Set(results.map(r=>String(r.si)).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  return `<div class="grid">
+    ${role.villageRestricted ? `<div class="warn">Staff restriction active. Visible records are limited to villages: ${escapeHtml(normalizeVillageList(user.villages).join(", ") || "None assigned")}.</div>` : ``}
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Future Premium + MIS</div><div class="badge">${escapeHtml(yearOffsetLabel(ui.future.year))}</div></div><div class="section-b">
+      <div class="row4">
+        ${fieldHtml('',"Source",ui.future.source,"Actions.setFutureField('source',this.value)",[{value:"uploaded_csv_policy_list",label:"Uploaded CSV + Policy List"},{value:"uploaded_csv_only",label:"Uploaded CSV Only"},{value:"policy_list_only",label:"Policy List Only"}])}
+        ${fieldHtml('',"Future Year",ui.future.year,"Actions.setFutureField('year',this.value)",[{value:"0",label:"Current Year"},{value:"1",label:"Next Year"},{value:"2",label:"2 Yr"},{value:"3",label:"3 Yr"},{value:"4",label:"4 Yr"},{value:"5",label:"5 Yr"}])}
+        <div class="field"><label>Upload CSV</label><input type="file" accept=".csv" onchange="Actions.uploadFutureCsv(this)"><div class="small muted">${escapeHtml(ui.future.fileName || "Choose CSV file")}</div></div>
+        <div class="field"><label>Actions</label><div class="btns"><button class="btn primary" onclick="Actions.generateFuture()">Generate</button><button class="btn" onclick="Actions.exportFutureSummary()">Export Lump Sum CSV</button><button class="btn" onclick="Actions.exportFutureDetail()">Export Individual CSV</button></div></div>
+      </div>
+      <div class="notice" style="margin-top:14px">${escapeHtml(ui.future.msg)}</div>
+    </div></div>
+    <div class="grid row6">${cardStat("Policies",String(mis.policies))}${cardStat("Members",String(mis.members))}${cardStat("Basic",`₹ ${rs(mis.basic)}`)}${cardStat("Gross",`₹ ${rs(mis.gross)}`)}${cardStat("Discount",`₹ ${rs(mis.disc)}`)}${cardStat("Net",`₹ ${rs(mis.net)}`,true)}</div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">List Search and Filters</div></div><div class="section-b"><div class="row4">
+      ${fieldHtml('',"Search",ui.future.search,"Actions.setFutureField('search',this.value)")}
+      ${fieldHtml('',"Policy Type Filter",ui.future.policy,"Actions.setFutureField('policy',this.value)",[{value:"all",label:"All Policy Types"}, ...policyOptions.map(v=>({value:v,label:v}))])}
+      ${fieldHtml('',"SI Filter",ui.future.si,"Actions.setFutureField('si',this.value)",[{value:"all",label:"All SI"}, ...siOptions.map(v=>({value:v,label:`₹${rs(v)}`}))])}
+      ${fieldHtml('',"Status Filter",ui.future.status,"Actions.setFutureField('status',this.value)",[{value:"all",label:"All Status"},{value:"Ready",label:"Ready"},{value:"Issue",label:"Issue"}])}
+    </div></div></div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Future Premium Results</div></div><div class="section-b">
+      <div class="table-wrap"><table><thead><tr>${["Source","SVKK ID","Customer ID","Holder","Policy","SI","Members","Village","Calc Year","Calc Date","Gross","Discount","Net","Status"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${
+        ui.future.generated && filtered.length ? filtered.map(r=>`<tr><td>${escapeHtml(r.source)}</td><td>${escapeHtml(r.svkkId)}</td><td>${escapeHtml(r.customerId)}</td><td>${escapeHtml(r.holder)}</td><td>${escapeHtml(r.policy)}</td><td>₹${rs(r.si)}</td><td>${escapeHtml(r.memberCount)}</td><td>${escapeHtml(r.village || "—")}</td><td>${escapeHtml(r.calcYear)}</td><td>${escapeHtml(r.calcDate)}</td><td>₹${rs(r.quote.gross)}</td><td>₹${rs(r.quote.disc)}</td><td><b>₹${rs(r.quote.net)}</b></td><td>${escapeHtml(r.status)}</td></tr>`).join("") : `<tr><td colspan="14" style="text-align:center;color:#64748b">${ui.future.generated ? "No records match the current search or filters." : "Upload CSV and click Generate to preview future premium records."}</td></tr>`
+      }</tbody></table></div>
+    </div></div>
+  </div>`;
+}
+function renderLookup(){
+  const user=sessionUser();
+  return `<div class="grid">
+    ${rolePreset(user.role).villageRestricted ? `<div class="warn">Staff restriction active. Lookup works only for villages: ${escapeHtml(normalizeVillageList(user.villages).join(", ") || "None assigned")}.</div>` : ``}
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Lookup</div></div><div class="section-b"><div class="row4">
+      ${fieldHtml('',"Policy Number",ui.lookup.no,"Actions.setLookupField('no',this.value)")}
+      ${fieldHtml('',"Source",ui.lookup.source,"Actions.setLookupField('source',this.value)",[{value:"linked_upload",label:"Linked Uploaded CSV"},{value:"uploaded_csv_policy_list",label:"Uploaded CSV + Policy List"},{value:"uploaded_csv_only",label:"Uploaded CSV Only"},{value:"policy_list_only",label:"Policy List Only"}])}
+      ${fieldHtml('',"Future Year",ui.lookup.year,"Actions.setLookupField('year',this.value)",[{value:"0",label:"Current Year"},{value:"1",label:"Next Year"},{value:"2",label:"2 Yr"},{value:"3",label:"3 Yr"},{value:"4",label:"4 Yr"},{value:"5",label:"5 Yr"}])}
+      <div class="field"><label>Action</label><button class="btn primary" onclick="Actions.doLookup()">Generate</button></div>
+    </div></div></div>
+    ${ui.lookup.result ? `<div class="grid row5">${cardStat("Policy No",ui.lookup.result.policyNo)}${cardStat("SVKK ID",ui.lookup.result.svkkId)}${cardStat("Customer ID",ui.lookup.result.customerId)}${cardStat("Policy Type",ui.lookup.result.policy)}${cardStat("Net",`₹ ${rs(ui.lookup.result.quote.net)}`,true)}</div>
+      <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Lookup Member-wise Detail</div></div><div class="section-b">${memberTable(ui.lookup.result.quote.rows)}</div></div>`
+      : `<div class="card section"><div class="section-b"><div class="footnote">Upload future CSV first, then enter policy number and click Generate.</div></div></div>`}
+  </div>`;
+}
+function renderAdd(){
+  const user=sessionUser(), role=rolePreset(user.role), matching=addMatchingPolicies(), selected=addSelectedPolicy(), years=addYearsForSelected(), form=displayAddForm(), q=addPolicyQuote();
+  if(selected && ui.add.mode !== "new" && (!ui.add.form["SVKK ID"] || ui.add.form["SVKK ID"] !== selected.formData["SVKK ID"] || ui.add.form.YEAR !== selected.formData.YEAR)){ ui.add.form={...buildBlankForm(), ...selected.formData}; }
+  const sectionDefs=[
+    { id:"policy_details", label:"Policy Details", fields:["SVKK ID","CUSTOMER ID","POLICY NO","POLICY TYPE","CATEGORY","MONTH","YEAR","SUM INSURED (SI)","PERSON","VILLAGE","AREA","GROUPING","POLICY END DATE"] },
+    { id:"policy_holder_details", label:"Policy Holder Details", fields:["POLICY HOLDER NAME","HOLDER DOB","HOLDER GENDER"] },
+    { id:"members_details", label:"Members Details", fields:[] },
+    { id:"address_contacts", label:"Address & Contacts", fields:["ADDRESS","MOBILE","EMAIL"] },
+    { id:"premium_details", label:"Premium Details", fields:["vkk_premium","co_premium","gross_premium","two_lakh_f","policy_holder_premium","Gaam_mahajan_vkk_refund","excess_short_amt","diff_amt_paid_policy_holder","NET PREMIUM","DISCOUNT","COMMISSION","PREMIUM AMOUNT","AMOUNT RECEIVED"] },
+    { id:"payment_bank_details", label:"Payment & Bank Details", fields:["MODE OF PAYMENT","TRANSACTION DETAIL","TRANSACTION DATE","DATE OF PAYMENT / CHQ DATE","CHEQUE CLEARED / DISHONOURED","RETURN CHARGES","SECONDARY TRANSACTION DETAIL"] },
+    { id:"nominee_details", label:"Nominee Details", fields:["NOMINEE NAME","NOMINEE RELATION"] },
+    { id:"loan_details", label:"Loan Details", fields:["LOAN NO","NOT OVER"] },
+    { id:"courier", label:"Courier", fields:["COURIER","COURIER COMPANY","POD"] },
+    { id:"remark", label:"Remark", fields:["REMARK"] },
+    { id:"ref_no", label:"Ref No", fields:["REF."] },
+    { id:"receipt", label:"Receipt", fields:["RECEIPT NO"] }
+  ];
+  const activeDef=sectionDefs.find(s=>s.id===ui.add.section) || sectionDefs[0];
+  const memberCards=Math.max(0, Number(form.PERSON || 1)-1);
+  return `<div class="grid">
+    ${role.villageRestricted ? `<div class="warn">Staff restriction active. You can work only for villages: ${escapeHtml(normalizeVillageList(user.villages).join(", ") || "None assigned")}.</div>` : ``}
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Add Policy</div><div class="badge">${escapeHtml(ui.add.mode === "new" ? "New Policy":"Fetch Mode")}</div></div><div class="section-b">
+      <div class="member-card">
+        <div style="font-size:18px;font-weight:800;margin-bottom:12px">Fetch by SVKK ID</div>
+        <div class="row4">
+          ${fieldHtml('',"SVKK ID",ui.add.svkkId,"Actions.setAddSvkkId(this.value)")}
+          ${fieldHtml('',"Policy Holder",selected?.formData["POLICY HOLDER NAME"] || "","",null,true)}
+          ${fieldHtml('',"Policy Type",selected?.formData["POLICY TYPE"] || "","",null,true)}
+          ${fieldHtml('',"Current Year",selected?.formData.YEAR || "","",null,true)}
+        </div>
+        <div class="btns" style="margin-top:12px">
+          <button class="btn primary" onclick="Actions.fetchOldPolicy()">Fetch Old Policy</button>
+          <button class="btn" onclick="Actions.startNewPolicy()">New Policy</button>
+          <button class="btn" onclick="Actions.carryForward()">Carry Forward / Renew</button>
+        </div>
+        ${years.length ? `<div class="notice" style="margin-top:12px">${years.length} year-wise policies found for this SVKK ID.</div>` : ``}
+        ${years.length ? `<div class="years" style="margin-top:12px">${years.map(item=>`<button class="year-btn" onclick="Actions.selectAddRecord('${escAttr(item.id)}')">${escapeHtml(item.formData.YEAR)}</button>`).join("")}</div>` : ``}
+        ${ui.add.notice ? `<div class="footnote" style="margin-top:12px">${escapeHtml(ui.add.notice)}</div>` : ``}
+      </div>
+    </div></div>
+    <div class="grid row5">${cardStat("SVKK ID",form["SVKK ID"] || "—")}${cardStat("Customer ID",form["CUSTOMER ID"] || "—")}${cardStat("Policy No",form["POLICY NO"] || "—")}${cardStat("Policy Type",form["POLICY TYPE"] || "—")}${cardStat("VKK Premium",`₹ ${rs(form["VKK PREMIUM"] || 0)}`,true)}</div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Calculated Premium Summary</div></div><div class="section-b">
+      <div class="grid row5">${cardStat("Basic Premium",`₹ ${rs(q.basic)}`)}${cardStat("Rider",`₹ ${rs(q.rider)}`)}${cardStat("Gross",`₹ ${rs(q.gross)}`)}${cardStat("Discount",`₹ ${rs(q.disc)}`)}${cardStat("Net Premium",`₹ ${rs(q.net)}`,true)}</div>
+      <div class="notice" style="margin-top:12px">This stays just below SVKK ID, Customer ID, Policy No, Policy Type, and VKK Premium to show exact member-wise premium calculation inside Add Policy.</div>
+      <div style="margin-top:12px">${memberTable(q.rows)}</div>
+      <div class="btns" style="margin-top:12px">
+        <button class="btn primary" onclick="Actions.savePolicy(false)" ${!role.canEditPolicies ? 'disabled' : ''}>Save Policy + Auto Receipt</button>
+        <button class="btn" onclick="Actions.savePolicy(true)" ${!role.canEditPolicies ? 'disabled' : ''}>Update Policy + Auto Receipt</button>
+        <button class="btn" onclick="Actions.previewReceiptFromAdd()" ${!role.canGenerateReceipt ? 'disabled' : ''}>Generate Receipt Preview</button>
+      </div>
+    </div></div>
+    <div class="section-links no-print">${sectionDefs.map(s=>`<button class="section-link ${ui.add.section===s.id?'active':''}" onclick="Actions.setAddSection('${s.id}')">${escapeHtml(s.label)}</button>`).join("")}</div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">${escapeHtml(activeDef.label)}</div></div><div class="section-b">
+      ${activeDef.id === "members_details" ? (
+        memberCards <= 0 ? `<div class="footnote">No separate member details are required when No. of Person is 1.</div>` :
+          `<div class="grid">${Array.from({length:memberCards},(_,i)=>{ const num=i+1; return `<div class="member-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div><div style="font-weight:800">Member ${num}</div><div class="small muted">Separate member card</div></div><div class="badge">Person ${num+1}</div></div><div class="row4">
+            ${fieldHtml('',`Member ${num} Name`,form[`MEMBER ${num} NAME`]||"",`Actions.updateAddField('MEMBER ${num} NAME',this.value)`)}
+            ${fieldHtml('',`Member ${num} DOB`,form[`MEMBER ${num} DOB`]||"",`Actions.updateAddField('MEMBER ${num} DOB',this.value)`)}
+            ${fieldHtml('',`Member ${num} Relation`,form[`MEMBER ${num} RELATION`]||"",`Actions.updateAddField('MEMBER ${num} RELATION',this.value)`,getFieldOptions(`MEMBER ${num} RELATION`,form["POLICY TYPE"]))}
+            ${fieldHtml('',`Member ${num} Gender`,form[`MEMBER ${num} GENDER`]||"",`Actions.updateAddField('MEMBER ${num} GENDER',this.value)`,[{value:"",label:"Select Gender"},{value:"male",label:"Male"},{value:"female",label:"Female"}])}
+          </div></div>`; }).join("")}</div>`
+      ) : `<div class="row4">${activeDef.fields.map(field=>fieldHtml('',field,form[field] || "",`Actions.updateAddField('${field.replace(/'/g,"\\'")}',this.value)`,getFieldOptions(field,form["POLICY TYPE"]),false,field==="REMARK" ? "textarea" : "text")).join("")}</div>`}
+    </div></div>
+  </div>`;
+}
+function renderList(){
+  const user=sessionUser(), role=rolePreset(user.role), combined=visiblePoliciesCombined(), groups=filteredPolicyGroups();
+  const yearOptions=[...new Set(combined.map(p=>p.formData.YEAR).filter(Boolean))].sort().reverse();
+  const categoryOptions=[...new Set(combined.map(p=>p.formData.CATEGORY).filter(Boolean))].sort();
+  const typeOptions=[...new Set(combined.map(p=>p.formData["POLICY TYPE"]).filter(Boolean))].sort();
+  const monthOptions=[...new Set(combined.map(p=>p.formData.MONTH).filter(Boolean))].sort();
+  const areaOptions=[...new Set(combined.map(p=>p.formData.AREA).filter(Boolean))].sort();
+  const villageOptions=[...new Set(combined.map(p=>p.formData.VILLAGE).filter(Boolean))].sort();
+  const siOptions=[...new Set(combined.map(p=>p.formData["SUM INSURED (SI)"]).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  const groupOptions=[...new Set(combined.map(p=>p.formData.GROUPING).filter(Boolean))].sort();
+  return `<div class="grid">
+    ${role.villageRestricted ? `<div class="warn">Staff restriction active. Policy list is limited to villages: ${escapeHtml(normalizeVillageList(user.villages).join(", ") || "None assigned")}.</div>` : ``}
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Policy List</div></div><div class="section-b">
+      <div class="grid row5">
+        <div class="field"><label>Upload CSV</label><input type="file" accept=".csv" onchange="Actions.uploadPolicyListCsv(this)"></div>
+        ${fieldHtml('',"Search",ui.list.search,"Actions.setListFilter('search',this.value)")}
+        ${fieldHtml('',"Select Year",ui.list.year,"Actions.setListFilter('year',this.value)",[{value:"all",label:"All Years"}, ...yearOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Category",ui.list.category,"Actions.setListFilter('category',this.value)",[{value:"all",label:"All Category"}, ...categoryOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Policy Type",ui.list.type,"Actions.setListFilter('type',this.value)",[{value:"all",label:"All Policy Type"}, ...typeOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Month",ui.list.month,"Actions.setListFilter('month',this.value)",[{value:"all",label:"All Month"}, ...monthOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Area",ui.list.area,"Actions.setListFilter('area',this.value)",[{value:"all",label:"All Area"}, ...areaOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Village",ui.list.village,"Actions.setListFilter('village',this.value)",[{value:"all",label:"All Village"}, ...villageOptions.map(v=>({value:v,label:v}))])}
+        ${fieldHtml('',"Select Sum Insured",ui.list.si,"Actions.setListFilter('si',this.value)",[{value:"all",label:"All SI"}, ...siOptions.map(v=>({value:v,label:`₹${rs(v)}`}))])}
+        ${fieldHtml('',"Select Group",ui.list.group,"Actions.setListFilter('group',this.value)",[{value:"all",label:"All Group"}, ...groupOptions.map(v=>({value:v,label:v}))])}
+      </div>
+      ${ui.list.uploadMsg ? `<div class="notice" style="margin-top:12px">${escapeHtml(ui.list.uploadMsg)}</div>` : ``}
+    </div></div>
+    <div class="card section"><div class="section-h"><div style="font-size:20px;font-weight:800">Grouped Policy Records</div></div><div class="section-b">
+      <div class="table-wrap"><table><thead><tr>${["Policy No","Customer ID","SVKK ID","Holder","Type","Village","Year","Premium","Action"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${
+        groups.length ? groups.map(group=>`<tr>
+          <td><b>${escapeHtml(group.latest.formData["POLICY NO"] || "")}</b></td>
+          <td>${escapeHtml(group.latest.formData["CUSTOMER ID"] || "")}</td>
+          <td>${escapeHtml(group.svkkId)}</td>
+          <td>${escapeHtml(group.latest.formData["POLICY HOLDER NAME"] || "")}</td>
+          <td>${escapeHtml(group.latest.formData["POLICY TYPE"] || "")}</td>
+          <td>${escapeHtml(group.latest.formData.VILLAGE || "")}</td>
+          <td>${escapeHtml(group.latest.formData.YEAR || "")}</td>
+          <td><b>₹ ${rs(group.latest.formData["VKK PREMIUM"] || 0)}</b></td>
+          <td><div class="btns"><button class="btn" onclick="Actions.toggleGroup('${escAttr(group.svkkId)}','view')">View</button><button class="btn primary" onclick="Actions.toggleGroup('${escAttr(group.svkkId)}','edit')" ${!role.canEditPolicies?'disabled':''}>Edit</button><button class="btn sky" onclick="Actions.toggleGroup('${escAttr(group.svkkId)}','receipt')" ${!role.canGenerateReceipt?'disabled':''}>Receipt</button><button class="btn danger" onclick="Actions.deleteGroup('${escAttr(group.svkkId)}')" ${!role.canDeletePolicies?'disabled':''}>Delete</button></div></td>
+        </tr>
+        ${ui.list.expandedSvkk === group.svkkId ? `<tr><td colspan="9"><div class="member-card"><div style="font-weight:800;margin-bottom:10px">${ui.list.actionMode==="receipt" ? "Select year to generate receipt" : ui.list.actionMode==="edit" ? "Select year to edit" : "View year-wise records"}</div><div class="years">${
+          group.years.map(item=>{
+            const label=`${item.formData.YEAR} · ₹ ${rs(item.formData["VKK PREMIUM"] || 0)}`;
+            const action = ui.list.actionMode==="receipt" ? `Actions.openReceiptByRecord('${escAttr(item.id)}')` : ui.list.actionMode==="edit" ? `Actions.editRecord('${escAttr(item.id)}')` : '';
+            return `<button class="year-btn" ${action ? `onclick="${action}"` : ''}>${escapeHtml(label)}</button>`;
+          }).join("")
+        }</div>${ui.list.actionMode==="view" ? `<div class="table-wrap" style="margin-top:12px"><table><thead><tr>${["Year","Policy No","Customer ID","Holder","Village","Area","Category","Month","Group","SI","Premium"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${group.years.map(item=>`<tr><td>${escapeHtml(item.formData.YEAR || "")}</td><td>${escapeHtml(item.formData["POLICY NO"] || "")}</td><td>${escapeHtml(item.formData["CUSTOMER ID"] || "")}</td><td>${escapeHtml(item.formData["POLICY HOLDER NAME"] || "")}</td><td>${escapeHtml(item.formData.VILLAGE || "")}</td><td>${escapeHtml(item.formData.AREA || "")}</td><td>${escapeHtml(item.formData.CATEGORY || "")}</td><td>${escapeHtml(item.formData.MONTH || "")}</td><td>${escapeHtml(item.formData.GROUPING || "")}</td><td>₹${rs(item.formData["SUM INSURED (SI)"] || 0)}</td><td>₹${rs(item.formData["VKK PREMIUM"] || 0)}</td></tr>`).join("")}</tbody></table></div>` : ``}</div></td></tr>` : ``}`
+        ).join("") : `<tr><td colspan="9" style="text-align:center;color:#64748b">No policy records match the current filters or search.</td></tr>`
+      }</tbody></table></div>
+    </div></div>
+  </div>`;
+}
+function renderReceiptModal(){
+  if(!ui.receiptPreview) return "";
+  const f=ui.receiptPreview.formData || {};
+  const rows=[
+    ["Receipt No.", f["RECEIPT NO"]], ["Date", displayDate(f["RECEIPT DATE"])], ["SVKK ID", f["SVKK ID"]], ["Customer ID", f["CUSTOMER ID"]], ["Reference No.", f["REF."]], ["Policy No.", f["POLICY NO"]], ["Policy Holder Name", f["POLICY HOLDER NAME"]], ["Policy Type", f["POLICY TYPE"]], ["Category", f.CATEGORY], ["Sum Insured", `₹ ${rs(f["SUM INSURED (SI)"] || 0)}`], ["No. of Persons", f.PERSON], ["Village", f.VILLAGE], ["Area", f.AREA], ["Year", f.YEAR], ["Premium Amount", `₹ ${rs(f["PREMIUM AMOUNT"] || 0)}`], ["Amount Received", `₹ ${rs(f["AMOUNT RECEIVED"] || 0)}`], ["Date of Payment / CHQ Date", displayDate(f["DATE OF PAYMENT / CHQ DATE"])], ["Mode of Payment", f["MODE OF PAYMENT"]], ["Transaction Detail", f["TRANSACTION DETAIL"]], ["Transaction Date", displayDate(f["TRANSACTION DATE"])], ["Status", f["CHEQUE CLEARED / DISHONOURED"]], ["Remark", f.REMARK || "—"]
+  ];
+  const half=Math.ceil(rows.length/2), left=rows.slice(0,half), right=rows.slice(half);
+  return `<div class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-h no-print"><div style="font-size:20px;font-weight:800">Receipt Preview</div><div class="btns"><button class="btn primary" onclick="Actions.printReceipt()">Print</button><button class="btn" onclick="Actions.closeReceipt()">Close</button></div></div>
+      <div class="receipt-body">
+        <div style="border-bottom:2px solid #e5e7eb;padding-bottom:14px"><img src="${escAttr(RECEIPT_HEADER_IMAGE)}" alt="Receipt Header" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
+        <div style="text-align:center;margin-top:20px"><div style="display:inline-block;border:1px solid #cbd5e1;border-radius:999px;padding:10px 22px;font-size:28px;font-weight:900;letter-spacing:.18em">RECEIPT</div></div>
+        <div class="receipt-grid" style="margin-top:20px">
+          <div class="rcol">${left.map((row,idx)=>`<div class="rrow" style="${idx===left.length-1?'border-bottom:none':''}"><div>${escapeHtml(row[0])}</div><div>${escapeHtml(row[1] || "—")}</div></div>`).join("")}</div>
+          <div class="rcol">${right.map((row,idx)=>`<div class="rrow" style="${idx===right.length-1?'border-bottom:none':''}"><div>${escapeHtml(row[0])}</div><div>${escapeHtml(row[1] || "—")}</div></div>`).join("")}</div>
+        </div>
+        <div class="member-card" style="margin-top:14px"><div style="font-weight:800;color:#334155">Amount in Words</div><div style="margin-top:8px;font-weight:700">${escapeHtml(ui.receiptPreview.amountInWords || "")}</div></div>
+        <div class="member-card" style="margin-top:14px">Received with thanks the above amount towards mediclaim premium.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px">
+          <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Receiver</div></div>
+          <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Authorized Signatory</div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function render(){
+  const allowed=currentAllowedTabs(); if(!allowed.some(t=>t.id===ui.activeTab)) ui.activeTab=allowed[0]?.id || "live";
+  let panel="";
+  if(ui.activeTab==="live") panel=renderLive();
+  else if(ui.activeTab==="admin") panel=renderAdmin();
+  else if(ui.activeTab==="future") panel=renderFuture();
+  else if(ui.activeTab==="lookup") panel=renderLookup();
+  else if(ui.activeTab==="add") panel=renderAdd();
+  else if(ui.activeTab==="list") panel=renderList();
+  document.getElementById("app").innerHTML = `<div class="wrap">${renderHeader()}${renderTabs()}${panel}</div>${renderReceiptModal()}`;
+}
+render();
+</script>
+</body>
+</html>

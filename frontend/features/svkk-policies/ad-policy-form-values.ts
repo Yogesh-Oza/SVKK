@@ -1,8 +1,7 @@
 import type { AdMemberRow } from "./ad-member-types";
 import { emptyMemberRow } from "./ad-member-types";
-import type { PolicyGrouping } from "./ad-policy-types";
 
-export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE";
+export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE" | "CASH";
 
 export type AdPolicyFormValues = {
   policyNo: string;
@@ -10,6 +9,8 @@ export type AdPolicyFormValues = {
   customerId: string;
   svkkPublicId: string;
   policyHolder: string;
+  /** UI-only: legacy HTML "HOLDER GENDER"; not persisted (InsuredParty has no gender column). */
+  holderGender: string;
   panNo: string;
   company: string;
   tpa: string;
@@ -48,6 +49,7 @@ export type AdPolicyFormValues = {
   excessShort: string;
   diffAmt: string;
   loanStatus: string;
+  loanNo: string;
   loanAmt: string;
   nomineeName: string;
   nomineeRelation: string;
@@ -74,7 +76,7 @@ export type AdPolicyFormValues = {
   refNo: string;
   year: string;
   month: string;
-  policyGrouping: "" | PolicyGrouping;
+  policyGrouping: string;
   url: string;
 };
 
@@ -85,6 +87,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     customerId: "",
     svkkPublicId: "",
     policyHolder: "",
+    holderGender: "",
     panNo: "",
     company: "",
     tpa: "",
@@ -123,6 +126,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     excessShort: "",
     diffAmt: "",
     loanStatus: "",
+    loanNo: "",
     loanAmt: "",
     nomineeName: "",
     nomineeRelation: "",

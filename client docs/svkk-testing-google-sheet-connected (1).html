@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SVKK Premium Calculator Preview</title>
+  <style>
+    :root{
+      --bg:#f4f7fb;--card:#fff;--line:#dbe5f0;--text:#102033;--muted:#5f7187;
+      --primary:#1d4ed8;--primary2:#0f766e;--danger:#dc2626;
+      --shadow:0 14px 34px rgba(16,32,51,.08);--r:22px;
+      font-family:Inter,Segoe UI,Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#f8fbff,#eef4ff 40%,#f7fafc);color:var(--text)}
+    .wrap{max-width:1450px;margin:0 auto;padding:26px}
+    .top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:20px}
+    h1{margin:0;font-size:34px;letter-spacing:-.03em}
+    .sub{margin:6px 0 0;color:var(--muted)}
+    .pill{padding:10px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-weight:700;color:var(--primary)}
+    .layout{display:grid;grid-template-columns:280px 1fr;gap:20px}
+    .side,.card{background:rgba(255,255,255,.94);border:1px solid rgba(219,229,240,.9);box-shadow:var(--shadow);border-radius:var(--r)}
+    .side{padding:18px;height:fit-content;position:sticky;top:18px}
+    .side h3{margin:6px 0 12px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    .nav{display:grid;gap:10px}
+    .nav button{border:1px solid transparent;background:#f8fbfc;padding:14px 16px;border-radius:16px;text-align:left;font:inherit;cursor:pointer;color:var(--text);font-weight:700}
+    .nav button span{display:block;font-weight:500;color:var(--muted);font-size:12px;margin-top:4px}
+    .nav button.active{background:linear-gradient(135deg,rgba(29,78,216,.1),rgba(15,118,110,.08));border-color:#bfd4ff}
+    .main{display:grid;gap:20px}
+    .card{padding:22px}
+    .row{display:grid;gap:16px}
+    .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .field{background:#f8fafc;border:1px solid #e7edf4;border-radius:16px;padding:16px}
+    .field label{display:block;font-weight:700;font-size:14px;margin-bottom:8px}
+    .hint{font-size:12px;color:var(--muted);line-height:1.45;margin-top:8px}
+    input,select,textarea{width:100%;padding:12px 13px;border-radius:13px;border:1px solid #cfd9e4;background:#fff;font:inherit;color:var(--text)}
+    .btns{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{border:none;border-radius:14px;padding:12px 16px;font:inherit;font-weight:700;cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,var(--primary),#3b82f6,var(--primary2));color:#fff}
+    .btn.soft{background:#edf4ff;color:var(--primary);border:1px solid #d7e5ff}
+    .btn.ghost{background:#fff;border:1px solid #d7e0ea;color:var(--muted)}
+    .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+    .stat{background:#f8fafc;border:1px solid #e7edf4;border-radius:16px;padding:16px}
+    .stat b{display:block;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .stat div{margin-top:7px;font-size:24px;font-weight:800}
+    .stat.dark{background:#0f172a;color:#fff}
+    .stat.dark b{color:#cbd5e1}
+    .tbl{overflow:auto;border:1px solid #e6edf6;border-radius:18px;background:#fff}
+    .tbl table{width:100%;border-collapse:collapse;min-width:900px}
+    .tbl th,.tbl td{padding:12px 14px;border-bottom:1px solid #eef2f7;text-align:left;font-size:14px;vertical-align:top}
+    .tbl th{background:#eff6ff;color:var(--muted);position:sticky;top:0}
+    .msg{padding:12px 14px;border-radius:14px;background:#eef5ff;border:1px solid #d9e9ff;color:var(--primary);font-weight:700}
+    .msg.err{background:#fff1f2;border-color:#fecdd3;color:var(--danger)}
+    .member{border:1px solid #e5edf5;border-radius:18px;padding:16px;background:linear-gradient(180deg,#fff,#f8fafc)}
+    .member h4{margin:0 0 12px}
+    .tabs{display:flex;gap:10px;flex-wrap:wrap}
+    .tabs button{border:none;background:#f5f8fb;padding:10px 14px;border-radius:12px;font:inherit;font-weight:700;cursor:pointer;color:var(--muted)}
+    .tabs button.active{background:#fff;border:1px solid #d7e5ff;color:var(--text);box-shadow:0 8px 18px rgba(16,32,51,.06)}
+    .upload{border:1.5px dashed #b8d1ff;background:#f3f8ff;border-radius:16px;padding:18px}
+    .small{font-size:12px;color:var(--muted)}
+    @media (max-width:1100px){.layout{grid-template-columns:1fr}.side{position:static}.stats,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:720px){.wrap{padding:14px}.g2,.g3,.g4,.stats{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+const sampleCharts={
+  individual:[
+    {label:'0-17',min:0,max:17,premiums:{300000:2100,500000:3200,1000000:5700}},
+    {label:'18-35',min:18,max:35,premiums:{300000:2600,500000:3900,1000000:6900}},
+    {label:'36-45',min:36,max:45,premiums:{300000:3700,500000:5400,1000000:9400}},
+    {label:'46-60',min:46,max:60,premiums:{300000:5200,500000:7600,1000000:12900}},
+    {label:'61-100',min:61,max:100,premiums:{300000:8200,500000:11600,1000000:18600}}
+  ],
+  family_floater:[
+    {label:'0-17',min:0,max:17,premiums:{300000:1800,500000:2800,1000000:4900}},
+    {label:'18-35',min:18,max:35,premiums:{300000:2400,500000:3500,1000000:6200}},
+    {label:'36-45',min:36,max:45,premiums:{300000:3400,500000:4900,1000000:8600}},
+    {label:'46-60',min:46,max:60,premiums:{300000:4700,500000:6900,1000000:11800}},
+    {label:'61-100',min:61,max:100,premiums:{300000:7600,500000:10800,1000000:17300}}
+  ],
+  asha_kiran:{
+    holder:[
+      {label:'18-35',min:18,max:35,premiums:{300000:2800,500000:4100,1000000:7200}},
+      {label:'36-45',min:36,max:45,premiums:{300000:3900,500000:5700,1000000:9800}},
+      {label:'46-60',min:46,max:60,premiums:{300000:5600,500000:8100,1000000:13700}},
+      {label:'61-100',min:61,max:100,premiums:{300000:8900,500000:12500,1000000:19800}}
+    ],
+    member:[
+      {label:'0-17',min:0,max:17,premiums:{300000:1500,500000:2300,1000000:4100}},
+      {label:'18-35',min:18,max:35,premiums:{300000:2100,500000:3100,1000000:5600}},
+      {label:'36-45',min:36,max:45,premiums:{300000:3100,500000:4500,1000000:7900}},
+      {label:'46-60',min:46,max:60,premiums:{300000:4500,500000:6500,1000000:11100}},
+      {label:'61-100',min:61,max:100,premiums:{300000:7100,500000:10100,1000000:16400}}
+    ]
+  }
+};
+const sampleDefs={
+  individual:{label:'Individual Policy',description:'Single chart policy',mode:'same',discount:{type:'count',different:'no',holder:'',member:'',daughter:'',byCount:{1:0,2:5,3:5,4:10,5:10,6:10,7:10}}},
+  family_floater:{label:'Family Floater',description:'Single chart policy',mode:'same',discount:{type:'count',different:'no',holder:'',member:'',daughter:'',byCount:{1:0,2:5,3:5,4:10,5:10,6:10,7:10}}},
+  asha_kiran:{label:'Asha Kiran',description:'Separate holder and member charts',mode:'different',discount:{type:'daughter',different:'no',holder:'',member:'',daughter:50,byCount:{1:0,2:0,3:0,4:0,5:0,6:0,7:0}}}
+};
+const state={
+  tab:'calculator',
+  adminTab:'charts',
+  sheetUrl:load('sheetUrl',''),
+  sheetMsg:'Google Sheet sync not connected yet.',
+  charts:load('charts',sampleCharts),
+  defs:load('defs',sampleDefs),
+  form:{
+    policyType:'asha_kiran',
+    memberCount:3,
+    sumInsured:500000,
+    endDate:'14.10.2026',
+    members:[
+      {name:'Policy Holder',dob:'13.10.1987',relationship:'self',gender:'male',addOnRider:0},
+      {name:'Spouse',dob:'05.06.1990',relationship:'spouse',gender:'female',addOnRider:0},
+      {name:'Daughter',dob:'11.08.2014',relationship:'daughter',gender:'female',addOnRider:0}
+    ]
+  },
+  adminPolicy:'asha_kiran',
+  adminMsg:'',
+  adminNew:{key:'',label:'',description:'',mode:'same',discountType:'count'},
+  futureRows:load('futureRows',[]),
+  futureResults:[],
+  futureSource:'uploaded_csv_policy_list',
+  futureYear:'0',
+  futureGenerated:false,
+  futureMsg:'Upload future-premium CSV. Lookup reads from the same uploaded data.',
+  lookupNo:'',
+  lookupResult:null,
+  lookupSource:'linked_upload',
+  lookupYear:'0',
+  futureSearch:'',
+  futurePolicyFilter:'all',
+  futureSiFilter:'all',
+  futureStatusFilter:'all'
+};
+function cloneValue(v){return JSON.parse(JSON.stringify(v));}
+function load(key,fallback){
+  try{
+    const raw=localStorage.getItem('svkk_'+key);
+    return raw==null?cloneValue(fallback):JSON.parse(raw);
+  }catch{
+    return cloneValue(fallback);
+  }
+}
+function save(){
+  localStorage.setItem('svkk_charts',JSON.stringify(state.charts));
+  localStorage.setItem('svkk_defs',JSON.stringify(state.defs));
+  localStorage.setItem('svkk_futureRows',JSON.stringify(state.futureRows));
+}
+function rs(n){return new Intl.NumberFormat('en-IN').format(Number(n)||0);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function isValidDate(d){return d instanceof Date&&!Number.isNaN(d.getTime());}
+function dateFromParts(y,m,d){
+  const out=new Date(y,m-1,d);
+  if(!isValidDate(out)) return null;
+  if(out.getFullYear()!==y||out.getMonth()!==m-1||out.getDate()!==d) return null;
+  return new Date(out.getFullYear(),out.getMonth(),out.getDate());
+}
+function dateParse(v){
+  if(v==null||v==='') return null;
+  if(v instanceof Date) return isValidDate(v)?new Date(v.getFullYear(),v.getMonth(),v.getDate()):null;
+  if(typeof v==='number'&&Number.isFinite(v)){
+    const base=new Date(1899,11,30);
+    const out=new Date(base.getTime()+Math.round(v)*86400000);
+    return isValidDate(out)?new Date(out.getFullYear(),out.getMonth(),out.getDate()):null;
+  }
+  const raw=String(v).trim();
+  if(!raw) return null;
+  const normalized=raw.replace(/\./g,'-').replace(/\//g,'-');
+  const parts=normalized.split('-').map(s=>s.trim()).filter(Boolean);
+  if(parts.length===3){
+    if(parts[0].length===4) return dateFromParts(Number(parts[0]),Number(parts[1]),Number(parts[2]));
+    if(parts[2].length===4) return dateFromParts(Number(parts[2]),Number(parts[1]),Number(parts[0]));
+  }
+  const parsed=new Date(raw);
+  return isValidDate(parsed)?new Date(parsed.getFullYear(),parsed.getMonth(),parsed.getDate()):null;
+}
+function ymd(d){return d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):'';}
+function customAge(dob,endDate){
+  const b=dateParse(dob);
+  const e=dateParse(endDate);
+  if(!b||!e||e<b) return null;
+  let years=e.getFullYear()-b.getFullYear();
+  const birthdayThisYear=new Date(e.getFullYear(),b.getMonth(),b.getDate());
+  if(e<birthdayThisYear) years-=1;
+  return years;
+}
+function relationshipOptions(policy,index){
+  if(index===0) return ['self'];
+  if(policy==='asha_kiran') return ['spouse','daughter'];
+  return ['member','spouse','son','daughter','parent'];
+}
+function normalizeMember(member,index,policy){
+  const options=relationshipOptions(policy,index);
+  const relationship=options.includes(member.relationship)?member.relationship:options[0];
+  const gender=relationship==='daughter'?'female':(member.gender||(index===0?'male':''));
+  return {name:String(member.name||(index===0?'Policy Holder':'Member '+index)),dob:String(member.dob||''),relationship,gender,addOnRider:Number(member.addOnRider)||0};
+}
+function ensureMembers(){
+  const count=Math.max(1,Math.min(10,Number(state.form.memberCount)||1));
+  while(state.form.members.length<count){
+    const idx=state.form.members.length;
+    const rel=idx===0?'self':(state.form.policyType==='asha_kiran'?(idx===1?'spouse':'daughter'):'member');
+    state.form.members.push({name:idx===0?'Policy Holder':'Member '+idx,dob:'',relationship:rel,gender:rel==='daughter'?'female':'',addOnRider:0});
+  }
+  state.form.members=state.form.members.slice(0,count).map((m,i)=>normalizeMember(m,i,state.form.policyType));
+}
+function chartRows(policy,role){
+  const chart=state.charts[policy];
+  if(Array.isArray(chart)) return chart;
+  return role==='holder'?(chart?.holder||[]):(chart?.member||chart?.holder||[]);
+}
+function siList(policy){
+  const chart=state.charts[policy];
+  const rows=Array.isArray(chart)?chart:[...(chart?.holder||[]),...(chart?.member||[])];
+  return [...new Set(rows.flatMap(r=>Object.keys(r.premiums||{}).map(Number)))].filter(Number.isFinite).sort((a,b)=>a-b);
+}
+function premiumFor(policy,role,age,si){
+  const rows=chartRows(policy,role);
+  const hit=rows.find(r=>age>=r.min&&age<=r.max);
+  if(!hit) return {error:'No age band found for age '+age};
+  const value=hit.premiums?.[String(si)];
+  if(value==null) return {error:'No premium found for SI ₹'+rs(si)+' in age band '+hit.label};
+  return {premium:Number(value),band:hit.label};
+}
+function discountPct(policy,role,count,rel,gender){
+  const d=state.defs[policy]?.discount||{};
+  if(d.type==='daughter') return rel==='daughter'&&gender==='female'?(Number(d.daughter)||0):0;
+  if(d.different==='yes') return role==='holder'?(Number(d.holder)||0):(Number(d.member)||0);
+  const c=Math.min(Math.max(Number(count)||1,1),7);
+  return Number(d.byCount?.[c]||0);
+}
+function ashaKiranHolderChartIndex(members,endDate){
+  const eligible=[];
+  (members||[]).forEach((member,index)=>{
+    const normalized=normalizeMember(member,index,'asha_kiran');
+    if(normalized.relationship==='daughter') return;
+    const age=customAge(normalized.dob,endDate);
+    if(age==null) return;
+    eligible.push({index,age});
+  });
+  if(!eligible.length) return 0;
+  eligible.sort((a,b)=>b.age-a.age||a.index-b.index);
+  return eligible[0].index;
+}
+function quoteFromInput(policyType,memberCount,sumInsured,endDate,members){
+  const safeMembers=(members||[]).map((m,i)=>normalizeMember(m,i,policyType));
+  const ashaHolderIndex=policyType==='asha_kiran'?ashaKiranHolderChartIndex(safeMembers,endDate):0;
+  const rows=safeMembers.map((member,index)=>{
+    const appliedRole=policyType==='asha_kiran'?(index===ashaHolderIndex?'holder':'member'):(index===0?'holder':'member');
+    const age=customAge(member.dob,endDate);
+    if(age==null) return {...member,role:appliedRole,age:null,error:'Age could not be calculated.'};
+    const premium=premiumFor(policyType,appliedRole,age,Number(sumInsured));
+    if(premium.error) return {...member,role:appliedRole,age,error:premium.error};
+    const rider=Number(member.addOnRider)||0;
+    const gross=premium.premium+rider;
+    const pct=discountPct(policyType,appliedRole,memberCount,member.relationship,member.gender);
+    const disc=Math.ceil(gross*pct/100);
+    const net=Math.ceil(gross-disc);
+    return {...member,role:appliedRole,age,band:premium.band,basic:premium.premium,rider,gross,pct,disc,net};
+  });
+  const basic=rows.reduce((sum,row)=>sum+(row.basic||0),0);
+  const rider=rows.reduce((sum,row)=>sum+(row.rider||0),0);
+  const gross=rows.reduce((sum,row)=>sum+(row.gross||0),0);
+  const disc=rows.reduce((sum,row)=>sum+(row.disc||0),0);
+  return {rows,basic,rider,gross,disc,net:Math.ceil(gross-disc)};
+}
+function currentQuote(){ensureMembers();return quoteFromInput(state.form.policyType,state.form.memberCount,state.form.sumInsured,state.form.endDate,state.form.members);}
+function parseCsv(text){
+  const rows=[];
+  let row=[];
+  let cell='';
+  let quoted=false;
+  const src=String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for(let i=0;i<src.length;i++){
+    const ch=src[i];
+    const next=src[i+1];
+    if(quoted){
+      if(ch==='"'&&next==='"'){cell+='"';i++;}
+      else if(ch==='"'){quoted=false;}
+      else{cell+=ch;}
+    }else{
+      if(ch==='"') quoted=true;
+      else if(ch===','){row.push(cell);cell='';}
+      else if(ch==='\n'){row.push(cell);rows.push(row);row=[];cell='';}
+      else{cell+=ch;}
+    }
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows.filter(r=>r.some(v=>String(v||'').trim()!==''));
+}
+function toObjects(rows){
+  const headers=(rows[0]||[]).map(x=>String(x||''));
+  return rows.slice(1).map(r=>Object.fromEntries(headers.map((k,i)=>[k,r[i]??'']))).filter(o=>Object.values(o).some(v=>String(v).trim()!==''));
+}
+function normKey(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
+function getv(obj,keys){
+  const map=Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[normKey(k),v]));
+  for(const key of keys){
+    const value=map[normKey(key)];
+    if(String(value??'').trim()!=='') return value;
+  }
+  return '';
+}
+function money(v){const n=String(v??'').replace(/,/g,'').trim();return n===''?0:(Number(n)||0);}
+function normPolicy(v){
+  const k=normKey(v);
+  return ({individual:'individual',individual_policy:'individual',asha:'asha_kiran',asha_kiran:'asha_kiran',family:'family_floater',family_floater:'family_floater',floater:'family_floater'})[k]||k;
+}
+function normRel(v,policy,index){
+  const key=normKey(v);
+  const options=relationshipOptions(policy,index);
+  return options.includes(key)?key:options[0];
+}
+function normGender(v,rel,index){
+  const g=String(v||'').trim().toLowerCase();
+  if(g==='male'||g==='female') return g;
+  if(rel==='daughter') return 'female';
+  if(index===0) return 'male';
+  return '';
+}
+function futureMemberCount(row){return Number(getv(row,['member_count','persons','person_count','no_of_person','no_of_persons','no_of_members','number_of_persons']))||0;}
+function buildMembersFromFutureRow(row,policy,targetCount){
+  const out=[];
+  out.push({name:getv(row,['holder_name','member_1_name','member1_name','policy_holder_name'])||'Policy Holder',dob:ymd(dateParse(getv(row,['holder_dob','member_1_dob','member1_dob','dob']))),relationship:'self',gender:normGender(getv(row,['holder_gender','member_1_gender','member1_gender','gender']),'self',0),addOnRider:money(getv(row,['holder_addon_rider','member_1_addon_rider','member1_addon_rider','addon_rider']))});
+  const maxMembers=Math.min(Math.max(targetCount||1,1),10);
+  for(let i=2;i<=maxMembers;i++){
+    const name=getv(row,[`member_${i}_name`,`member${i}_name`]);
+    const dob=ymd(dateParse(getv(row,[`member_${i}_dob`,`member${i}_dob`])));
+    const relRaw=getv(row,[`member_${i}_relationship`,`member${i}_relationship`]);
+    const genderRaw=getv(row,[`member_${i}_gender`,`member${i}_gender`]);
+    const rider=money(getv(row,[`member_${i}_addon_rider`,`member${i}_addon_rider`]));
+    const hasAny=Boolean(String(name).trim()||String(dob).trim()||String(relRaw).trim()||String(genderRaw).trim()||rider);
+    if(!hasAny) continue;
+    const rel=normRel(relRaw,policy,i-1);
+    const gender=normGender(genderRaw,rel,i-1);
+    out.push({name:name||('Member '+(i-1)),dob,relationship:rel,gender,addOnRider:rider});
+  }
+  return out;
+}
+function sourceLabel(key){return ({uploaded_csv_policy_list:'Uploaded CSV + Policy List',uploaded_csv_only:'Uploaded CSV Only',policy_list_only:'Policy List Only',linked_upload:'Linked Uploaded CSV'})[key]||'Uploaded CSV + Policy List';}
+function yearOffsetValue(v){const n=parseInt(v,10);return Number.isFinite(n)?n:0;}
+function yearOffsetLabel(v){const n=yearOffsetValue(v);if(n===0) return 'Current Year';if(n===1) return 'Next Year';return n+' Yr';}
+function yearOptions(selected){return [{v:'0',t:'Current Year'},{v:'1',t:'Next Year'},{v:'2',t:'2 Yr'},{v:'3',t:'3 Yr'},{v:'4',t:'4 Yr'},{v:'5',t:'5 Yr'}].map(o=>`<option value="${o.v}" ${String(selected)===o.v?'selected':''}>${o.t}</option>`).join('');}
+function sourceOptions(selected,includeLinked){
+  const base=[{v:'uploaded_csv_policy_list',t:'Uploaded CSV + Policy List'},{v:'uploaded_csv_only',t:'Uploaded CSV Only'},{v:'policy_list_only',t:'Policy List Only'}];
+  const list=includeLinked?[{v:'linked_upload',t:'Linked Uploaded CSV'},...base]:base;
+  return list.map(o=>`<option value="${o.v}" ${String(selected)===o.v?'selected':''}>${o.t}</option>`).join('');
+}
+function todayStamp(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function addYearsToDateString(value,years){
+  const d=dateParse(value);
+  if(!d) return value||'';
+  const y=d.getFullYear()+Number(years||0);
+  const m=d.getMonth();
+  const day=d.getDate();
+  const lastDay=new Date(y,m+1,0).getDate();
+  const out=new Date(y,m,Math.min(day,lastDay));
+  return ymd(out);
+}
+function calcYearFromEnd(end,offset){
+  const adjusted=addYearsToDateString(end,yearOffsetValue(offset));
+  const d=dateParse(adjusted);
+  return d?d.getFullYear():new Date().getFullYear();
+}
+function buildFutureResults(rawRows,sourceKey,yearOffset){
+  return (rawRows||[]).map((row,idx)=>{
+    const policy=normPolicy(getv(row,['policy_type','type']));
+    const declaredCount=futureMemberCount(row);
+    const members=buildMembersFromFutureRow(row,policy,declaredCount||10);
+    const memberCount=declaredCount||members.length||1;
+    const si=money(getv(row,['sum_insured','si']));
+    const baseStart=getv(row,['start_date','policy_start_date','current_start_date']);
+    const baseEnd=getv(row,['end_date','policy_end_date','future_end_date','expiry_date']);
+    const offset=yearOffsetValue(yearOffset);
+    const start=addYearsToDateString(baseStart,offset);
+    const end=addYearsToDateString(baseEnd,offset);
+    const policyNo=getv(row,['policy_number','policy_no','policyno'])||('POL-'+String(idx+1).padStart(4,'0'));
+    const holder=getv(row,['holder_name','member_1_name','member1_name','policy_holder_name'])||'Policy Holder';
+    const svkkId=getv(row,['svkk_id','svkkid'])||'—';
+    const customerId=getv(row,['customer_id','customerid'])||'—';
+    const quote=quoteFromInput(policy,memberCount,si,end,members);
+    const status=quote.rows.some(r=>r.error)?'Issue':'Ready';
+    return {source:sourceLabel(sourceKey),svkkId,customerId,policyNo,holder,policy,memberCount,si,start,end,calcYear:calcYearFromEnd(baseEnd,yearOffset),calcDate:todayStamp(),quote,status};
+  });
+}
+function processFutureRows(){state.futureResults=buildFutureResults(state.futureRows,state.futureSource,state.futureYear);}
+function futureMIS(){
+  const rows=state.futureGenerated?state.futureResults:[];
+  const byType={};
+  const bySI={};
+  let policies=0,members=0,basic=0,gross=0,disc=0,net=0;
+  rows.forEach(r=>{
+    policies+=1;
+    members+=r.memberCount;
+    basic+=r.quote.basic;
+    gross+=r.quote.gross;
+    disc+=r.quote.disc;
+    net+=r.quote.net;
+    if(!byType[r.policy]) byType[r.policy]={policies:0,members:0,basic:0,gross:0,disc:0,net:0};
+    if(!bySI[r.si]) bySI[r.si]={policies:0,members:0,basic:0,gross:0,disc:0,net:0};
+    byType[r.policy].policies+=1;
+    byType[r.policy].members+=r.memberCount;
+    byType[r.policy].basic+=r.quote.basic;
+    byType[r.policy].gross+=r.quote.gross;
+    byType[r.policy].disc+=r.quote.disc;
+    byType[r.policy].net+=r.quote.net;
+    bySI[r.si].policies+=1;
+    bySI[r.si].members+=r.memberCount;
+    bySI[r.si].basic+=r.quote.basic;
+    bySI[r.si].gross+=r.quote.gross;
+    bySI[r.si].disc+=r.quote.disc;
+    bySI[r.si].net+=r.quote.net;
+  });
+  return {policies,members,basic,gross,disc,net,byType,bySI};
+}
+function renderMisCards(groups,labelFormatter){
+  const entries=Object.entries(groups||{});
+  if(!entries.length) return '<div class="field"><label>Breakdown</label><div class="small">No data yet</div></div>';
+  const maxPolicies=Math.max(...entries.map(([,v])=>v.policies),1);
+  const maxNet=Math.max(...entries.map(([,v])=>v.net),1);
+  return `<div class="row g2">${entries.map(([key,val])=>`<div class="field"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div style="font-weight:800;font-size:16px">${esc(labelFormatter(key))}</div><div class="pill" style="padding:6px 10px;font-size:12px">${val.policies} Policies</div></div><div style="margin-top:12px;height:10px;background:#eaf1fb;border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(8,(val.policies/maxPolicies)*100)}%;background:linear-gradient(135deg,var(--primary),var(--primary2));border-radius:999px"></div></div><div class="row g2" style="margin-top:14px"><div><div class="small">Members</div><div style="font-weight:800">${val.members}</div></div><div><div class="small">Gross</div><div style="font-weight:800">₹${rs(val.gross)}</div></div><div><div class="small">Discount</div><div style="font-weight:800">₹${rs(val.disc)}</div></div><div><div class="small">Net</div><div style="font-weight:800">₹${rs(val.net)}</div></div></div><div style="margin-top:12px"><div class="small">Net share</div><div style="margin-top:6px;height:8px;background:#eef4ff;border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(8,(val.net/maxNet)*100)}%;background:linear-gradient(135deg,#0f766e,#1d4ed8);border-radius:999px"></div></div></div></div>`).join('')}</div>`;
+}
+function filteredFutureResults(){
+  const q=String(state.futureSearch||'').trim().toLowerCase();
+  return (state.futureResults||[]).filter(r=>{
+    if(state.futurePolicyFilter!=='all' && r.policy!==state.futurePolicyFilter) return false;
+    if(state.futureSiFilter!=='all' && String(r.si)!==String(state.futureSiFilter)) return false;
+    if(state.futureStatusFilter!=='all' && r.status!==state.futureStatusFilter) return false;
+    if(!q) return true;
+    const hay=[r.svkkId,r.customerId,r.holder,r.policyNo,r.policy,r.si,r.memberCount,r.calcYear,r.calcDate,r.status].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+function futurePolicyOptions(){
+  const vals=[...new Set((state.futureResults||[]).map(r=>r.policy).filter(Boolean))];
+  return ['<option value="all">All Policy Types</option>'].concat(vals.map(v=>`<option value="${esc(v)}" ${state.futurePolicyFilter===v?'selected':''}>${esc(v)}</option>`)).join('');
+}
+function futureSiOptions(){
+  const vals=[...new Set((state.futureResults||[]).map(r=>String(r.si)).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  return ['<option value="all">All SI</option>'].concat(vals.map(v=>`<option value="${esc(v)}" ${String(state.futureSiFilter)===String(v)?'selected':''}>₹${rs(v)}</option>`)).join('');
+}
+function buildCsv(rows){
+  if(!rows.length) return '';
+  const heads=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+  const lines=['\uFEFF'+heads.join(',')];
+  rows.forEach(r=>{
+    const line=heads.map(h=>{
+      const t=String(r[h]??'');
+      return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;
+    }).join(',');
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
+function download(name,rows){
+  const csv=buildCsv(rows);
+  if(!csv) return false;
+  try{
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=name;
+    a.rel='noopener';
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+    return true;
+  }catch{
+    try{
+      const a=document.createElement('a');
+      a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+      a.download=name;
+      a.rel='noopener';
+      a.style.display='none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return true;
+    }catch{
+      return false;
+    }
+  }
+}
+function summaryExport(){
+  return state.futureResults.map(r=>({policy_number:r.policyNo,holder_name:r.holder,policy_type:r.policy,sum_insured:r.si,member_count:r.memberCount,start_date:r.start,end_date:r.end,basic_premium:r.quote.basic,add_on_rider:r.quote.rider,gross_premium:r.quote.gross,discount:r.quote.disc,net_premium:r.quote.net,status:r.status}));
+}
+function detailExport(){
+  return state.futureResults.flatMap(r=>r.quote.rows.map(m=>({
+    svkk_id:r.svkkId,
+    customer_id:r.customerId,
+    policy_number:r.policyNo,
+    holder_name:r.holder,
+    policy_type:r.policy,
+    sum_insured:r.si,
+    member_count:r.memberCount,
+    person_name:m.name,
+    role:m.role,
+    relationship:m.relationship,
+    gender:m.gender,
+    dob:m.dob,
+    age:m.age??'',
+    band:m.band||'',
+    basic_premium:m.basic||0,
+    add_on_rider:m.rider||0,
+    gross_premium:m.gross||0,
+    discount_percent:m.pct||0,
+    discount_amount:m.disc||0,
+    net_premium:m.net||0,
+    status:m.error||'Ready'
+  })));
+}
+function lookupFind(){
+  const token=String(state.lookupNo||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  const rows=buildFutureResults(state.futureRows,state.lookupSource,state.lookupYear);
+  state.lookupResult=rows.find(r=>String(r.policyNo).toLowerCase().replace(/[^a-z0-9]/g,'')===token)||null;
+}
+function parseChartRows(rows){
+  const headIndex=rows.findIndex(r=>r.some(c=>String(c||'').toLowerCase().includes('age')));
+  if(headIndex<0) throw new Error('Header row with Age / Age Group not found');
+  const head=rows[headIndex];
+  const sis=head.slice(1).map(v=>money(v)).filter(v=>Number.isFinite(v)&&v>0);
+  const out=[];
+  for(let i=headIndex+1;i<rows.length;i++){
+    const ageText=String(rows[i][0]||'').trim().replace(/to/ig,'-').replace(/–/g,'-');
+    if(!ageText) continue;
+    let min,max;
+    const match=ageText.match(/^(\d+)\s*-\s*(\d+)$/);
+    if(match){min=Number(match[1]);max=Number(match[2]);}
+    else if(/^\d+$/.test(ageText)){min=Number(ageText);max=Number(ageText);}
+    else{continue;}
+    const premiums={};
+    sis.forEach((si,idx)=>{const p=money(rows[i][idx+1]);if(Number.isFinite(p)&&p>0) premiums[si]=p;});
+    if(Object.keys(premiums).length) out.push({label:min===max?String(min):min+'-'+max,min,max,premiums});
+  }
+  if(!out.length) throw new Error('No premium rows found');
+  return out;
+}
+async function uploadChart(file,kind){
+  const text=await file.text();
+  const rows=parseCsv(text);
+  if(kind==='common') state.charts[state.adminPolicy]=parseChartRows(rows);
+  else{
+    const existing=Array.isArray(state.charts[state.adminPolicy])?{}:(state.charts[state.adminPolicy]||{});
+    existing[kind]=parseChartRows(rows);
+    state.charts[state.adminPolicy]=existing;
+  }
+  save();
+  state.adminMsg='Chart uploaded into preview for '+state.defs[state.adminPolicy].label;
+}
+async function uploadFuture(file){
+  const obj=toObjects(parseCsv(await file.text()));
+  state.futureRows=obj;
+  state.futureResults=[];
+  state.futureGenerated=false;
+  state.lookupResult=null;
+  save();
+  state.futureMsg='CSV uploaded successfully. Click Generate to preview Future Premium and MIS.';
+  render();
+}
+function createPolicyTypeFromAdmin(){
+  const rawKey=String(state.adminNew.key||state.adminNew.label||'').trim();
+  const key=normKey(rawKey);
+  if(!key){state.adminMsg='Please enter policy type name or key.';render();return;}
+  if(state.defs[key]){state.adminMsg='Policy type already exists: '+state.defs[key].label;render();return;}
+  const label=String(state.adminNew.label||rawKey).trim()||rawKey;
+  const description=String(state.adminNew.description||'New policy type').trim()||'New policy type';
+  const mode=state.adminNew.mode==='different'?'different':'same';
+  const discountType=state.adminNew.discountType==='daughter'?'daughter':'count';
+  state.defs[key]={label,description,mode,discount:{type:discountType,different:'no',holder:'',member:'',daughter:discountType==='daughter'?50:'',byCount:{1:0,2:5,3:5,4:10,5:10,6:10,7:10}}};
+  state.charts[key]=mode==='different'?{holder:[],member:[]}:[];
+  state.adminPolicy=key;
+  state.form.policyType=key;
+  state.adminMsg='New policy type added: '+label;
+  state.adminNew={key:'',label:'',description:'',mode:'same',discountType:'count'};
+  save();
+  render();
+}
+
+function sheetPayloadFromCurrentQuote(){
+  const q=currentQuote();
+  return {
+    action:'save_current_quote',
+    generated_at:new Date().toISOString(),
+    module:'Premium Calculator',
+    policy_type:state.form.policyType,
+    policy_label:state.defs[state.form.policyType]?.label||state.form.policyType,
+    sum_insured:state.form.sumInsured,
+    member_count:state.form.memberCount,
+    policy_end_date:state.form.endDate,
+    basic_premium:q.basic,
+    addon_rider:q.rider,
+    gross_premium:q.gross,
+    discount_amount:q.disc,
+    net_premium:q.net,
+    members:q.rows.map((m,i)=>({
+      serial:i+1,
+      name:m.name,
+      dob:m.dob,
+      age:m.age??'',
+      role:m.role,
+      relationship:m.relationship,
+      gender:m.gender,
+      age_band:m.band||'',
+      basic_premium:m.basic||0,
+      addon_rider:m.rider||0,
+      gross_premium:m.gross||0,
+      discount_percent:m.pct||0,
+      discount_amount:m.disc||0,
+      net_premium:m.net||0,
+      status:m.error||'Ready'
+    }))
+  };
+}
+function sheetPayloadFromFutureResults(){
+  return {
+    action:'save_future_generated',
+    generated_at:new Date().toISOString(),
+    module:'Future Premium + MIS',
+    source:sourceLabel(state.futureSource),
+    future_year:yearOffsetLabel(state.futureYear),
+    records:summaryExport(),
+    member_details:detailExport()
+  };
+}
+async function sendToGoogleSheet(payload){
+  const url=String(state.sheetUrl||'').trim();
+  if(!url){
+    state.sheetMsg='Please paste your Google Apps Script Web App URL first.';
+    render();
+    return;
+  }
+  try{
+    await fetch(url,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+      body:new URLSearchParams({payload:JSON.stringify(payload)})
+    });
+    state.sheetMsg='Data sent to Google Sheet. Please open the Sheet and check the latest rows.';
+  }catch(err){
+    state.sheetMsg='Could not send data. Check internet connection and Web App URL.';
+  }
+  render();
+}
+function renderSheetSyncBox(context){
+  return `<div class="field" style="margin-top:16px">
+    <label>Google Sheet Sync</label>
+    <div class="row g2">
+      <div><label>Apps Script Web App URL</label><input id="sheetUrl" value="${esc(state.sheetUrl)}" placeholder="Paste your deployed Apps Script Web App URL here"></div>
+      <div style="display:flex;align-items:end"><div class="btns"><button class="btn primary" id="saveSheetUrl">Save URL</button>${context==='calculator'?'<button class="btn soft" id="sendQuoteSheet">Save Current Quote to Sheet</button>':'<button class="btn soft" id="sendFutureSheet">Save Generated Future Data to Sheet</button>'}</div></div>
+    </div>
+    <div class="hint">This works like Google Forms: this HTML sends data to a Google Apps Script Web App, and the script appends rows into your connected Google Sheet.</div>
+    <div class="msg" style="margin-top:12px">${esc(state.sheetMsg)}</div>
+  </div>`;
+}
+
+function renderCalc(){
+  ensureMembers();
+  const sis=siList(state.form.policyType);
+  if(sis.length&&!sis.includes(Number(state.form.sumInsured))) state.form.sumInsured=sis[0];
+  const q=currentQuote();
+  return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap"><div><h2 style="margin:0 0 6px">Premium Calculator</h2><div class="sub">Same setup feel, with age calculated as completed age on the policy end date. In Asha Kiran, the oldest non-daughter eligible member gets the holder chart and the others use the member chart.</div></div><div class="pill">Working preview</div></div>
+        ${renderSheetSyncBox('calculator')}
+        <div class="row g4" style="margin-top:18px">
+          <div class="field"><label>Policy Type</label><select id="policyType">${Object.entries(state.defs).map(([k,v])=>`<option value="${k}" ${state.form.policyType===k?'selected':''}>${v.label}</option>`).join('')}</select><div class="hint">${esc(state.defs[state.form.policyType]?.description||'')}</div></div>
+          <div class="field"><label>Number of Members</label><input id="memberCount" type="number" min="1" max="10" value="${state.form.memberCount}"></div>
+          <div class="field"><label>Sum Insured</label><select id="sumInsured">${sis.map(si=>`<option value="${si}" ${Number(state.form.sumInsured)===si?'selected':''}>₹${rs(si)}</option>`).join('')}</select></div>
+          <div class="field"><label>End Date of Policy</label><input id="endDate" type="text" value="${esc(state.form.endDate)}" placeholder="DD.MM.YYYY or YYYY-MM-DD"><div class="hint">This preview uses completed age on the policy end date. You can type the date manually.</div></div>
+        </div>
+        <div class="row" style="margin-top:16px">${state.form.members.map((m,i)=>`<div class="member"><h4>${i===0?'Policy Holder':'Member '+i}</h4><div class="row g4"><div><label>Name</label><input data-m="${i}" data-f="name" value="${esc(m.name)}"></div><div><label>DOB</label><input data-m="${i}" data-f="dob" type="text" value="${esc(m.dob)}" placeholder="DD.MM.YYYY or YYYY-MM-DD"></div><div><label>Relationship</label><select data-m="${i}" data-f="relationship">${relationshipOptions(state.form.policyType,i).map(x=>`<option value="${x}" ${m.relationship===x?'selected':''}>${x.replace(/_/g,' ')}</option>`).join('')}</select></div><div><label>Gender</label><select data-m="${i}" data-f="gender"><option value="" ${!m.gender?'selected':''}>Select</option><option value="male" ${m.gender==='male'?'selected':''}>Male</option><option value="female" ${m.gender==='female'?'selected':''}>Female</option></select></div></div><div class="row g2" style="margin-top:12px"><div><label>Add-on Rider</label><input data-m="${i}" data-f="addOnRider" type="number" min="0" value="${m.addOnRider||0}"></div><div class="hint" style="display:flex;align-items:end">Age is auto-calculated from DOB and policy end date.</div></div></div>`).join('')}</div>
+        <div class="stats" style="margin-top:18px"><div class="stat"><b>Basic Premium</b><div>₹${rs(q.basic)}</div></div><div class="stat"><b>Add-on Rider</b><div>₹${rs(q.rider)}</div></div><div class="stat"><b>Gross Premium</b><div>₹${rs(q.gross)}</div></div><div class="stat"><b>Discount</b><div>₹${rs(q.disc)}</div></div><div class="stat dark"><b>Net Premium</b><div>₹${rs(q.net)}</div></div></div>
+        <div class="tbl" style="margin-top:16px"><table><thead><tr><th>Person</th><th>Role</th><th>DOB</th><th>Age</th><th>Relationship</th><th>Gender</th><th>Band</th><th>Basic</th><th>Rider</th><th>Gross</th><th>Discount %</th><th>Discount</th><th>Net</th><th>Status</th></tr></thead><tbody>${q.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.role)}</td><td>${esc(r.dob||'—')}</td><td>${r.age??'—'}</td><td>${esc(r.relationship)}</td><td>${esc(r.gender||'—')}</td><td>${esc(r.band||'—')}</td><td>${r.error?'<span style="color:var(--danger)">'+esc(r.error)+'</span>':'₹'+rs(r.basic)}</td><td>${r.error?'—':'₹'+rs(r.rider)}</td><td>${r.error?'—':'₹'+rs(r.gross)}</td><td>${r.error?'—':r.pct+'%'}</td><td>${r.error?'—':'₹'+rs(r.disc)}</td><td>${r.error?'—':'₹'+rs(r.net)}</td><td>${esc(r.error||'Ready')}</td></tr>`).join('')}</tbody></table></div>
+      </div>`;
+}
+function renderAdmin(){
+  const def=state.defs[state.adminPolicy];
+  const chart=state.charts[state.adminPolicy];
+  const summaries=Array.isArray(chart)?[{title:'Common chart',rows:chart}]:[{title:'Holder chart',rows:chart?.holder||[]},{title:'Member chart',rows:chart?.member||[]}];
+  return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap"><div><h2 style="margin:0 0 6px">Admin Setup</h2><div class="sub">This now includes the missing add-new-policy-type option, along with chart and discount setup.</div></div><div class="tabs"><button class="${state.adminTab==='charts'?'active':''}" data-admintab="charts">Charts</button><button class="${state.adminTab==='discounts'?'active':''}" data-admintab="discounts">Discounts</button></div></div>
+        <div class="msg" style="margin-top:14px">${esc(state.adminMsg||'Changes in canvas are preview-only and saved locally in this preview.')}</div>
+        <div class="field" style="margin-top:16px">
+          <label>Add New Policy Type</label>
+          <div class="row g4">
+            <div><label>Policy Key</label><input id="newPolicyKey" value="${esc(state.adminNew.key)}" placeholder="e.g. senior_secure"></div>
+            <div><label>Policy Name</label><input id="newPolicyLabel" value="${esc(state.adminNew.label)}" placeholder="e.g. Senior Secure"></div>
+            <div><label>Chart Mode</label><select id="newPolicyMode"><option value="same" ${state.adminNew.mode==='same'?'selected':''}>Single chart</option><option value="different" ${state.adminNew.mode==='different'?'selected':''}>Separate holder/member charts</option></select></div>
+            <div><label>Discount Type</label><select id="newPolicyDiscountType"><option value="count" ${state.adminNew.discountType==='count'?'selected':''}>Count based</option><option value="daughter" ${state.adminNew.discountType==='daughter'?'selected':''}>Daughter specific</option></select></div>
+          </div>
+          <div class="row g2" style="margin-top:12px">
+            <div><label>Description</label><input id="newPolicyDescription" value="${esc(state.adminNew.description)}" placeholder="Short admin note for this policy type"></div>
+            <div style="display:flex;align-items:end"><div class="btns"><button class="btn primary" id="addPolicyTypeBtn">Add Policy Type</button></div></div>
+          </div>
+          <div class="hint">After adding a new policy type, you can upload its chart immediately below and use it in the calculator.</div>
+        </div>
+        <div class="row g3" style="margin-top:16px"><div class="field"><label>Policy</label><select id="adminPolicy">${Object.entries(state.defs).map(([k,v])=>`<option value="${k}" ${state.adminPolicy===k?'selected':''}>${v.label}</option>`).join('')}</select></div><div class="field"><label>Chart Mode</label><select id="adminMode"><option value="same" ${def.mode==='same'?'selected':''}>Single chart</option><option value="different" ${def.mode==='different'?'selected':''}>Separate holder/member charts</option></select></div><div class="field"><label>Description</label><div class="hint" style="margin-top:0">${esc(def.description)}</div></div></div>
+        ${state.adminTab==='charts'?`<div class="row g2" style="margin-top:16px"><div class="upload"><div style="font-weight:800;margin-bottom:6px">${def.mode==='same'?'Upload common chart':'Upload holder chart'}</div><div class="small">Canvas preview supports CSV upload directly here.</div><input id="chartUpload1" type="file" accept=".csv" style="margin-top:10px"></div>${def.mode==='different'?`<div class="upload"><div style="font-weight:800;margin-bottom:6px">Upload member chart</div><div class="small">Use a CSV with Age / Age Group in first column and Sum Insured columns in next columns.</div><input id="chartUpload2" type="file" accept=".csv" style="margin-top:10px"></div>`:`<div class="field"><label>Quick action</label><div class="btns"><button class="btn ghost" data-clearchart="1">Reset to sample chart</button></div><div class="hint">Server ZIP still remains the real working PHP pack.</div></div>`}</div>`:`<div class="row g2" style="margin-top:16px">${def.discount.type==='daughter'?`<div class="field"><label>Daughter Discount %</label><input id="discDaughter" type="number" min="0" max="100" value="${def.discount.daughter}"></div><div class="field"><label>Note</label><div class="hint">For Asha Kiran, the daughter receives the discount while father/mother do not.</div></div>`:`<div class="field"><label>Holder and Member discount different?</label><select id="discDifferent"><option value="no" ${def.discount.different==='no'?'selected':''}>No</option><option value="yes" ${def.discount.different==='yes'?'selected':''}>Yes</option></select></div><div class="field"><label>Count-based discounts</label><div class="small">Use member-count discounts like your calculator flow.</div></div>${def.discount.different==='yes'?`<div class="field"><label>Holder Discount %</label><input id="discHolder" type="number" min="0" max="100" value="${def.discount.holder||''}"></div><div class="field"><label>Member Discount %</label><input id="discMember" type="number" min="0" max="100" value="${def.discount.member||''}"></div>`:`<div class="field" style="grid-column:1/-1"><label>Discount by Member Count</label><div class="row g4">${[1,2,3,4,5,6,7].map(n=>`<div><label>${n} member${n>1?'s':''}</label><input data-dcount="${n}" type="number" min="0" max="100" value="${def.discount.byCount[n]??0}"></div>`).join('')}</div></div>`}`}</div><div class="btns" style="margin-top:14px"><button class="btn primary" id="saveDiscounts">Save Discount Setup</button></div>`}
+        <div class="tbl" style="margin-top:16px"><table><thead><tr><th>Chart</th><th>Age Bands</th><th>Supported SI</th></tr></thead><tbody>${summaries.map(s=>{const si=[...new Set((s.rows||[]).flatMap(r=>Object.keys(r.premiums||{})))].join(', ');const bands=(s.rows||[]).map(r=>r.label).slice(0,8).join(', ');return `<tr><td>${esc(s.title)}</td><td>${esc(bands||'—')}</td><td>${esc(si||'—')}</td></tr>`;}).join('')}</tbody></table></div>
+      </div>`;
+}
+function renderFuture(){
+  const mis=futureMIS();
+  const visibleRows=filteredFutureResults();
+  return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap"><div><h2 style="margin:0 0 6px">Future Premium</h2><div class="sub">Professional preview flow with source selection, future-year selection, generate action, and linked MIS.</div></div><div class="pill">Preview flow</div></div>
+        ${renderSheetSyncBox('future')}
+        <div class="field" style="margin-top:16px">
+          <label>Controls</label>
+          <div class="row g4">
+            <div><label>Source</label><select id="futureSource">${sourceOptions(state.futureSource,false)}</select></div>
+            <div><label>Future Year</label><select id="futureYear">${yearOptions(state.futureYear)}</select></div>
+            <div><label>Upload CSV</label><input id="futureUpload" type="file" accept=".csv"></div>
+            <div><label>Actions</label><div class="btns"><button class="btn primary" id="futureGenerateBtn">Generate</button><button class="btn ghost" id="futureSampleBtn">Sample CSV</button></div></div>
+          </div>
+          <div class="msg" style="margin-top:12px">${esc(state.futureMsg)}</div>
+        </div>
+        <div class="stats" style="margin-top:16px"><div class="stat"><b>Policies</b><div>${mis.policies}</div></div><div class="stat"><b>Total Members</b><div>${mis.members}</div></div><div class="stat"><b>Basic Premium</b><div>₹${rs(mis.basic)}</div></div><div class="stat"><b>Gross Premium</b><div>₹${rs(mis.gross)}</div></div><div class="stat dark"><b>Net Premium</b><div>₹${rs(mis.net)}</div></div></div>
+        <div class="row g2" style="margin-top:16px"><div class="field"><label>Overall MIS Snapshot</label><div class="row g2" style="margin-top:6px"><div><div class="small">Discount Total</div><div style="font-weight:800">₹${rs(mis.disc)}</div></div><div><div class="small">Average Net / Policy</div><div style="font-weight:800">₹${rs(mis.policies?Math.round(mis.net/mis.policies):0)}</div></div><div><div class="small">Average Members / Policy</div><div style="font-weight:800">${mis.policies?(mis.members/mis.policies).toFixed(2):'0.00'}</div></div><div><div class="small">Average Gross / Policy</div><div style="font-weight:800">₹${rs(mis.policies?Math.round(mis.gross/mis.policies):0)}</div></div></div></div><div class="field"><label>MIS Coverage</label><div class="row g2" style="margin-top:6px"><div><div class="small">Policy Types</div><div style="font-weight:800">${Object.keys(mis.byType).length}</div></div><div><div class="small">SI Buckets</div><div style="font-weight:800">${Object.keys(mis.bySI).length}</div></div><div><div class="small">Highest SI Net</div><div style="font-weight:800">₹${rs(Math.max(0,...Object.values(mis.bySI).map(v=>v.net||0)))}</div></div><div><div class="small">Highest Type Net</div><div style="font-weight:800">₹${rs(Math.max(0,...Object.values(mis.byType).map(v=>v.net||0)))}</div></div></div></div></div>
+        <div class="field" style="margin-top:16px"><label>Policy Type Wise MIS</label><div class="hint">Policy count, members, gross premium, discount, and net premium by policy type.</div><div style="margin-top:12px">${renderMisCards(mis.byType,key=>key.replace(/_/g,' ').toUpperCase())}</div></div>
+        <div class="field" style="margin-top:16px"><label>Sum Insured Wise MIS</label><div class="hint">Policy count, members, gross premium, discount, and net premium by sum insured bucket.</div><div style="margin-top:12px">${renderMisCards(mis.bySI,key=>'₹'+rs(key))}</div></div>
+        <div class="field" style="margin-top:16px"><label>List Search and Filters</label><div class="row g4"><div><label>Search</label><input id="futureSearch" type="text" value="${esc(state.futureSearch)}" placeholder="Search SVKK ID, customer ID, holder, policy no, policy type"></div><div><label>Policy Type Filter</label><select id="futurePolicyFilter">${futurePolicyOptions()}</select></div><div><label>SI Filter</label><select id="futureSiFilter">${futureSiOptions()}</select></div><div><label>Status Filter</label><select id="futureStatusFilter"><option value="all" ${state.futureStatusFilter==='all'?'selected':''}>All Status</option><option value="Ready" ${state.futureStatusFilter==='Ready'?'selected':''}>Ready</option><option value="Issue" ${state.futureStatusFilter==='Issue'?'selected':''}>Issue</option></select></div></div><div class="hint">Regular search works across the full row. Filters narrow the list quickly.</div></div><div class="tbl" style="margin-top:16px"><table><thead><tr><th>Source</th><th>SVKK ID</th><th>Customer ID</th><th>Holder</th><th>Policy</th><th>SI</th><th>Members</th><th>Calculation Year</th><th>Calculation Date</th><th>Gross</th><th>Discount</th><th>Net</th><th>Status</th></tr></thead><tbody>${state.futureGenerated&&visibleRows.length?visibleRows.map(r=>`<tr><td>${esc(r.source)}</td><td>${esc(r.svkkId)}</td><td>${esc(r.customerId)}</td><td>${esc(r.holder)}</td><td>${esc(r.policy)}</td><td>₹${rs(r.si)}</td><td>${r.memberCount}</td><td>${esc(r.calcYear)}</td><td>${esc(r.calcDate)}</td><td>₹${rs(r.quote.gross)}</td><td>₹${rs(r.quote.disc)}</td><td>₹${rs(r.quote.net)}</td><td>${esc(r.status)}</td></tr>`).join(''):state.futureGenerated?'<tr><td colspan="13">No records match the current search or filters.</td></tr>':'<tr><td colspan="13">Upload CSV and click Generate to preview future premium records.</td></tr>'}</tbody></table></div>
+        <div class="btns" style="margin-top:14px"><button class="btn soft" id="expSummary">Export Lump Sum CSV</button><button class="btn soft" id="expDetail">Export Individual CSV</button></div>
+      </div>`;
+}
+function renderLookup(){
+  return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap"><div><h2 style="margin:0 0 6px">Lookup</h2><div class="sub">Professional lookup flow with source, year, policy number, and generate action.</div></div><div class="pill">Linked with uploaded CSV</div></div>
+        <div class="field" style="margin-top:16px">
+          <label>Controls</label>
+          <div class="row g4">
+            <div><label>Policy Number</label><input id="lookupNo" value="${esc(state.lookupNo)}" placeholder="Enter policy number"></div>
+            <div><label>Source</label><select id="lookupSource">${sourceOptions(state.lookupSource,true)}</select></div>
+            <div><label>Future Year</label><select id="lookupYear">${yearOptions(state.lookupYear)}</select></div>
+            <div><label>Actions</label><div class="btns"><button class="btn primary" id="lookupGenerateBtn">Generate</button></div></div>
+          </div>
+          <div class="msg ${state.lookupNo&&!state.lookupResult?'err':''}" style="margin-top:12px">${state.lookupResult?'Policy found. Member-wise premium details are shown below.':(state.lookupNo?'Policy not found in uploaded future-premium data.':'Upload future-premium CSV first, then enter policy number and click Generate.')}</div>
+        </div>
+        ${state.lookupResult?`<div class="stats" style="margin-top:16px"><div class="stat"><b>Policy No</b><div style="font-size:18px">${esc(state.lookupResult.policyNo)}</div></div><div class="stat"><b>SVKK ID</b><div style="font-size:18px">${esc(state.lookupResult.svkkId)}</div></div><div class="stat"><b>Customer ID</b><div style="font-size:18px">${esc(state.lookupResult.customerId)}</div></div><div class="stat"><b>Policy Type</b><div style="font-size:18px">${esc(state.lookupResult.policy)}</div></div><div class="stat dark"><b>Members</b><div>${state.lookupResult.memberCount}</div></div></div><div class="stats" style="margin-top:14px"><div class="stat"><b>Holder</b><div style="font-size:18px">${esc(state.lookupResult.holder)}</div></div><div class="stat"><b>Sum Insured</b><div>₹${rs(state.lookupResult.si)}</div></div><div class="stat"><b>Gross</b><div>₹${rs(state.lookupResult.quote.gross)}</div></div><div class="stat"><b>Discount</b><div>₹${rs(state.lookupResult.quote.disc)}</div></div><div class="stat dark"><b>Net</b><div>₹${rs(state.lookupResult.quote.net)}</div></div></div>
+        <div class="btns" style="margin-top:14px"><button class="btn soft" id="expOne">Export This Policy Detail CSV</button></div>
+        <div class="tbl" style="margin-top:16px"><table><thead><tr><th>Person</th><th>Role</th><th>DOB</th><th>Age</th><th>Band</th><th>Basic</th><th>Rider</th><th>Gross</th><th>Discount %</th><th>Discount</th><th>Net</th><th>Status</th></tr></thead><tbody>${state.lookupResult.quote.rows.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.role)}</td><td>${esc(m.dob||'—')}</td><td>${m.age??'—'}</td><td>${esc(m.band||'—')}</td><td>${m.error?'<span style="color:var(--danger)">'+esc(m.error)+'</span>':'₹'+rs(m.basic)}</td><td>${m.error?'—':'₹'+rs(m.rider)}</td><td>${m.error?'—':'₹'+rs(m.gross)}</td><td>${m.error?'—':m.pct+'%'}</td><td>${m.error?'—':'₹'+rs(m.disc)}</td><td>${m.error?'—':'₹'+rs(m.net)}</td><td>${esc(m.error||'Ready')}</td></tr>`).join('')}</tbody></table></div>`:''}
+      </div>`;
+}
+function render(){
+  ensureMembers();
+  const app=document.getElementById('app');
+  app.innerHTML=`
+    <div class="top"><div><h1>SVKK Premium Calculator Preview</h1><div class="sub">Offline HTML testing file. No server needed.</div></div><div class="pill">Runs in browser only</div></div>
+    <div class="layout"><aside class="side"><h3>Modules</h3><div class="nav">
+      <button data-tab="calculator" class="${state.tab==='calculator'?'active':''}">Premium Calculator<span>Age rule, member-wise calculation, discount logic</span></button>
+      <button data-tab="admin" class="${state.tab==='admin'?'active':''}">Admin Setup<span>Chart upload preview and discount setup</span></button>
+      <button data-tab="future" class="${state.tab==='future'?'active':''}">Future Premium + MIS<span>CSV upload, MIS, summary and individual exports</span></button>
+      <button data-tab="lookup" class="${state.tab==='lookup'?'active':''}">Lookup<span>Read the same uploaded CSV by policy number</span></button>
+    </div></aside><main class="main">${state.tab==='calculator'?renderCalc():''}${state.tab==='admin'?renderAdmin():''}${state.tab==='future'?renderFuture():''}${state.tab==='lookup'?renderLookup():''}</main></div>`;
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;render();});
+  document.querySelectorAll('[data-admintab]').forEach(b=>b.onclick=()=>{state.adminTab=b.dataset.admintab;render();});
+  const pt=document.getElementById('policyType');
+  if(pt) pt.onchange=e=>{state.form.policyType=e.target.value;ensureMembers();render();};
+  const mc=document.getElementById('memberCount');
+  if(mc) mc.oninput=e=>{state.form.memberCount=Math.max(1,Math.min(10,Number(e.target.value)||1));ensureMembers();render();};
+  const si=document.getElementById('sumInsured');
+  if(si) si.onchange=e=>{state.form.sumInsured=Number(e.target.value)||0;render();};
+  const ed=document.getElementById('endDate');
+  if(ed) ed.oninput=e=>{state.form.endDate=e.target.value;render();};
+  document.querySelectorAll('[data-m]').forEach(el=>el.oninput=e=>{
+    const i=Number(e.target.dataset.m);
+    const f=e.target.dataset.f;
+    state.form.members[i][f]=f==='addOnRider'?(Number(e.target.value)||0):e.target.value;
+    if(f==='relationship'&&e.target.value==='daughter') state.form.members[i].gender='female';
+    render();
+  });
+  const npk=document.getElementById('newPolicyKey');
+  if(npk) npk.oninput=e=>{state.adminNew.key=e.target.value;};
+  const npl=document.getElementById('newPolicyLabel');
+  if(npl) npl.oninput=e=>{state.adminNew.label=e.target.value;};
+  const npd=document.getElementById('newPolicyDescription');
+  if(npd) npd.oninput=e=>{state.adminNew.description=e.target.value;};
+  const npm=document.getElementById('newPolicyMode');
+  if(npm) npm.onchange=e=>{state.adminNew.mode=e.target.value;};
+  const npt=document.getElementById('newPolicyDiscountType');
+  if(npt) npt.onchange=e=>{state.adminNew.discountType=e.target.value;};
+  const nap=document.getElementById('addPolicyTypeBtn');
+  if(nap) nap.onclick=()=>createPolicyTypeFromAdmin();
+  const ap=document.getElementById('adminPolicy');
+  if(ap) ap.onchange=e=>{state.adminPolicy=e.target.value;render();};
+  const am=document.getElementById('adminMode');
+  if(am) am.onchange=e=>{
+    const newMode=e.target.value;
+    state.defs[state.adminPolicy].mode=newMode;
+    const currentChart=state.charts[state.adminPolicy];
+    if(newMode==='same'&&!Array.isArray(currentChart)) state.charts[state.adminPolicy]=[];
+    if(newMode==='different'&&Array.isArray(currentChart)) state.charts[state.adminPolicy]={holder:[],member:[]};
+    save();
+    render();
+  };
+  const cu1=document.getElementById('chartUpload1');
+  if(cu1) cu1.onchange=async e=>{const f=e.target.files?.[0];if(!f) return;await uploadChart(f,state.defs[state.adminPolicy].mode==='same'?'common':'holder');render();};
+  const cu2=document.getElementById('chartUpload2');
+  if(cu2) cu2.onchange=async e=>{const f=e.target.files?.[0];if(!f) return;await uploadChart(f,'member');render();};
+  const clr=document.querySelector('[data-clearchart]');
+  if(clr) clr.onclick=()=>{state.charts[state.adminPolicy]=cloneValue(sampleCharts[state.adminPolicy]||[]);state.adminMsg='Sample chart restored for '+state.defs[state.adminPolicy].label;save();render();};
+  const dd=document.getElementById('discDaughter');
+  if(dd) dd.oninput=e=>{state.defs[state.adminPolicy].discount.daughter=Number(e.target.value)||0;};
+  const ddf=document.getElementById('discDifferent');
+  if(ddf) ddf.onchange=e=>{state.defs[state.adminPolicy].discount.different=e.target.value;render();};
+  const dh=document.getElementById('discHolder');
+  if(dh) dh.oninput=e=>{state.defs[state.adminPolicy].discount.holder=Number(e.target.value)||0;};
+  const dm=document.getElementById('discMember');
+  if(dm) dm.oninput=e=>{state.defs[state.adminPolicy].discount.member=Number(e.target.value)||0;};
+  document.querySelectorAll('[data-dcount]').forEach(el=>el.oninput=e=>{state.defs[state.adminPolicy].discount.byCount[Number(e.target.dataset.dcount)]=Number(e.target.value)||0;});
+  const sd=document.getElementById('saveDiscounts');
+  if(sd) sd.onclick=()=>{state.adminMsg='Discount setup saved in preview for '+state.defs[state.adminPolicy].label;save();render();};
+
+  const shurl=document.getElementById('sheetUrl');
+  if(shurl) shurl.oninput=e=>{state.sheetUrl=e.target.value;};
+  const shsave=document.getElementById('saveSheetUrl');
+  if(shsave) shsave.onclick=()=>{localStorage.setItem('svkk_sheetUrl',state.sheetUrl);state.sheetMsg='Google Sheet Web App URL saved in this browser.';render();};
+  const shquote=document.getElementById('sendQuoteSheet');
+  if(shquote) shquote.onclick=()=>sendToGoogleSheet(sheetPayloadFromCurrentQuote());
+  const shfuture=document.getElementById('sendFutureSheet');
+  if(shfuture) shfuture.onclick=()=>{
+    if(!state.futureGenerated){state.sheetMsg='Please generate Future Premium first, then save to Google Sheet.';render();return;}
+    sendToGoogleSheet(sheetPayloadFromFutureResults());
+  };
+
+  const fsearch=document.getElementById('futureSearch');
+  if(fsearch) fsearch.oninput=e=>{state.futureSearch=e.target.value;render();};
+  const fpf=document.getElementById('futurePolicyFilter');
+  if(fpf) fpf.onchange=e=>{state.futurePolicyFilter=e.target.value;render();};
+  const fsif=document.getElementById('futureSiFilter');
+  if(fsif) fsif.onchange=e=>{state.futureSiFilter=e.target.value;render();};
+  const fstf=document.getElementById('futureStatusFilter');
+  if(fstf) fstf.onchange=e=>{state.futureStatusFilter=e.target.value;render();};
+  const fs=document.getElementById('futureSource');
+  if(fs) fs.onchange=e=>{state.futureSource=e.target.value;};
+  const fy=document.getElementById('futureYear');
+  if(fy) fy.onchange=e=>{state.futureYear=e.target.value;};
+  const fu=document.getElementById('futureUpload');
+  if(fu) fu.onchange=async e=>{const f=e.target.files?.[0];if(!f) return;await uploadFuture(f);};
+  const fg=document.getElementById('futureGenerateBtn');
+  if(fg) fg.onclick=()=>{processFutureRows();state.futureGenerated=true;state.futureMsg=state.futureRows.length?('Generated '+state.futureResults.length+' record(s) for '+yearOffsetLabel(state.futureYear)+' using '+sourceLabel(state.futureSource)+'.'):'Please upload CSV first, then click Generate.';render();};
+  const fsm=document.getElementById('futureSampleBtn');
+  if(fsm) fsm.onclick=()=>download('future-premium-sample.csv',[
+    {svkk_id:'SVKK1001',customer_id:'CUST1001',policy_number:'POL1001',policy_type:'asha_kiran',sum_insured:500000,member_count:3,start_date:'2025-10-15',end_date:'2026-10-14',holder_name:'Kiran Nishar',holder_dob:'1987-10-13',holder_gender:'male',holder_addon_rider:0,member_2_name:'Priya Nishar',member_2_dob:'1990-06-05',member_2_relationship:'spouse',member_2_gender:'female',member_2_addon_rider:0,member_3_name:'Riya Nishar',member_3_dob:'2014-08-11',member_3_relationship:'daughter',member_3_gender:'female',member_3_addon_rider:0},
+    {svkk_id:'SVKK1002',customer_id:'CUST1002',policy_number:'POL1002',policy_type:'individual',sum_insured:1000000,member_count:1,start_date:'2025-07-01',end_date:'2026-06-30',holder_name:'Manoj Shah',holder_dob:'1978-02-18',holder_gender:'male',holder_addon_rider:250},
+    {svkk_id:'SVKK1003',customer_id:'CUST1003',policy_number:'POL1003',policy_type:'family_floater',sum_insured:300000,member_count:4,start_date:'2025-04-01',end_date:'2026-03-31',holder_name:'Harsh Mehta',holder_dob:'1981-04-02',holder_gender:'male',holder_addon_rider:0,member_2_name:'Pooja Mehta',member_2_dob:'1984-09-15',member_2_relationship:'spouse',member_2_gender:'female',member_2_addon_rider:0,member_3_name:'Aarav Mehta',member_3_dob:'2012-01-20',member_3_relationship:'son',member_3_gender:'male',member_3_addon_rider:0,member_4_name:'Diya Mehta',member_4_dob:'2016-12-05',member_4_relationship:'daughter',member_4_gender:'female',member_4_addon_rider:0}
+  ]);
+  const exs=document.getElementById('expSummary');
+  if(exs) exs.onclick=()=>download('future-premium-summary.csv',summaryExport());
+  const exd=document.getElementById('expDetail');
+  if(exd) exd.onclick=()=>download('future-premium-individual.csv',detailExport());
+  const ln=document.getElementById('lookupNo');
+  if(ln) ln.oninput=e=>{state.lookupNo=e.target.value;};
+  const ls=document.getElementById('lookupSource');
+  if(ls) ls.onchange=e=>{state.lookupSource=e.target.value;};
+  const ly=document.getElementById('lookupYear');
+  if(ly) ly.onchange=e=>{state.lookupYear=e.target.value;};
+  const lb=document.getElementById('lookupGenerateBtn');
+  if(lb) lb.onclick=()=>{lookupFind();render();};
+  const eo=document.getElementById('expOne');
+  if(eo) eo.onclick=()=>{
+    if(!state.lookupResult) return;
+    const rows=state.lookupResult.quote.rows.map(m=>({svkk_id:state.lookupResult.svkkId,customer_id:state.lookupResult.customerId,policy_number:state.lookupResult.policyNo,holder_name:state.lookupResult.holder,policy_type:state.lookupResult.policy,sum_insured:state.lookupResult.si,member_count:state.lookupResult.memberCount,person_name:m.name,role:m.role,dob:m.dob,age:m.age??'',band:m.band||'',basic_premium:m.basic||0,add_on_rider:m.rider||0,gross_premium:m.gross||0,discount_percent:m.pct||0,discount_amount:m.disc||0,net_premium:m.net||0,status:m.error||'Ready'}));
+    download('policy-'+state.lookupResult.policyNo+'-detail.csv',rows);
+  };
+}
+processFutureRows();
+render();
+</script>
+</body>
+</html>

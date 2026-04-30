@@ -69,7 +69,7 @@ export const adPolicyValidationSchema = yup.object({
   coPremium: requiredAmount("Net premium is required"),
   paymentMode: yup
     .string()
-    .oneOf(["ONLINE", "CHEQUE"], "Mode of payment is required")
+    .oneOf(["ONLINE", "CHEQUE", "CASH"], "Mode of payment is required")
     .required("Mode of payment is required"),
 
   onlineTransactionRef: yup.string().when("paymentMode", {
@@ -169,10 +169,7 @@ export const adPolicyValidationSchema = yup.object({
   refNo: yup.string().trim().min(1, "Reference no is required"),
   year: yup.string().trim().min(1, "Year is required"),
   month: yup.string().trim().min(1, "Month is required"),
-  policyGrouping: yup
-    .mixed()
-    .oneOf(["SVKK", "NVKK", "RTY", "OTHER"], "Policy grouping is required")
-    .required("Policy grouping is required"),
+  policyGrouping: yup.string().trim().min(1, "Policy grouping is required").required("Policy grouping is required"),
   remark: yup.string().trim().min(1, "Remark is required"),
 
   members: yup
@@ -194,6 +191,7 @@ export const adPolicyValidationSchema = yup.object({
   policyEnd: yup.string().optional(),
   age: yup.string().optional(),
   relation: yup.string().optional(),
+  holderGender: yup.string().optional(),
   comulativeBonus: yup.string().optional(),
   joiningYear: yup.string().optional(),
   basicPremiumPs: yup.string().optional(),
@@ -205,6 +203,7 @@ export const adPolicyValidationSchema = yup.object({
   excessShort: yup.string().optional(),
   diffAmt: yup.string().optional(),
   loanStatus: yup.string().optional(),
+  loanNo: yup.string().optional(),
   loanAmt: yup.string().optional(),
   email: yup.string().optional(),
   refundChequeAmt: yup.string().optional(),

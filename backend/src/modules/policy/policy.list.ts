@@ -2,7 +2,6 @@ import {
   Prisma,
   type ChequeStatus,
   type AdProductVariant,
-  type PolicyGrouping,
   type UserRole,
 } from "@prisma/client";
 import type { MisScope } from "../../services/mis-scope.service.js";
@@ -23,7 +22,7 @@ export type PolicyListQuery = {
   year?: number;
   area?: string;
   sumInsuredStr?: string;
-  policyGrouping?: PolicyGrouping;
+  policyGrouping?: string;
   chequeStatus?: ChequeStatus;
   /** Offset pagination (mutually exclusive with cursor in route) */
   page?: number;
@@ -280,8 +279,9 @@ export async function distinctFilterOptions(
   sumInsuredValues: string[];
   periodYearTexts: string[];
   periodMonthTexts: string[];
+  policyGroupings: string[];
 }> {
-  const [vRows, aRows, sumRows, fRows, mRows] = await Promise.all([
+  const [vRows, aRows, sumRows, fRows, mRows, optionRows, groupingRows] = await Promise.all([
     prisma.policy.groupBy({
       by: ["village"],
       where: mergeWhere(scopeWhere, { NOT: { OR: [{ village: null }, { village: { equals: "" } }] } }),
@@ -306,7 +306,25 @@ export async function distinctFilterOptions(
         NOT: { OR: [{ periodMonthText: null }, { periodMonthText: { equals: "" } }] },
       }),
     }),
+    prisma.policyGroupingOption.findMany({
+      select: { name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.policy.groupBy({
+      by: ["policyGrouping"],
+      where: mergeWhere(scopeWhere, {
+        NOT: { OR: [{ policyGrouping: null }, { policyGrouping: { equals: "" } }] },
+      }),
+    }),
   ]);
+  const policyGroupings = Array.from(
+    new Set([
+      ...optionRows.map((r) => r.name),
+      ...groupingRows
+        .map((r) => r.policyGrouping)
+        .filter((x): x is string => x != null && x.length > 0),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
   return {
     villages: vRows
       .map((r) => r.village)
@@ -329,5 +347,6 @@ export async function distinctFilterOptions(
       .map((r) => r.periodMonthText)
       .filter((x): x is string => x != null && x.length > 0)
       .sort(),
+    policyGroupings,
   };
 }

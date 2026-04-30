@@ -26,7 +26,7 @@ import {
   queryPolicyListAll,
   type PolicyListQuery,
 } from "./policy.list.js";
-import { AdProductVariant, ChequeStatus, PolicyGrouping, type UserRole } from "@prisma/client";
+import { AdProductVariant, ChequeStatus, type UserRole } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
@@ -50,7 +50,7 @@ const policyListFiltersSchema = z.object({
   year: z.coerce.number().min(1990).max(2100).optional(),
   area: z.string().optional(),
   sumInsured: z.string().optional(),
-  policyGrouping: z.nativeEnum(PolicyGrouping).optional(),
+  policyGrouping: z.string().trim().max(64).optional(),
   chequeStatus: z.nativeEnum(ChequeStatus).optional(),
   sort: z.string().optional(),
 });
@@ -77,7 +77,7 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
     year: q.year,
     area: q.area,
     sumInsuredStr: q.sumInsured,
-    policyGrouping: q.policyGrouping,
+    policyGrouping: q.policyGrouping?.trim() || undefined,
     chequeStatus: q.chequeStatus,
     sort: q.sort,
   };

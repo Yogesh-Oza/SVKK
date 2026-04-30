@@ -1,4 +1,4 @@
-import type { InsuredParty, PolicyChart, Prisma, PolicyGrouping, AdProductVariant } from "@prisma/client";
+import type { InsuredParty, PolicyChart, Prisma, AdProductVariant } from "@prisma/client";
 import {
   CounterType,
   ChartMode,
@@ -355,7 +355,7 @@ export type PolicySectionPatch = {
   area?: string | null;
   referenceNo?: string | null;
   mobileSecondary?: string | null;
-  policyGrouping?: PolicyGrouping | null;
+  policyGrouping?: string | null;
   policyUrl?: string | null;
   loanStatus?: string | null;
   loanAmount?: number | null;

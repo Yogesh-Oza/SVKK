@@ -39,6 +39,44 @@ export function createAdminRouter(env: Env) {
     }
   });
 
+  r.get("/policy-groupings", requirePermission("admin:policyTypes"), async (_req, res, next) => {
+    try {
+      const rows = await prisma.policyGroupingOption.findMany({
+        orderBy: { name: "asc" },
+      });
+      res.json({ items: rows });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post("/policy-groupings", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          name: z.string().trim().min(1).max(64),
+        })
+        .parse(req.body);
+      const row = await prisma.policyGroupingOption.create({
+        data: { name: body.name },
+      });
+      res.status(201).json(row);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.delete("/policy-groupings/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      await prisma.policyGroupingOption.delete({
+        where: { id: String(req.params.id) },
+      });
+      res.status(204).end();
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.post("/policy-charts", requirePermission("admin:charts"), async (req, res, next) => {
     try {
       const body = z
