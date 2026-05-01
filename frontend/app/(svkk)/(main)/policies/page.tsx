@@ -381,7 +381,7 @@ export default function SvkkPoliciesPage() {
     try {
       const p = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
       const payload = prioritizeYear(p, selectedYearLabel);
-      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload));
+      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate receipt");
     } finally {
@@ -687,17 +687,7 @@ export default function SvkkPoliciesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <h1 className="text-2xl font-semibold">Policies</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="default" asChild>
-            <Link href="/policies/new">Add policy</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/calculator">Premium calculator</Link>
-          </Button>
-        </div>
-      </div>
+      <h1 className="text-2xl font-semibold">Policies</h1>
 
       <div className="space-y-4 rounded-lg border p-4">
         <h2 className="text-lg font-semibold">Policy List</h2>
@@ -1158,7 +1148,7 @@ export default function SvkkPoliciesPage() {
       </Dialog>
 
       <Dialog open={receiptPreviewHtml != null} onOpenChange={(o) => !o && setReceiptPreviewHtml(null)}>
-        <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden">
+        <DialogContent className="flex max-h-[90vh] w-[min(96vw,1280px)] max-w-[min(96vw,1280px)] flex-col gap-4 overflow-hidden sm:max-w-[min(96vw,1280px)]">
           <DialogHeader>
             <DialogTitle>Receipt Preview</DialogTitle>
             <DialogDescription>Print the receipt from this popup.</DialogDescription>

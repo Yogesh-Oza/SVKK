@@ -418,6 +418,7 @@ export function createPolicyRouter(env: Env) {
               members: { where: { deletedAt: null } },
               policyChart: true,
               payments: { where: { deletedAt: null }, include: { cheque: true } },
+              receipts: { orderBy: { createdAt: "desc" }, take: 1, select: { receiptNo: true } },
             },
           },
         },
