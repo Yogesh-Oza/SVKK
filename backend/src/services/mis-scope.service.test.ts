@@ -22,6 +22,11 @@ describe("buildMisVillageWhere", () => {
     expect(w.claim).toEqual({ village: { in: ["V1"] } });
   });
 
+  it("accepts a single village string (legacy callers)", () => {
+    const w = buildMisVillageWhere({ kind: "full" }, "V1");
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: { in: ["V1"] } }] });
+  });
+
   it("restricted scope uses IN list", () => {
     const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, undefined);
     expect(w.policy).toEqual({ AND: [notDeleted, { village: { in: ["A", "B"] } }] });
