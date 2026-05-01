@@ -11,18 +11,26 @@ import { prisma } from "../../lib/prisma.js";
 export type PolicyListQuery = {
   search?: string;
   village?: string;
+  villages?: string[];
   yearLabel?: string;
   periodYearText?: string;
+  periodYearTexts?: string[];
   periodMonthText?: string;
+  periodMonthTexts?: string[];
   categoryId?: string;
+  categoryIds?: string[];
   categoryKey?: string;
   policyTypeId?: string;
   adProductVariant?: AdProductVariant;
+  adProductVariants?: AdProductVariant[];
   month?: number;
   year?: number;
   area?: string;
+  areas?: string[];
   sumInsuredStr?: string;
+  sumInsuredStrs?: string[];
   policyGrouping?: string;
+  policyGroupings?: string[];
   chequeStatus?: ChequeStatus;
   /** Offset pagination (mutually exclusive with cursor in route) */
   page?: number;
@@ -78,7 +86,7 @@ export function buildPolicyListWhere(
   role: UserRole,
   q: PolicyListQuery,
 ): Prisma.PolicyWhereInput {
-  const scopeWhere = buildPolicyReadWhere(scope, q.village, userId, role);
+  const scopeWhere = buildPolicyReadWhere(scope, q.village, userId, role, q.villages);
   const s = q.search?.trim();
   const searchWhere: Prisma.PolicyWhereInput | undefined = s
     ? {
@@ -133,15 +141,26 @@ export function buildPolicyListWhere(
         })()
       : undefined;
 
+  const sumStrs =
+    q.sumInsuredStrs != null && q.sumInsuredStrs.length > 0
+      ? q.sumInsuredStrs
+      : q.sumInsuredStr
+        ? [q.sumInsuredStr]
+        : undefined;
   let sumMatch: Prisma.PolicyWhereInput | undefined;
-  if (q.sumInsuredStr) {
-    try {
-      const d = new Prisma.Decimal(q.sumInsuredStr);
-      sumMatch = {
-        years: { some: { deletedAt: null, sumInsured: d } },
-      };
-    } catch {
-      sumMatch = undefined;
+  if (sumStrs?.length) {
+    const decimals: Prisma.Decimal[] = [];
+    for (const s of sumStrs) {
+      try {
+        decimals.push(new Prisma.Decimal(s));
+      } catch {
+        /* skip invalid */
+      }
+    }
+    if (decimals.length === 1) {
+      sumMatch = { years: { some: { deletedAt: null, sumInsured: decimals[0] } } };
+    } else if (decimals.length > 1) {
+      sumMatch = { years: { some: { deletedAt: null, sumInsured: { in: decimals } } } };
     }
   }
 
@@ -161,28 +180,95 @@ export function buildPolicyListWhere(
       }
     : undefined;
 
-  const extra: Prisma.PolicyWhereInput = {
-    ...(q.categoryId ? { categoryId: q.categoryId } : {}),
-    ...(q.categoryKey ? { category: { is: { key: q.categoryKey } } } : {}),
-    ...(q.policyTypeId ? { policyTypeId: q.policyTypeId } : {}),
-    ...(q.adProductVariant ? { adProductVariant: q.adProductVariant } : {}),
-    ...(q.yearLabel
-      ? { years: { some: { yearLabel: q.yearLabel, deletedAt: null } } }
-      : {}),
-    ...(q.periodYearText ? { periodYearText: q.periodYearText } : {}),
-    ...(q.periodMonthText
-      ? { periodMonthText: { contains: q.periodMonthText } }
-      : {}),
-    ...(q.area ? { area: { contains: q.area } } : {}),
-    ...(q.policyGrouping ? { policyGrouping: q.policyGrouping } : {}),
-    ...(sumMatch ? sumMatch : {}),
-    ...(chequeFilter ? chequeFilter : {}),
-    ...(monthFilter ? monthFilter : {}),
-  };
+  const categoryIds =
+    q.categoryIds != null && q.categoryIds.length > 0 ? q.categoryIds : q.categoryId ? [q.categoryId] : undefined;
+  const categoryKeyPart: Prisma.PolicyWhereInput | undefined = q.categoryKey
+    ? { category: { is: { key: q.categoryKey } } }
+    : undefined;
+
+  const adVariants =
+    q.adProductVariants != null && q.adProductVariants.length > 0
+      ? q.adProductVariants
+      : q.adProductVariant
+        ? [q.adProductVariant]
+        : undefined;
+  let adVariantPart: Prisma.PolicyWhereInput | undefined;
+  if (adVariants?.length === 1) {
+    adVariantPart = { adProductVariant: adVariants[0] };
+  } else if (adVariants && adVariants.length > 1) {
+    adVariantPart = { adProductVariant: { in: adVariants } };
+  }
+
+  const periodYearList =
+    q.periodYearTexts != null && q.periodYearTexts.length > 0
+      ? q.periodYearTexts
+      : q.periodYearText?.trim()
+        ? [q.periodYearText.trim()]
+        : undefined;
+  const yearLabelExtra = q.yearLabel?.trim() ? [q.yearLabel.trim()] : undefined;
+  const fiscalYearLabels = [...new Set([...(periodYearList ?? []), ...(yearLabelExtra ?? [])])];
+
+  const periodMonthList =
+    q.periodMonthTexts != null && q.periodMonthTexts.length > 0
+      ? q.periodMonthTexts
+      : q.periodMonthText?.trim()
+        ? [q.periodMonthText.trim()]
+        : undefined;
+
+  const areaList =
+    q.areas != null && q.areas.length > 0 ? q.areas : q.area?.trim() ? [q.area.trim()] : undefined;
+
+  const groupingList =
+    q.policyGroupings != null && q.policyGroupings.length > 0
+      ? q.policyGroupings
+      : q.policyGrouping?.trim()
+        ? [q.policyGrouping.trim()]
+        : undefined;
+
+  const extraParts: Prisma.PolicyWhereInput[] = [];
+  if (categoryIds?.length === 1) {
+    extraParts.push({ categoryId: categoryIds[0] });
+  } else if (categoryIds && categoryIds.length > 1) {
+    extraParts.push({ categoryId: { in: categoryIds } });
+  }
+  if (categoryKeyPart) extraParts.push(categoryKeyPart);
+  if (q.policyTypeId) extraParts.push({ policyTypeId: q.policyTypeId });
+  if (adVariantPart) extraParts.push(adVariantPart);
+
+  if (fiscalYearLabels.length > 0) {
+    extraParts.push({
+      OR: [
+        { periodYearText: { in: fiscalYearLabels } },
+        { years: { some: { deletedAt: null, yearLabel: { in: fiscalYearLabels } } } },
+      ],
+    });
+  }
+
+  if (periodMonthList?.length === 1) {
+    extraParts.push({ periodMonthText: periodMonthList[0] });
+  } else if (periodMonthList && periodMonthList.length > 1) {
+    extraParts.push({ periodMonthText: { in: periodMonthList } });
+  }
+
+  if (areaList?.length === 1) {
+    extraParts.push({ area: areaList[0] });
+  } else if (areaList && areaList.length > 1) {
+    extraParts.push({ area: { in: areaList } });
+  }
+
+  if (groupingList?.length === 1) {
+    extraParts.push({ policyGrouping: groupingList[0] });
+  } else if (groupingList && groupingList.length > 1) {
+    extraParts.push({ policyGrouping: { in: groupingList } });
+  }
+
+  if (sumMatch) extraParts.push(sumMatch);
+  if (chequeFilter) extraParts.push(chequeFilter);
+  if (monthFilter) extraParts.push(monthFilter);
 
   const and: Prisma.PolicyWhereInput[] = [scopeWhere];
   if (searchWhere) and.push(searchWhere);
-  if (Object.keys(extra).length) and.push(extra);
+  if (extraParts.length) and.push({ AND: extraParts });
 
   return { AND: and };
 }

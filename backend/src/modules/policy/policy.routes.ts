@@ -36,21 +36,53 @@ import {
   loadMisScope,
 } from "../../services/mis-scope.service.js";
 
+/** Express may provide string | string[] for repeated query keys. */
+function queryToStringArray(v: unknown): string[] | undefined {
+  if (v == null) return undefined;
+  const raw = Array.isArray(v) ? v : [v];
+  const out = raw
+    .flatMap((x) => String(x).split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return out.length ? [...new Set(out)] : undefined;
+}
+
+const stringArrayQuery = z.preprocess(queryToStringArray, z.array(z.string()).optional());
+
+const adVariantsQuery = z.preprocess((v) => {
+  const arr = queryToStringArray(v);
+  if (!arr?.length) return undefined;
+  const parsed: AdProductVariant[] = [];
+  for (const s of arr) {
+    const r = z.nativeEnum(AdProductVariant).safeParse(s);
+    if (r.success) parsed.push(r.data);
+  }
+  return parsed.length ? parsed : undefined;
+}, z.array(z.nativeEnum(AdProductVariant)).optional());
+
 const policyListFiltersSchema = z.object({
   search: z.string().optional(),
   village: z.string().optional(),
+  villages: stringArrayQuery,
   yearLabel: z.string().optional(),
   periodYearText: z.string().optional(),
+  periodYearTexts: stringArrayQuery,
   periodMonthText: z.string().optional(),
+  periodMonthTexts: stringArrayQuery,
   categoryId: z.string().optional(),
+  categoryIds: stringArrayQuery,
   categoryKey: z.string().optional(),
   policyTypeId: z.string().optional(),
   adProductVariant: z.nativeEnum(AdProductVariant).optional(),
+  adProductVariants: adVariantsQuery,
   month: z.coerce.number().min(1).max(12).optional(),
   year: z.coerce.number().min(1990).max(2100).optional(),
   area: z.string().optional(),
+  areas: stringArrayQuery,
   sumInsured: z.string().optional(),
+  sumInsureds: stringArrayQuery,
   policyGrouping: z.string().trim().max(64).optional(),
+  policyGroupings: stringArrayQuery,
   chequeStatus: z.nativeEnum(ChequeStatus).optional(),
   sort: z.string().optional(),
 });
@@ -66,18 +98,26 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
   return {
     search: q.search,
     village: q.village,
+    villages: q.villages,
     yearLabel: q.yearLabel,
     periodYearText: q.periodYearText,
+    periodYearTexts: q.periodYearTexts,
     periodMonthText: q.periodMonthText,
+    periodMonthTexts: q.periodMonthTexts,
     categoryId: q.categoryId,
+    categoryIds: q.categoryIds,
     categoryKey: q.categoryKey,
     policyTypeId: q.policyTypeId,
     adProductVariant: q.adProductVariant,
+    adProductVariants: q.adProductVariants,
     month: q.month,
     year: q.year,
     area: q.area,
+    areas: q.areas,
     sumInsuredStr: q.sumInsured,
+    sumInsuredStrs: q.sumInsureds,
     policyGrouping: q.policyGrouping?.trim() || undefined,
+    policyGroupings: q.policyGroupings,
     chequeStatus: q.chequeStatus,
     sort: q.sort,
   };
@@ -298,8 +338,19 @@ export function createPolicyRouter(env: Env) {
     async (req, res, next) => {
       try {
         const scope = await loadMisScope(req.userId!, req.userRole!);
-        const q = z.object({ village: z.string().optional() }).parse(req.query);
-        const scopeWhere = buildPolicyReadWhere(scope, q.village, req.userId!, req.userRole!);
+        const fq = z
+          .object({
+            village: z.string().optional(),
+            villages: stringArrayQuery,
+          })
+          .parse(req.query);
+        const scopeWhere = buildPolicyReadWhere(
+          scope,
+          fq.village,
+          req.userId!,
+          req.userRole!,
+          fq.villages,
+        );
         const options = await distinctFilterOptions(scopeWhere);
         res.json(options);
       } catch (e) {

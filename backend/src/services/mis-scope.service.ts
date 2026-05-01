@@ -29,25 +29,40 @@ export async function loadMisScope(userId: string, role: UserRole): Promise<MisS
  */
 const activePolicy: Prisma.PolicyWhereInput = { deletedAt: null };
 
+function normalizeVillageFilter(v: string | string[] | undefined): string[] | undefined {
+  if (v == null) return undefined;
+  if (Array.isArray(v)) {
+    const out = v.map((x) => String(x).trim()).filter(Boolean);
+    return out.length ? [...new Set(out)] : undefined;
+  }
+  const s = String(v).trim();
+  return s ? [s] : undefined;
+}
+
 export function buildMisVillageWhere(
   scope: MisScope,
-  filterVillage: string | undefined,
+  filterVillage: string | string[] | undefined,
 ): { policy: Prisma.PolicyWhereInput; claim: Prisma.ClaimWhereInput } {
+  const filterVillages = normalizeVillageFilter(filterVillage);
   if (scope.kind === "full") {
-    const v = filterVillage ? { AND: [activePolicy, { village: filterVillage }] } : activePolicy;
-    const c = filterVillage ? { village: filterVillage } : {};
+    const v = filterVillages?.length
+      ? { AND: [activePolicy, { village: { in: filterVillages } }] }
+      : activePolicy;
+    const c = filterVillages?.length ? { village: { in: filterVillages } } : {};
     return { policy: v, claim: c };
   }
   if (scope.villages.length === 0) {
     return { policy: { id: { in: [] } }, claim: { id: { in: [] } } };
   }
-  if (filterVillage) {
-    if (!scope.villages.includes(filterVillage)) {
-      throw new AppError("FORBIDDEN", "Village not in your scope", 403);
+  if (filterVillages?.length) {
+    for (const fv of filterVillages) {
+      if (!scope.villages.includes(fv)) {
+        throw new AppError("FORBIDDEN", "Village not in your scope", 403);
+      }
     }
     return {
-      policy: { AND: [activePolicy, { village: filterVillage }] },
-      claim: { village: filterVillage },
+      policy: { AND: [activePolicy, { village: { in: filterVillages } }] },
+      claim: { village: { in: filterVillages } },
     };
   }
   return {
@@ -64,15 +79,24 @@ export function buildPolicyReadWhere(
   filterVillage: string | undefined,
   userId: string,
   role: UserRole,
+  filterVillages?: string[],
 ): Prisma.PolicyWhereInput {
+  let vs: string[] | undefined;
+  if (filterVillages != null && filterVillages.length > 0) {
+    vs = filterVillages;
+  } else if (filterVillage?.trim()) {
+    vs = [filterVillage.trim()];
+  } else {
+    vs = undefined;
+  }
   if (role === "USER") {
     return {
       deletedAt: null,
       createdById: userId,
-      ...(filterVillage ? { village: filterVillage } : {}),
+      ...(vs?.length === 1 ? { village: vs[0] } : vs?.length ? { village: { in: vs } } : {}),
     };
   }
-  return buildMisVillageWhere(scope, filterVillage).policy;
+  return buildMisVillageWhere(scope, vs).policy;
 }
 
 /**

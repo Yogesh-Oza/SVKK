@@ -17,9 +17,9 @@ describe("buildMisVillageWhere", () => {
   });
 
   it("full scope with village pins both models", () => {
-    const w = buildMisVillageWhere({ kind: "full" }, "V1");
-    expect(w.policy).toEqual({ AND: [notDeleted, { village: "V1" }] });
-    expect(w.claim).toEqual({ village: "V1" });
+    const w = buildMisVillageWhere({ kind: "full" }, ["V1"]);
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: { in: ["V1"] } }] });
+    expect(w.claim).toEqual({ village: { in: ["V1"] } });
   });
 
   it("restricted scope uses IN list", () => {
@@ -35,9 +35,9 @@ describe("buildMisVillageWhere", () => {
   });
 
   it("restricted with valid filter village matches exact", () => {
-    const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, "A");
-    expect(w.policy).toEqual({ AND: [notDeleted, { village: "A" }] });
-    expect(w.claim).toEqual({ village: "A" });
+    const w = buildMisVillageWhere({ kind: "villages", villages: ["A", "B"] }, ["A"]);
+    expect(w.policy).toEqual({ AND: [notDeleted, { village: { in: ["A"] } }] });
+    expect(w.claim).toEqual({ village: { in: ["A"] } });
   });
 });
 
@@ -54,7 +54,12 @@ describe("buildPolicyReadWhere", () => {
 
   it("ADMIN uses village scope from buildMisVillageWhere", () => {
     const w = buildPolicyReadWhere({ kind: "full" }, "X", "u1", UserRole.ADMIN);
-    expect(w).toEqual({ AND: [notDeleted, { village: "X" }] });
+    expect(w).toEqual({ AND: [notDeleted, { village: { in: ["X"] } }] });
+  });
+
+  it("ADMIN can filter by multiple villages via filterVillages", () => {
+    const w = buildPolicyReadWhere({ kind: "full" }, undefined, "u1", UserRole.ADMIN, ["V1", "V2"]);
+    expect(w).toEqual({ AND: [notDeleted, { village: { in: ["V1", "V2"] } }] });
   });
 });
 

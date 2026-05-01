@@ -47,6 +47,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
+import {
+  PolicyFilterMulti,
+  type PolicyFilterOption,
+} from "@/features/svkk-policies/policy-filter-multi";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
@@ -138,6 +142,12 @@ type FiltersMeta = {
 type CategoryItem = { id: string; key: string; name: string };
 type YearActionKind = "edit" | "receipt";
 
+const AD_VARIANT_OPTIONS: PolicyFilterOption[] = [
+  { value: "FAMILY_FLOATER", label: "Family Floater" },
+  { value: "INDIVIDUAL", label: "Individual" },
+  { value: "ASHA_KIRAN", label: "Asha Kiran" },
+];
+
 /** Unified table body typography: one weight/color for all data cells except policy no. */
 const policyTableMuted = "font-sans text-sm font-normal text-muted-foreground tabular-nums antialiased";
 
@@ -167,15 +177,6 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "premium", label: "Premium low → high" },
   { value: "premium_desc", label: "Premium high → low" },
 ];
-
-function sumLabel(v: unknown): string {
-  if (v == null) return "—";
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  if (typeof v === "object" && v !== null && "toString" in v) {
-    return (v as { toString: () => string }).toString();
-  }
-  return "—";
-}
 
 function parseInrAmount(v: unknown): number | null {
   if (v == null) return null;
@@ -210,14 +211,14 @@ export default function SvkkPoliciesPage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
   const prevSearchApplied = useRef(searchApplied);
-  const [village, setVillage] = useState("");
-  const [yearLabel, setYearLabel] = useState("");
-  const [periodMonthText, setPeriodMonthText] = useState("");
-  const [categoryIdState, setCategoryIdState] = useState("");
-  const [adVariant, setAdVariant] = useState<string>("");
-  const [area, setArea] = useState("");
-  const [sumInsured, setSumInsured] = useState("");
-  const [policyGrouping, setPolicyGrouping] = useState<string>("");
+  const [villages, setVillages] = useState<string[]>([]);
+  const [periodYears, setPeriodYears] = useState<string[]>([]);
+  const [periodMonths, setPeriodMonths] = useState<string[]>([]);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [adVariants, setAdVariants] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
+  const [sumInsureds, setSumInsureds] = useState<string[]>([]);
+  const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
   const [sort, setSort] = useState("createdAt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -262,35 +263,56 @@ export default function SvkkPoliciesPage() {
     }
   }, [searchApplied]);
 
+  const filtersKey = useMemo(
+    () =>
+      JSON.stringify({
+        villages,
+        periodYears,
+        periodMonths,
+        categoryIds,
+        adVariants,
+        areas,
+        sumInsureds,
+        policyGroupings,
+      }),
+    [villages, periodYears, periodMonths, categoryIds, adVariants, areas, sumInsureds, policyGroupings],
+  );
+  const prevFiltersKey = useRef(filtersKey);
+  useEffect(() => {
+    if (prevFiltersKey.current !== filtersKey) {
+      prevFiltersKey.current = filtersKey;
+      setPage(1);
+    }
+  }, [filtersKey]);
+
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     q.set("page", String(page));
     q.set("pageSize", String(pageSize));
     q.set("sort", sort);
     if (searchApplied.trim()) q.set("search", searchApplied.trim());
-    if (village.trim()) q.set("village", village.trim());
-    if (yearLabel.trim()) q.set("yearLabel", yearLabel.trim());
-    if (yearLabel.trim()) q.set("periodYearText", yearLabel.trim());
-    if (periodMonthText) q.set("periodMonthText", periodMonthText);
-    if (categoryIdState) q.set("categoryId", categoryIdState);
-    if (adVariant) q.set("adProductVariant", adVariant);
-    if (area.trim()) q.set("area", area.trim());
-    if (sumInsured) q.set("sumInsured", sumInsured);
-    if (policyGrouping) q.set("policyGrouping", policyGrouping);
+    villages.forEach((v) => q.append("villages", v));
+    periodYears.forEach((y) => q.append("periodYearTexts", y));
+    periodMonths.forEach((m) => q.append("periodMonthTexts", m));
+    categoryIds.forEach((id) => q.append("categoryIds", id));
+    adVariants.forEach((a) => q.append("adProductVariants", a));
+    areas.forEach((a) => q.append("areas", a));
+    sumInsureds.forEach((s) => q.append("sumInsureds", s));
+    policyGroupings.forEach((g) => q.append("policyGroupings", g));
     return q.toString();
   }, [
     page,
     pageSize,
     sort,
     searchApplied,
-    village,
-    yearLabel,
-    periodMonthText,
-    categoryIdState,
-    adVariant,
-    area,
-    sumInsured,
-    policyGrouping,
+    villages,
+    periodYears,
+    periodMonths,
+    categoryIds,
+    adVariants,
+    areas,
+    sumInsureds,
+    policyGroupings,
   ]);
 
   /** Same filters and sort as the table; omit paging so export returns all matching rows. */
@@ -399,26 +421,55 @@ export default function SvkkPoliciesPage() {
   const activeFilterCount = useMemo(() => {
     let n = 0;
     if (searchApplied.trim()) n++;
-    if (village.trim()) n++;
-    if (yearLabel.trim()) n++;
-    if (periodMonthText) n++;
-    if (categoryIdState) n++;
-    if (adVariant) n++;
-    if (area.trim()) n++;
-    if (sumInsured) n++;
-    if (policyGrouping) n++;
+    if (villages.length) n++;
+    if (periodYears.length) n++;
+    if (periodMonths.length) n++;
+    if (categoryIds.length) n++;
+    if (adVariants.length) n++;
+    if (areas.length) n++;
+    if (sumInsureds.length) n++;
+    if (policyGroupings.length) n++;
     return n;
   }, [
     searchApplied,
-    village,
-    yearLabel,
-    periodMonthText,
-    categoryIdState,
-    adVariant,
-    area,
-    sumInsured,
-    policyGrouping,
+    villages,
+    periodYears,
+    periodMonths,
+    categoryIds,
+    adVariants,
+    areas,
+    sumInsureds,
+    policyGroupings,
   ]);
+
+  const categoryOptions = useMemo<PolicyFilterOption[]>(
+    () => categories.map((c) => ({ value: c.id, label: `${c.key} — ${c.name}` })),
+    [categories],
+  );
+  const yearOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.periodYearTexts ?? []).map((v) => ({ value: v, label: v })),
+    [meta?.periodYearTexts],
+  );
+  const monthOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.periodMonthTexts ?? []).map((v) => ({ value: v, label: v })),
+    [meta?.periodMonthTexts],
+  );
+  const areaOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.areas ?? []).map((v) => ({ value: v, label: v })),
+    [meta?.areas],
+  );
+  const villageOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.villages ?? []).map((v) => ({ value: v, label: v })),
+    [meta?.villages],
+  );
+  const sumInsuredOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.sumInsuredValues ?? []).map((v) => ({ value: v, label: v })),
+    [meta?.sumInsuredValues],
+  );
+  const groupingOptions = useMemo<PolicyFilterOption[]>(
+    () => (meta?.policyGroupings ?? []).map((g) => ({ value: g, label: g })),
+    [meta?.policyGroupings],
+  );
 
   async function bulkDelete() {
     const ids = Object.entries(rowSelection)
@@ -932,132 +983,70 @@ export default function SvkkPoliciesPage() {
               </div>
               <Separator />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <Label className="text-xs">Select Year</Label>
-            <Select value={yearLabel || "__all__"} onValueChange={(v) => setYearLabel(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Years" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Years</SelectItem>
-                {(meta?.periodYearTexts ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Category</Label>
-            <Select value={categoryIdState || "__all__"} onValueChange={(v) => setCategoryIdState(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Category</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.key} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Policy Type</Label>
-            <Select value={adVariant || "__all__"} onValueChange={(v) => setAdVariant(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Policy Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Policy Type</SelectItem>
-                <SelectItem value="FAMILY_FLOATER">Family Floater</SelectItem>
-                <SelectItem value="INDIVIDUAL">Individual</SelectItem>
-                <SelectItem value="ASHA_KIRAN">Asha Kiran</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Month</Label>
-            <Select value={periodMonthText || "__all__"} onValueChange={(v) => setPeriodMonthText(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Month" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Month</SelectItem>
-                {(meta?.periodMonthTexts ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Area</Label>
-            <Select value={area || "__all__"} onValueChange={(v) => setArea(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Area" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Area</SelectItem>
-                {(meta?.areas ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Village</Label>
-            <Select value={village || "__all__"} onValueChange={(v) => setVillage(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Village" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Village</SelectItem>
-                {(meta?.villages ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Sum Insured</Label>
-            <Select value={sumInsured || "__all__"} onValueChange={(v) => setSumInsured(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All SI" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All SI</SelectItem>
-                {(meta?.sumInsuredValues ?? []).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Select Group</Label>
-            <Select value={policyGrouping || "__all__"} onValueChange={(v) => setPolicyGrouping(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="mt-1 cursor-pointer">
-                <SelectValue placeholder="All Group" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Group</SelectItem>
-                {(meta?.policyGroupings ?? []).map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                <PolicyFilterMulti
+                  label="Year"
+                  placeholder="All years"
+                  options={yearOptions}
+                  selected={periodYears}
+                  onChange={setPeriodYears}
+                  accentClassName="border-amber-200/90 from-amber-50/95 to-card dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Category"
+                  placeholder="All categories"
+                  options={categoryOptions}
+                  selected={categoryIds}
+                  onChange={setCategoryIds}
+                  accentClassName="border-violet-200/90 from-violet-50/95 to-card dark:border-violet-900/50 dark:from-violet-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Policy type (product)"
+                  placeholder="All types"
+                  options={AD_VARIANT_OPTIONS}
+                  selected={adVariants}
+                  onChange={setAdVariants}
+                  accentClassName="border-rose-200/90 from-rose-50/95 to-card dark:border-rose-900/50 dark:from-rose-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Month"
+                  placeholder="All months"
+                  options={monthOptions}
+                  selected={periodMonths}
+                  onChange={setPeriodMonths}
+                  accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Area"
+                  placeholder="All areas"
+                  options={areaOptions}
+                  selected={areas}
+                  onChange={setAreas}
+                  accentClassName="border-teal-200/90 from-teal-50/95 to-card dark:border-teal-900/50 dark:from-teal-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Village"
+                  placeholder="All villages"
+                  options={villageOptions}
+                  selected={villages}
+                  onChange={setVillages}
+                  accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Sum insured"
+                  placeholder="All SI"
+                  options={sumInsuredOptions}
+                  selected={sumInsureds}
+                  onChange={setSumInsureds}
+                  accentClassName="border-orange-200/90 from-orange-50/95 to-card dark:border-orange-900/50 dark:from-orange-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Group"
+                  placeholder="All groups"
+                  options={groupingOptions}
+                  selected={policyGroupings}
+                  onChange={setPolicyGroupings}
+                  accentClassName="border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card"
+                />
                 <div className="flex flex-wrap items-end gap-2">
                   <Button
                     type="button"
@@ -1079,14 +1068,14 @@ export default function SvkkPoliciesPage() {
                       setSearchDraft("");
                       setSearchApplied("");
                       prevSearchApplied.current = "";
-                      setVillage("");
-                      setYearLabel("");
-                      setPeriodMonthText("");
-                      setCategoryIdState("");
-                      setAdVariant("");
-                      setArea("");
-                      setSumInsured("");
-                      setPolicyGrouping("");
+                      setVillages([]);
+                      setPeriodYears([]);
+                      setPeriodMonths([]);
+                      setCategoryIds([]);
+                      setAdVariants([]);
+                      setAreas([]);
+                      setSumInsureds([]);
+                      setPolicyGroupings([]);
                       setSort("createdAt");
                       setPage(1);
                     }}
@@ -1390,14 +1379,14 @@ export default function SvkkPoliciesPage() {
                         setSearchDraft("");
                         setSearchApplied("");
                         prevSearchApplied.current = "";
-                        setVillage("");
-                        setYearLabel("");
-                        setPeriodMonthText("");
-                        setCategoryIdState("");
-                        setAdVariant("");
-                        setArea("");
-                        setSumInsured("");
-                        setPolicyGrouping("");
+                        setVillages([]);
+                        setPeriodYears([]);
+                        setPeriodMonths([]);
+                        setCategoryIds([]);
+                        setAdVariants([]);
+                        setAreas([]);
+                        setSumInsureds([]);
+                        setPolicyGroupings([]);
                         setPage(1);
                       }}
                     >
