@@ -17,6 +17,19 @@ import { createPolicyBodySchema, type PolicyMemberReplaceRow } from "./policy.sc
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
+/** Keeps `Policy.listVkkPremium` aligned with list preview (latest `yearLabel` row). */
+export async function syncPolicyListVkkPremium(tx: Prisma.TransactionClient, policyId: string): Promise<void> {
+  const latest = await tx.policyYear.findFirst({
+    where: { policyId, deletedAt: null },
+    orderBy: { yearLabel: "desc" },
+    select: { vkkPremium: true },
+  });
+  await tx.policy.update({
+    where: { id: policyId },
+    data: { listVkkPremium: latest?.vkkPremium ?? null },
+  });
+}
+
 export async function createPolicyWithYear(input: CreatePolicyInput) {
   const mobile = normalizeMobile(input.mobile);
   const period = String(new Date().getFullYear());
@@ -242,6 +255,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         },
       });
     }
+
+    await syncPolicyListVkkPremium(tx, policy.id);
 
     return { party, policy, year };
   });
@@ -656,6 +671,10 @@ export async function updatePolicySections(input: {
         where: { id: input.policyId },
         data: { version: { increment: 1 } },
       });
+    }
+
+    if (input.year) {
+      await syncPolicyListVkkPremium(tx, input.policyId);
     }
 
     return tx.policy.findUniqueOrThrow({

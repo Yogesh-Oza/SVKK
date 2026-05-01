@@ -60,9 +60,9 @@ const SORTS: Record<string, Prisma.PolicyOrderByWithRelationInput | Prisma.Polic
   svkkId_desc: [{ referenceNo: "desc" }, { insuredParty: { svkkPublicId: "desc" } }],
   periodYearText: { periodYearText: "asc" },
   periodYearText_desc: { periodYearText: "desc" },
-  /** Approx. list premium: max vkkPremium across years (list row uses latest yearLabel) */
-  premium: { years: { _max: { vkkPremium: "asc" } } },
-  premium_desc: { years: { _max: { vkkPremium: "desc" } } },
+  /** List premium column: denormalized on Policy, synced when years change */
+  premium: { listVkkPremium: "asc" },
+  premium_desc: { listVkkPremium: "desc" },
 };
 
 function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationInput | Prisma.PolicyOrderByWithRelationInput[] {

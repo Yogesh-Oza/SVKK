@@ -246,6 +246,8 @@ model Policy {
   courierAddress   String?    @db.Text
   periodYearText   String?    @db.VarChar(20)
   periodMonthText  String?    @db.VarChar(20)
+  /// Denormalized: vkkPremium for the latest `yearLabel` (matches list preview). Kept in sync on PolicyYear writes.
+  listVkkPremium Decimal?    @db.Decimal(14, 2)
   /// Optimistic concurrency (also compare updatedAt on PATCH)
   version        Int          @default(1)
   createdById    String?
