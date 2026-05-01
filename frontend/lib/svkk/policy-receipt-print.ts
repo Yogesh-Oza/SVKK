@@ -295,11 +295,13 @@ export function buildReceiptDocumentHtml(
         <div class="rcol">${colHtml(left)}</div>
         <div class="rcol">${colHtml(right)}</div>
       </div>
+      <div class="receipt-tail">
       <div class="member-card" style="margin-top:14px"><div style="font-weight:800;color:#334155">Amount in Words</div><div style="margin-top:8px;font-weight:700">${escapeHtml(amountInWords)}</div></div>
       <div class="member-card" style="margin-top:14px">Received with thanks the above amount towards mediclaim premium.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px">
+      <div class="receipt-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px">
         <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Receiver</div></div>
         <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Authorized Signatory</div></div>
+      </div>
       </div>
     </div>`;
 
@@ -333,18 +335,43 @@ export function buildReceiptDocumentHtml(
     .btn.primary { background: var(--dark); color: #fff; border-color: var(--dark); }
     .member-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 22px; background: var(--soft); }
     .receipt-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
-    .rrow { display: grid; grid-template-columns: 220px 1fr; padding: 11px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+    .rrow { display: grid; grid-template-columns: minmax(120px, 38%) minmax(0, 1fr); padding: 11px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; align-items: start; column-gap: 10px; }
     .rrow > div:first-child { font-weight: 800; color: #334155; }
+    .rrow > div:last-child {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      hyphens: auto;
+    }
     .rcol:first-child { border-right: 1px solid #e5e7eb; }
+    .receipt-tail { break-inside: avoid; page-break-inside: avoid; }
+    .receipt-signatures { break-inside: avoid; page-break-inside: avoid; }
     @media (max-width: 700px) {
       .receipt-grid { grid-template-columns: 1fr; }
       .rcol:first-child { border-right: none; }
-      .rrow { grid-template-columns: 140px 1fr; }
+      .rrow { grid-template-columns: minmax(100px, 42%) minmax(0, 1fr); }
     }
     @media print {
-      body { background: #fff !important; }
+      @page { size: A4; margin: 12mm; }
+      body { background: #fff !important; margin: 0; }
       .no-print { display: none !important; }
-      .modal { box-shadow: none; border-radius: 0; width: 100%; border: 0; }
+      .modal { box-shadow: none; border-radius: 0; width: 100%; max-width: none; border: 0; overflow: visible; }
+      .receipt-body { max-width: none !important; width: 100%; padding: 0 !important; margin: 0; }
+      .receipt-grid {
+        overflow: visible;
+        border-radius: 12px;
+        page-break-inside: auto;
+      }
+      .rcol { min-width: 0; }
+      .rrow {
+        grid-template-columns: minmax(100px, 36%) minmax(0, 1fr);
+        font-size: 12px;
+        padding: 8px 10px;
+      }
+      .member-card { break-inside: avoid; page-break-inside: avoid; border-radius: 12px; }
+      .receipt-tail { break-inside: avoid; page-break-inside: avoid; }
+      .receipt-signatures { break-inside: avoid; page-break-inside: avoid; margin-top: 28px !important; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
