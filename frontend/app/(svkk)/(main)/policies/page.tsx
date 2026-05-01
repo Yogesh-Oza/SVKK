@@ -1,7 +1,24 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,7 +44,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
@@ -44,7 +62,29 @@ import {
   type RowSelectionState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion } from "motion/react";
+import {
+  ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileText,
+  Filter,
+  LayoutList,
+  MoreHorizontal,
+  Pencil,
+  RotateCcw,
+  Search,
+  Shield,
+  Trash2,
+  Upload,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -98,6 +138,9 @@ type FiltersMeta = {
 type CategoryItem = { id: string; key: string; name: string };
 type YearActionKind = "edit" | "receipt";
 
+/** Unified table body typography: one weight/color for all data cells except policy no. */
+const policyTableMuted = "font-sans text-sm font-normal text-muted-foreground tabular-nums antialiased";
+
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "createdAt", label: "Newest first" },
   { value: "createdAt_asc", label: "Oldest first" },
@@ -117,6 +160,12 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "policyNo_desc", label: "Policy no. Z–A" },
   { value: "referenceNo", label: "Reference no. A–Z" },
   { value: "referenceNo_desc", label: "Reference no. Z–A" },
+  { value: "svkkId", label: "SVKK ID A–Z" },
+  { value: "svkkId_desc", label: "SVKK ID Z–A" },
+  { value: "periodYearText", label: "Year A–Z" },
+  { value: "periodYearText_desc", label: "Year Z–A" },
+  { value: "premium", label: "Premium low → high" },
+  { value: "premium_desc", label: "Premium high → low" },
 ];
 
 function sumLabel(v: unknown): string {
@@ -126,6 +175,28 @@ function sumLabel(v: unknown): string {
     return (v as { toString: () => string }).toString();
   }
   return "—";
+}
+
+function parseInrAmount(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const n = Number(v.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  if (typeof v === "object" && v !== null && "toString" in v) {
+    const n = Number(String((v as { toString: () => string }).toString()).replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Indian-style grouping, e.g. ₹ 58,839 */
+function formatInrRupee(v: unknown): string | null {
+  const n = parseInrAmount(v);
+  if (n == null) return null;
+  const formatted = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
+  return `₹ ${formatted}`;
 }
 
 export default function SvkkPoliciesPage() {
@@ -162,9 +233,7 @@ export default function SvkkPoliciesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    referenceNo: false,
-  });
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [bulkOpen, setBulkOpen] = useState(false);
   const [rowDeleteId, setRowDeleteId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -175,6 +244,7 @@ export default function SvkkPoliciesPage() {
   const [rowYearAction, setRowYearAction] = useState<{ policyId: string; kind: YearActionKind } | null>(
     null,
   );
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const missingUrl = !getSvkkApiBase();
 
@@ -326,6 +396,30 @@ export default function SvkkPoliciesPage() {
     [rowSelection],
   );
 
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (searchApplied.trim()) n++;
+    if (village.trim()) n++;
+    if (yearLabel.trim()) n++;
+    if (periodMonthText) n++;
+    if (categoryIdState) n++;
+    if (adVariant) n++;
+    if (area.trim()) n++;
+    if (sumInsured) n++;
+    if (policyGrouping) n++;
+    return n;
+  }, [
+    searchApplied,
+    village,
+    yearLabel,
+    periodMonthText,
+    categoryIdState,
+    adVariant,
+    area,
+    sumInsured,
+    policyGrouping,
+  ]);
+
   async function bulkDelete() {
     const ids = Object.entries(rowSelection)
       .filter(([, v]) => v)
@@ -444,47 +538,14 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <Link href={`/policies/${row.original.id}`} className="font-medium underline">
-            {row.original.policyNo ?? "—"}
+          <Link
+            href={`/policies/${row.original.id}`}
+            className="font-sans text-sm font-bold text-foreground hover:text-primary inline-flex max-w-[min(100%,220px)] items-center rounded-sm px-0.5 py-0.5 transition-colors hover:underline"
+            title={row.original.policyNo ?? undefined}
+          >
+            <span className="truncate tabular-nums">{row.original.policyNo ?? "—"}</span>
           </Link>
         ),
-      },
-      {
-        id: "customer",
-        accessorFn: (r) => r.insuredParty.name,
-        header: ({ column }) => (
-          <PoliciesColumnHeader
-            column={column}
-            title="Name"
-            sortAsc="name"
-            sortDesc="name_desc"
-            activeSort={sort}
-            onSortChange={applySort}
-          />
-        ),
-        cell: ({ row }) => {
-          const p = row.original;
-          const name = p.insuredParty.name;
-          const initials = name
-            .split(" ")
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-          return (
-            <div className="flex min-w-0 max-w-[240px] items-center gap-3">
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback className="text-xs font-medium">{initials}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{name}</p>
-                {p.referenceNo ? (
-                  <p className="text-muted-foreground truncate font-mono text-xs">{p.referenceNo}</p>
-                ) : null}
-              </div>
-            </div>
-          );
-        },
       },
       {
         id: "customerId",
@@ -500,25 +561,48 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <span className="font-mono text-sm">
-            {row.original.insuredParty.customerId ?? "—"}
-          </span>
+          <span className={policyTableMuted}>{row.original.insuredParty.customerId ?? "—"}</span>
         ),
       },
       {
-        id: "category",
-        accessorFn: (r) => r.category?.key ?? "",
+        id: "svkkId",
+        accessorFn: (r) => (r.referenceNo ?? r.insuredParty.svkkPublicId ?? "").trim(),
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
-            title="Category"
-            sortAsc="categoryKey"
-            sortDesc="categoryKey_desc"
+            title="SVKK ID"
+            sortAsc="svkkId"
+            sortDesc="svkkId_desc"
             activeSort={sort}
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => row.original.category?.key ?? "—",
+        cell: ({ row }) => {
+          const p = row.original;
+          const id = (p.referenceNo ?? p.insuredParty.svkkPublicId ?? "").trim() || "—";
+          return (
+            <span className={cn(policyTableMuted, "max-w-[200px] truncate font-mono text-xs")} title={id !== "—" ? id : undefined}>
+              {id}
+            </span>
+          );
+        },
+      },
+      {
+        id: "holder",
+        accessorFn: (r) => r.insuredParty.name,
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Holder"
+            sortAsc="name"
+            sortDesc="name_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
+        cell: ({ row }) => (
+          <span className={cn(policyTableMuted, "max-w-[240px] truncate")}>{row.original.insuredParty.name}</span>
+        ),
       },
       {
         id: "policyType",
@@ -526,22 +610,20 @@ export default function SvkkPoliciesPage() {
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
-            title="Policy type"
+            title="Type"
             sortAsc="policyTypeName"
             sortDesc="policyTypeName_desc"
             activeSort={sort}
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => row.original.policyType.name,
-      },
-      {
-        id: "sumInsured",
-        accessorFn: (r) => sumLabel(r.years[0]?.sumInsured),
-        header: "Sum insured",
         cell: ({ row }) => {
-          const y0 = row.original.years[0];
-          return y0 ? sumLabel(y0.sumInsured) : "—";
+          const n = row.original.policyType.name;
+          return (
+            <span className={cn(policyTableMuted, "max-w-[160px] truncate")} title={n}>
+              {n}
+            </span>
+          );
         },
       },
       {
@@ -557,96 +639,124 @@ export default function SvkkPoliciesPage() {
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => row.original.village ?? "—",
+        cell: ({ row }) => (
+          <span className={policyTableMuted}>{row.original.village ?? "—"}</span>
+        ),
       },
       {
-        id: "mobile",
-        accessorFn: (r) => r.insuredParty.mobile,
+        id: "policyYear",
+        accessorFn: (r) => r.periodYearText ?? r.years[0]?.yearLabel ?? "",
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
-            title="Mobile"
-            sortAsc="mobile"
-            sortDesc="mobile_desc"
+            title="Year"
+            sortAsc="periodYearText"
+            sortDesc="periodYearText_desc"
             activeSort={sort}
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => (
-          <span className="font-mono text-sm whitespace-nowrap">{row.original.insuredParty.mobile}</span>
-        ),
+        cell: ({ row }) => {
+          const p = row.original;
+          const y = p.periodYearText?.trim() || p.years[0]?.yearLabel || "";
+          return <span className={policyTableMuted}>{y || "—"}</span>;
+        },
       },
       {
-        id: "referenceNo",
-        accessorFn: (r) => r.referenceNo ?? "",
+        id: "premium",
+        accessorFn: (r) => formatInrRupee(r.years[0]?.vkkPremium) ?? "",
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
-            title="Reference"
-            sortAsc="referenceNo"
-            sortDesc="referenceNo_desc"
+            title="Premium"
+            sortAsc="premium"
+            sortDesc="premium_desc"
             activeSort={sort}
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => (
-          <span className="font-mono text-sm">{row.original.referenceNo ?? "—"}</span>
-        ),
+        cell: ({ row }) => {
+          const y0 = row.original.years[0];
+          const formatted = y0 ? formatInrRupee(y0.vkkPremium) : null;
+          if (!formatted) return <span className={policyTableMuted}>—</span>;
+          return (
+            <span className="font-sans text-sm font-bold text-foreground tabular-nums antialiased">
+              {formatted}
+            </span>
+          );
+        },
       },
       {
         id: "actions",
+        header: "Action",
         cell: ({ row }) => {
           const p = row.original;
+          const expanded = expandedPolicyId === p.id;
           return (
-            <div className="flex flex-wrap gap-1">
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                onClick={() => {
-                  setRowYearAction(null);
-                  setExpandedPolicyId((curr) => (curr === p.id ? null : p.id));
-                }}
-              >
-                {expandedPolicyId === p.id ? "Hide" : "View"}
-              </Button>
-              {canEdit ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  onClick={() => {
-                    setExpandedPolicyId(p.id);
-                    setRowYearAction((curr) =>
-                      curr?.policyId === p.id && curr.kind === "edit"
-                        ? null
-                        : { policyId: p.id, kind: "edit" },
-                    );
-                  }}
-                >
-                  Edit
-                </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={receiptBusyId === p.id}
-                onClick={() => {
-                  setExpandedPolicyId(p.id);
-                  setRowYearAction((curr) =>
-                    curr?.policyId === p.id && curr.kind === "receipt"
-                      ? null
-                      : { policyId: p.id, kind: "receipt" },
-                  );
-                }}
-              >
-                Receipt
-              </Button>
-              {canDel ? (
-                <Button size="sm" variant="destructive" onClick={() => setRowDeleteId(p.id)}>
-                  Delete
-                </Button>
-              ) : null}
+            <div className="flex items-center justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={expanded ? "secondary" : "outline"}
+                    className="size-8"
+                    type="button"
+                    aria-label="Policy actions"
+                    aria-expanded={expanded}
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setRowYearAction(null);
+                      setExpandedPolicyId((curr) => (curr === p.id ? null : p.id));
+                    }}
+                  >
+                    <Eye />
+                    {expanded ? "Hide year-wise details" : "Year-wise details"}
+                  </DropdownMenuItem>
+                  {canEdit ? (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setExpandedPolicyId(p.id);
+                        setRowYearAction((curr) =>
+                          curr?.policyId === p.id && curr.kind === "edit"
+                            ? null
+                            : { policyId: p.id, kind: "edit" },
+                        );
+                      }}
+                    >
+                      <Pencil />
+                      Edit policy…
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    disabled={receiptBusyId === p.id}
+                    onClick={() => {
+                      setExpandedPolicyId(p.id);
+                      setRowYearAction((curr) =>
+                        curr?.policyId === p.id && curr.kind === "receipt"
+                          ? null
+                          : { policyId: p.id, kind: "receipt" },
+                      );
+                    }}
+                  >
+                    <FileText />
+                    Receipt
+                  </DropdownMenuItem>
+                  {canDel ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onClick={() => setRowDeleteId(p.id)}>
+                        <Trash2 />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           );
         },
@@ -655,7 +765,7 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [applySort, canDel, canEdit, expandedPolicyId, receiptBusyId, rowYearAction, router, sort]);
+  }, [applySort, canDel, canEdit, expandedPolicyId, receiptBusyId, sort]);
 
   const table = useReactTable({
     data: rows,
@@ -686,45 +796,142 @@ export default function SvkkPoliciesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Policies</h1>
+    <motion.div
+      className="space-y-8 pb-10"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight">Policies</h1>
+          <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
+            Search, filter, and manage MediClaim policy records. Open a row to see year-wise premiums and
+            actions.
+          </p>
+        </div>
+        {canCsvUpload ? (
+          <Badge variant="outline" className="w-fit gap-1.5 py-1.5">
+            <FileSpreadsheet className="size-3.5" />
+            CSV import enabled
+          </Badge>
+        ) : null}
+      </div>
 
-      <div className="space-y-4 rounded-lg border p-4">
-        <h2 className="text-lg font-semibold">Policy List</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <Label className="text-xs">Upload CSV</Label>
-            <div className="mt-1 flex gap-2">
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="block w-full text-sm"
-                disabled={!canCsvUpload}
-                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-              />
-              <Button
-                type="button"
-                size="sm"
-                disabled={!canCsvUpload || !uploadFile || uploadBusy}
-                onClick={() => void uploadPoliciesCsv()}
-              >
-                {uploadBusy ? "Uploading…" : "Upload"}
-              </Button>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="from-primary/8 border-primary/15 bg-linear-to-br to-card py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-primary/12 flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Shield className="text-primary size-5" />
             </div>
-            {uploadMsg ? <p className="text-muted-foreground mt-1 text-xs">{uploadMsg}</p> : null}
-          </div>
-          <div>
-            <Label className="text-xs">Search</Label>
-            <div className="relative mt-1">
-              <Search className="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
-              <Input
-                placeholder="Search"
-                value={searchDraft}
-                onChange={(e) => setSearchDraft(e.target.value)}
-                className="h-9 pl-8"
-              />
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Total policies</p>
+              <p className="text-2xl font-bold tabular-nums tracking-tight">
+                {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
+              </p>
             </div>
-          </div>
+          </CardContent>
+        </Card>
+        <Card className="py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <LayoutList className="text-muted-foreground size-5" />
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">On this page</p>
+              <p className="text-2xl font-bold tabular-nums">{rows.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Users className="text-muted-foreground size-5" />
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Selected</p>
+              <p className="text-2xl font-bold tabular-nums">{selectedCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden py-0 shadow-md">
+        <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <CardHeader className="bg-muted/20 flex flex-row flex-wrap items-start justify-between gap-4 border-b py-5 sm:items-center">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Filter className="size-5 opacity-70" />
+                Filters & search
+              </CardTitle>
+              <CardDescription>Refine by period, location, product, and free-text search.</CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {activeFilterCount > 0 ? (
+                <Badge variant="secondary" className="font-normal">
+                  {activeFilterCount} active
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-xs">No filters applied</span>
+              )}
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  {filtersOpen ? "Collapse" : "Expand"}
+                  <ChevronDown
+                    className={cn("size-4 transition-transform duration-200", filtersOpen && "rotate-180")}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="space-y-5 pt-6">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="lg:col-span-2">
+                  <Label className="text-muted-foreground text-xs font-medium">Upload CSV</Label>
+                  <div className="border-primary/20 bg-muted/20 mt-2 rounded-xl border border-dashed p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <FileSpreadsheet className="text-muted-foreground size-5 shrink-0" />
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          disabled={!canCsvUpload}
+                          onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                          className="text-muted-foreground file:text-foreground w-full cursor-pointer text-sm file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-medium"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0 gap-1.5"
+                        disabled={!canCsvUpload || !uploadFile || uploadBusy}
+                        onClick={() => void uploadPoliciesCsv()}
+                      >
+                        <Upload className="size-3.5" />
+                        {uploadBusy ? "Uploading…" : "Upload"}
+                      </Button>
+                    </div>
+                  </div>
+                  {uploadMsg ? (
+                    <p className="text-muted-foreground mt-2 text-xs leading-relaxed">{uploadMsg}</p>
+                  ) : null}
+                </div>
+                <div className="lg:col-span-2">
+                  <Label className="text-muted-foreground text-xs font-medium">Search</Label>
+                  <div className="relative mt-2">
+                    <Search className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+                    <Input
+                      placeholder="Name, policy no., mobile, customer ID…"
+                      value={searchDraft}
+                      onChange={(e) => setSearchDraft(e.target.value)}
+                      className="h-10 border-dashed pl-9 shadow-none"
+                    />
+                  </div>
+                </div>
+              </div>
+              <Separator />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Label className="text-xs">Select Year</Label>
             <Select value={yearLabel || "__all__"} onValueChange={(v) => setYearLabel(v === "__all__" ? "" : v)}>
@@ -851,70 +1058,148 @@ export default function SvkkPoliciesPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={loading || exportBusy} onClick={() => void exportPoliciesCsv()}>
-              {exportBusy ? "Exporting…" : "Export"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearchDraft("");
-                setSearchApplied("");
-                prevSearchApplied.current = "";
-                setVillage("");
-                setYearLabel("");
-                setPeriodMonthText("");
-                setCategoryIdState("");
-                setAdVariant("");
-                setArea("");
-                setSumInsured("");
-                setPolicyGrouping("");
-                setSort("createdAt");
-                setPage(1);
-              }}
-            >
-              Reset
-            </Button>
-          </div>
-        </div>
-      </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={loading || exportBusy}
+                    onClick={() => void exportPoliciesCsv()}
+                  >
+                    <Download className="size-3.5" />
+                    {exportBusy ? "Exporting…" : "Export CSV"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => {
+                      setSearchDraft("");
+                      setSearchApplied("");
+                      prevSearchApplied.current = "";
+                      setVillage("");
+                      setYearLabel("");
+                      setPeriodMonthText("");
+                      setCategoryIdState("");
+                      setAdVariant("");
+                      setArea("");
+                      setSumInsured("");
+                      setPolicyGrouping("");
+                      setSort("createdAt");
+                      setPage(1);
+                    }}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Reset filters
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
 
       {canDel && selectedCount > 0 ? (
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="destructive" size="sm" onClick={() => setBulkOpen(true)}>
-            Delete selected ({selectedCount})
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border-destructive/25 bg-destructive/5 flex flex-col items-stretch justify-between gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center"
+        >
+          <p className="text-sm font-medium">
+            <span className="text-destructive font-semibold">{selectedCount}</span> polic
+            {selectedCount === 1 ? "y" : "ies"} selected for bulk actions
+          </p>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setBulkOpen(true)}
+          >
+            <Trash2 className="size-3.5" />
+            Delete selected
           </Button>
+        </motion.div>
+      ) : null}
+
+      {err ? (
+        <div className="border-destructive/40 bg-destructive/5 text-destructive rounded-lg border px-4 py-3 text-sm">
+          {err}
         </div>
       ) : null}
 
-      {err ? <p className="text-destructive text-sm">{err}</p> : null}
-
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Grouped Policy Records</h2>
-        <div className="bg-card rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
+      <Card className="overflow-hidden py-0 shadow-md">
+        <CardHeader className="bg-muted/15 space-y-4 border-b py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <LayoutList className="size-5 opacity-80" />
+                Policy register
+              </CardTitle>
+              <CardDescription>Grouped records — expand a row for year-wise premiums and detail.</CardDescription>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
+              <Label htmlFor="policies-sort" className="text-muted-foreground text-xs font-medium">
+                Sort order
+              </Label>
+              <Select
+                value={sort}
+                onValueChange={(v) => {
+                  setSort(v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id="policies-sort" className="cursor-pointer">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <div className="relative">
+          {loading ? (
+            <div
+              className="from-primary/40 pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 animate-pulse bg-linear-to-r via-primary to-primary/40"
+              aria-hidden
+            />
+          ) : null}
+          <Table className="font-sans text-sm antialiased">
+            <TableHeader className="[&_tr]:bg-muted/80 [&_tr]:backdrop-blur-sm">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="hover:bg-muted/80">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead
+                      key={header.id}
+                      className="text-muted-foreground font-sans text-xs font-semibold tracking-tight whitespace-nowrap"
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={colCount} className="text-muted-foreground h-24 text-center text-sm">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={`sk-${i}`}>
+                  {Array.from({ length: colCount }).map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-8 w-full max-w-32" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
             ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => {
                 const original = row.original;
@@ -929,14 +1214,19 @@ export default function SvkkPoliciesPage() {
                     </TableRow>
                     {expandedPolicyId === original.id ? (
                       <TableRow key={`${row.id}-years`}>
-                        <TableCell colSpan={colCount} className="bg-muted/20">
-                          <div className="space-y-3 p-2">
-                            <p className="text-sm font-medium">
+                        <TableCell colSpan={colCount} className="bg-muted/25 p-0">
+                          <motion.div
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                            className="border-primary/10 bg-linear-to-b from-muted/20 to-transparent space-y-4 border-t p-4 sm:p-5"
+                          >
+                            <p className="text-foreground text-sm font-semibold tracking-tight">
                               {rowYearAction?.policyId === original.id
                                 ? rowYearAction.kind === "edit"
-                                  ? "Select year to edit"
-                                  : "Select year to generate receipt"
-                                : "View year-wise records"}
+                                  ? "Select a year to edit"
+                                  : "Select a year to generate receipt"
+                                : "Year-wise quick actions"}
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {original.years.map((y) => (
@@ -944,7 +1234,8 @@ export default function SvkkPoliciesPage() {
                                   key={`${original.id}-chip-${y.yearLabel}`}
                                   type="button"
                                   size="sm"
-                                  variant="outline"
+                                  variant="secondary"
+                                  className="border-primary/15 bg-primary/8 hover:bg-primary/12 shadow-sm"
                                   onClick={() => {
                                     if (rowYearAction?.policyId === original.id && rowYearAction.kind === "edit") {
                                       router.push(
@@ -965,49 +1256,119 @@ export default function SvkkPoliciesPage() {
                                     router.push(`/policies/${original.id}?year=${encodeURIComponent(y.yearLabel)}`);
                                   }}
                                 >
-                                  {y.yearLabel} · ₹{sumLabel(y.vkkPremium)}
+                                  {y.yearLabel} · {formatInrRupee(y.vkkPremium) ?? "—"}
                                 </Button>
                               ))}
                             </div>
                             {rowYearAction?.policyId === original.id ? null : (
-                              <div className="overflow-x-auto">
-                                <table className="w-full min-w-[900px] border-collapse text-sm">
-                                  <thead>
-                                    <tr className="bg-muted/40">
-                                      <th className="border p-2 text-left">Year</th>
-                                      <th className="border p-2 text-left">Policy No</th>
-                                      <th className="border p-2 text-left">Customer ID</th>
-                                      <th className="border p-2 text-left">Holder</th>
-                                      <th className="border p-2 text-left">Village</th>
-                                      <th className="border p-2 text-left">Area</th>
-                                      <th className="border p-2 text-left">Category</th>
-                                      <th className="border p-2 text-left">Month</th>
-                                      <th className="border p-2 text-left">Group</th>
-                                      <th className="border p-2 text-left">SI</th>
-                                      <th className="border p-2 text-left">Premium</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {original.years.map((y) => (
-                                      <tr key={`${original.id}-${y.yearLabel}`}>
-                                        <td className="border p-2">{y.yearLabel}</td>
-                                        <td className="border p-2">{original.policyNo ?? "—"}</td>
-                                        <td className="border p-2">{original.insuredParty.customerId ?? "—"}</td>
-                                        <td className="border p-2">{original.insuredParty.name}</td>
-                                        <td className="border p-2">{original.village ?? "—"}</td>
-                                        <td className="border p-2">{original.area ?? "—"}</td>
-                                        <td className="border p-2">{original.category?.key ?? "—"}</td>
-                                        <td className="border p-2">{original.periodMonthText ?? "—"}</td>
-                                        <td className="border p-2">{original.remarks ?? "—"}</td>
-                                        <td className="border p-2">₹{sumLabel(y.sumInsured)}</td>
-                                        <td className="border p-2">₹{sumLabel(y.vkkPremium)}</td>
-                                      </tr>
+                              <div className="max-w-full space-y-4">
+                                <div className="ring-primary/15 rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
+                                  <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">
+                                    Policy snapshot
+                                    <span className="text-blue-700/70 dark:text-blue-300/70 ml-2 font-normal normal-case">
+                                      (same for every year below)
+                                    </span>
+                                  </p>
+                                  <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                                    <div className="min-w-0">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Policy no.
+                                      </dt>
+                                      <dd className="text-blue-950 dark:text-blue-50 font-mono text-xs font-semibold break-all">
+                                        {original.policyNo ?? "—"}
+                                      </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Customer ID
+                                      </dt>
+                                      <dd className="text-blue-950 dark:text-blue-50 font-mono text-xs font-semibold break-all">
+                                        {original.insuredParty.customerId ?? "—"}
+                                      </dd>
+                                    </div>
+                                    <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Insured
+                                      </dt>
+                                      <dd className="text-blue-950 dark:text-blue-50 font-medium wrap-break-word">
+                                        {original.insuredParty.name}
+                                      </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Village / area
+                                      </dt>
+                                      <dd className="text-blue-950 dark:text-blue-50 wrap-break-word">
+                                        {[original.village, original.area].filter(Boolean).join(" · ") || "—"}
+                                      </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Category · month
+                                      </dt>
+                                      <dd className="text-blue-950 dark:text-blue-50">
+                                        {[original.category?.key, original.periodMonthText].filter(Boolean).join(" · ") ||
+                                          "—"}
+                                      </dd>
+                                    </div>
+                                    <div className="min-w-0 sm:col-span-2 lg:col-span-3">
+                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
+                                        Group / note
+                                      </dt>
+                                      <dd
+                                        className="text-blue-950/90 dark:text-blue-100/90 line-clamp-2 text-xs wrap-break-word"
+                                        title={original.remarks ?? undefined}
+                                      >
+                                        {original.remarks?.trim() ? original.remarks : "—"}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                </div>
+
+                                <div>
+                                  <p className="text-muted-foreground mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+                                    <span className="bg-primary h-2 w-2 shrink-0 rounded-full" aria-hidden />
+                                    Amounts by year
+                                  </p>
+                                  <ul className="flex max-w-full flex-col gap-2">
+                                    {original.years.map((y, yi) => (
+                                      <li
+                                        key={`${original.id}-${y.yearLabel}`}
+                                        className={cn(
+                                          "flex max-w-full flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+                                          "border-l-primary/55 border-l-4 transition-colors",
+                                          yi % 2 === 0
+                                            ? "bg-card border-border"
+                                            : "bg-emerald-50/40 border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-900/50",
+                                        )}
+                                      >
+                                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
+                                          <span className="text-primary bg-primary/12 inline-flex min-w-18 items-center justify-center rounded-md px-2 py-1 text-sm font-bold tabular-nums">
+                                            {y.yearLabel}
+                                          </span>
+                                          <Badge
+                                            variant="outline"
+                                            className="border-emerald-300/80 bg-emerald-100/90 font-mono text-xs tabular-nums text-emerald-950 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-100"
+                                          >
+                                            SI {formatInrRupee(y.sumInsured) ?? "—"}
+                                          </Badge>
+                                          <Badge
+                                            variant="outline"
+                                            className="border-amber-300/90 bg-amber-100/95 font-mono text-xs font-bold tabular-nums text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/45 dark:text-amber-100"
+                                          >
+                                            Premium {formatInrRupee(y.vkkPremium) ?? "—"}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-muted-foreground hidden text-[10px] font-medium uppercase tracking-wide sm:block">
+                                          Tap a chip above to open or print
+                                        </p>
+                                      </li>
                                     ))}
-                                  </tbody>
-                                </table>
+                                  </ul>
+                                </div>
                               </div>
                             )}
-                          </div>
+                          </motion.div>
                         </TableCell>
                       </TableRow>
                     ) : null}
@@ -1016,94 +1377,124 @@ export default function SvkkPoliciesPage() {
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={colCount} className="text-muted-foreground h-24 text-center text-sm">
-                  No policies match.
+                <TableCell colSpan={colCount} className="h-32 text-center">
+                  <div className="text-muted-foreground flex flex-col items-center gap-2 py-6">
+                    <Search className="size-8 opacity-40" />
+                    <p className="text-sm font-medium">No policies match these filters</p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="text-primary h-auto p-0"
+                      onClick={() => {
+                        setSearchDraft("");
+                        setSearchApplied("");
+                        prevSearchApplied.current = "";
+                        setVillage("");
+                        setYearLabel("");
+                        setPeriodMonthText("");
+                        setCategoryIdState("");
+                        setAdVariant("");
+                        setArea("");
+                        setSumInsured("");
+                        setPolicyGrouping("");
+                        setPage(1);
+                      }}
+                    >
+                      Clear filters and try again
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
         </div>
-      </div>
-
-      <div className="text-muted-foreground flex flex-col gap-3 px-0 sm:flex-row sm:items-center sm:justify-between sm:px-1">
-        <p className="text-sm">
-          {selectedCount} of {rows.length} on this page selected
-          {total > 0 ? ` · ${total} total` : ""}
-        </p>
-        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-6">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="policies-page-size" className="whitespace-nowrap text-sm">
-              Rows
-            </Label>
-            <Select
-              value={String(pageSize)}
-              onValueChange={(v) => {
-                const n = Number(v);
-                setPageSize(n);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger id="policies-page-size" className="h-8 w-[72px] cursor-pointer" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[10, 20, 30, 50].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="whitespace-nowrap text-sm">
-            Page {page} of {Math.max(1, totalPages)}
-            {total > 0 ? ` (${total} total)` : ""}
+        <CardFooter className="bg-muted/10 flex flex-col gap-4 border-t px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground text-sm">
+            <span className="text-foreground font-medium">{selectedCount}</span> of {rows.length} on this page
+            selected
+            {total > 0 ? (
+              <>
+                {" "}
+                · <span className="text-foreground font-medium">{total.toLocaleString()}</span> total
+              </>
+            ) : null}
           </p>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              className="size-8 p-0"
-              onClick={() => setPage(1)}
-              disabled={page <= 1 || loading}
-            >
-              <span className="sr-only">First page</span>
-              <ChevronsLeft className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="size-8 p-0"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
-            >
-              <span className="sr-only">Previous</span>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="size-8 p-0"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
-            >
-              <span className="sr-only">Next</span>
-              <ChevronRight className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="size-8 p-0"
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages || loading}
-            >
-              <span className="sr-only">Last page</span>
-              <ChevronsRight className="size-4" />
-            </Button>
+          <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="policies-page-size" className="text-muted-foreground whitespace-nowrap text-xs">
+                Rows per page
+              </Label>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  const n = Number(v);
+                  setPageSize(n);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id="policies-page-size" className="h-8 w-[72px] cursor-pointer" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 30, 50].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-muted-foreground whitespace-nowrap text-sm">
+              Page <span className="text-foreground font-semibold">{page}</span> of{" "}
+              <span className="text-foreground font-semibold">{Math.max(1, totalPages)}</span>
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage(1)}
+                disabled={page <= 1 || loading}
+              >
+                <span className="sr-only">First page</span>
+                <ChevronsLeft className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+              >
+                <span className="sr-only">Previous</span>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRight className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || loading}
+              >
+                <span className="sr-only">Last page</span>
+                <ChevronsRight className="size-4" />
+              </Button>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardFooter>
+      </Card>
 
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
@@ -1173,7 +1564,6 @@ export default function SvkkPoliciesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-    </div>
+    </motion.div>
   );
 }
