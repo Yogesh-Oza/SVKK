@@ -22,7 +22,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { toast } from "sonner";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
-import { AD_PRODUCT_OPTIONS } from "./ad-product-variant";
+import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi } from "./ad-product-variant";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
@@ -584,11 +584,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 </div>
                 <div className="space-y-2">
                   <Label>Policy Type</Label>
-                  <Input value={selectedFetch?.adProductVariant ?? values.adProduct} readOnly className="bg-muted" />
+                  <Input
+                    value={
+                      selectedFetch?.adProductVariant
+                        ? (adProductFormValueFromApi(selectedFetch.adProductVariant) || selectedFetch.adProductVariant)
+                        : values.adProduct || "—"
+                    }
+                    readOnly
+                    className="bg-muted"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Current Year</Label>
-                  <Input value={selectedFetch?.periodYearText ?? values.year} readOnly className="bg-muted" />
+                  <Input
+                    value={selectedFetch?.periodYearText ?? (values.year || "—")}
+                    readOnly
+                    className="bg-muted"
+                  />
                 </div>
               </div>
               {fetchSuggestions.length > 0 ? (
@@ -808,15 +820,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <div className="space-y-2">
                 <RequiredLabel>Policy Type</RequiredLabel>
                 <Select
-                  value={values.adProduct}
-                  onValueChange={(v) => {
-                    void setFieldValue("adProduct", v);
-                  }}
+                  value={values.adProduct || "__none__"}
+                  onValueChange={(v) => void setFieldValue("adProduct", v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select policy type" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">Select policy type</SelectItem>
                     {AD_PRODUCT_OPTIONS.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
                         {o.label}

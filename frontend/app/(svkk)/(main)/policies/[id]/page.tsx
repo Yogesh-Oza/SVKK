@@ -266,7 +266,7 @@ export default function SvkkPolicyDetailPage() {
   const y = row.years.find((item) => item.id === yearId) ?? row.years[0];
   const ch = firstCheque(y);
   const policyTypeLabel = row.adProductVariant
-    ? adProductFormValueFromApi(row.adProductVariant)
+    ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
     : row.policyType.name;
   const refundDateRaw = row.refundChequeDate ? formatDateIso(row.refundChequeDate) : "";
   const refundDateDisplay =

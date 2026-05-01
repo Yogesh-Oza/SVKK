@@ -19,9 +19,9 @@ const VARIANT_TO_FORM: Record<AdProductVariant, string> = {
 /** Maps API `AdProductVariant` enum string to Add-policy form select value. */
 export function adProductFormValueFromApi(v: string | null | undefined): string {
   if (!v) {
-    return "Asha-Kiran";
+    return "";
   }
-  return VARIANT_TO_FORM[v as AdProductVariant] ?? "Asha-Kiran";
+  return VARIANT_TO_FORM[v as AdProductVariant] ?? "";
 }
 
 export const AD_PRODUCT_OPTIONS = [

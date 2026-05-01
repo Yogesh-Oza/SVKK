@@ -83,7 +83,7 @@ export type AdPolicyFormValues = {
 export function getAdPolicyInitialValues(): AdPolicyFormValues {
   return {
     policyNo: "",
-    adProduct: "Asha-Kiran",
+    adProduct: "",
     customerId: "",
     svkkPublicId: "",
     policyHolder: "",
@@ -151,7 +151,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     courierAddress: "",
     remark: "",
     refNo: "",
-    year: String(new Date().getFullYear()),
+    year: "",
     month: String(new Date().getMonth() + 1),
     policyGrouping: "",
     url: "",

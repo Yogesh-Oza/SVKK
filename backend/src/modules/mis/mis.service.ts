@@ -5,6 +5,7 @@ import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { buildPolicyScopeSqlP } from "./mis.scope-sql.js";
 import {
   asOfDayBoundsUTC,
+  queryDashboardMonthlyPremium,
   queryVillageAggregates,
   queryVillagePaymentTotals,
   queryMemberAgeBuckets,
@@ -126,6 +127,81 @@ export async function getDashboardMetrics(
     totalPaidCompleted: paid,
     paymentGap: expected - paid,
   };
+}
+
+function friendlyProductLabel(raw: string): string {
+  switch (raw) {
+    case "ASHA_KIRAN":
+      return "Asha Kiran";
+    case "FAMILY_FLOATER":
+      return "Family Floater";
+    case "INDIVIDUAL":
+      return "Individual";
+    case "UNASSIGNED":
+      return "Unassigned";
+    default:
+      return raw || "—";
+  }
+}
+
+export type DashboardChartsJson = {
+  asOfDate: string;
+  monthly: Array<{ year: number; month: number; monthLabel: string; premium: number }>;
+  productMix: Array<{ label: string; premium: number; percent: number }>;
+};
+
+/**
+ * Dashboard charts: rolling 12-month expected premium by policy-start month, and mix by AD product variant.
+ */
+export async function getDashboardCharts(
+  userId: string,
+  role: UserRole,
+  scope: MisScope,
+  asOfDate: Date,
+  filterVillage: string | undefined,
+): Promise<DashboardChartsJson> {
+  const scopeOnP = buildPolicyScopeSqlP(role, userId, scope, filterVillage);
+  const buckets = await queryDashboardMonthlyPremium(prisma, { scopeOnP, asOfDate });
+  const map = new Map<string, number>();
+  for (const b of buckets) {
+    map.set(`${Number(b.y)}-${Number(b.m)}`, decStringToNumber(b.premium));
+  }
+  const d = new Date(asOfDate);
+  const monthly: DashboardChartsJson["monthly"] = [];
+  for (let i = 11; i >= 0; i--) {
+    const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1));
+    const y = dt.getUTCFullYear();
+    const m = dt.getUTCMonth() + 1;
+    const premium = map.get(`${y}-${m}`) ?? 0;
+    const monthShort = dt.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
+    const monthLabel = `${monthShort} ${String(y).slice(-2)}`;
+    monthly.push({ year: y, month: m, monthLabel, premium });
+  }
+
+  const mixRows = await queryPolicyMemberReport(prisma, {
+    scopeOnP,
+    asOfDate,
+    groupBy: "policy_type",
+    categoryKey: null,
+    policyGrouping: null,
+    month: null,
+    year: null,
+    fiscalLabel: null,
+  });
+  const mixParsed = mixRows.map((r) => ({
+    label: friendlyProductLabel(r.label),
+    premium: decStringToNumber(r.sumCo),
+  }));
+  const totalPrem = mixParsed.reduce((s, x) => s + x.premium, 0);
+  const productMix = mixParsed
+    .map((x) => ({
+      label: x.label,
+      premium: x.premium,
+      percent: totalPrem > 0 ? Math.round((x.premium / totalPrem) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.premium - a.premium);
+
+  return { asOfDate: asOfDate.toISOString(), monthly, productMix };
 }
 
 export async function getVillageReport(

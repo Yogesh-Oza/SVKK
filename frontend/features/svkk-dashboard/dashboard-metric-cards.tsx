@@ -1,9 +1,9 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { formatInr } from "./currency";
-import { DUMMY_FOOTPRINT } from "./dummy-data";
 
 type MisSummary = {
   asOfDate?: string;
@@ -20,6 +20,12 @@ export type DashboardMetrics = {
   totalExpectedPremium: number;
   totalPaidCompleted: number;
   paymentGap: number;
+};
+
+export type DashboardChartsPayload = {
+  asOfDate: string;
+  monthly: Array<{ year: number; month: number; monthLabel: string; premium: number }>;
+  productMix: Array<{ label: string; premium: number; percent: number }>;
 };
 
 type CardDef = {
@@ -60,10 +66,7 @@ function Trend({ trend }: { trend: CardDef["trend"] }) {
   );
 }
 
-function liveCardsFrom(
-  summary: MisSummary,
-  dashboard: DashboardMetrics | null,
-): CardDef[] {
+function liveCardsFrom(summary: MisSummary, dashboard: DashboardMetrics | null): CardDef[] {
   if (dashboard) {
     return [
       {
@@ -120,46 +123,47 @@ function liveCardsFrom(
   ];
 }
 
-const demoCards: CardDef[] = (() => {
-  const d = DUMMY_FOOTPRINT;
-  return [
-    {
-      title: "Active policies (sample)",
-      value: d.activePolicies.toLocaleString("en-IN"),
-      sub: "Across pilot villages",
-      trend: { label: "+12% vs last quarter", positive: true },
-    },
-    {
-      title: "Premium (YTD) — sample",
-      value: "₹2.34 Cr",
-      sub: "Illustrative; connect MIS for real totals",
-      trend: { label: "+5.2% vs prior year", positive: true },
-    },
-    {
-      title: "Villages on MediClaim (sample)",
-      value: String(d.villagesCovered),
-      sub: "Mapped clusters",
-      trend: { label: "3 new this month", positive: true },
-    },
-    {
-      title: "Renewals (30d) — sample",
-      value: d.renewalsMonth.toLocaleString("en-IN"),
-      sub: "Follow-ups queued",
-      trend: { label: "−2.1% vs last month", negative: true },
-    },
-  ];
-})();
+function MetricCardSkeleton() {
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+        <Skeleton className="h-4 w-28" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="mt-2 h-3 w-full max-w-48" />
+        <Skeleton className="mt-2 h-3 w-16" />
+      </CardContent>
+    </Card>
+  );
+}
 
 export function DashboardMetricCards({
   live,
   dashboard,
   canSeeMis,
+  loading,
 }: {
   live: MisSummary | null;
   dashboard: DashboardMetrics | null;
   canSeeMis: boolean;
+  loading: boolean;
 }) {
-  const cards = canSeeMis && live ? liveCardsFrom(live, dashboard) : demoCards;
+  if (!canSeeMis) {
+    return null;
+  }
+
+  if (loading || !live) {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <MetricCardSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  const cards = liveCardsFrom(live, dashboard);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

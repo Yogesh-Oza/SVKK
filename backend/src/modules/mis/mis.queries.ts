@@ -75,6 +75,39 @@ export async function queryVillagePaymentTotals(
   `;
 }
 
+export type MonthlyPremiumBucketRow = {
+  y: number;
+  m: number;
+  premium: string | null;
+};
+
+/**
+ * Sum of expected net premium by calendar month of `PolicyYear.policyStart` (rolling window ending at as-of).
+ */
+export async function queryDashboardMonthlyPremium(
+  prisma: PrismaClient,
+  args: { scopeOnP: Prisma.Sql; asOfDate: Date },
+): Promise<MonthlyPremiumBucketRow[]> {
+  const { end } = asOfDayBoundsUTC(args.asOfDate);
+  const d = new Date(args.asOfDate);
+  const rangeStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 11, 1, 0, 0, 0, 0));
+  return prisma.$queryRaw<MonthlyPremiumBucketRow[]>`
+    SELECT
+      YEAR(py.policyStart) AS y,
+      MONTH(py.policyStart) AS m,
+      COALESCE(SUM(py.expectedNetPremium), 0) AS premium
+    FROM PolicyYear py
+    INNER JOIN Policy p ON py.policyId = p.id AND p.deletedAt IS NULL
+    WHERE py.deletedAt IS NULL
+      AND py.policyStart IS NOT NULL
+      AND py.policyStart >= ${rangeStart}
+      AND py.policyStart <= ${end}
+      AND (${args.scopeOnP})
+    GROUP BY YEAR(py.policyStart), MONTH(py.policyStart)
+    ORDER BY y ASC, m ASC
+  `;
+}
+
 export type MemberAgeBucketRow = {
   bucketLabel: string;
   memberCount: bigint;

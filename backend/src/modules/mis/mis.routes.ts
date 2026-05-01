@@ -10,6 +10,7 @@ import {
   mergeDateRange,
 } from "../../services/mis-scope.service.js";
 import {
+  getDashboardCharts,
   getDashboardMetrics,
   getPolicyMemberReport,
   getVillageReport,
@@ -93,6 +94,33 @@ export function createMisRouter(_env: Env) {
           q.village,
         );
         res.json(m);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/dashboard-charts",
+    requirePermission("mis:read"),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            village: z.string().optional(),
+            asOfDate: z.string().optional(),
+          })
+          .parse(req.query);
+        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const asOf = parseAsOf({ asOfDate: q.asOfDate });
+        const charts = await getDashboardCharts(
+          req.userId!,
+          req.userRole!,
+          scope,
+          asOf,
+          q.village,
+        );
+        res.json(charts);
       } catch (e) {
         next(e);
       }
