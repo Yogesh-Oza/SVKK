@@ -18,6 +18,8 @@ type PolicyFilterMultiProps = {
   onChange: (next: string[]) => void;
   /** Outer card: border + soft gradient */
   accentClassName: string;
+  /** Merged onto popover content (e.g. taller list for many options). */
+  popoverContentClassName?: string;
 };
 
 export function PolicyFilterMulti({
@@ -27,6 +29,7 @@ export function PolicyFilterMulti({
   selected,
   onChange,
   accentClassName,
+  popoverContentClassName,
 }: PolicyFilterMultiProps) {
   const [open, setOpen] = useState(false);
   const sortedSelected = useMemo(() => [...selected].sort(), [selected]);
@@ -67,7 +70,13 @@ export function PolicyFilterMulti({
             <ChevronDown className="text-muted-foreground size-4 shrink-0 opacity-70" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-72 overflow-y-auto p-2" align="start">
+        <PopoverContent
+          className={cn(
+            "w-[var(--radix-popover-trigger-width)] max-h-72 overflow-y-auto overflow-x-hidden p-2",
+            popoverContentClassName,
+          )}
+          align="start"
+        >
           <div className="flex flex-col gap-0.5">
             {options.length === 0 ? (
               <p className="text-muted-foreground px-2 py-3 text-center text-xs">No options</p>

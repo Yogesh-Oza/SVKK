@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import { svkkJson } from "@/lib/svkk/api";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
@@ -135,21 +136,6 @@ const PAYMENT_MODES = [
   { value: "ONLINE", label: "Online transaction (UPI / NEFT ref.)" },
   { value: "CHEQUE", label: "Cheque" },
   { value: "CASH", label: "Cash" },
-] as const;
-
-const MONTH_OPTIONS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
 ] as const;
 
 const RELATIONSHIP_OPTIONS = [
@@ -868,7 +854,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Select month</SelectItem>
-                    {MONTH_OPTIONS.map((month) => (
+                    {POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER.map((month) => (
                       <SelectItem key={month} value={month}>
                         {month}
                       </SelectItem>

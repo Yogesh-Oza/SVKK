@@ -80,6 +80,20 @@ function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationIn
   return SORTS[s]!;
 }
 
+/** Include common casings so filters match `MARCH`, `March`, etc. on case-sensitive DB collations. */
+function expandPeriodMonthTextVariants(months: string[]): string[] {
+  const out = new Set<string>();
+  for (const m of months) {
+    const t = m.trim();
+    if (!t) continue;
+    out.add(t);
+    out.add(t.toUpperCase());
+    out.add(t.toLowerCase());
+    out.add(t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  }
+  return [...out];
+}
+
 export function buildPolicyListWhere(
   scope: MisScope,
   userId: string,
@@ -244,10 +258,9 @@ export function buildPolicyListWhere(
     });
   }
 
-  if (periodMonthList?.length === 1) {
-    extraParts.push({ periodMonthText: periodMonthList[0] });
-  } else if (periodMonthList && periodMonthList.length > 1) {
-    extraParts.push({ periodMonthText: { in: periodMonthList } });
+  if (periodMonthList?.length) {
+    const variants = expandPeriodMonthTextVariants(periodMonthList);
+    extraParts.push({ periodMonthText: { in: variants } });
   }
 
   if (areaList?.length === 1) {
@@ -440,7 +453,7 @@ export async function distinctFilterOptions(
     periodMonthTexts: mRows
       .map((r) => r.periodMonthText)
       .filter((x): x is string => x != null && x.length > 0)
-      .sort(),
+      .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })),
     policyGroupings,
   };
 }

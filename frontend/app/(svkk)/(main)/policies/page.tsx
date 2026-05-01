@@ -52,6 +52,7 @@ import {
   type PolicyFilterOption,
 } from "@/features/svkk-policies/policy-filter-multi";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -451,7 +452,7 @@ export default function SvkkPoliciesPage() {
     [meta?.periodYearTexts],
   );
   const monthOptions = useMemo<PolicyFilterOption[]>(
-    () => (meta?.periodMonthTexts ?? []).map((v) => ({ value: v, label: v })),
+    () => monthFilterOptionsFromMeta(meta?.periodMonthTexts ?? []),
     [meta?.periodMonthTexts],
   );
   const areaOptions = useMemo<PolicyFilterOption[]>(
@@ -1014,6 +1015,7 @@ export default function SvkkPoliciesPage() {
                   selected={periodMonths}
                   onChange={setPeriodMonths}
                   accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
+                  popoverContentClassName="max-h-[min(22rem,70vh)]"
                 />
                 <PolicyFilterMulti
                   label="Area"
