@@ -2,6 +2,23 @@ import type { AdMemberRow } from "./ad-member-types";
 import { emptyMemberRow } from "./ad-member-types";
 
 export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE" | "CASH";
+export type AdPolicyTransactionModeForm = "ONLINE" | "CHEQUE" | "CASH" | "NEFT";
+
+export type AdPolicyPaymentTransactionForm = {
+  mode: AdPolicyTransactionModeForm;
+  transactionNumber: string;
+  bankName: string;
+  branch: string;
+  accountNumber: string;
+  nameAsPerCheque: string;
+  ifscCode: string;
+  notOver: string;
+  transactionDate: string;
+  transactionStatus: "CLEARED" | "DISHONOURED" | "PENDING" | "";
+  dishonourReason: string;
+  returnCharges: string;
+  amountReceived: string;
+};
 
 export type AdPolicyFormValues = {
   policyNo: string;
@@ -14,6 +31,9 @@ export type AdPolicyFormValues = {
   panNo: string;
   company: string;
   tpa: string;
+  previousPolicyNo: string;
+  previousEndDate: string;
+  policyGroup: string;
   policyStart: string;
   policyEnd: string;
   village: string;
@@ -21,6 +41,8 @@ export type AdPolicyFormValues = {
   dob: string;
   age: string;
   relation: string;
+  holderJoiningDate: string;
+  holderAddOns: string;
   person: string;
   sumInsured: string;
   comulativeBonus: string;
@@ -39,9 +61,17 @@ export type AdPolicyFormValues = {
   chequeDate: string;
   chequeStatus: string;
   reasonDishonoured: string;
+  paymentTransactions: AdPolicyPaymentTransactionForm[];
   vkkPremium: string;
   coPremium: string;
   grossPremium: string;
+  taxPercent: string;
+  taxAmount: string;
+  svkkPremiumCalc: string;
+  netPremiumCalc: string;
+  vkkCommission: string;
+  contribution: string;
+  differenceAmountPaidByHolder: string;
   commission: string;
   twoLakhF: string;
   policyHolderPremium: string;
@@ -53,6 +83,7 @@ export type AdPolicyFormValues = {
   loanAmt: string;
   nomineeName: string;
   nomineeRelation: string;
+  nomineePhoneNumber: string;
   address: string;
   addressTwo: string;
   addressThree: string;
@@ -71,8 +102,11 @@ export type AdPolicyFormValues = {
   cdAmount: string;
   notCourier: string;
   courierDate: string;
+  courierCompany: string;
+  podNumber: string;
   courierAddress: string;
-  remark: string;
+  generalRemark: string;
+  policyChangeRemark: string;
   refNo: string;
   year: string;
   month: string;
@@ -91,6 +125,9 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     panNo: "",
     company: "",
     tpa: "",
+    previousPolicyNo: "",
+    previousEndDate: "",
+    policyGroup: "",
     policyStart: "",
     policyEnd: "",
     village: "",
@@ -98,6 +135,8 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     dob: "",
     age: "",
     relation: "",
+    holderJoiningDate: "",
+    holderAddOns: "",
     person: "",
     sumInsured: "",
     comulativeBonus: "",
@@ -116,9 +155,33 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     chequeDate: "",
     chequeStatus: "",
     reasonDishonoured: "",
+    paymentTransactions: [
+      {
+        mode: "ONLINE",
+        transactionNumber: "",
+        bankName: "",
+        branch: "",
+        accountNumber: "",
+        nameAsPerCheque: "",
+        ifscCode: "",
+        notOver: "",
+        transactionDate: "",
+        transactionStatus: "",
+        dishonourReason: "",
+        returnCharges: "",
+        amountReceived: "",
+      },
+    ],
     vkkPremium: "",
     coPremium: "",
     grossPremium: "",
+    taxPercent: "",
+    taxAmount: "",
+    svkkPremiumCalc: "",
+    netPremiumCalc: "",
+    vkkCommission: "",
+    contribution: "",
+    differenceAmountPaidByHolder: "",
     commission: "",
     twoLakhF: "",
     policyHolderPremium: "",
@@ -130,6 +193,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     loanAmt: "",
     nomineeName: "",
     nomineeRelation: "",
+    nomineePhoneNumber: "",
     address: "",
     addressTwo: "",
     addressThree: "",
@@ -148,8 +212,11 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     cdAmount: "",
     notCourier: "",
     courierDate: "",
+    courierCompany: "",
+    podNumber: "",
     courierAddress: "",
-    remark: "",
+    generalRemark: "",
+    policyChangeRemark: "",
     refNo: "",
     year: "",
     month: String(new Date().getMonth() + 1),

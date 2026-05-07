@@ -14,6 +14,11 @@ import { allocateCounter, formatSvkkId } from "../../services/counter.service.js
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { createPolicyBodySchema, type PolicyMemberReplaceRow } from "./policy.schemas.js";
+import {
+  ageOnDate,
+  generatePolicyPublicId,
+  generateReferenceNo,
+} from "./policy-business.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -75,9 +80,18 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     }
 
     if (!party) {
+      const generatedSvkkPublicId =
+        customSvkk ||
+        (input.policyGrouping && input.periodMonthText
+          ? await generatePolicyPublicId({
+              policyGrouping: input.policyGrouping,
+              month: input.periodMonthText,
+              tx,
+            })
+          : null);
       const svkkPublicId = customSvkk
         ? customSvkk
-        : formatSvkkId(period, await allocateCounter(CounterType.SVKK_PUBLIC_ID, period, tx));
+        : generatedSvkkPublicId || formatSvkkId(period, await allocateCounter(CounterType.SVKK_PUBLIC_ID, period, tx));
       try {
         party = await tx.insuredParty.create({
           data: {
@@ -117,6 +131,23 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         : (input.amountReceived != null ? input.amountReceived : null);
 
     const personsCount = input.personsInsuredCount ?? input.members.length;
+    const holderAgeAtExpiry = ageOnDate(
+      input.dateOfBirth ?? null,
+      input.previousEndDate ?? input.policyEnd ?? null,
+    );
+    const generatedReferenceNo =
+      input.referenceNo ||
+      (input.policyGrouping && input.periodMonthText && input.periodYearText
+        ? await generateReferenceNo({
+            policyGrouping: input.policyGrouping,
+            month: input.periodMonthText,
+            year: input.periodYearText,
+            tx,
+          })
+        : null);
+
+    const finalPolicyNo =
+      (input.policyNo?.trim() || "") || (input.previousPolicyNo?.trim() || "") || undefined;
 
     const policy = await tx.policy.create({
       data: {
@@ -124,7 +155,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         policyTypeId: input.policyTypeId,
         categoryId: input.categoryId ?? undefined,
         createdById: input.actorUserId,
-        policyNo: input.policyNo ?? undefined,
+        policyNo: finalPolicyNo,
         village: input.village ?? undefined,
         pod: input.pod ?? undefined,
         addressLine1: input.addressLine1 ?? undefined,
@@ -145,10 +176,10 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         tpa: input.tpa ?? undefined,
         categoryText: input.categoryText ?? undefined,
         holderRelationship: input.holderRelationship ?? undefined,
-        holderAge: input.holderAge ?? undefined,
+        holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
         personsInsuredCount: personsCount,
         area: input.area ?? undefined,
-        referenceNo: input.referenceNo ?? undefined,
+        referenceNo: generatedReferenceNo ?? undefined,
         mobileSecondary: input.mobileSecondary ?? undefined,
         policyGrouping: input.policyGrouping ?? undefined,
         policyUrl: input.policyUrl ?? undefined,
@@ -256,6 +287,26 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       });
     }
 
+    if (input.payments?.length) {
+      for (const paymentRow of input.payments) {
+        const mappedStatus =
+          paymentRow.status === "DISHONOURED"
+            ? PaymentStatus.FAILED
+            : paymentRow.status === "CLEARED"
+              ? PaymentStatus.COMPLETED
+              : PaymentStatus.PENDING;
+        await tx.payment.create({
+          data: {
+            policyYearId: year.id,
+            amount: paymentRow.amount,
+            method: paymentRow.method,
+            status: mappedStatus,
+            // Extended transaction columns are persisted after Prisma client regeneration.
+          },
+        });
+      }
+    }
+
     await syncPolicyListVkkPremium(tx, policy.id);
 
     return { party, policy, year };
@@ -286,6 +337,34 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       },
     },
   });
+}
+
+export async function allocateNextPolicyPublicId(input: {
+  policyGrouping: string;
+  month: string;
+}): Promise<string> {
+  return prisma.$transaction((tx) =>
+    generatePolicyPublicId({
+      policyGrouping: input.policyGrouping,
+      month: input.month,
+      tx,
+    }),
+  );
+}
+
+export async function allocateNextPolicyReferenceNo(input: {
+  policyGrouping: string;
+  month: string;
+  year: string;
+}): Promise<string> {
+  return prisma.$transaction((tx) =>
+    generateReferenceNo({
+      policyGrouping: input.policyGrouping,
+      month: input.month,
+      year: input.year,
+      tx,
+    }),
+  );
 }
 
 export async function resolveChartsForType(
@@ -365,7 +444,10 @@ export type PolicySectionPatch = {
   tpa?: string | null;
   categoryText?: string | null;
   holderRelationship?: string | null;
+  holderGender?: string | null;
   holderAge?: number | null;
+  holderJoiningDate?: Date | null;
+  holderAddOns?: number | null;
   personsInsuredCount?: number | null;
   area?: string | null;
   referenceNo?: string | null;
@@ -377,10 +459,15 @@ export type PolicySectionPatch = {
   refundChequeAmount?: number | null;
   refundChequeNo?: string | null;
   refundChequeDate?: Date | null;
+  previousPolicyNo?: string | null;
+  previousEndDate?: Date | null;
+  policyGroup?: string | null;
   cdAccountUsed?: boolean | null;
   cdAmount?: number | null;
   courierStatus?: string | null;
   courierDate?: Date | null;
+  courierCompany?: string | null;
+  podNumber?: string | null;
   courierAddress?: string | null;
   periodYearText?: string | null;
   periodMonthText?: string | null;
@@ -399,6 +486,15 @@ export type PolicyYearSectionPatch = {
   bankAccountLast4?: string | null;
   utrRef?: string | null;
   yearRemarks?: string | null;
+  taxPercent?: number | null;
+  taxAmount?: number | null;
+  svkkPremium?: number | null;
+  netPremium?: number | null;
+  vkkCommission?: number | null;
+  policyHolderContribution?: number | null;
+  premiumOneOrTwoLakh?: number | null;
+  gaamMahajanContribution?: number | null;
+  differenceAmountPaidByHolder?: number | null;
   vkkPremium?: number | null;
   grossPremium?: number | null;
   commissionAmount?: number | null;
@@ -572,6 +668,15 @@ export async function updatePolicySections(input: {
         y.bankAccountLast4,
         y.utrRef,
         y.yearRemarks,
+        y.taxPercent,
+        y.taxAmount,
+        y.svkkPremium,
+        y.netPremium,
+        y.vkkCommission,
+        y.policyHolderContribution,
+        y.premiumOneOrTwoLakh,
+        y.gaamMahajanContribution,
+        y.differenceAmountPaidByHolder,
         y.vkkPremium,
         y.grossPremium,
         y.commissionAmount,

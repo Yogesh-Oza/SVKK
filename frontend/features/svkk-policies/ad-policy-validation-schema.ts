@@ -5,35 +5,6 @@ const adProductValues = AD_PRODUCT_OPTIONS.map((o) => o.value) as unknown as [st
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
-function parseNum(s: string | undefined): number | undefined {
-  if (s == null) {
-    return undefined;
-  }
-  const t = s.replace(/,/g, "").trim();
-  if (!t) {
-    return undefined;
-  }
-  const n = Number(t);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function requiredAmount(message: string) {
-  return yup
-    .string()
-    .required(message)
-    .test("amount", "Enter a valid amount", (v) => parseNum(v) != null && (parseNum(v) as number) >= 0);
-}
-
-function requiredPositiveSum(message: string) {
-  return yup
-    .string()
-    .required(message)
-    .test("sum", "Enter a valid sum insured", (v) => {
-      const n = parseNum(v);
-      return n != null && n > 0;
-    });
-}
-
 const memberRowSchema = yup.object({
   name: yup.string().default(""),
   relationship: yup.string().default(""),
@@ -49,138 +20,73 @@ const memberRowSchema = yup.object({
 
 /** Validation for Add AD policy (mandatory fields per business rules). */
 export const adPolicyValidationSchema = yup.object({
-  svkkPublicId: yup.string().trim().required("SVKK ID is required"),
-  policyHolder: yup.string().trim().min(1, "Policy holder name is required"),
-  adProduct: yup.string().oneOf(adProductValues, "Select policy type").required("Policy type is required"),
-  customerId: yup.string().trim().required("Customer ID is required"),
+  svkkPublicId: yup.string().trim().optional(),
+  policyHolder: yup.string().trim().optional(),
+  adProduct: yup.string().oneOf(adProductValues, "Select policy type").optional(),
+  customerId: yup.string().trim().optional(),
   panNo: yup
     .string()
     .trim()
-    .required("PAN is required")
+    .optional()
     .transform((v) => (v ? v.toUpperCase() : v))
     .matches(PAN_RE, "Invalid PAN format"),
-  dob: yup.string().required("Date of birth is required"),
-  area: yup.string().trim().min(1, "Area is required"),
-  village: yup.string().trim().min(1, "Village is required"),
-  person: yup.string().trim().min(1, "No. of persons insured is required"),
-  cat: yup.string().trim().min(1, "Category is required"),
-  sumInsured: requiredPositiveSum("Sum insured is required"),
-  vkkPremium: requiredAmount("SVKK / VKK premium is required"),
-  coPremium: requiredAmount("Net premium is required"),
+  dob: yup.string().optional(),
+  area: yup.string().trim().optional(),
+  village: yup.string().trim().optional(),
+  person: yup.string().trim().optional(),
+  cat: yup.string().trim().optional(),
+  sumInsured: yup.string().optional(),
+  vkkPremium: yup.string().optional(),
+  coPremium: yup.string().optional(),
   paymentMode: yup
     .string()
-    .oneOf(["ONLINE", "CHEQUE", "CASH"], "Mode of payment is required")
-    .required("Mode of payment is required"),
+    .oneOf(["ONLINE", "CHEQUE", "CASH"], "Invalid mode of payment")
+    .optional(),
+  onlineTransactionRef: yup.string().optional(),
+  policyChequeNo: yup.string().optional(),
+  bank: yup.string().optional(),
+  accountNo: yup.string().optional(),
+  branch: yup.string().optional(),
+  nameAsPerCheque: yup.string().optional(),
+  ifsc: yup.string().optional(),
+  notOver: yup.string().optional(),
+  chequeDate: yup.string().optional(),
+  chequeStatus: yup.string().optional(),
+  reasonDishonoured: yup.string().optional(),
 
-  onlineTransactionRef: yup.string().when("paymentMode", {
-    is: "ONLINE",
-    then: (s) => s.trim().required("Online transaction / UTR reference is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
+  nomineeName: yup.string().trim().optional(),
+  nomineeRelation: yup.string().trim().optional(),
+  nomineePhoneNumber: yup.string().trim().optional(),
 
-  policyChequeNo: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Policy cheque no is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  bank: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Bank name is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  accountNo: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Account no is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  branch: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Branch is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  nameAsPerCheque: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Name as per cheque is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  ifsc: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("IFSC is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  notOver: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.trim().required("Not over is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  chequeDate: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) => s.required("Cheque date is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  chequeStatus: yup.string().when("paymentMode", {
-    is: "CHEQUE",
-    then: (s) =>
-      s
-        .oneOf(["CLEARED", "DISHONOURED"], "Select cheque status")
-        .required("Cheque status is required"),
-    otherwise: (s) => s.notRequired(),
-  }),
-  reasonDishonoured: yup
-    .string()
-    .test("reason-dish", "Reason for dishonoured is required", function (v) {
-      const p = this.parent as { paymentMode?: string; chequeStatus?: string };
-      if (p.paymentMode !== "CHEQUE" || p.chequeStatus !== "DISHONOURED") {
-        return true;
-      }
-      return Boolean(v && v.trim());
-    }),
+  address: yup.string().trim().optional(),
+  addressTwo: yup.string().trim().optional(),
+  addressThree: yup.string().trim().optional(),
+  addressFour: yup.string().trim().optional(),
 
-  nomineeName: yup.string().trim().min(1, "Nominee name is required"),
-  nomineeRelation: yup.string().trim().min(1, "Nominee relation is required"),
+  city: yup.string().trim().optional(),
+  pincode: yup.string().trim().optional(),
 
-  address: yup.string().trim().min(1, "Address is required"),
-  addressTwo: yup.string().trim().min(1, "Address two is required"),
-  addressThree: yup.string().trim().min(1, "Address three is required"),
-  addressFour: yup.string().trim().min(1, "Address four is required"),
-
-  city: yup.string().trim().min(1, "City is required"),
-  pincode: yup.string().trim().min(1, "Pin code is required"),
-
-  mobileFirst: yup
-    .string()
-    .required("Primary mobile is required")
-    .test("digits", "Enter a valid primary mobile (10+ digits)", (v) =>
-      Boolean(v && v.replace(/\D/g, "").length >= 10),
-    ),
-  mobileSecond: yup
-    .string()
-    .required("Secondary mobile is required")
-    .test("digits", "Enter a valid secondary mobile (10+ digits)", (v) =>
-      Boolean(v && v.replace(/\D/g, "").length >= 10),
-    ),
+  mobileFirst: yup.string().optional(),
+  mobileSecond: yup.string().optional(),
   whatsappNo: yup
     .string()
     .required("WhatsApp no. is required")
     .test("digits", "Enter a valid WhatsApp number (10+ digits)", (v) =>
       Boolean(v && v.replace(/\D/g, "").length >= 10),
     ),
+  email: yup.string().trim().email("Enter a valid email").required("Email ID is required"),
 
-  refNo: yup.string().trim().min(1, "Reference no is required"),
-  year: yup.string().trim().min(1, "Year is required"),
-  month: yup.string().trim().min(1, "Month is required"),
-  policyGrouping: yup.string().trim().min(1, "Policy grouping is required").required("Policy grouping is required"),
-  remark: yup.string().trim().min(1, "Remark is required"),
+  refNo: yup.string().trim().optional(),
+  year: yup.string().trim().optional(),
+  month: yup.string().trim().optional(),
+  policyGrouping: yup.string().trim().optional(),
+  generalRemark: yup.string().trim().optional(),
+  policyChangeRemark: yup.string().trim().optional(),
 
   members: yup
     .array()
     .of(memberRowSchema)
-    .test("members", "Add at least one member with name and date of birth", (arr) => {
-      if (!arr?.length) {
-        return false;
-      }
-      return arr.some((m) => m?.name?.trim() && m?.dob);
-    })
+    .test("members", "Members are invalid", (arr) => !arr || arr.length >= 0)
     .required(),
 
   // Optional / not validated (still in form)
@@ -205,7 +111,21 @@ export const adPolicyValidationSchema = yup.object({
   loanStatus: yup.string().optional(),
   loanNo: yup.string().optional(),
   loanAmt: yup.string().optional(),
-  email: yup.string().optional(),
+  previousPolicyNo: yup.string().optional(),
+  previousEndDate: yup.string().optional(),
+  policyGroup: yup.string().optional(),
+  holderJoiningDate: yup.string().optional(),
+  holderAddOns: yup.string().optional(),
+  courierCompany: yup.string().optional(),
+  podNumber: yup.string().optional(),
+  paymentTransactions: yup.array().optional(),
+  taxPercent: yup.string().optional(),
+  taxAmount: yup.string().optional(),
+  svkkPremiumCalc: yup.string().optional(),
+  netPremiumCalc: yup.string().optional(),
+  vkkCommission: yup.string().optional(),
+  contribution: yup.string().optional(),
+  differenceAmountPaidByHolder: yup.string().optional(),
   refundChequeAmt: yup.string().optional(),
   refundChequeNo: yup.string().optional(),
   refundChequeDate: yup.string().optional(),

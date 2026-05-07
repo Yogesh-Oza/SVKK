@@ -7,6 +7,7 @@ export type AdMemberRow = {
   sumInsured: string;
   cumulativeBonus: string;
   phNo: string;
+  addOnsAmount: string;
   basicPremium: string;
   gender: string;
 };
@@ -21,6 +22,7 @@ export function emptyMemberRow(): AdMemberRow {
     sumInsured: "",
     cumulativeBonus: "",
     phNo: "",
+    addOnsAmount: "",
     basicPremium: "",
     gender: "M",
   };

@@ -33,6 +33,19 @@ export function formatSvkkId(period: string, seq: number): string {
   return `SVKK-${period}-${String(seq).padStart(6, "0")}`;
 }
 
+export function formatPolicyPublicId(grouping: string, monthShort: string, seq: number): string {
+  const g = grouping.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  const m = monthShort.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 3);
+  return `${g}${m}${String(seq).padStart(4, "0")}`;
+}
+
+export function formatPolicyReferenceNo(grouping: string, year4: string, monthShort: string, seq: number): string {
+  const g = grouping.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  const y = String(year4).replace(/\D/g, "").slice(-4);
+  const m = monthShort.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 3);
+  return `${g}${y}${m}${String(seq).padStart(4, "0")}`;
+}
+
 export function formatReceiptNo(period: string, seq: number): string {
   return `REC-${period}-${String(seq).padStart(6, "0")}`;
 }

@@ -57,15 +57,22 @@ export type SvkkPolicyDetailForForm = {
   contactPhone: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
+  contactPhone: string | null;
   remarks: string | null;
   referenceNo: string | null;
   periodYearText: string | null;
   periodMonthText: string | null;
   holderRelationship: string | null;
+  holderGender: string | null;
+  holderJoiningDate: string | null;
+  holderAddOns: Decimalish;
   categoryText: string | null;
   mobileSecondary: string | null;
   loanStatus: string | null;
   loanAmount: Decimalish;
+  previousPolicyNo: string | null;
+  previousEndDate: string | null;
+  policyGroup: string | null;
   refundChequeAmount: Decimalish;
   refundChequeNo: string | null;
   refundChequeDate: string | null;
@@ -73,6 +80,8 @@ export type SvkkPolicyDetailForForm = {
   cdAmount: Decimalish;
   courierStatus: string | null;
   courierDate: string | null;
+  courierCompany: string | null;
+  podNumber: string | null;
   courierAddress: string | null;
   insuredParty: {
     svkkPublicId: string;
@@ -146,12 +155,44 @@ function groupingFromApi(g: string | null | undefined): string {
   return g?.trim() ?? "";
 }
 
+function parseRemarks(raw: string | null | undefined): { generalRemark: string; policyChangeRemark: string } {
+  const text = raw?.trim() ?? "";
+  if (!text) {
+    return { generalRemark: "", policyChangeRemark: "" };
+  }
+
+  const generalMarker = "General Remark:";
+  const policyMarker = "Policy Change Remark:";
+  const gIdx = text.indexOf(generalMarker);
+  const pIdx = text.indexOf(policyMarker);
+
+  if (gIdx !== -1 || pIdx !== -1) {
+    let generalRemark = "";
+    let policyChangeRemark = "";
+
+    if (gIdx !== -1) {
+      const gStart = gIdx + generalMarker.length;
+      const gEnd = pIdx !== -1 && pIdx > gStart ? pIdx : text.length;
+      generalRemark = text.slice(gStart, gEnd).trim();
+    }
+    if (pIdx !== -1) {
+      const pStart = pIdx + policyMarker.length;
+      policyChangeRemark = text.slice(pStart).trim();
+    }
+    return { generalRemark, policyChangeRemark };
+  }
+
+  // Backward-compatible: old single remark becomes general remark.
+  return { generalRemark: text, policyChangeRemark: "" };
+}
+
 /**
  * Maps the latest policy year (`years[0]` from API desc sort) into the same shape as Add policy.
  */
 export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPolicyFormValues {
   const base = getAdPolicyInitialValues();
   const y = row.years[0];
+  const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
   if (!y) {
     return base;
   }
@@ -241,6 +282,9 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     dob: holderDob,
     age: ageFromDob(row.insuredParty.dateOfBirth ?? ""),
     relation: row.holderRelationship ?? "",
+    holderGender: row.holderGender ?? "",
+    holderJoiningDate: isoToDateInput(row.holderJoiningDate ?? ""),
+    holderAddOns: decStr(row.holderAddOns),
     person: String(row.personsInsuredCount ?? y.members.length),
     sumInsured: decStr(y.sumInsured),
     comulativeBonus: decStr(y.holderCumulativeBonus),
@@ -271,8 +315,12 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     loanStatus: row.loanStatus ?? "",
     loanNo: "",
     loanAmt: decStr(row.loanAmount),
+    previousPolicyNo: row.previousPolicyNo ?? "",
+    previousEndDate: isoToDateInput(row.previousEndDate ?? ""),
+    policyGroup: row.policyGroup ?? "",
     nomineeName: row.nomineeName ?? "",
     nomineeRelation: row.nomineeRelation ?? "",
+    nomineePhoneNumber: row.contactPhone ?? "",
     address: row.addressLine1 ?? "",
     addressTwo: row.addressLine2 ?? "",
     addressThree: row.addressLine3 ?? "",
@@ -292,8 +340,19 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     cdAmount: decStr(row.cdAmount),
     notCourier: row.courierStatus ?? "",
     courierDate: isoToDateInput(row.courierDate ?? ""),
+    courierCompany: row.courierCompany ?? "",
+    podNumber: row.podNumber ?? "",
     courierAddress: row.courierAddress ?? "",
-    remark: row.remarks ?? "",
+    paymentTransactions: [],
+    taxPercent: "",
+    taxAmount: "",
+    svkkPremiumCalc: "",
+    netPremiumCalc: "",
+    vkkCommission: "",
+    contribution: "",
+    differenceAmountPaidByHolder: "",
+    generalRemark,
+    policyChangeRemark,
     refNo: row.referenceNo ?? "",
     year: row.periodYearText ?? "",
     month: row.periodMonthText ?? "",

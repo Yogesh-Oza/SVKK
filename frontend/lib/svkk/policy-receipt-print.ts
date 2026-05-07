@@ -6,6 +6,7 @@
 export type PolicyDetailForReceipt = {
   id?: string;
   policyNo: string | null;
+  previousPolicyNo?: string | null;
   referenceNo: string | null;
   adProductVariant?: string | null;
   area: string | null;
@@ -252,7 +253,7 @@ export function buildReceiptDocumentHtml(
     ["SVKK ID", p.insuredParty.svkkPublicId],
     ["Customer ID", p.insuredParty.customerId ?? "—"],
     ["Reference No.", ref],
-    ["Policy No.", p.policyNo ?? "—"],
+    ["Policy No.", p.policyNo?.trim() || p.previousPolicyNo?.trim() || "—"],
     ["Policy Holder Name", p.insuredParty.name],
     ["Policy Type", policyTypeLabel(p)],
     ["Category", cat],

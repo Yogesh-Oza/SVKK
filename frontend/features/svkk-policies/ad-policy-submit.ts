@@ -11,6 +11,33 @@ function parseNum(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function ageAtDate(dob: string, anchor: string): number | undefined {
+  if (!dob || !anchor) {
+    return undefined;
+  }
+  const dobDate = new Date(dob);
+  const anchorDate = new Date(anchor);
+  if (Number.isNaN(dobDate.getTime()) || Number.isNaN(anchorDate.getTime())) {
+    return undefined;
+  }
+  const diff = anchorDate.getTime() - dobDate.getTime();
+  if (diff < 0) {
+    return undefined;
+  }
+  return Math.floor(diff / (365.2425 * 24 * 60 * 60 * 1000));
+}
+
+function buildCombinedRemarks(values: AdPolicyFormValues): string | null {
+  const parts: string[] = [];
+  if (values.generalRemark.trim()) {
+    parts.push(`General Remark:\n${values.generalRemark.trim()}`);
+  }
+  if (values.policyChangeRemark.trim()) {
+    parts.push(`Policy Change Remark:\n${values.policyChangeRemark.trim()}`);
+  }
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
 export type SubmitAdPolicyParams = {
   values: AdPolicyFormValues;
   policyTypeId: string;
@@ -42,19 +69,10 @@ export async function submitAdPolicyRequest({
     throw new Error("Invalid sum insured");
   }
   const co = parseNum(values.coPremium);
+  const ageAnchor = values.previousEndDate || values.policyEnd;
+  const primaryPaymentMode = values.paymentTransactions[0]?.mode ?? values.paymentMode;
   const yearLabel = values.year.trim() || String(new Date().getFullYear());
-
-  const remarkParts: string[] = [];
-  if (values.remark?.trim()) {
-    remarkParts.push(values.remark.trim());
-  }
-  if (values.whatsappNo?.trim()) {
-    remarkParts.push(`WhatsApp: ${values.whatsappNo.trim()}`);
-  }
-  if (values.loanNo?.trim()) {
-    remarkParts.push(`Loan No: ${values.loanNo.trim()}`);
-  }
-  const combinedRemarks = remarkParts.length > 0 ? remarkParts.join("\n\n") : null;
+  const combinedRemarks = buildCombinedRemarks(values);
 
   const body: Record<string, unknown> = {
     mobile: values.mobileFirst.replace(/\D/g, "").slice(0, 12),
@@ -78,7 +96,11 @@ export async function submitAdPolicyRequest({
     tpa: values.tpa.trim() || null,
     categoryText: values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
-    holderAge: parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : null,
+    holderGender: values.holderGender.trim() || null,
+    holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,
+    holderAddOns: parseNum(values.holderAddOns) ?? null,
+    holderAge:
+      parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : ageAtDate(values.dob, ageAnchor) ?? null,
     personsInsuredCount:
       parseNum(values.person) != null ? Math.round(parseNum(values.person)!) : validMembers.length,
     area: values.area.trim() || null,
@@ -88,6 +110,9 @@ export async function submitAdPolicyRequest({
     policyUrl: values.url.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
+    previousPolicyNo: values.previousPolicyNo.trim() || null,
+    previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
+    policyGroup: values.policyGroup.trim() || null,
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
     refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,
@@ -95,6 +120,8 @@ export async function submitAdPolicyRequest({
     cdAmount: parseNum(values.cdAmount) ?? null,
     courierStatus: values.notCourier || null,
     courierDate: values.courierDate ? new Date(values.courierDate).toISOString() : null,
+    courierCompany: values.courierCompany.trim() || null,
+    podNumber: values.podNumber.trim() || null,
     courierAddress: values.courierAddress.trim() || null,
     periodYearText: values.year.trim() || null,
     periodMonthText: values.month.trim() || null,
@@ -107,10 +134,20 @@ export async function submitAdPolicyRequest({
     contactPhone: values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     nomineeName: values.nomineeName.trim() || null,
     nomineeRelation: values.nomineeRelation.trim() || null,
+    contactPhone: values.nomineePhoneNumber.trim() || values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     remarks: combinedRemarks,
     holderCumulativeBonus: parseNum(values.comulativeBonus) ?? null,
     holderJoiningYear: values.joiningYear.trim() || null,
     holderBasicPremium: parseNum(values.basicPremiumPs) ?? null,
+    taxPercent: parseNum(values.taxPercent) ?? null,
+    taxAmount: parseNum(values.taxAmount) ?? null,
+    svkkPremium: parseNum(values.svkkPremiumCalc) ?? null,
+    netPremium: parseNum(values.netPremiumCalc) ?? null,
+    vkkCommission: parseNum(values.vkkCommission) ?? null,
+    policyHolderContribution: parseNum(values.policyHolderPremium) ?? null,
+    premiumOneOrTwoLakh: parseNum(values.twoLakhF) ?? null,
+    gaamMahajanContribution: parseNum(values.contribution) ?? null,
+    differenceAmountPaidByHolder: parseNum(values.differenceAmountPaidByHolder) ?? null,
     vkkPremium: parseNum(values.vkkPremium) ?? null,
     grossPremium: parseNum(values.grossPremium) ?? null,
     commissionAmount: parseNum(values.commission) ?? null,
@@ -128,18 +165,38 @@ export async function submitAdPolicyRequest({
       cumulativeBonus: parseNum(m.cumulativeBonus) ?? null,
       dateOfJoining: m.dateOfJoining ? new Date(m.dateOfJoining).toISOString() : null,
       memberPhone: m.phNo.trim() || null,
+      addOnsAmount: parseNum(m.addOnsAmount) ?? null,
       basicPremium: parseNum(m.basicPremium) ?? null,
-      ageAtEntry: parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : null,
+      ageAtEntry:
+        parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : ageAtDate(m.dob, ageAnchor) ?? null,
     })),
+    payments: values.paymentTransactions
+      .filter((row) => parseNum(row.amountReceived) != null)
+      .map((row) => ({
+        amount: parseNum(row.amountReceived)!,
+        method:
+          row.mode === "CHEQUE" ? "CHQ" : row.mode === "NEFT" ? "NEFT" : row.mode === "CASH" ? "CASH" : "UPI",
+        status: row.transactionStatus || null,
+        transactionNumber: row.transactionNumber.trim() || null,
+        transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
+        bankName: row.bankName.trim() || null,
+        branchName: row.branch.trim() || null,
+        accountNumber: row.accountNumber.trim() || null,
+        nameAsPerCheque: row.nameAsPerCheque.trim() || null,
+        ifscCode: row.ifscCode.trim() || null,
+        notOver: row.notOver.trim() || null,
+        dishonourReason: row.dishonourReason.trim() || null,
+        returnCharges: parseNum(row.returnCharges) ?? null,
+      })),
   };
 
-  if (values.paymentMode === "ONLINE") {
+  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "NEFT") {
     body.paymentMode = "UPI";
     body.utrRef = values.onlineTransactionRef.trim() || null;
     if (co != null) {
       body.expectedNetPremium = co;
     }
-  } else if (values.paymentMode === "CHEQUE") {
+  } else if (primaryPaymentMode === "CHEQUE") {
     if (co == null) {
       throw new Error("Net premium is required for cheque payment.");
     }
@@ -171,7 +228,7 @@ export async function submitAdPolicyRequest({
     body.paymentMode = "CHQ";
     body.bankName = values.bank.trim() || null;
     body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
-  } else if (values.paymentMode === "CASH") {
+  } else if (primaryPaymentMode === "CASH") {
     body.paymentMode = "CASH";
   }
 
@@ -215,18 +272,9 @@ export async function submitAdPolicyPatchRequest({
     throw new Error("Invalid sum insured");
   }
   const co = parseNum(values.coPremium);
-
-  const remarkParts: string[] = [];
-  if (values.remark?.trim()) {
-    remarkParts.push(values.remark.trim());
-  }
-  if (values.whatsappNo?.trim()) {
-    remarkParts.push(`WhatsApp: ${values.whatsappNo.trim()}`);
-  }
-  if (values.loanNo?.trim()) {
-    remarkParts.push(`Loan No: ${values.loanNo.trim()}`);
-  }
-  const combinedRemarks = remarkParts.length > 0 ? remarkParts.join("\n\n") : null;
+  const ageAnchor = values.previousEndDate || values.policyEnd;
+  const primaryPaymentMode = values.paymentTransactions[0]?.mode ?? values.paymentMode;
+  const combinedRemarks = buildCombinedRemarks(values);
 
   const body: Record<string, unknown> = {
     expectedUpdatedAt,
@@ -249,8 +297,10 @@ export async function submitAdPolicyPatchRequest({
       cumulativeBonus: parseNum(m.cumulativeBonus) ?? null,
       dateOfJoining: m.dateOfJoining ? new Date(m.dateOfJoining).toISOString() : null,
       memberPhone: m.phNo.trim() || null,
+      addOnsAmount: parseNum(m.addOnsAmount) ?? null,
       basicPremium: parseNum(m.basicPremium) ?? null,
-      ageAtEntry: parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : null,
+      ageAtEntry:
+        parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : ageAtDate(m.dob, ageAnchor) ?? null,
     })),
     policyStart: values.policyStart ? new Date(values.policyStart).toISOString() : null,
     policyEnd: values.policyEnd ? new Date(values.policyEnd).toISOString() : null,
@@ -263,7 +313,11 @@ export async function submitAdPolicyPatchRequest({
     tpa: values.tpa.trim() || null,
     categoryText: values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
-    holderAge: parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : null,
+    holderGender: values.holderGender.trim() || null,
+    holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,
+    holderAddOns: parseNum(values.holderAddOns) ?? null,
+    holderAge:
+      parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : ageAtDate(values.dob, ageAnchor) ?? null,
     personsInsuredCount:
       parseNum(values.person) != null ? Math.round(parseNum(values.person)!) : validMembers.length,
     area: values.area.trim() || null,
@@ -273,6 +327,9 @@ export async function submitAdPolicyPatchRequest({
     policyUrl: values.url.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
+    previousPolicyNo: values.previousPolicyNo.trim() || null,
+    previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
+    policyGroup: values.policyGroup.trim() || null,
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
     refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,
@@ -280,6 +337,8 @@ export async function submitAdPolicyPatchRequest({
     cdAmount: parseNum(values.cdAmount) ?? null,
     courierStatus: values.notCourier || null,
     courierDate: values.courierDate ? new Date(values.courierDate).toISOString() : null,
+    courierCompany: values.courierCompany.trim() || null,
+    podNumber: values.podNumber.trim() || null,
     courierAddress: values.courierAddress.trim() || null,
     periodYearText: values.year.trim() || null,
     periodMonthText: values.month.trim() || null,
@@ -292,10 +351,20 @@ export async function submitAdPolicyPatchRequest({
     contactPhone: values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     nomineeName: values.nomineeName.trim() || null,
     nomineeRelation: values.nomineeRelation.trim() || null,
+    contactPhone: values.nomineePhoneNumber.trim() || values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     remarks: combinedRemarks,
     holderCumulativeBonus: parseNum(values.comulativeBonus) ?? null,
     holderJoiningYear: values.joiningYear.trim() || null,
     holderBasicPremium: parseNum(values.basicPremiumPs) ?? null,
+    taxPercent: parseNum(values.taxPercent) ?? null,
+    taxAmount: parseNum(values.taxAmount) ?? null,
+    svkkPremium: parseNum(values.svkkPremiumCalc) ?? null,
+    netPremium: parseNum(values.netPremiumCalc) ?? null,
+    vkkCommission: parseNum(values.vkkCommission) ?? null,
+    policyHolderContribution: parseNum(values.policyHolderPremium) ?? null,
+    premiumOneOrTwoLakh: parseNum(values.twoLakhF) ?? null,
+    gaamMahajanContribution: parseNum(values.contribution) ?? null,
+    differenceAmountPaidByHolder: parseNum(values.differenceAmountPaidByHolder) ?? null,
     vkkPremium: parseNum(values.vkkPremium) ?? null,
     grossPremium: parseNum(values.grossPremium) ?? null,
     commissionAmount: parseNum(values.commission) ?? null,
@@ -304,16 +373,34 @@ export async function submitAdPolicyPatchRequest({
     gaamMahajanVkk: parseNum(values.gaamMahajan) ?? null,
     excessShortAmount: parseNum(values.excessShort) ?? null,
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
+    payments: values.paymentTransactions
+      .filter((row) => parseNum(row.amountReceived) != null)
+      .map((row) => ({
+        amount: parseNum(row.amountReceived)!,
+        method:
+          row.mode === "CHEQUE" ? "CHQ" : row.mode === "NEFT" ? "NEFT" : row.mode === "CASH" ? "CASH" : "UPI",
+        status: row.transactionStatus || null,
+        transactionNumber: row.transactionNumber.trim() || null,
+        transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
+        bankName: row.bankName.trim() || null,
+        branchName: row.branch.trim() || null,
+        accountNumber: row.accountNumber.trim() || null,
+        nameAsPerCheque: row.nameAsPerCheque.trim() || null,
+        ifscCode: row.ifscCode.trim() || null,
+        notOver: row.notOver.trim() || null,
+        dishonourReason: row.dishonourReason.trim() || null,
+        returnCharges: parseNum(row.returnCharges) ?? null,
+      })),
   };
 
-  if (values.paymentMode === "ONLINE") {
+  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "NEFT") {
     body.paymentMode = "UPI";
     body.utrRef = values.onlineTransactionRef.trim() || null;
-  } else if (values.paymentMode === "CHEQUE") {
+  } else if (primaryPaymentMode === "CHEQUE") {
     body.paymentMode = "CHQ";
     body.bankName = values.bank.trim() || null;
     body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
-  } else if (values.paymentMode === "CASH") {
+  } else if (primaryPaymentMode === "CASH") {
     body.paymentMode = "CASH";
   }
 

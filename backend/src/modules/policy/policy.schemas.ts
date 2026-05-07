@@ -41,6 +41,15 @@ export const policyYearSectionSchema = z.object({
   bankAccountLast4: z.string().max(4).optional().nullable(),
   utrRef: z.string().max(100).optional().nullable(),
   yearRemarks: z.string().max(8000).optional().nullable(),
+  taxPercent: z.number().nonnegative().optional().nullable(),
+  taxAmount: z.number().nonnegative().optional().nullable(),
+  svkkPremium: z.number().nonnegative().optional().nullable(),
+  netPremium: z.number().nonnegative().optional().nullable(),
+  vkkCommission: z.number().nonnegative().optional().nullable(),
+  policyHolderContribution: z.number().nonnegative().optional().nullable(),
+  premiumOneOrTwoLakh: z.number().nonnegative().optional().nullable(),
+  gaamMahajanContribution: z.number().nonnegative().optional().nullable(),
+  differenceAmountPaidByHolder: z.number().optional().nullable(),
 });
 
 const initialPaymentSchema = z
@@ -71,6 +80,22 @@ const initialPaymentSchema = z
     }
   });
 
+const paymentEntrySchema = z.object({
+  amount: z.number().nonnegative(),
+  method: z.nativeEnum(PayMethod),
+  status: z.nativeEnum(ChequeStatus).optional().nullable(),
+  transactionNumber: z.string().max(120).optional().nullable(),
+  transactionDate: z.coerce.date().optional().nullable(),
+  bankName: z.string().max(200).optional().nullable(),
+  branchName: z.string().max(200).optional().nullable(),
+  accountNumber: z.string().max(64).optional().nullable(),
+  nameAsPerCheque: z.string().max(200).optional().nullable(),
+  ifscCode: z.string().max(20).optional().nullable(),
+  notOver: z.string().max(50).optional().nullable(),
+  dishonourReason: z.string().max(8000).optional().nullable(),
+  returnCharges: z.number().nonnegative().optional().nullable(),
+});
+
 export const memberCreateSchema = z.object({
   name: z.string().min(1),
   dob: z.coerce.date(),
@@ -81,6 +106,7 @@ export const memberCreateSchema = z.object({
   cumulativeBonus: z.number().nonnegative().nullish().optional(),
   dateOfJoining: z.coerce.date().nullish().optional(),
   memberPhone: z.string().max(20).nullish().optional(),
+  addOnsAmount: z.number().nonnegative().nullish().optional(),
   basicPremium: z.number().nonnegative().nullish().optional(),
   ageAtEntry: z.coerce.number().int().min(0).max(150).nullish().optional(),
 });
@@ -96,7 +122,10 @@ const adPolicyExtraSchema = z.object({
   tpa: z.string().max(200).optional().nullable(),
   categoryText: z.string().max(200).optional().nullable(),
   holderRelationship: z.string().max(100).optional().nullable(),
+  holderGender: z.string().max(16).optional().nullable(),
   holderAge: z.coerce.number().int().min(0).max(150).nullish().optional(),
+  holderJoiningDate: z.coerce.date().nullish().optional(),
+  holderAddOns: z.number().nonnegative().nullish().optional(),
   personsInsuredCount: z.coerce.number().int().min(0).nullish().optional(),
   area: z.string().max(200).optional().nullable(),
   referenceNo: z.string().max(100).optional().nullable(),
@@ -108,10 +137,15 @@ const adPolicyExtraSchema = z.object({
   refundChequeAmount: z.number().nonnegative().nullish().optional(),
   refundChequeNo: z.string().max(64).optional().nullable(),
   refundChequeDate: z.coerce.date().nullish().optional(),
+  previousPolicyNo: z.string().max(100).optional().nullable(),
+  previousEndDate: z.coerce.date().nullish().optional(),
+  policyGroup: z.string().max(32).optional().nullable(),
   cdAccountUsed: z.boolean().optional().nullable(),
   cdAmount: z.number().nonnegative().nullish().optional(),
   courierStatus: z.string().max(10).optional().nullable(),
   courierDate: z.coerce.date().nullish().optional(),
+  courierCompany: z.string().max(200).optional().nullable(),
+  podNumber: z.string().max(100).optional().nullable(),
   courierAddress: z.string().max(4000).optional().nullable(),
   periodYearText: z.string().max(20).optional().nullable(),
   periodMonthText: z.string().max(20).optional().nullable(),
@@ -150,6 +184,7 @@ export const createPolicyBodySchema = z
     pod: z.string().optional().nullable(),
     members: z.array(memberCreateSchema).min(1),
     initialPayment: initialPaymentSchema.optional(),
+    payments: z.array(paymentEntrySchema).optional(),
   })
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)
@@ -167,6 +202,15 @@ export const yearValueKeys = [
   "bankAccountLast4",
   "utrRef",
   "yearRemarks",
+  "taxPercent",
+  "taxAmount",
+  "svkkPremium",
+  "netPremium",
+  "vkkCommission",
+  "policyHolderContribution",
+  "premiumOneOrTwoLakh",
+  "gaamMahajanContribution",
+  "differenceAmountPaidByHolder",
   "vkkPremium",
   "grossPremium",
   "commissionAmount",
@@ -211,6 +255,7 @@ export const patchPolicyBodySchema = z
     expectedNetPremium: z.number().nonnegative().optional().nullable(),
     insuredParty: insuredPartyPatchSchema.optional(),
     members: z.array(memberCreateSchema).min(1).optional(),
+    payments: z.array(paymentEntrySchema).optional(),
   })
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)

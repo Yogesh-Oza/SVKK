@@ -47,6 +47,8 @@ enum PolicyChartKind {
 
 enum CounterType {
   SVKK_PUBLIC_ID
+  SVKK_POLICY_ID
+  POLICY_REFERENCE
   RECEIPT
 }
 
@@ -78,6 +80,7 @@ enum AdProductVariant {
   FAMILY_FLOATER
   INDIVIDUAL
   ASHA_KIRAN
+  SENIOR_CITIZEN
 }
 
 enum ChequeStatus {
@@ -89,23 +92,23 @@ enum ChequeStatus {
 }
 
 model User {
-  id                   String   @id @default(cuid())
-  email                String   @unique
-  passwordHash         String
-  name                 String
-  role                 UserRole @default(USER)
-  refreshTokenVersion  Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  passwordHash        String
+  name                String
+  role                UserRole @default(USER)
+  refreshTokenVersion Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  sessions             UserSession[]
-  activityLogs         ActivityLog[] @relation("ActivityActor")
-  csvJobs              CsvImportJob[]
-  claimsCreated        Claim[]       @relation("ClaimCreatedBy")
-  claimsApproved       Claim[]      @relation("ClaimApprovedBy")
-  userVillages         UserVillage[]
-  policiesCreated      Policy[]     @relation("PolicyCreatedBy")
-  idempotencyRecords   IdempotencyRecord[]
+  sessions           UserSession[]
+  activityLogs       ActivityLog[]       @relation("ActivityActor")
+  csvJobs            CsvImportJob[]
+  claimsCreated      Claim[]             @relation("ClaimCreatedBy")
+  claimsApproved     Claim[]             @relation("ClaimApprovedBy")
+  userVillages       UserVillage[]
+  policiesCreated    Policy[]            @relation("PolicyCreatedBy")
+  idempotencyRecords IdempotencyRecord[]
 }
 
 /// Villages (or zones) a SUPERVISOR may see in MIS and scoped policy lists. ADMIN/SUPER_ADMIN use full data (no rows required).
@@ -122,30 +125,30 @@ model UserVillage {
 }
 
 model UserSession {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceLabel String?
-  ipHash     String?
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
+  ipHash      String?
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
 
   @@index([userId])
 }
 
 model InsuredParty {
-  id            String   @id @default(cuid())
+  id           String    @id @default(cuid())
   /// External / legacy customer key; searchable
-  customerId    String?  @unique @db.VarChar(64)
-  mobile        String   @unique
-  svkkPublicId  String   @unique
-  name          String
-  email         String?
+  customerId   String?   @unique @db.VarChar(64)
+  mobile       String    @unique
+  svkkPublicId String    @unique
+  name         String
+  email        String?
   /// PAN: validate format in app; optional for incomplete records
-  pan           String?  @db.VarChar(20)
-  dateOfBirth   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  pan          String?   @db.VarChar(20)
+  dateOfBirth  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   policies Policy[]
   claims   Claim[]
@@ -163,33 +166,33 @@ model PolicyType {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  charts  PolicyChart[]
+  charts   PolicyChart[]
   policies Policy[]
 }
 
 /// Reference data for A/B/C/D, Asha Kiran, etc.
 model Category {
-  id        String        @id @default(cuid())
-  key       String        @unique
+  id        String       @id @default(cuid())
+  key       String       @unique
   name      String
   type      CategoryType
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
   policies  Policy[]
 
   @@index([type])
 }
 
 model PolicyChart {
-  id            String           @id @default(cuid())
+  id            String          @id @default(cuid())
   policyTypeId  String
-  policyType    PolicyType       @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+  policyType    PolicyType      @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
   version       Int
   effectiveFrom DateTime
-  chartKind     PolicyChartKind  @default(COMBINED)
+  chartKind     PolicyChartKind @default(COMBINED)
   /// JSON: { bands: { label, minAge, maxAge }[], siColumns: number[], matrix: number[][] }
   premiumMatrix Json
-  createdAt     DateTime         @default(now())
+  createdAt     DateTime        @default(now())
 
   policyYears PolicyYear[]
 
@@ -198,66 +201,74 @@ model PolicyChart {
 }
 
 model Policy {
-  id             String       @id @default(cuid())
-  insuredPartyId String
-  insuredParty   InsuredParty @relation(fields: [insuredPartyId], references: [id], onDelete: Restrict)
-  policyTypeId   String
-  policyType     PolicyType   @relation(fields: [policyTypeId], references: [id])
-  categoryId     String?
-  category       Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  policyNo       String?
-  village        String?
-  pod            String?
-  addressLine1   String?      @db.VarChar(256)
-  addressLine2   String?      @db.VarChar(256)
-  addressLine3   String?      @db.VarChar(256)
-  addressLine4   String?      @db.VarChar(256)
-  city           String?      @db.VarChar(120)
-  state          String?      @db.VarChar(120)
-  pincode        String?      @db.VarChar(20)
-  contactPhone   String?      @db.VarChar(20)
-  nomineeName    String?      @db.VarChar(200)
-  nomineeRelation String?     @db.VarChar(100)
-  loanRef        String?      @db.VarChar(120)
-  courierTracking String?     @db.VarChar(120)
-  remarks        String?      @db.Text
-  adProductVariant AdProductVariant?
-  insuranceCompany String?    @db.VarChar(200)
-  tpa              String?    @db.VarChar(200)
-  categoryText     String?    @db.VarChar(200)
-  holderRelationship String?  @db.VarChar(100)
-  holderAge        Int?
+  id                  String            @id @default(cuid())
+  insuredPartyId      String
+  insuredParty        InsuredParty      @relation(fields: [insuredPartyId], references: [id], onDelete: Restrict)
+  policyTypeId        String
+  policyType          PolicyType        @relation(fields: [policyTypeId], references: [id])
+  categoryId          String?
+  category            Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  policyNo            String?
+  village             String?
+  pod                 String?
+  addressLine1        String?           @db.VarChar(256)
+  addressLine2        String?           @db.VarChar(256)
+  addressLine3        String?           @db.VarChar(256)
+  addressLine4        String?           @db.VarChar(256)
+  city                String?           @db.VarChar(120)
+  state               String?           @db.VarChar(120)
+  pincode             String?           @db.VarChar(20)
+  contactPhone        String?           @db.VarChar(20)
+  nomineeName         String?           @db.VarChar(200)
+  nomineeRelation     String?           @db.VarChar(100)
+  loanRef             String?           @db.VarChar(120)
+  courierTracking     String?           @db.VarChar(120)
+  remarks             String?           @db.Text
+  adProductVariant    AdProductVariant?
+  insuranceCompany    String?           @db.VarChar(200)
+  tpa                 String?           @db.VarChar(200)
+  categoryText        String?           @db.VarChar(200)
+  holderRelationship  String?           @db.VarChar(100)
+  holderGender        String?           @db.VarChar(16)
+  holderAge           Int?
+  holderJoiningDate   DateTime?
+  holderAddOns        Decimal?          @db.Decimal(14, 2)
   personsInsuredCount Int?
-  area             String?    @db.VarChar(200)
+  area                String?           @db.VarChar(200)
   /// Legacy import key; unique when set (MySQL allows multiple NULLs)
-  referenceNo      String?    @unique @db.VarChar(255)
-  mobileSecondary  String?    @db.VarChar(20)
-  policyGrouping   String?      @db.VarChar(64)
-  policyUrl        String?    @db.VarChar(500)
-  loanStatus       String?    @db.VarChar(10)
-  loanAmount       Decimal?   @db.Decimal(14, 2)
-  refundChequeAmount Decimal? @db.Decimal(14, 2)
-  refundChequeNo   String?    @db.VarChar(64)
-  refundChequeDate DateTime?
-  cdAccountUsed    Boolean?
-  cdAmount         Decimal?   @db.Decimal(14, 2)
-  courierStatus    String?    @db.VarChar(10)
-  courierDate      DateTime?
-  courierAddress   String?    @db.Text
-  periodYearText   String?    @db.VarChar(20)
-  periodMonthText  String?    @db.VarChar(20)
+  referenceNo         String?           @unique @db.VarChar(255)
+  mobileSecondary     String?           @db.VarChar(20)
+  policyGrouping      String?           @db.VarChar(64)
+  policyUrl           String?           @db.VarChar(500)
+  loanStatus          String?           @db.VarChar(10)
+  loanAmount          Decimal?          @db.Decimal(14, 2)
+  refundChequeAmount  Decimal?          @db.Decimal(14, 2)
+  refundChequeNo      String?           @db.VarChar(64)
+  refundChequeDate    DateTime?
+  previousPolicyNo    String?           @db.VarChar(100)
+  previousEndDate     DateTime?
+  policyGroup         String?           @db.VarChar(32)
+  cdAccountUsed       Boolean?
+  cdAmount            Decimal?          @db.Decimal(14, 2)
+  courierStatus       String?           @db.VarChar(10)
+  courierDate         DateTime?
+  courierCompany      String?           @db.VarChar(200)
+  podNumber           String?           @db.VarChar(100)
+  courierAddress      String?           @db.Text
+  periodYearText      String?           @db.VarChar(20)
+  periodMonthText     String?           @db.VarChar(20)
   /// Denormalized: vkkPremium for the latest `yearLabel` (matches list preview). Kept in sync on PolicyYear writes.
-  listVkkPremium Decimal?    @db.Decimal(14, 2)
+  listVkkPremium      Decimal?          @db.Decimal(14, 2)
   /// Optimistic concurrency (also compare updatedAt on PATCH)
-  version        Int          @default(1)
-  createdById    String?
-  createdBy      User?        @relation("PolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
+  version             Int               @default(1)
+  createdById         String?
+  createdBy           User?             @relation("PolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deletedAt           DateTime?
 
-  years   PolicyYear[]
-  claims  Claim[]
+  years    PolicyYear[]
+  claims   Claim[]
   receipts Receipt[]
 
   @@unique([policyNo, policyTypeId])
@@ -270,42 +281,51 @@ model Policy {
 }
 
 model PolicyYear {
-  id             String      @id @default(cuid())
-  policyId       String
-  policy         Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
-  yearLabel      String
-  policyChartId  String
-  policyChart    PolicyChart @relation(fields: [policyChartId], references: [id], onDelete: Restrict)
-  policyStart     DateTime?
-  policyEnd       DateTime?
-  sumInsured      Decimal?    @db.Decimal(14, 2)
+  id                           String      @id @default(cuid())
+  policyId                     String
+  policy                       Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  yearLabel                    String
+  policyChartId                String
+  policyChart                  PolicyChart @relation(fields: [policyChartId], references: [id], onDelete: Restrict)
+  policyStart                  DateTime?
+  policyEnd                    DateTime?
+  sumInsured                   Decimal?    @db.Decimal(14, 2)
   /// Target premium for the year; reconciliation: sum(payments) vs this
-  expectedNetPremium Decimal? @db.Decimal(14, 2)
-  paymentMode     String?     @db.VarChar(32)
-  paymentType     String?     @db.VarChar(32)
-  amountReceived  Decimal?    @db.Decimal(14, 2)
-  bankName        String?     @db.VarChar(200)
-  bankAccountLast4 String?    @db.VarChar(4)
-  utrRef          String?     @db.VarChar(100)
-  yearRemarks     String?     @db.Text
-  holderCumulativeBonus Decimal? @db.Decimal(14, 2)
-  holderJoiningYear String?   @db.VarChar(20)
-  holderBasicPremium Decimal? @db.Decimal(14, 2)
-  vkkPremium      Decimal?    @db.Decimal(14, 2)
-  grossPremium    Decimal?    @db.Decimal(14, 2)
-  commissionAmount Decimal?   @db.Decimal(14, 2)
-  twoLacFloater   Decimal?    @db.Decimal(14, 2)
-  yearPolicyHolderPremium Decimal? @db.Decimal(14, 2)
-  gaamMahajanVkk  Decimal?    @db.Decimal(14, 2)
-  excessShortAmount Decimal?  @db.Decimal(14, 2)
-  diffPaidByHolder Decimal?   @db.Decimal(14, 2)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  deletedAt      DateTime?
+  expectedNetPremium           Decimal?    @db.Decimal(14, 2)
+  paymentMode                  String?     @db.VarChar(32)
+  paymentType                  String?     @db.VarChar(32)
+  amountReceived               Decimal?    @db.Decimal(14, 2)
+  bankName                     String?     @db.VarChar(200)
+  bankAccountLast4             String?     @db.VarChar(4)
+  utrRef                       String?     @db.VarChar(100)
+  yearRemarks                  String?     @db.Text
+  taxPercent                   Decimal?    @db.Decimal(7, 4)
+  taxAmount                    Decimal?    @db.Decimal(14, 2)
+  svkkPremium                  Decimal?    @db.Decimal(14, 2)
+  netPremium                   Decimal?    @db.Decimal(14, 2)
+  vkkCommission                Decimal?    @db.Decimal(14, 2)
+  policyHolderContribution     Decimal?    @db.Decimal(14, 2)
+  premiumOneOrTwoLakh          Decimal?    @db.Decimal(14, 2)
+  gaamMahajanContribution      Decimal?    @db.Decimal(14, 2)
+  differenceAmountPaidByHolder Decimal?    @db.Decimal(14, 2)
+  holderCumulativeBonus        Decimal?    @db.Decimal(14, 2)
+  holderJoiningYear            String?     @db.VarChar(20)
+  holderBasicPremium           Decimal?    @db.Decimal(14, 2)
+  vkkPremium                   Decimal?    @db.Decimal(14, 2)
+  grossPremium                 Decimal?    @db.Decimal(14, 2)
+  commissionAmount             Decimal?    @db.Decimal(14, 2)
+  twoLacFloater                Decimal?    @db.Decimal(14, 2)
+  yearPolicyHolderPremium      Decimal?    @db.Decimal(14, 2)
+  gaamMahajanVkk               Decimal?    @db.Decimal(14, 2)
+  excessShortAmount            Decimal?    @db.Decimal(14, 2)
+  diffPaidByHolder             Decimal?    @db.Decimal(14, 2)
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
+  deletedAt                    DateTime?
 
-  members   Member[]
-  receipts  Receipt[]
-  payments  Payment[]
+  members  Member[]
+  receipts Receipt[]
+  payments Payment[]
 
   @@unique([policyId, yearLabel])
   @@index([policyChartId])
@@ -313,21 +333,22 @@ model PolicyYear {
 }
 
 model Member {
-  id           String     @id @default(cuid())
-  policyYearId String
-  policyYear   PolicyYear @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
-  name         String
-  dob          DateTime
-  relationship String
-  gender       String
-  riderAmount  Decimal    @default(0) @db.Decimal(14, 2)
-  sumInsured   Decimal?   @db.Decimal(14, 2)
-  cumulativeBonus Decimal? @db.Decimal(14, 2)
-  dateOfJoining DateTime?
-  memberPhone  String?    @db.VarChar(20)
-  basicPremium Decimal?   @db.Decimal(14, 2)
-  ageAtEntry   Int?
-  deletedAt    DateTime?
+  id              String     @id @default(cuid())
+  policyYearId    String
+  policyYear      PolicyYear @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
+  name            String
+  dob             DateTime
+  relationship    String
+  gender          String
+  riderAmount     Decimal    @default(0) @db.Decimal(14, 2)
+  sumInsured      Decimal?   @db.Decimal(14, 2)
+  cumulativeBonus Decimal?   @db.Decimal(14, 2)
+  dateOfJoining   DateTime?
+  memberPhone     String?    @db.VarChar(20)
+  addOnsAmount    Decimal?   @db.Decimal(14, 2)
+  basicPremium    Decimal?   @db.Decimal(14, 2)
+  ageAtEntry      Int?
+  deletedAt       DateTime?
 
   @@index([policyYearId])
   @@index([dob, deletedAt])
@@ -335,37 +356,47 @@ model Member {
 
 /// Physical cheque; linked from Payment when method is CHQ
 model Cheque {
-  id        String         @id @default(cuid())
-  number    String         @db.VarChar(64)
-  bankName  String         @db.VarChar(200)
-  ifsc      String?        @db.VarChar(20)
-  status    ChequeStatus   @default(PENDING)
-  reason    String?        @db.Text
-  accountNo       String?  @db.VarChar(64)
-  branch          String?  @db.VarChar(200)
-  nameAsPerCheque String? @db.VarChar(200)
-  notOver         String?  @db.VarChar(50)
+  id              String       @id @default(cuid())
+  number          String       @db.VarChar(64)
+  bankName        String       @db.VarChar(200)
+  ifsc            String?      @db.VarChar(20)
+  status          ChequeStatus @default(PENDING)
+  reason          String?      @db.Text
+  accountNo       String?      @db.VarChar(64)
+  branch          String?      @db.VarChar(200)
+  nameAsPerCheque String?      @db.VarChar(200)
+  notOver         String?      @db.VarChar(50)
   chequeDate      DateTime?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  payments  Payment[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  payments        Payment[]
 
   @@index([status])
 }
 
 /// Money applied to a policy year; use for reconciliation vs expectedNetPremium
 model Payment {
-  id             String         @id @default(cuid())
-  policyYearId   String
-  policyYear     PolicyYear     @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
-  amount         Decimal        @db.Decimal(14, 2)
-  status         PaymentStatus  @default(PENDING)
-  method         PayMethod
-  chequeId       String?
-  cheque         Cheque?        @relation(fields: [chequeId], references: [id], onDelete: SetNull)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
+  id                String        @id @default(cuid())
+  policyYearId      String
+  policyYear        PolicyYear    @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
+  amount            Decimal       @db.Decimal(14, 2)
+  transactionNumber String?       @db.VarChar(120)
+  transactionDate   DateTime?
+  bankName          String?       @db.VarChar(200)
+  branchName        String?       @db.VarChar(200)
+  accountNumber     String?       @db.VarChar(64)
+  nameAsPerCheque   String?       @db.VarChar(200)
+  ifscCode          String?       @db.VarChar(20)
+  notOver           String?       @db.VarChar(50)
+  dishonourReason   String?       @db.Text
+  returnCharges     Decimal?      @db.Decimal(14, 2)
+  status            PaymentStatus @default(PENDING)
+  method            PayMethod
+  chequeId          String?
+  cheque            Cheque?       @relation(fields: [chequeId], references: [id], onDelete: SetNull)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
 
   @@index([policyYearId, deletedAt, status])
   @@index([chequeId])
@@ -431,36 +462,36 @@ model ActivityLog {
 
 /// POST idempotency: same (userId, idempotencyKey) + same bodyHash → return stored response
 model IdempotencyRecord {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  idempotencyKey  String   @db.VarChar(64)
-  bodyHash        String   @db.VarChar(64)
-  responseJson    String   @db.MediumText
-  httpStatus      Int      @default(201)
-  createdAt       DateTime @default(now())
-  expiresAt       DateTime
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idempotencyKey String   @db.VarChar(64)
+  bodyHash       String   @db.VarChar(64)
+  responseJson   String   @db.MediumText
+  httpStatus     Int      @default(201)
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
 
   @@unique([userId, idempotencyKey])
   @@index([expiresAt])
 }
 
 model CsvImportJob {
-  id               String         @id @default(cuid())
+  id               String        @id @default(cuid())
   s3Key            String
   checksum         String
   updateMode       CsvUpdateMode
-  dryRun           Boolean        @default(false)
-  status           CsvJobStatus   @default(PENDING)
+  dryRun           Boolean       @default(false)
+  status           CsvJobStatus  @default(PENDING)
   errorReportS3Key String?
   duplicateOfJobId String?
-  forceApplied     Boolean        @default(false)
+  forceApplied     Boolean       @default(false)
   rowCount         Int?
   successCount     Int?
   failCount        Int?
   createdById      String?
-  createdBy        User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt        DateTime       @default(now())
+  createdBy        User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
   completedAt      DateTime?
 
   @@index([checksum, updateMode])
@@ -468,25 +499,25 @@ model CsvImportJob {
 }
 
 model Claim {
-  id              String       @id @default(cuid())
-  claimNo         String       @unique
-  svkkPublicId    String
-  insuredPartyId  String?
-  insuredParty    InsuredParty? @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
-  policyId        String?
-  policy          Policy?      @relation(fields: [policyId], references: [id], onDelete: SetNull)
-  policyYear      String
-  patientName     String?
-  status          ClaimStatus  @default(PENDING)
-  claimAmount     Decimal?     @db.Decimal(14, 2)
-  approvedAmount  Decimal?     @db.Decimal(14, 2)
-  village         String?
-  createdById     String?
-  createdBy       User?        @relation("ClaimCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  approvedById    String?
-  approvedBy      User?        @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String        @id @default(cuid())
+  claimNo        String        @unique
+  svkkPublicId   String
+  insuredPartyId String?
+  insuredParty   InsuredParty? @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
+  policyId       String?
+  policy         Policy?       @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  policyYear     String
+  patientName    String?
+  status         ClaimStatus   @default(PENDING)
+  claimAmount    Decimal?      @db.Decimal(14, 2)
+  approvedAmount Decimal?      @db.Decimal(14, 2)
+  village        String?
+  createdById    String?
+  createdBy      User?         @relation("ClaimCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById   String?
+  approvedBy     User?         @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([svkkPublicId, policyYear])
   @@index([policyId])

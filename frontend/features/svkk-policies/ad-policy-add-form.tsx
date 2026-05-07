@@ -38,7 +38,6 @@ export type { AdMemberRow } from "./ad-member-types";
 
 type ChartRow = { id: string; version: number; chartKind: string };
 type PolicyTypeRow = { id: string; key: string; name: string };
-type CategoryItem = { id: string; key: string; name: string };
 type PolicyGroupingOptionItem = { id: string; name: string };
 type FiltersMeta = { policyGroupings?: string[] };
 type FetchMode = "fetch" | "new";
@@ -52,9 +51,7 @@ type AddSectionId =
   | "nominee_details"
   | "loan_details"
   | "courier"
-  | "remark"
-  | "ref_no"
-  | "receipt";
+  | "remark";
 type PolicyListRow = {
   id: string;
   insuredParty: { svkkPublicId: string; name: string; customerId: string | null };
@@ -73,32 +70,28 @@ const ADD_SECTIONS: ReadonlyArray<{ id: AddSectionId; label: string; ref: string
   { id: "policy_details", label: "Policy Details", ref: "section-policy-details" },
   { id: "policy_holder_details", label: "Policy Holder Details", ref: "section-policy-holder-details" },
   { id: "members_details", label: "Members Details", ref: "section-members-details" },
-  { id: "address_contacts", label: "Address & Contacts", ref: "section-address-contacts" },
+  { id: "address_contacts", label: "Contact Details", ref: "section-address-contacts" },
   { id: "premium_details", label: "Premium Details", ref: "section-premium-details" },
   { id: "payment_bank_details", label: "Payment & Bank Details", ref: "section-payment-bank-details" },
   { id: "nominee_details", label: "Nominee Details", ref: "section-nominee-details" },
-  { id: "loan_details", label: "Loan Details", ref: "section-loan-details" },
-  { id: "courier", label: "Courier", ref: "section-courier" },
+  { id: "loan_details", label: "Loan / CD / Refund", ref: "section-loan-details" },
+  { id: "courier", label: "Courier Details", ref: "section-courier" },
   { id: "remark", label: "Remark", ref: "section-remark" },
-  { id: "ref_no", label: "Ref No", ref: "section-ref-no" },
-  { id: "receipt", label: "Receipt", ref: "section-receipt" },
 ];
 
-function ageFromDob(iso: string): string {
-  if (!iso) {
+const POLICY_CATEGORY_OPTIONS = ["A", "B", "C", "D", "STAFF", "SVGA"] as const;
+
+function ageFromDobOnAnchor(iso: string, anchorIso: string): string {
+  if (!iso || !anchorIso) {
     return "";
   }
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
+  const dob = new Date(iso);
+  const anchor = new Date(anchorIso);
+  if (Number.isNaN(dob.getTime()) || Number.isNaN(anchor.getTime()) || anchor.getTime() < dob.getTime()) {
     return "";
   }
-  const t = new Date();
-  let a = t.getFullYear() - d.getFullYear();
-  const m = t.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) {
-    a -= 1;
-  }
-  return a >= 0 ? String(a) : "";
+  const years = Math.floor((anchor.getTime() - dob.getTime()) / (365.2425 * 24 * 60 * 60 * 1000));
+  return years >= 0 ? String(years) : "";
 }
 
 function parseInr(value: string): number {
@@ -120,22 +113,11 @@ const GENDERS = [
   { value: "O", label: "Other" },
 ];
 
-const CHEQUE_STATUS = [
-  { value: "none", label: "Select Cheque Status" },
-  { value: "CLEARED", label: "CLEARED" },
-  { value: "DISHONOURED", label: "DISHONOURED" },
-] as const;
 
 const YES_NO = [
   { value: "", label: "—" },
   { value: "YES", label: "YES" },
   { value: "NO", label: "NO" },
-] as const;
-
-const PAYMENT_MODES = [
-  { value: "ONLINE", label: "Online transaction (UPI / NEFT ref.)" },
-  { value: "CHEQUE", label: "Cheque" },
-  { value: "CASH", label: "Cash" },
 ] as const;
 
 const RELATIONSHIP_OPTIONS = [
@@ -173,7 +155,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const [policyTypeId, setPolicyTypeId] = useState("");
   const [policyChartId, setPolicyChartId] = useState("");
-  const [chartOpts, setChartOpts] = useState<ChartRow[]>([]);
   const [apiErr, setApiErr] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<SvkkPolicyDetailForForm | null>(null);
@@ -188,7 +169,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [fetchNotice, setFetchNotice] = useState<string | null>(null);
   const [fetchSuggestions, setFetchSuggestions] = useState<FetchSuggestion[]>([]);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [policyGroupings, setPolicyGroupings] = useState<PolicyGroupingOptionItem[]>([]);
   const [newPolicyGroupingName, setNewPolicyGroupingName] = useState("");
 
@@ -282,14 +262,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const charts = await svkkJson<ChartRow[]>(
       `/calculation/reference/charts?policyTypeId=${encodeURIComponent(ad.id)}`,
     );
-    setChartOpts(charts);
     const h = charts.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
     setPolicyChartId(h?.id ?? charts[0]?.id ?? "");
-  }, []);
-
-  const loadCategories = useCallback(async () => {
-    const res = await svkkJson<{ items: CategoryItem[] }>("/categories");
-    setCategories(res.items);
   }, []);
 
   const loadPolicyGroupings = useCallback(async () => {
@@ -407,25 +381,87 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [fetchPoliciesBySvkkId],
   );
 
+  const requestAutoIds = useCallback(
+    async (policyGrouping: string, month: string, year: string) => {
+      const trimmedGrouping = policyGrouping.trim();
+      const trimmedMonth = month.trim();
+      const trimmedYear = year.trim();
+      if (!trimmedGrouping || !trimmedMonth) {
+        return { svkkPublicId: "", referenceNo: "" };
+      }
+      const svkkPromise = svkkJson<{ svkkPublicId: string }>(
+        `/policies/next-svkk-id?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}`,
+      );
+      const refPromise =
+        trimmedYear.length > 0
+          ? svkkJson<{ referenceNo: string }>(
+              `/policies/next-reference-no?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}&year=${encodeURIComponent(trimmedYear)}`,
+            )
+          : Promise.resolve({ referenceNo: "" });
+      const [svkkRes, refRes] = await Promise.all([svkkPromise, refPromise]);
+      return {
+        svkkPublicId: svkkRes.svkkPublicId ?? "",
+        referenceNo: refRes.referenceNo ?? "",
+      };
+    },
+    [],
+  );
+
   const startNewPolicy = useCallback(async () => {
+    let nextSvkkId = "";
+    let nextReferenceNo = "";
+    try {
+      const generated = await requestAutoIds(values.policyGrouping, values.month, values.year);
+      nextSvkkId = generated.svkkPublicId;
+      nextReferenceNo = generated.referenceNo;
+    } catch {
+      nextSvkkId = "";
+      nextReferenceNo = "";
+    }
     await formik.setValues({
       ...getAdPolicyInitialValues(),
-      svkkPublicId: fetchSvkkId.trim(),
+      svkkPublicId: nextSvkkId,
       policyHolder: fetchHolderName.trim(),
       year: values.year,
       month: values.month,
+      policyGrouping: values.policyGrouping,
+      refNo: nextReferenceNo,
     });
     setFetchMode("new");
-    setFetchNotice("New policy started.");
-  }, [formik, fetchSvkkId, fetchHolderName, values.year, values.month]);
+    setFetchNotice(
+      nextSvkkId
+        ? `New policy started. SVKK ID auto generated: ${nextSvkkId}`
+        : "New policy started. Select Policy Grouping + Month to auto-generate SVKK ID.",
+    );
+  }, [formik, fetchHolderName, requestAutoIds, values.year, values.month, values.policyGrouping]);
 
   const carryForwardPolicy = useCallback(async () => {
     if (!selectedFetchId) {
       setFetchNotice("Select a prior-year policy first.");
       return;
     }
-    await loadPolicyDetailIntoForm(selectedFetchId, "Carry Forward / Renew copied all prior fields.");
-  }, [loadPolicyDetailIntoForm, selectedFetchId]);
+    const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
+    const carriedValues = policyDetailToAdFormValues(row);
+    const prevYear = Number(carriedValues.year.replace(/\D/g, "").slice(0, 4));
+    const shiftedYear = Number.isFinite(prevYear) && prevYear > 0 ? String(prevYear + 1) : carriedValues.year;
+    let nextReferenceNo = carriedValues.refNo;
+    try {
+      const generated = await requestAutoIds(carriedValues.policyGrouping, carriedValues.month, shiftedYear);
+      nextReferenceNo = generated.referenceNo || nextReferenceNo;
+    } catch {
+      // keep existing reference if generator fails
+    }
+    await formik.setValues({
+      ...carriedValues,
+      year: shiftedYear,
+      previousPolicyNo: carriedValues.policyNo,
+      previousEndDate: carriedValues.policyEnd,
+      policyNo: carriedValues.policyNo || carriedValues.previousPolicyNo,
+      refNo: nextReferenceNo,
+    });
+    setFetchMode("fetch");
+    setFetchNotice("Carry Forward / Renew copied all prior fields.");
+  }, [formik, requestAutoIds, selectedFetchId]);
 
   const selectYearPolicy = useCallback(
     async (id: string) => {
@@ -446,12 +482,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void (async () => {
       setLoadErr(null);
       try {
-        await Promise.all([loadAdPolicyType(), loadCategories(), loadPolicyGroupings()]);
+        await Promise.all([loadAdPolicyType(), loadPolicyGroupings()]);
       } catch (e) {
         setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
       }
     })();
-  }, [missingUrl, loadAdPolicyType, loadCategories, loadPolicyGroupings, isEdit]);
+  }, [missingUrl, loadAdPolicyType, loadPolicyGroupings, isEdit]);
 
   useEffect(() => {
     if (missingUrl || !isEdit || !policyId) {
@@ -474,6 +510,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     const query = fetchSvkkId.trim() || fetchHolderName.trim();
     if (query.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFetchSuggestions([]);
       return;
     }
@@ -483,15 +520,31 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     return () => clearTimeout(timer);
   }, [isEdit, missingUrl, fetchSvkkId, fetchHolderName, loadFetchSuggestions]);
 
+  const ageAnchorDate = values.previousEndDate || values.policyEnd;
+
   useEffect(() => {
-    void setFieldValue("age", ageFromDob(values.dob));
-  }, [values.dob, setFieldValue]);
+    void setFieldValue("age", ageFromDobOnAnchor(values.dob, ageAnchorDate));
+  }, [values.dob, ageAnchorDate, setFieldValue]);
+
+  useEffect(() => {
+    if (!values.members.length) {
+      return;
+    }
+    const next = values.members.map((member) => ({
+      ...member,
+      age: ageFromDobOnAnchor(member.dob, ageAnchorDate),
+    }));
+    const changed = next.some((member, index) => member.age !== values.members[index]?.age);
+    if (changed) {
+      void setFieldValue("members", next);
+    }
+  }, [ageAnchorDate, setFieldValue, values.members]);
 
   const updateMember = (i: number, patch: Partial<AdMemberRow>) => {
     const next = [...values.members];
     next[i] = { ...next[i]!, ...patch };
     if (patch.dob !== undefined) {
-      next[i]!.age = ageFromDob(next[i]!.dob);
+      next[i]!.age = ageFromDobOnAnchor(next[i]!.dob, ageAnchorDate);
     }
     void setFieldValue("members", next);
   };
@@ -505,7 +558,83 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       "members",
       values.members.filter((_, j) => j !== i),
     );
+    const nextCount = Math.max(values.members.length - 1, 1);
+    void setFieldValue("person", String(nextCount));
   };
+
+  const addPaymentTransaction = () => {
+    void setFieldValue("paymentTransactions", [
+      ...values.paymentTransactions,
+      {
+        mode: "ONLINE",
+        transactionNumber: "",
+        bankName: "",
+        branch: "",
+        accountNumber: "",
+        nameAsPerCheque: "",
+        ifscCode: "",
+        notOver: "",
+        transactionDate: "",
+        transactionStatus: "",
+        dishonourReason: "",
+        returnCharges: "",
+        amountReceived: "",
+      },
+    ]);
+  };
+
+  const removePaymentTransaction = (index: number) => {
+    if (values.paymentTransactions.length <= 1) {
+      return;
+    }
+    void setFieldValue(
+      "paymentTransactions",
+      values.paymentTransactions.filter((_, i) => i !== index),
+    );
+  };
+
+  useEffect(() => {
+    const parsed = Number(values.person);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return;
+    }
+    const requiredMembers = Math.max(Math.floor(parsed) - 1, 0);
+    if (values.members.length < requiredMembers) {
+      const next = [...values.members];
+      while (next.length < requiredMembers) {
+        next.push(emptyMemberRow());
+      }
+      void setFieldValue("members", next);
+    } else if (values.members.length > requiredMembers && requiredMembers >= 0) {
+      void setFieldValue("members", values.members.slice(0, requiredMembers));
+    }
+  }, [values.person, values.members, setFieldValue]);
+
+  useEffect(() => {
+    const gross = parseInr(values.grossPremium);
+    const taxPercent = parseInr(values.taxPercent);
+    const net = parseInr(values.coPremium);
+    const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
+    const taxAmount = gross * (taxPercent / 100);
+    const svkkPremium = gross + taxAmount;
+    const vkkCommission = gross * 0.15 * 0.5;
+    let holderPremium = net;
+    const category = values.cat.toUpperCase();
+    if (category === "C") holderPremium = 3000;
+    else if (category === "B") holderPremium = net * 0.5;
+    else if (category === "A" || category === "D") holderPremium = net;
+    const contribution = oneOrTwoLakhPremium - holderPremium;
+    const differenceAmountPaidByHolder = net - (oneOrTwoLakhPremium + holderPremium);
+    void setFieldValue("taxAmount", taxAmount ? String(taxAmount) : "");
+    void setFieldValue("svkkPremiumCalc", svkkPremium ? String(svkkPremium) : "");
+    void setFieldValue("netPremiumCalc", net ? String(net) : "");
+    void setFieldValue("vkkCommission", vkkCommission ? String(vkkCommission) : "");
+    void setFieldValue("contribution", contribution ? String(contribution) : "");
+    void setFieldValue(
+      "differenceAmountPaidByHolder",
+      differenceAmountPaidByHolder ? String(differenceAmountPaidByHolder) : "",
+    );
+  }, [values.grossPremium, values.taxPercent, values.coPremium, values.twoLakhF, values.cat, setFieldValue]);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -778,7 +907,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
-                <RequiredLabel>SVKK ID</RequiredLabel>
+                <Label>SVKK ID</Label>
                 <Input
                   name="svkkPublicId"
                   value={values.svkkPublicId}
@@ -786,10 +915,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onBlur={handleBlur}
                   autoComplete="off"
                 />
-                <FormikError name="svkkPublicId" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Customer ID</RequiredLabel>
+                <Label>Customer ID</Label>
                 <Input
                   name="customerId"
                   value={values.customerId}
@@ -797,14 +925,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onBlur={handleBlur}
                   autoComplete="off"
                 />
-                <FormikError name="customerId" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Policy No</Label>
                 <Input name="policyNo" value={values.policyNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Policy Type</RequiredLabel>
+                <Label>Policy Type</Label>
                 <Select
                   value={values.adProduct || "__none__"}
                   onValueChange={(v) => void setFieldValue("adProduct", v === "__none__" ? "" : v)}
@@ -821,10 +948,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ))}
                   </SelectContent>
                 </Select>
-                <FormikError name="adProduct" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Category</RequiredLabel>
+                <Label>Category</Label>
                 <Select
                   value={values.cat || "__none__"}
                   onValueChange={(v) => void setFieldValue("cat", v === "__none__" ? "" : v)}
@@ -834,17 +960,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Select category</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.key}>
-                        {c.key} — {c.name}
+                    {POLICY_CATEGORY_OPTIONS.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <FormikError name="cat" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Month</RequiredLabel>
+                <Label>Month</Label>
                 <Select
                   value={values.month || "__none__"}
                   onValueChange={(v) => void setFieldValue("month", v === "__none__" ? "" : v)}
@@ -861,35 +986,29 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ))}
                   </SelectContent>
                 </Select>
-                <FormikError name="month" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Year</RequiredLabel>
+                <Label>Year</Label>
                 <Input name="year" value={values.year} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 2025-26" />
-                <FormikError name="year" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Sum Insured (SI)</RequiredLabel>
+                <Label>Sum Insured (SI)</Label>
                 <Input name="sumInsured" value={values.sumInsured} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="sumInsured" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Person</RequiredLabel>
+                <Label>Person</Label>
                 <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 2" />
-                <FormikError name="person" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Village</RequiredLabel>
+                <Label>Village</Label>
                 <Input name="village" value={values.village} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Area</RequiredLabel>
+                <Label>Area</Label>
                 <Input name="area" value={values.area} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="area" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Grouping</RequiredLabel>
+                <Label>Grouping</Label>
                 <Select
                   value={values.policyGrouping || "none"}
                   onValueChange={(v) => void setFieldValue("policyGrouping", v === "none" ? "" : v)}
@@ -906,7 +1025,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ))}
                   </SelectContent>
                 </Select>
-                <FormikError name="policyGrouping" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               {canManageGroupings ? (
                 <div className="space-y-2 sm:col-span-2 lg:col-span-4">
@@ -940,6 +1058,38 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2">
+                <Label>Previous Policy No</Label>
+                <Input name="previousPolicyNo" value={values.previousPolicyNo} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label>Previous End Date (Age anchor)</Label>
+                <Input
+                  name="previousEndDate"
+                  type="date"
+                  value={values.previousEndDate}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Policy Group</Label>
+                <Select
+                  value={values.policyGroup || "__none__"}
+                  onValueChange={(v) => void setFieldValue("policyGroup", v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select policy group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select policy group</SelectItem>
+                    <SelectItem value="SVKK">SVKK</SelectItem>
+                    <SelectItem value="NVKK">NVKK</SelectItem>
+                    <SelectItem value="RTY">RTY</SelectItem>
+                    <SelectItem value="OTHER">OTHER</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Policy Start</Label>
                 <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
               </div>
@@ -950,6 +1100,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <div className="space-y-2">
                 <Label>TPA</Label>
                 <Input name="tpa" value={values.tpa} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cumulative Bonus</Label>
+                <Input
+                  name="comulativeBonus"
+                  value={values.comulativeBonus}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference No</Label>
+                <Input name="refNo" value={values.refNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2 sm:col-span-2 lg:col-span-4">
                 <Label>Policy URL</Label>
@@ -983,11 +1146,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           <Card id="section-policy-holder-details">
             <CardHeader>
               <CardTitle>Policy Holder Details</CardTitle>
-              <CardDescription>Holder name, DOB, PAN, and relationship.</CardDescription>
+              <CardDescription>
+                Holder Name, PAN, Village, DOB, Age (auto from policy expiry), Relationship, Joining Date, Gender, Add-ons.
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2 sm:col-span-2">
-                <RequiredLabel>Policy Holder Name</RequiredLabel>
+                <Label>Holder Name</Label>
                 <Input
                   name="policyHolder"
                   value={values.policyHolder}
@@ -995,10 +1160,25 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onBlur={handleBlur}
                   autoComplete="name"
                 />
-                <FormikError name="policyHolder" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel htmlFor={`${idPrefix}-dob`}>Holder DOB</RequiredLabel>
+                <Label>PAN Card</Label>
+                <Input
+                  id={`${idPrefix}-pan`}
+                  name="panNo"
+                  value={values.panNo}
+                  onChange={(e) => void setFieldValue("panNo", e.target.value.toUpperCase())}
+                  onBlur={handleBlur}
+                  maxLength={10}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Village</Label>
+                <Input name="village" value={values.village} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
                 <Input
                   id={`${idPrefix}-dob`}
                   name="dob"
@@ -1007,11 +1187,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onChange={handleChange}
                   onBlur={handleBlur}
                 />
-                <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Holder Gender</Label>
-                <p className="text-muted-foreground text-xs">Not saved to server yet; use for office records only.</p>
+                <Label>Gender</Label>
                 <Select
                   value={values.holderGender ? values.holderGender : "__none__"}
                   onValueChange={(v) => void setFieldValue("holderGender", v === "__none__" ? "" : v)}
@@ -1030,21 +1208,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 </Select>
               </div>
               <div className="space-y-2">
-                <RequiredLabel htmlFor={`${idPrefix}-pan`}>PAN</RequiredLabel>
-                <Input
-                  id={`${idPrefix}-pan`}
-                  name="panNo"
-                  value={values.panNo}
-                  onChange={(e) => void setFieldValue("panNo", e.target.value.toUpperCase())}
-                  onBlur={handleBlur}
-                  maxLength={10}
-                  autoComplete="off"
-                />
-                <FormikError name="panNo" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
                 <Label>Relationship</Label>
                 <Input name="relation" value={values.relation} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label>Joining Date</Label>
+                <Input
+                  name="holderJoiningDate"
+                  type="date"
+                  value={values.holderJoiningDate}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Add-ons (Amount rs)</Label>
+                <Input
+                  name="holderAddOns"
+                  value={values.holderAddOns}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Age</Label>
@@ -1057,8 +1241,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {activeSection === "members_details" ? (
         <Card id="section-members-details">
           <CardHeader>
-            <CardTitle>Insured members</CardTitle>
-            <CardDescription>Per-member sum insured, bonus, and premium</CardDescription>
+            <CardTitle>Members Details</CardTitle>
+            <CardDescription>
+              Member Name, Relation, Date of Birth, Age, Gender, Joining Date, Sum Insured, Cumulative Bonus, Phone Number, Add ons.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {values.members.map((m, i) => (
@@ -1069,7 +1255,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <p className="text-muted-foreground mb-2 text-xs font-medium">Member {i + 1}</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1">
-                    <Label>Name</Label>
+                    <Label>Member Name</Label>
                     <Input
                       name={`members[${i}].name`}
                       value={m.name}
@@ -1078,7 +1264,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Relationship</Label>
+                    <Label>Relation</Label>
                     <Select
                       value={m.relationship || "__none__"}
                       onValueChange={(v) => updateMember(i, { relationship: v === "__none__" ? "" : v })}
@@ -1097,7 +1283,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label>DOB</Label>
+                    <Label>Date of Birth</Label>
                     <Input
                       type="date"
                       name={`members[${i}].dob`}
@@ -1105,7 +1291,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       onChange={(e) => {
                         const d = e.target.value;
                         void setFieldValue(`members[${i}].dob`, d);
-                        void setFieldValue(`members[${i}].age`, ageFromDob(d));
+                        void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
                       }}
                       onBlur={handleBlur}
                     />
@@ -1115,7 +1301,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input name={`members[${i}].age`} value={m.age} readOnly className="bg-muted" />
                   </div>
                   <div className="space-y-1">
-                    <Label>Date of Joining</Label>
+                    <Label>Joining Date</Label>
                     <Input
                       type="date"
                       name={`members[${i}].dateOfJoining`}
@@ -1143,7 +1329,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Phone</Label>
+                    <Label>Phone Number</Label>
                     <Input
                       name={`members[${i}].phNo`}
                       value={m.phNo}
@@ -1151,6 +1337,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       onBlur={handleBlur}
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label>Add ons</Label>
+                    <Input
+                      name={`members[${i}].addOnsAmount`}
+                      value={m.addOnsAmount}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </div>
+                  {values.members.length > 1 ? (
+                    <div className="space-y-1">
+                      <Label>Remove Member</Label>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="destructive"
+                        className="shrink-0"
+                        onClick={() => removeMember(i)}
+                        aria-label="Remove member"
+                      >
+                        <Minus className="size-4" />
+                      </Button>
+                    </div>
+                  ) : null}
                   <div className="space-y-1">
                     <Label>Gender</Label>
                     <Select value={m.gender} onValueChange={(v) => updateMember(i, { gender: v })}>
@@ -1165,30 +1375,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-1 lg:col-span-2">
-                    <Label>Basic Premium</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        name={`members[${i}].basicPremium`}
-                        value={m.basicPremium}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        className="flex-1"
-                      />
-                      {values.members.length > 1 ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="destructive"
-                          className="shrink-0"
-                          onClick={() => removeMember(i)}
-                          aria-label="Remove member"
-                        >
-                          <Minus className="size-4" />
-                        </Button>
-                      ) : null}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1206,155 +1392,169 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         <Card id="section-payment-bank-details">
           <CardHeader>
             <CardTitle>Payment &amp; Bank Details</CardTitle>
-            <CardDescription>Mode of payment, transaction / cheque, and bank fields.</CardDescription>
+            <CardDescription>
+              Mode of Payment, Transaction Number, Bank Name, Branch, Account Number, Name as per Cheque, IFSC Code,
+              Not over, Transaction Date, Transaction Status, Dishonour Reason, Return Charges, Amount Received.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2 sm:col-span-2 lg:col-span-4">
-              <RequiredLabel>Mode of Payment</RequiredLabel>
-              <Select
-                value={values.paymentMode}
-                onValueChange={(v) => void setFieldValue("paymentMode", v as AdPolicyFormValues["paymentMode"])}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_MODES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormikError name="paymentMode" errors={errors} touched={touched} submitCount={submitCount} />
-            </div>
-            {values.paymentMode === "ONLINE" ? (
-              <div className="space-y-2 sm:col-span-2">
-                <RequiredLabel>Transaction Detail (UTR / ref.)</RequiredLabel>
-                <Input
-                  name="onlineTransactionRef"
-                  value={values.onlineTransactionRef}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  autoComplete="off"
-                />
-                <FormikError
-                  name="onlineTransactionRef"
-                  errors={errors}
-                  touched={touched}
-                  submitCount={submitCount}
-                />
+            <div className="space-y-3 sm:col-span-2 lg:col-span-4">
+              <div className="flex items-center justify-between">
+                <Label>Payment Transactions</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addPaymentTransaction}>
+                  <Plus className="mr-1 size-4" /> Add Multiple Transaction
+                </Button>
               </div>
-            ) : null}
-            {values.paymentMode === "CHEQUE" ? (
-              <>
-                <div className="space-y-2">
-                  <RequiredLabel>Policy cheque no</RequiredLabel>
-                  <Input
-                    name="policyChequeNo"
-                    value={values.policyChequeNo}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="policyChequeNo" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Bank name</RequiredLabel>
-                  <Input name="bank" value={values.bank} onChange={handleChange} onBlur={handleBlur} />
-                  <FormikError name="bank" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Account no</RequiredLabel>
-                  <Input
-                    name="accountNo"
-                    value={values.accountNo}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="accountNo" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Branch</RequiredLabel>
-                  <Input name="branch" value={values.branch} onChange={handleChange} onBlur={handleBlur} />
-                  <FormikError name="branch" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <RequiredLabel>Name as per cheque</RequiredLabel>
-                  <Input
-                    name="nameAsPerCheque"
-                    value={values.nameAsPerCheque}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="nameAsPerCheque" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>IFSC</RequiredLabel>
-                  <Input
-                    name="ifsc"
-                    value={values.ifsc}
-                    onChange={(e) => void setFieldValue("ifsc", e.target.value.toUpperCase())}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="ifsc" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Not over</RequiredLabel>
-                  <Input
-                    name="notOver"
-                    value={values.notOver}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="notOver" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Date of Payment / CHQ Date</RequiredLabel>
-                  <Input
-                    name="chequeDate"
-                    type="date"
-                    value={values.chequeDate}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError name="chequeDate" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2">
-                  <RequiredLabel>Cheque Cleared / Dishonoured</RequiredLabel>
-                  <Select
-                    value={values.chequeStatus || "none"}
-                    onValueChange={(v) => void setFieldValue("chequeStatus", v === "none" ? "" : v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CHEQUE_STATUS.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormikError name="chequeStatus" errors={errors} touched={touched} submitCount={submitCount} />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Return charges / reason</Label>
-                  <Input
-                    name="reasonDishonoured"
-                    value={values.reasonDishonoured}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  <FormikError
-                    name="reasonDishonoured"
-                    errors={errors}
-                    touched={touched}
-                    submitCount={submitCount}
-                  />
-                </div>
-              </>
-            ) : null}
+              <div className="space-y-3">
+                {values.paymentTransactions.map((transaction, index) => (
+                  <div key={`txn-${index}`} className="rounded-md border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium">Transaction {index + 1}</span>
+                      {values.paymentTransactions.length > 1 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="destructive"
+                          onClick={() => removePaymentTransaction(index)}
+                        >
+                          <Minus className="size-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="space-y-1">
+                        <Label>Mode of Payment*</Label>
+                        <Select
+                          value={transaction.mode}
+                          onValueChange={(v) => void setFieldValue(`paymentTransactions[${index}].mode`, v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Mode of Payment" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ONLINE">Online</SelectItem>
+                            <SelectItem value="CHEQUE">Cheque</SelectItem>
+                            <SelectItem value="CASH">Cash</SelectItem>
+                            <SelectItem value="NEFT">NEFT</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Transaction Number</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].transactionNumber`}
+                          value={transaction.transactionNumber}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Bank Name</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].bankName`}
+                          value={transaction.bankName}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Branch</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].branch`}
+                          value={transaction.branch}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Account Number</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].accountNumber`}
+                          value={transaction.accountNumber}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Name as per Cheque</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].nameAsPerCheque`}
+                          value={transaction.nameAsPerCheque}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>IFSC Code</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].ifscCode`}
+                          value={transaction.ifscCode}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Not over</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].notOver`}
+                          value={transaction.notOver}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Transaction Date</Label>
+                        <Input
+                          type="date"
+                          name={`paymentTransactions[${index}].transactionDate`}
+                          value={transaction.transactionDate}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Transaction Status</Label>
+                        <Select
+                          value={transaction.transactionStatus || "__none__"}
+                          onValueChange={(v) =>
+                            void setFieldValue(
+                              `paymentTransactions[${index}].transactionStatus`,
+                              v === "__none__" ? "" : v,
+                            )
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Transaction Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Status Pending</SelectItem>
+                            <SelectItem value="CLEARED">Cleared</SelectItem>
+                            <SelectItem value="DISHONOURED">Dishonoured</SelectItem>
+                            <SelectItem value="PENDING">Pending</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Dishonour Reason</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].dishonourReason`}
+                          value={transaction.dishonourReason}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Return Charges - (amount)</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].returnCharges`}
+                          value={transaction.returnCharges}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Amount Received</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].amountReceived`}
+                          value={transaction.amountReceived}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
         ) : null}
@@ -1388,6 +1588,39 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 value={values.grossPremium}
                 onChange={handleChange}
                 onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Taxes %</Label>
+              <Input name="taxPercent" value={values.taxPercent} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+            <div className="space-y-2">
+              <Label>Taxes Amount</Label>
+              <Input name="taxAmount" value={values.taxAmount} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+            <div className="space-y-2">
+              <Label>SVKK Premium (Auto)</Label>
+              <Input name="svkkPremiumCalc" value={values.svkkPremiumCalc} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Net Premium (Auto)</Label>
+              <Input name="netPremiumCalc" value={values.netPremiumCalc} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>VKK Commission (Auto)</Label>
+              <Input name="vkkCommission" value={values.vkkCommission} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Contribution (Auto)</Label>
+              <Input name="contribution" value={values.contribution} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Difference Amount Paid by Policyholder</Label>
+              <Input
+                name="differenceAmountPaidByHolder"
+                value={values.differenceAmountPaidByHolder}
+                readOnly
+                className="bg-muted"
               />
             </div>
             <div className="space-y-2">
@@ -1475,32 +1708,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {activeSection === "loan_details" ? (
         <Card id="section-loan-details">
           <CardHeader>
-            <CardTitle>Loan Details</CardTitle>
-            <CardDescription>LOAN NO and NOT OVER fields added as requested.</CardDescription>
+            <CardTitle>Loan / CD / Refund</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label>LOAN NO</Label>
-              <Input
-                name="loanNo"
-                value={values.loanNo}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                placeholder="Enter loan number"
-              />
+            <div className="text-muted-foreground col-span-full text-xs font-medium uppercase tracking-wide">
+              Loan
             </div>
             <div className="space-y-2">
-              <Label>NOT OVER</Label>
-              <Input
-                name="notOver"
-                value={values.notOver}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                placeholder="Enter not-over amount/text"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Loan Taken</Label>
+              <Label>Loan Taken (Yes/No)</Label>
               <Select
                 value={values.loanStatus || "none"}
                 onValueChange={(v) => void setFieldValue("loanStatus", v === "none" ? "" : v)}
@@ -1521,6 +1736,64 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Label>Loan Amount</Label>
               <Input name="loanAmt" value={values.loanAmt} onChange={handleChange} onBlur={handleBlur} />
             </div>
+
+            <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
+              CD
+            </div>
+            <div className="space-y-2">
+              <Label>CD Account Used</Label>
+              <Select
+                value={values.cdAccountStatus || "none"}
+                onValueChange={(v) => void setFieldValue("cdAccountStatus", v === "none" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {YES_NO.map((o) => (
+                    <SelectItem key={`cd-${o.value}`} value={o.value || "none"}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>CD Amount</Label>
+              <Input name="cdAmount" value={values.cdAmount} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+
+            <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
+              Refund
+            </div>
+            <div className="space-y-2">
+              <Label>Refund Cheque Amount</Label>
+              <Input
+                name="refundChequeAmt"
+                value={values.refundChequeAmt}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Refund Cheque Number</Label>
+              <Input
+                name="refundChequeNo"
+                value={values.refundChequeNo}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Refund Cheque Date</Label>
+              <Input
+                name="refundChequeDate"
+                type="date"
+                value={values.refundChequeDate}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
           </CardContent>
         </Card>
         ) : null}
@@ -1532,28 +1805,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2 sm:col-span-2">
-              <RequiredLabel>Nominee Name</RequiredLabel>
+              <Label>Nominee Name</Label>
               <Input
                 name="nomineeName"
                 value={values.nomineeName}
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
-              <FormikError name="nomineeName" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <RequiredLabel>Nominee Relation</RequiredLabel>
+              <Label>Nominee Relation</Label>
               <Input
                 name="nomineeRelation"
                 value={values.nomineeRelation}
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
-              <FormikError
-                name="nomineeRelation"
-                errors={errors}
-                touched={touched}
-                submitCount={submitCount}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Nominee Phone number ( one number )</Label>
+              <Input
+                name="nomineePhoneNumber"
+                value={values.nomineePhoneNumber}
+                onChange={handleChange}
+                onBlur={handleBlur}
               />
             </div>
           </CardContent>
@@ -1563,57 +1838,57 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {activeSection === "address_contacts" ? (
         <Card id="section-address-contacts">
           <CardHeader>
-            <CardTitle>Address &amp; Contacts</CardTitle>
-            <CardDescription>Address lines, city, PIN, mobile, WhatsApp, and email.</CardDescription>
+            <CardTitle>Contact Details</CardTitle>
+            <CardDescription>
+              Address Line 1-4, Area, City, PIN Code, Primary/Secondary Mobile, WhatsApp Number, and Email ID.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2 sm:col-span-2 lg:col-span-4">
-              <RequiredLabel>Address</RequiredLabel>
+              <Label>Address Line 1: House/Flat No, Building Name</Label>
               <Input name="address" value={values.address} onChange={handleChange} onBlur={handleBlur} />
-              <FormikError name="address" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <RequiredLabel>Address two</RequiredLabel>
+              <Label>Address Line 2: Street/Road Name</Label>
               <Input
                 name="addressTwo"
                 value={values.addressTwo}
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
-              <FormikError name="addressTwo" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <RequiredLabel>Address three</RequiredLabel>
+              <Label>Address Line 3: Landmark / Locality</Label>
               <Input
                 name="addressThree"
                 value={values.addressThree}
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
-              <FormikError name="addressThree" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <RequiredLabel>Address four</RequiredLabel>
+              <Label>Address Line 4: Additional Details (optional)</Label>
               <Input
                 name="addressFour"
                 value={values.addressFour}
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
-              <FormikError name="addressFour" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>City</RequiredLabel>
+              <Label>Area</Label>
+              <Input name="area" value={values.area} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+            <div className="space-y-2">
+              <Label>City</Label>
               <Input name="city" value={values.city} onChange={handleChange} onBlur={handleBlur} />
-              <FormikError name="city" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>Pin code</RequiredLabel>
+              <Label>PIN Code</Label>
               <Input name="pincode" value={values.pincode} onChange={handleChange} onBlur={handleBlur} />
-              <FormikError name="pincode" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>Primary mobile</RequiredLabel>
+              <Label>Primary Mobile Number</Label>
               <Input
                 name="mobileFirst"
                 value={values.mobileFirst}
@@ -1622,10 +1897,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 inputMode="tel"
                 autoComplete="tel"
               />
-              <FormikError name="mobileFirst" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>Secondary mobile</RequiredLabel>
+              <Label>Secondary Mobile Number</Label>
               <Input
                 name="mobileSecond"
                 value={values.mobileSecond}
@@ -1634,10 +1908,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 inputMode="tel"
                 autoComplete="tel"
               />
-              <FormikError name="mobileSecond" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>WhatsApp no.</RequiredLabel>
+              <RequiredLabel>WhatsApp Number</RequiredLabel>
               <Input
                 name="whatsappNo"
                 value={values.whatsappNo}
@@ -1649,7 +1922,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <FormikError name="whatsappNo" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Email</Label>
+              <RequiredLabel>Email ID</RequiredLabel>
               <Input
                 name="email"
                 type="email"
@@ -1665,12 +1938,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {activeSection === "courier" ? (
           <Card id="section-courier">
             <CardHeader>
-              <CardTitle>Courier</CardTitle>
-              <CardDescription>Dispatch status; refund / CD kept here for the same office workflow as the HTML prototype.</CardDescription>
+              <CardTitle>Courier Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
-                <Label>Courier (YES/NO)</Label>
+                <Label>Courier Status (YES/NO)</Label>
                 <Select
                   value={values.notCourier || "none"}
                   onValueChange={(v) => void setFieldValue("notCourier", v === "none" ? "" : v)}
@@ -1697,68 +1969,32 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onBlur={handleBlur}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Courier Company</Label>
+                <Input
+                  name="courierCompany"
+                  value={values.courierCompany}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>POD Number</Label>
+                <Input
+                  name="podNumber"
+                  value={values.podNumber}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
               <div className="space-y-2 sm:col-span-2 lg:col-span-4">
-                <Label>Address for Courier / POD Notes</Label>
+                <Label>Courier Address</Label>
                 <Input
                   name="courierAddress"
                   value={values.courierAddress}
                   onChange={handleChange}
                   onBlur={handleBlur}
-                  placeholder="Address, company, POD reference…"
                 />
-              </div>
-              <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
-                Refund &amp; CD
-              </div>
-              <div className="space-y-2">
-                <Label>Refund Cheque Amount</Label>
-                <Input
-                  name="refundChequeAmt"
-                  value={values.refundChequeAmt}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Refund Cheque No</Label>
-                <Input
-                  name="refundChequeNo"
-                  value={values.refundChequeNo}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Refund Cheque Date</Label>
-                <Input
-                  name="refundChequeDate"
-                  type="date"
-                  value={values.refundChequeDate}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>CD Account Used</Label>
-                <Select
-                  value={values.cdAccountStatus || "none"}
-                  onValueChange={(v) => void setFieldValue("cdAccountStatus", v === "none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {YES_NO.map((o) => (
-                      <SelectItem key={`cd-${o.value}`} value={o.value || "none"}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>CD Amount</Label>
-                <Input name="cdAmount" value={values.cdAmount} onChange={handleChange} onBlur={handleBlur} />
               </div>
             </CardContent>
           </Card>
@@ -1767,56 +2003,25 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {activeSection === "remark" ? (
           <Card id="section-remark">
             <CardHeader>
-              <CardTitle>Remark</CardTitle>
+              <CardTitle>Remarks</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <RequiredLabel>Remark</RequiredLabel>
-                <Input name="remark" value={values.remark} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="remark" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {activeSection === "ref_no" ? (
-          <Card id="section-ref-no">
-            <CardHeader>
-              <CardTitle>Ref No</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 max-w-md">
-                <RequiredLabel>Reference No</RequiredLabel>
+                <Label>General Remark</Label>
                 <Input
-                  name="refNo"
-                  value={values.refNo}
+                  name="generalRemark"
+                  value={values.generalRemark}
                   onChange={handleChange}
                   onBlur={handleBlur}
-                  className="border-primary font-mono"
                 />
-                <FormikError name="refNo" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {activeSection === "receipt" ? (
-          <Card id="section-receipt">
-            <CardHeader>
-              <CardTitle>Receipt</CardTitle>
-              <CardDescription>Receipt number is issued after save; period is edited under Policy Details.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2">
-                <Label>Receipt No</Label>
-                <Input readOnly className="bg-muted" value={isEdit && policyId ? "Use policy receipts from detail page" : "—"} />
               </div>
               <div className="space-y-2">
-                <Label>Period (read-only)</Label>
+                <Label>Policy Change Remark</Label>
                 <Input
-                  readOnly
-                  className="bg-muted"
-                  value={[values.month, values.year].filter(Boolean).join(" · ") || "—"}
+                  name="policyChangeRemark"
+                  value={values.policyChangeRemark}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
                 />
               </div>
             </CardContent>

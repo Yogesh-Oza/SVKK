@@ -6,6 +6,8 @@ import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   createPolicyWithYear,
+  allocateNextPolicyPublicId,
+  allocateNextPolicyReferenceNo,
   updatePolicySections,
   softDeletePolicy,
   type InsuredPartySectionPatch,
@@ -236,7 +238,10 @@ function patchBodyToInput(
   if (rest.tpa !== undefined) policy.tpa = rest.tpa;
   if (rest.categoryText !== undefined) policy.categoryText = rest.categoryText;
   if (rest.holderRelationship !== undefined) policy.holderRelationship = rest.holderRelationship;
+  if (rest.holderGender !== undefined) policy.holderGender = rest.holderGender;
   if (rest.holderAge !== undefined) policy.holderAge = rest.holderAge;
+  if (rest.holderJoiningDate !== undefined) policy.holderJoiningDate = rest.holderJoiningDate;
+  if (rest.holderAddOns !== undefined) policy.holderAddOns = rest.holderAddOns;
   if (rest.personsInsuredCount !== undefined) policy.personsInsuredCount = rest.personsInsuredCount;
   if (rest.area !== undefined) policy.area = rest.area;
   if (rest.referenceNo !== undefined) policy.referenceNo = rest.referenceNo;
@@ -248,10 +253,15 @@ function patchBodyToInput(
   if (rest.refundChequeAmount !== undefined) policy.refundChequeAmount = rest.refundChequeAmount;
   if (rest.refundChequeNo !== undefined) policy.refundChequeNo = rest.refundChequeNo;
   if (rest.refundChequeDate !== undefined) policy.refundChequeDate = rest.refundChequeDate;
+  if (rest.previousPolicyNo !== undefined) policy.previousPolicyNo = rest.previousPolicyNo;
+  if (rest.previousEndDate !== undefined) policy.previousEndDate = rest.previousEndDate;
+  if (rest.policyGroup !== undefined) policy.policyGroup = rest.policyGroup;
   if (rest.cdAccountUsed !== undefined) policy.cdAccountUsed = rest.cdAccountUsed;
   if (rest.cdAmount !== undefined) policy.cdAmount = rest.cdAmount;
   if (rest.courierStatus !== undefined) policy.courierStatus = rest.courierStatus;
   if (rest.courierDate !== undefined) policy.courierDate = rest.courierDate;
+  if (rest.courierCompany !== undefined) policy.courierCompany = rest.courierCompany;
+  if (rest.podNumber !== undefined) policy.podNumber = rest.podNumber;
   if (rest.courierAddress !== undefined) policy.courierAddress = rest.courierAddress;
   if (rest.periodYearText !== undefined) policy.periodYearText = rest.periodYearText;
   if (rest.periodMonthText !== undefined) policy.periodMonthText = rest.periodMonthText;
@@ -448,6 +458,44 @@ export function createPolicyRouter(env: Env) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');
       res.send(csv);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/next-svkk-id", requirePermission("policy:create"), async (req, res, next) => {
+    try {
+      const q = z
+        .object({
+          policyGrouping: z.string().trim().min(1),
+          month: z.string().trim().min(1),
+        })
+        .parse(req.query);
+      const svkkPublicId = await allocateNextPolicyPublicId({
+        policyGrouping: q.policyGrouping,
+        month: q.month,
+      });
+      res.json({ svkkPublicId });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/next-reference-no", requirePermission("policy:create"), async (req, res, next) => {
+    try {
+      const q = z
+        .object({
+          policyGrouping: z.string().trim().min(1),
+          month: z.string().trim().min(1),
+          year: z.string().trim().min(1),
+        })
+        .parse(req.query);
+      const referenceNo = await allocateNextPolicyReferenceNo({
+        policyGrouping: q.policyGrouping,
+        month: q.month,
+        year: q.year,
+      });
+      res.json({ referenceNo });
     } catch (e) {
       next(e);
     }

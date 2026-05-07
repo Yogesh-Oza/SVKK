@@ -155,7 +155,11 @@ npm run dev
 
 ## Pending / follow-ups
 
-- Add Policy tabbed UX parity with legacy HTML: section-by-section tabs, dynamic category/month/member-field labeling, and relationship dropdown normalization.
+- Current task in progress: Policy Add/Update revamp with new field contract, carry-forward ID rules, age-at-expiry logic, and multi-transaction payment capture.
+- Added backend business utility for policy identifiers and premium/age logic: `backend/src/modules/policy/policy-business.ts`.
+- Extended Prisma schema + migration scaffold for new policy/year/member/payment columns: `backend/prisma/schema.prisma`, `backend/prisma/migrations/20260508010000_policy_revamp_fields/migration.sql`.
+- Frontend policy form now includes: previous policy details, policy group, holder joining/add-ons, member add-ons, multi-transaction rows, courier company/POD, and premium auto-calculation helpers.
+- Frontend submit mapping now sends expanded payload fields and payment transaction rows in both create and update flows.
 - S3 for CSV/PDF; optional job queue for large CSVs.
 - Optional DB-driven RBAC from `RolePermission` with cache.
 - CSV `FULL` mode upsert completeness.
