@@ -19,7 +19,7 @@ import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
@@ -38,8 +38,6 @@ export type { AdMemberRow } from "./ad-member-types";
 
 type ChartRow = { id: string; version: number; chartKind: string };
 type PolicyTypeRow = { id: string; key: string; name: string };
-type PolicyGroupingOptionItem = { id: string; name: string };
-type FiltersMeta = { policyGroupings?: string[] };
 type FetchMode = "fetch" | "new";
 type AddSectionId =
   | "policy_details"
@@ -107,6 +105,13 @@ function formatInr(value: number): string {
   return value.toLocaleString("en-IN");
 }
 
+function toMoneyString(value: number): string {
+  if (!Number.isFinite(value) || value === 0) {
+    return "";
+  }
+  return String(Math.round(value * 100) / 100);
+}
+
 const GENDERS = [
   { value: "M", label: "Male" },
   { value: "F", label: "Female" },
@@ -151,7 +156,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
-  const canManageGroupings = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   const [policyTypeId, setPolicyTypeId] = useState("");
   const [policyChartId, setPolicyChartId] = useState("");
@@ -169,8 +173,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [fetchNotice, setFetchNotice] = useState<string | null>(null);
   const [fetchSuggestions, setFetchSuggestions] = useState<FetchSuggestion[]>([]);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
-  const [policyGroupings, setPolicyGroupings] = useState<PolicyGroupingOptionItem[]>([]);
-  const [newPolicyGroupingName, setNewPolicyGroupingName] = useState("");
 
   const initialValues = useMemo(() => {
     if (isEdit && detail) {
@@ -226,6 +228,24 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const { values, errors, touched, handleSubmit, handleChange, handleBlur, setFieldValue, isSubmitting, submitCount } =
     formik;
+  const [premiumManual, setPremiumManual] = useState<Record<string, boolean>>({});
+
+  const markPremiumManual = useCallback((field: string) => {
+    setPremiumManual((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }, []);
+
+  const handlePremiumInput = useCallback(
+    (field: keyof AdPolicyFormValues, mirrors: Array<keyof AdPolicyFormValues> = []) =>
+      (e: ChangeEvent<HTMLInputElement>) => {
+        markPremiumManual(field);
+        handleChange(e);
+        for (const mirror of mirrors) {
+          markPremiumManual(String(mirror));
+          void setFieldValue(mirror, e.target.value);
+        }
+      },
+    [handleChange, markPremiumManual, setFieldValue],
+  );
 
   const summary = useMemo(() => {
     const holderBasic = parseInr(values.basicPremiumPs);
@@ -265,37 +285,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const h = charts.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
     setPolicyChartId(h?.id ?? charts[0]?.id ?? "");
   }, []);
-
-  const loadPolicyGroupings = useCallback(async () => {
-    if (canManageGroupings) {
-      const res = await svkkJson<{ items: PolicyGroupingOptionItem[] }>("/admin/policy-groupings");
-      setPolicyGroupings(res.items);
-      return;
-    }
-    const filters = await svkkJson<FiltersMeta>("/policies/filters");
-    const items = (filters.policyGroupings ?? []).map((name) => ({ id: name, name }));
-    setPolicyGroupings(items);
-  }, [canManageGroupings]);
-
-  const addPolicyGrouping = useCallback(async () => {
-    const name = newPolicyGroupingName.trim();
-    if (!name || !canManageGroupings) return;
-    await svkkJson("/admin/policy-groupings", {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
-    setNewPolicyGroupingName("");
-    await loadPolicyGroupings();
-  }, [newPolicyGroupingName, canManageGroupings, loadPolicyGroupings]);
-
-  const deletePolicyGrouping = useCallback(
-    async (id: string) => {
-      if (!canManageGroupings) return;
-      await svkkJson(`/admin/policy-groupings/${id}`, { method: "DELETE" });
-      await loadPolicyGroupings();
-    },
-    [canManageGroupings, loadPolicyGroupings],
-  );
 
   const loadPolicyDetailIntoForm = useCallback(
     async (id: string, modeNotice: string) => {
@@ -411,7 +400,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     let nextSvkkId = "";
     let nextReferenceNo = "";
     try {
-      const generated = await requestAutoIds(values.policyGrouping, values.month, values.year);
+      const generated = await requestAutoIds(values.policyGroup, values.month, values.year);
       nextSvkkId = generated.svkkPublicId;
       nextReferenceNo = generated.referenceNo;
     } catch {
@@ -424,16 +413,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       policyHolder: fetchHolderName.trim(),
       year: values.year,
       month: values.month,
-      policyGrouping: values.policyGrouping,
+      policyGrouping: values.policyGroup,
       refNo: nextReferenceNo,
     });
     setFetchMode("new");
     setFetchNotice(
       nextSvkkId
         ? `New policy started. SVKK ID auto generated: ${nextSvkkId}`
-        : "New policy started. Select Policy Grouping + Month to auto-generate SVKK ID.",
+        : "New policy started. Select Policy Group + Month to auto-generate SVKK ID.",
     );
-  }, [formik, fetchHolderName, requestAutoIds, values.year, values.month, values.policyGrouping]);
+  }, [formik, fetchHolderName, requestAutoIds, values.year, values.month, values.policyGroup]);
 
   const carryForwardPolicy = useCallback(async () => {
     if (!selectedFetchId) {
@@ -446,7 +435,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const shiftedYear = Number.isFinite(prevYear) && prevYear > 0 ? String(prevYear + 1) : carriedValues.year;
     let nextReferenceNo = carriedValues.refNo;
     try {
-      const generated = await requestAutoIds(carriedValues.policyGrouping, carriedValues.month, shiftedYear);
+      const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
       nextReferenceNo = generated.referenceNo || nextReferenceNo;
     } catch {
       // keep existing reference if generator fails
@@ -482,12 +471,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void (async () => {
       setLoadErr(null);
       try {
-        await Promise.all([loadAdPolicyType(), loadPolicyGroupings()]);
+        await loadAdPolicyType();
       } catch (e) {
         setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
       }
     })();
-  }, [missingUrl, loadAdPolicyType, loadPolicyGroupings, isEdit]);
+  }, [missingUrl, loadAdPolicyType, isEdit]);
 
   useEffect(() => {
     if (missingUrl || !isEdit || !policyId) {
@@ -611,30 +600,100 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [values.person, values.members, setFieldValue]);
 
   useEffect(() => {
-    const gross = parseInr(values.grossPremium);
+    const setAutoField = (field: keyof AdPolicyFormValues, value: number) => {
+      if (premiumManual[String(field)]) {
+        return;
+      }
+      const next = toMoneyString(value);
+      if (String(values[field] ?? "") !== next) {
+        void setFieldValue(field, next);
+      }
+    };
+
+    const memberBasics = values.members.map((m) => ({
+      relation: (m.relationship || "").trim().toUpperCase(),
+      premium: parseInr(m.basicPremium),
+    }));
+    const holderBasic = parseInr(values.basicPremiumPs);
+    const allBasicPremiums = [holderBasic, ...memberBasics.map((m) => m.premium)];
+    const insuredCountRaw = Number(values.person);
+    const insuredCount = Number.isFinite(insuredCountRaw) && insuredCountRaw > 0 ? Math.floor(insuredCountRaw) : allBasicPremiums.length;
+    const product = (values.adProduct || "").trim().toUpperCase();
+
+    const familyFloaterRate = insuredCount >= 4 ? 0.15 : insuredCount === 3 ? 0.1 : insuredCount === 2 ? 0.05 : 0;
+    const grossFromChart = allBasicPremiums.reduce((sum, premium) => sum + premium, 0);
+    const familyFloaterNet = allBasicPremiums.reduce((sum, premium) => {
+      const discount = Math.ceil(premium * familyFloaterRate);
+      return sum + (premium - discount);
+    }, 0);
+
+    const ashaKiranEligible = insuredCount <= 4;
+    const ashaKiranNet = ashaKiranEligible
+      ? holderBasic +
+        memberBasics.reduce((sum, row) => {
+          if (row.relation.includes("DAUGHTER")) {
+            const discount = Math.floor(row.premium * 0.5);
+            return sum + (row.premium - discount);
+          }
+          return sum + row.premium;
+        }, 0)
+      : familyFloaterNet;
+
+    const autoGross = product === "SENIOR_CITIZEN" ? parseInr(values.grossPremium) : grossFromChart;
+    let autoNet = parseInr(values.coPremium);
+    if (product === "FAMILY_FLOATER") {
+      autoNet = familyFloaterNet;
+    } else if (product === "ASHA_KIRAN") {
+      autoNet = ashaKiranNet;
+    } else if (product === "INDIVIDUAL") {
+      autoNet = grossFromChart;
+    }
+
+    const gross = premiumManual.grossPremium ? parseInr(values.grossPremium) : autoGross;
+    const net = premiumManual.coPremium ? parseInr(values.coPremium) : autoNet;
     const taxPercent = parseInr(values.taxPercent);
-    const net = parseInr(values.coPremium);
-    const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
-    const taxAmount = gross * (taxPercent / 100);
-    const svkkPremium = gross + taxAmount;
-    const vkkCommission = gross * 0.15 * 0.5;
-    let holderPremium = net;
+    const taxAmountCalc = gross * (taxPercent / 100);
+    const taxAmount = premiumManual.taxAmount ? parseInr(values.taxAmount) : taxAmountCalc;
+    const svkkPremiumCalc = gross + taxAmount;
+    const commissionCalc = gross * 0.15;
+    const commission = premiumManual.commission ? parseInr(values.commission) : commissionCalc;
+    const vkkCommissionCalc = commission * 0.5;
+    const vkkCommission = premiumManual.vkkCommission ? parseInr(values.vkkCommission) : vkkCommissionCalc;
+
+    let holderPremiumCalc = net;
     const category = values.cat.toUpperCase();
-    if (category === "C") holderPremium = 3000;
-    else if (category === "B") holderPremium = net * 0.5;
-    else if (category === "A" || category === "D") holderPremium = net;
-    const contribution = oneOrTwoLakhPremium - holderPremium;
-    const differenceAmountPaidByHolder = net - (oneOrTwoLakhPremium + holderPremium);
-    void setFieldValue("taxAmount", taxAmount ? String(taxAmount) : "");
-    void setFieldValue("svkkPremiumCalc", svkkPremium ? String(svkkPremium) : "");
-    void setFieldValue("netPremiumCalc", net ? String(net) : "");
-    void setFieldValue("vkkCommission", vkkCommission ? String(vkkCommission) : "");
-    void setFieldValue("contribution", contribution ? String(contribution) : "");
-    void setFieldValue(
-      "differenceAmountPaidByHolder",
-      differenceAmountPaidByHolder ? String(differenceAmountPaidByHolder) : "",
-    );
-  }, [values.grossPremium, values.taxPercent, values.coPremium, values.twoLakhF, values.cat, setFieldValue]);
+    if (category === "C") holderPremiumCalc = 3000;
+    else if (category === "B") holderPremiumCalc = net * 0.5;
+    else if (category === "A" || category === "D") holderPremiumCalc = net;
+    const holderPremium = premiumManual.policyHolderPremium
+      ? parseInr(values.policyHolderPremium)
+      : holderPremiumCalc;
+
+    const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
+    const contributionCalc = oneOrTwoLakhPremium - holderPremium;
+    const contribution = premiumManual.contribution ? parseInr(values.contribution) : contributionCalc;
+    const excessShortCalc = net - contribution;
+    const excessShort = premiumManual.excessShort ? parseInr(values.excessShort) : excessShortCalc;
+    const differenceAmountCalc = net - (oneOrTwoLakhPremium + holderPremium);
+    const differenceAmountPaidByHolder = premiumManual.differenceAmountPaidByHolder
+      ? parseInr(values.differenceAmountPaidByHolder)
+      : differenceAmountCalc;
+
+    setAutoField("grossPremium", gross);
+    setAutoField("coPremium", net);
+    setAutoField("netPremiumCalc", net);
+    setAutoField("taxAmount", taxAmount);
+    setAutoField("svkkPremiumCalc", svkkPremiumCalc);
+    setAutoField("vkkPremium", svkkPremiumCalc);
+    setAutoField("commission", commission);
+    setAutoField("vkkCommission", vkkCommission);
+    setAutoField("policyHolderPremium", holderPremium);
+    setAutoField("contribution", contribution);
+    setAutoField("gaamMahajan", contribution);
+    setAutoField("excessShort", excessShort);
+    setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
+    setAutoField("diffAmt", differenceAmountPaidByHolder);
+  }, [premiumManual, setFieldValue, values]);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -864,21 +923,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     </tbody>
                   </table>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Saving..." : "Save Policy + Auto Receipt"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => void handleSubmit()}>
-                    Update Policy
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => toast.info("Preview is available after policy is saved.")}
-                  >
-                    Generate Receipt Preview
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </>
@@ -1007,52 +1051,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Label>Area</Label>
                 <Input name="area" value={values.area} onChange={handleChange} onBlur={handleBlur} />
               </div>
-              <div className="space-y-2">
-                <Label>Grouping</Label>
-                <Select
-                  value={values.policyGrouping || "none"}
-                  onValueChange={(v) => void setFieldValue("policyGrouping", v === "none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Policy Grouping</SelectItem>
-                    {policyGroupings.map((g) => (
-                      <SelectItem key={g.id} value={g.name}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {canManageGroupings ? (
-                <div className="space-y-2 sm:col-span-2 lg:col-span-4">
-                  <Label>Manage Grouping Options</Label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={newPolicyGroupingName}
-                      onChange={(e) => setNewPolicyGroupingName(e.target.value)}
-                      placeholder="Add grouping option"
-                      className="max-w-xs"
-                    />
-                    <Button type="button" variant="outline" onClick={() => void addPolicyGrouping()}>
-                      Add
-                    </Button>
-                    {policyGroupings.map((g) => (
-                      <Button
-                        key={`del-${g.id}`}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void deletePolicyGrouping(g.id)}
-                      >
-                        {g.name} ×
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
               <div className="space-y-2">
                 <Label>Policy End Date</Label>
                 <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
@@ -1563,141 +1561,94 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         <Card id="section-premium-details">
           <CardHeader>
             <CardTitle>Premium Details</CardTitle>
-            <CardDescription>VKK premium, net/gross, commission, and holder adjustments.</CardDescription>
+            <CardDescription>Auto calculation with manual entry support.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <RequiredLabel>VKK Premium</RequiredLabel>
-              <Input
-                name="vkkPremium"
-                value={values.vkkPremium}
-                onChange={handleChange}
-                onBlur={handleBlur}
-              />
-              <FormikError name="vkkPremium" errors={errors} touched={touched} submitCount={submitCount} />
-            </div>
-            <div className="space-y-2">
-              <RequiredLabel>Net Premium</RequiredLabel>
-              <Input name="coPremium" value={values.coPremium} onChange={handleChange} onBlur={handleBlur} />
-              <FormikError name="coPremium" errors={errors} touched={touched} submitCount={submitCount} />
-            </div>
             <div className="space-y-2">
               <Label>Gross Premium</Label>
               <Input
                 name="grossPremium"
                 value={values.grossPremium}
-                onChange={handleChange}
+                onChange={handlePremiumInput("grossPremium")}
                 onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
-              <Label>Taxes %</Label>
+              <Label>Taxes - %</Label>
               <Input name="taxPercent" value={values.taxPercent} onChange={handleChange} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <Label>Taxes Amount</Label>
-              <Input name="taxAmount" value={values.taxAmount} onChange={handleChange} onBlur={handleBlur} />
+              <Label>TAXES AMOUNT</Label>
+              <Input name="taxAmount" value={values.taxAmount} onChange={handlePremiumInput("taxAmount")} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <Label>SVKK Premium (Auto)</Label>
-              <Input name="svkkPremiumCalc" value={values.svkkPremiumCalc} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>Net Premium (Auto)</Label>
-              <Input name="netPremiumCalc" value={values.netPremiumCalc} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>VKK Commission (Auto)</Label>
-              <Input name="vkkCommission" value={values.vkkCommission} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>Contribution (Auto)</Label>
-              <Input name="contribution" value={values.contribution} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>Difference Amount Paid by Policyholder</Label>
+              <Label>SVKK Premium</Label>
               <Input
-                name="differenceAmountPaidByHolder"
-                value={values.differenceAmountPaidByHolder}
-                readOnly
-                className="bg-muted"
+                name="svkkPremiumCalc"
+                value={values.svkkPremiumCalc}
+                onChange={handlePremiumInput("svkkPremiumCalc", ["vkkPremium"])}
+                onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
-              <Label>Discount (Gross − Net)</Label>
+              <Label>Net Premium</Label>
               <Input
-                readOnly
-                className="bg-muted"
-                value={
-                  parseInr(values.grossPremium) > 0 && parseInr(values.coPremium) > 0
-                    ? formatInr(Math.max(parseInr(values.grossPremium) - parseInr(values.coPremium), 0))
-                    : ""
-                }
+                name="coPremium"
+                value={values.coPremium}
+                onChange={handlePremiumInput("coPremium", ["netPremiumCalc"])}
+                onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
               <Label>Commission</Label>
-              <Input
-                name="commission"
-                value={values.commission}
-                onChange={handleChange}
-                onBlur={handleBlur}
-              />
+              <Input name="commission" value={values.commission} onChange={handlePremiumInput("commission")} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <Label>Premium 1 Lac ind / 2 Lac floater</Label>
-              <Input name="twoLakhF" value={values.twoLakhF} onChange={handleChange} onBlur={handleBlur} />
+              <Label>VKK Commission</Label>
+              <Input
+                name="vkkCommission"
+                value={values.vkkCommission}
+                onChange={handlePremiumInput("vkkCommission")}
+                onBlur={handleBlur}
+              />
             </div>
             <div className="space-y-2">
               <Label>Policy Holder Premium</Label>
               <Input
                 name="policyHolderPremium"
                 value={values.policyHolderPremium}
-                onChange={handleChange}
+                onChange={handlePremiumInput("policyHolderPremium")}
                 onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
-              <Label>Gaam Mahajan / VKK Refund</Label>
+              <Label>Premium (1 Lakh Individual / 2 Lakh Floater)</Label>
+              <Input name="twoLakhF" value={values.twoLakhF} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+            <div className="space-y-2">
+              <Label>Contribution (Gaam Mahajan / VKK)</Label>
               <Input
-                name="gaamMahajan"
-                value={values.gaamMahajan}
-                onChange={handleChange}
+                name="contribution"
+                value={values.contribution}
+                onChange={handlePremiumInput("contribution")}
                 onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
-              <Label>Excess / Short Amt</Label>
+              <Label>Excess / Short Amount</Label>
               <Input
                 name="excessShort"
                 value={values.excessShort}
-                onChange={handleChange}
+                onChange={handlePremiumInput("excessShort")}
                 onBlur={handleBlur}
               />
             </div>
             <div className="space-y-2">
-              <Label>Diff. Amt Paid by Policy Holder</Label>
-              <Input name="diffAmt" value={values.diffAmt} onChange={handleChange} onBlur={handleBlur} />
-            </div>
-            <div className="space-y-2">
-              <Label>Cumulative Bonus (Holder)</Label>
+              <Label>Difference Amount Paid by Policyholder</Label>
               <Input
-                name="comulativeBonus"
-                value={values.comulativeBonus}
-                onChange={handleChange}
-                onBlur={handleBlur}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Joining Year</Label>
-              <Input name="joiningYear" value={values.joiningYear} onChange={handleChange} onBlur={handleBlur} />
-            </div>
-            <div className="space-y-2">
-              <Label>Basic Premium (Holder)</Label>
-              <Input
-                name="basicPremiumPs"
-                value={values.basicPremiumPs}
-                onChange={handleChange}
+                name="differenceAmountPaidByHolder"
+                value={values.differenceAmountPaidByHolder}
+                onChange={handlePremiumInput("differenceAmountPaidByHolder", ["diffAmt"])}
                 onBlur={handleBlur}
               />
             </div>
@@ -2028,15 +1979,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </Card>
         ) : null}
 
-        <div className="flex justify-end border-t pt-4">
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
           <Button type="submit" disabled={isSubmitting} className="min-w-40">
             {isSubmitting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : isEdit ? (
-              "Save changes"
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Saving...
+              </>
             ) : (
-              "Submit"
+              "Save Policy + Auto Receipt"
             )}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isSubmitting}>
+            Update Policy
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => toast.info("Preview is available after policy is saved.")}
+            disabled={isSubmitting}
+          >
+            Generate Receipt Preview
           </Button>
         </div>
       </form>

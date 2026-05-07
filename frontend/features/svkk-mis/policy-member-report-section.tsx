@@ -33,7 +33,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatInr } from "@/features/svkk-dashboard/currency";
 
 const GROUP_BY_OPTIONS = [
@@ -46,7 +46,6 @@ const GROUP_BY_OPTIONS = [
 
 const CATEGORY_OPTIONS = ["A", "B", "C", "D", "STAFF"] as const;
 const POLICY_GROUP_OPTIONS = ["OTHER", "RTY"] as const;
-const FISCAL_PRESETS = ["2024-25", "2025-26", "2026-27"] as const;
 
 const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "label",
@@ -293,7 +292,6 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
   const [policyGroup, setPolicyGroup] = useState<string>("");
   const [month, setMonth] = useState<string>("");
   const [year, setYear] = useState<string>("");
-  const [fiscal, setFiscal] = useState<string>("");
   const [filterText, setFilterText] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<PolicyMemberRow[]>([]);
@@ -337,11 +335,8 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
     if (year) {
       q.set("year", year);
     }
-    if (fiscal.trim()) {
-      q.set("fiscalLabel", fiscal.trim());
-    }
     return q;
-  }, [asOf, category, fiscal, groupBy, month, policyGroup, village, year]);
+  }, [asOf, category, groupBy, month, policyGroup, village, year]);
 
   const runReport = useCallback(async () => {
     onError("");
@@ -363,6 +358,10 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
       setLoading(false);
     }
   }, [buildQuery, onError]);
+
+  useEffect(() => {
+    void runReport();
+  }, [runReport]);
 
   const downloadCsv = useCallback(() => {
     void (async () => {
@@ -391,7 +390,7 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Policy &amp; member report</h2>
         <p className="text-muted-foreground mt-0.5 text-sm">
-            Uses the as-of date and optional village from above. Add filters, then run. Sort columns and
+            Uses the as-of date and optional village from above. Sort columns and
             use the search box to narrow rows (totals follow the filtered set).
         </p>
       </div>
@@ -489,29 +488,7 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
             </SelectContent>
           </Select>
         </div>
-        <div className="min-w-[130px]">
-          <Label className="text-xs text-muted-foreground">Fiscal label</Label>
-          <Select
-            value={fiscal || "__fall__"}
-            onValueChange={(v) => setFiscal(v === "__fall__" ? "" : v)}
-          >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue placeholder="Any" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__fall__">Any</SelectItem>
-              {FISCAL_PRESETS.map((f) => (
-                <SelectItem key={f} value={f}>
-                  {f}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" onClick={() => void runReport()} disabled={loading}>
-            {loading ? "Running…" : "Run report"}
-          </Button>
           <Button type="button" size="sm" variant="outline" onClick={downloadCsv}>
             Download CSV
           </Button>
@@ -565,7 +542,7 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-20 text-center text-muted-foreground">
-                  {loading ? "…" : "Run the report to load data."}
+                  {loading ? "…" : "No data found for selected filters."}
                 </TableCell>
               </TableRow>
             )}

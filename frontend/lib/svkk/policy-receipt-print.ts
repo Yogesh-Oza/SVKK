@@ -300,7 +300,7 @@ export function buildReceiptDocumentHtml(
       <div class="member-card" style="margin-top:14px"><div style="font-weight:800;color:#334155">Amount in Words</div><div style="margin-top:8px;font-weight:700">${escapeHtml(amountInWords)}</div></div>
       <div class="member-card" style="margin-top:14px">Received with thanks the above amount towards mediclaim premium.</div>
       <div class="receipt-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px">
-        <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Receiver</div></div>
+        <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569"></div></div>
         <div><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Authorized Signatory</div></div>
       </div>
       </div>

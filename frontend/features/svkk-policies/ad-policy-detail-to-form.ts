@@ -54,7 +54,6 @@ export type SvkkPolicyDetailForForm = {
   area: string | null;
   city: string | null;
   pincode: string | null;
-  contactPhone: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
   contactPhone: string | null;
