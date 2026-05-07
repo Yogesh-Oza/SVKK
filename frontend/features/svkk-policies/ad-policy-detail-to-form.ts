@@ -257,6 +257,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
             cumulativeBonus: decStr(m.cumulativeBonus),
             phNo: m.memberPhone ?? "",
             basicPremium: decStr(m.basicPremium),
+            addOnsAmount: "",
             gender: m.gender || "M",
           };
         })
