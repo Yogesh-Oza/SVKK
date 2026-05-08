@@ -27,6 +27,8 @@ describe("policy-business", () => {
     expect(out.vkkCommission).toBe(750);
     expect(out.policyHolderPremium).toBe(6000);
     expect(out.contribution).toBe(9000);
+    expect(out.excessShortAmount).toBe(200);
+    expect(out.differenceAmountPaidByHolder).toBe(9000);
   });
 
   it("computes full premium flow for category B with 3 persons", () => {
@@ -42,10 +44,10 @@ describe("policy-business", () => {
     expect(out.svkkPremium).toBe(11800);
     expect(out.commission).toBe(1500);
     expect(out.vkkCommission).toBe(750);
-    expect(out.policyHolderPremium).toBe(13500);
-    expect(out.contribution).toBe(-1500);
-    expect(out.excessShortAmount).toBe(10500);
-    expect(out.differenceAmountPaidByHolder).toBe(-16500);
+    expect(out.policyHolderPremium).toBe(4500);
+    expect(out.contribution).toBe(7500);
+    expect(out.excessShortAmount).toBe(-2800);
+    expect(out.differenceAmountPaidByHolder).toBe(7500);
   });
 
   it("computes category C premium per-person", () => {
@@ -73,10 +75,10 @@ describe("policy-business", () => {
     expect(out.svkkPremium).toBe(11800);
     expect(out.commission).toBe(1500);
     expect(out.vkkCommission).toBe(750);
-    expect(out.policyHolderPremium).toBe(27000);
-    expect(out.contribution).toBe(-15000);
-    expect(out.excessShortAmount).toBe(24000);
-    expect(out.differenceAmountPaidByHolder).toBe(-30000);
+    expect(out.policyHolderPremium).toBe(9000);
+    expect(out.contribution).toBe(3000);
+    expect(out.excessShortAmount).toBe(-2800);
+    expect(out.differenceAmountPaidByHolder).toBe(12000);
   });
 
   it("computes full premium flow for category C with 3 persons", () => {
@@ -94,8 +96,8 @@ describe("policy-business", () => {
     expect(out.vkkCommission).toBe(750);
     expect(out.policyHolderPremium).toBe(9000);
     expect(out.contribution).toBe(3000);
-    expect(out.excessShortAmount).toBe(6000);
-    expect(out.differenceAmountPaidByHolder).toBe(-12000);
+    expect(out.excessShortAmount).toBe(-2800);
+    expect(out.differenceAmountPaidByHolder).toBe(12000);
   });
 
   it("computes full premium flow for category D with 3 persons (same as A)", () => {
@@ -111,9 +113,9 @@ describe("policy-business", () => {
     expect(out.svkkPremium).toBe(11800);
     expect(out.commission).toBe(1500);
     expect(out.vkkCommission).toBe(750);
-    expect(out.policyHolderPremium).toBe(27000);
-    expect(out.contribution).toBe(-15000);
-    expect(out.excessShortAmount).toBe(24000);
-    expect(out.differenceAmountPaidByHolder).toBe(-30000);
+    expect(out.policyHolderPremium).toBe(9000);
+    expect(out.contribution).toBe(3000);
+    expect(out.excessShortAmount).toBe(-2800);
+    expect(out.differenceAmountPaidByHolder).toBe(12000);
   });
 });

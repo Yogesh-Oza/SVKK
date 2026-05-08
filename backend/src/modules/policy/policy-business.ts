@@ -44,7 +44,11 @@ export async function generateReferenceNo(input: {
   const yearPart = String(input.year).replace(/\D/g, "").slice(-4) || String(new Date().getFullYear());
   const mon = monthShort(input.month);
   const period = `${group}-${yearPart}-${mon}`;
-  const refType = ((CounterType as unknown as Record<string, string>).REFERENCE_NO ?? "REFERENCE_NO") as CounterType;
+  const counterEnum = CounterType as unknown as Record<string, string>;
+  const refType = (counterEnum.POLICY_REFERENCE ?? counterEnum.REFERENCE_NO) as CounterType | undefined;
+  if (!refType) {
+    throw new Error("CounterType POLICY_REFERENCE is not available in Prisma client");
+  }
   const seq = await allocateCounter(refType, period, input.tx);
   return `${group}${yearPart}${mon}${String(seq).padStart(4, "0")}`;
 }
@@ -99,22 +103,22 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
   const normalizedCategory = String(input.category).trim().toUpperCase();
 
   const taxAmount = gross * taxRate;
-  const svkkPremium = gross + taxAmount;
-  const commission = gross * 0.15;
+  const svkkPremium = Math.round(gross + taxAmount);
+  const commission = Math.round(gross * 0.15);
   const vkkCommission = commission * 0.5;
 
   let policyHolderPremium = net;
   if (normalizedCategory === "C") {
     policyHolderPremium = 3000 * persons;
   } else if (normalizedCategory === "B") {
-    policyHolderPremium = net * 0.5 * persons;
+    policyHolderPremium = net * 0.5;
   } else if (normalizedCategory === "A" || normalizedCategory === "D") {
-    policyHolderPremium = net * persons;
+    policyHolderPremium = net;
   }
 
   const contribution = basePremium - policyHolderPremium;
-  const excessShortAmount = net - contribution;
-  const differenceAmountPaidByHolder = net - (basePremium + policyHolderPremium);
+  const excessShortAmount = net - svkkPremium;
+  const differenceAmountPaidByHolder = basePremium + policyHolderPremium - net;
 
   return {
     taxAmount,

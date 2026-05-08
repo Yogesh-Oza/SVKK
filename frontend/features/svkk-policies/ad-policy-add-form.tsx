@@ -21,7 +21,7 @@ import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svk
 import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
 import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
@@ -113,6 +113,88 @@ function toMoneyString(value: number): string {
   return String(Math.round(value * 100) / 100);
 }
 
+function toRoundedIntegerString(value: number): string {
+  if (!Number.isFinite(value) || value === 0) {
+    return "";
+  }
+  return String(Math.round(value));
+}
+
+function toMoneyStringAllowZero(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  if (value === 0) {
+    return "0";
+  }
+  return String(Math.round(value * 100) / 100);
+}
+
+function normalizeGroupingToken(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || "OTHER";
+}
+
+function monthToken(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "JAN";
+  const byNumber = Number(raw);
+  if (Number.isFinite(byNumber) && byNumber >= 1 && byNumber <= 12) {
+    const map = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    return map[byNumber - 1] ?? "JAN";
+  }
+  return raw.slice(0, 3).toUpperCase();
+}
+
+function yearToken(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length >= 4) {
+    return digits.slice(0, 4);
+  }
+  return String(new Date().getFullYear());
+}
+
+function normalizeYearLabel(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const fy = raw.match(/^(\d{4})-(\d{2})$/);
+  if (fy) {
+    return `${fy[1]}-${fy[2]}`;
+  }
+  const start = Number(raw.replace(/\D/g, "").slice(0, 4));
+  if (!Number.isFinite(start) || start < 1900) {
+    return raw;
+  }
+  const end2 = String((start + 1) % 100).padStart(2, "0");
+  return `${start}-${end2}`;
+}
+
+function nextYearLabel(value: string): string {
+  const raw = value.trim();
+  const fy = raw.match(/^(\d{4})-(\d{2})$/);
+  if (fy) {
+    const nextStart = Number(fy[1]) + 1;
+    const nextEnd2 = String((nextStart + 1) % 100).padStart(2, "0");
+    return `${nextStart}-${nextEnd2}`;
+  }
+  const start = Number(raw.replace(/\D/g, "").slice(0, 4));
+  if (!Number.isFinite(start) || start < 1900) {
+    return raw;
+  }
+  const nextStart = start + 1;
+  const nextEnd2 = String((nextStart + 1) % 100).padStart(2, "0");
+  return `${nextStart}-${nextEnd2}`;
+}
+
+function composeIdsFromSeq(grouping: string, month: string, year: string, svkkSeq: string, refSeq: string) {
+  const group = normalizeGroupingToken(grouping);
+  const mon = monthToken(month);
+  const yr = yearToken(year);
+  return {
+    svkkPublicId: `${group}${mon}${svkkSeq}`,
+    referenceNo: `${group}${yr}${mon}${refSeq}`,
+  };
+}
+
 const GENDERS = [
   { value: "M", label: "Male" },
   { value: "F", label: "Female" },
@@ -154,6 +236,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const { user } = useSvkkAuth();
   const idPrefix = useId();
   const idemKeyRef = useRef(crypto.randomUUID());
+  const lastAutoIdKeyRef = useRef("");
+  const svkkSeqRef = useRef("");
+  const refSeqRef = useRef("");
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
@@ -172,6 +257,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [fetchNotice, setFetchNotice] = useState<string | null>(null);
   const [fetchSuggestions, setFetchSuggestions] = useState<FetchSuggestion[]>([]);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [suppressSuggestions, setSuppressSuggestions] = useState(false);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
 
@@ -302,32 +389,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [formik],
   );
 
-  const fetchPoliciesBySvkkId = useCallback(async (svkkIdOverride?: string) => {
-    const svkkId = (svkkIdOverride ?? fetchSvkkId).trim();
-    if (!svkkId) {
-      setFetchNotice("Enter SVKK ID first.");
-      return;
-    }
-    setFetchNotice(null);
-    try {
-      const query = new URLSearchParams({ search: svkkId, page: "1", pageSize: "50", sort: "createdAt" });
-      const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${query.toString()}`);
-      const exactRows = (res.items ?? []).filter((item) => item.insuredParty.svkkPublicId === svkkId);
-      setFetchRows(exactRows);
-      const newest = exactRows[0];
-      if (!newest) {
-        setSelectedFetchId("");
-        setFetchNotice("No policy records found for this SVKK ID.");
-        return;
-      }
-      setSelectedFetchId(newest.id);
-      setFetchHolderName(newest.insuredParty.name ?? "");
-      await loadPolicyDetailIntoForm(newest.id, "Fetched old policy and copied all fields.");
-    } catch (e) {
-      setFetchNotice(e instanceof Error ? e.message : "Failed to fetch policies");
-    }
-  }, [fetchSvkkId, loadPolicyDetailIntoForm]);
-
   const loadFetchSuggestions = useCallback(async (query: string) => {
     if (query.trim().length < 1) {
       setFetchSuggestions([]);
@@ -351,76 +412,111 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         });
       }
       setFetchSuggestions(Array.from(dedup.values()));
+      setActiveSuggestionIndex(-1);
     } catch {
       setFetchSuggestions([]);
+      setActiveSuggestionIndex(-1);
     } finally {
       setSuggestBusy(false);
     }
   }, []);
 
+  const loadYearRowsBySvkkId = useCallback(async (svkkId: string) => {
+    const query = new URLSearchParams({ search: svkkId, page: "1", pageSize: "50", sort: "createdAt" });
+    const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${query.toString()}`);
+    const exactRows = (res.items ?? []).filter((item) => item.insuredParty.svkkPublicId === svkkId);
+    setFetchRows(exactRows);
+  }, []);
+
   const selectFetchSuggestion = useCallback(
     async (suggestion: FetchSuggestion) => {
+      setSuppressSuggestions(true);
       setFetchSvkkId(suggestion.svkkPublicId);
       setFetchHolderName(suggestion.holderName);
-      await fetchPoliciesBySvkkId(suggestion.svkkPublicId);
       setFetchSuggestions([]);
+      setActiveSuggestionIndex(-1);
+      setSelectedFetchId(suggestion.id);
+      await loadPolicyDetailIntoForm(suggestion.id, "Loaded selected policy.");
+      void loadYearRowsBySvkkId(suggestion.svkkPublicId);
     },
-    [fetchPoliciesBySvkkId],
+    [loadPolicyDetailIntoForm, loadYearRowsBySvkkId],
+  );
+
+  const handleSuggestionKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (!fetchSuggestions.length) {
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => (prev + 1) % fetchSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => (prev <= 0 ? fetchSuggestions.length - 1 : prev - 1));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const idx = activeSuggestionIndex >= 0 ? activeSuggestionIndex : 0;
+        const suggestion = fetchSuggestions[idx];
+        if (suggestion) {
+          void selectFetchSuggestion(suggestion);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setFetchSuggestions([]);
+        setActiveSuggestionIndex(-1);
+      }
+    },
+    [activeSuggestionIndex, fetchSuggestions, selectFetchSuggestion],
   );
 
   const requestAutoIds = useCallback(
     async (policyGrouping: string, month: string, year: string) => {
       const trimmedGrouping = policyGrouping.trim();
       const trimmedMonth = month.trim();
-      const trimmedYear = year.trim();
+      const trimmedYear = year.trim() || String(new Date().getFullYear());
       if (!trimmedGrouping || !trimmedMonth) {
         return { svkkPublicId: "", referenceNo: "" };
       }
       const svkkPromise = svkkJson<{ svkkPublicId: string }>(
         `/policies/next-svkk-id?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}`,
       );
-      const refPromise =
-        trimmedYear.length > 0
-          ? svkkJson<{ referenceNo: string }>(
-              `/policies/next-reference-no?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}&year=${encodeURIComponent(trimmedYear)}`,
-            )
-          : Promise.resolve({ referenceNo: "" });
+      const refPromise = svkkJson<{ referenceNo: string }>(
+        `/policies/next-reference-no?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}&year=${encodeURIComponent(trimmedYear)}`,
+      );
       const [svkkRes, refRes] = await Promise.all([svkkPromise, refPromise]);
+      const svkkSeq = (svkkRes.svkkPublicId ?? "").slice(-4).padStart(4, "0");
+      const refSeq = (refRes.referenceNo ?? "").slice(-4).padStart(4, "0");
+      const composed = composeIdsFromSeq(trimmedGrouping, trimmedMonth, trimmedYear, svkkSeq, refSeq);
       return {
-        svkkPublicId: svkkRes.svkkPublicId ?? "",
-        referenceNo: refRes.referenceNo ?? "",
+        svkkPublicId: composed.svkkPublicId,
+        referenceNo: composed.referenceNo,
+        svkkSeq,
+        refSeq,
       };
     },
     [],
   );
 
   const startNewPolicy = useCallback(async () => {
-    let nextSvkkId = "";
-    let nextReferenceNo = "";
-    try {
-      const generated = await requestAutoIds(values.policyGroup, values.month, values.year);
-      nextSvkkId = generated.svkkPublicId;
-      nextReferenceNo = generated.referenceNo;
-    } catch {
-      nextSvkkId = "";
-      nextReferenceNo = "";
-    }
     await formik.setValues({
       ...getAdPolicyInitialValues(),
-      svkkPublicId: nextSvkkId,
       policyHolder: fetchHolderName.trim(),
       year: values.year,
       month: values.month,
       policyGrouping: values.policyGroup,
-      refNo: nextReferenceNo,
     });
+    lastAutoIdKeyRef.current = "";
+    svkkSeqRef.current = "";
+    refSeqRef.current = "";
     setFetchMode("new");
-    setFetchNotice(
-      nextSvkkId
-        ? `New policy started. SVKK ID auto generated: ${nextSvkkId}`
-        : "New policy started. Select Policy Group + Month to auto-generate SVKK ID.",
-    );
-  }, [formik, fetchHolderName, requestAutoIds, values.year, values.month, values.policyGroup]);
+    setFetchNotice("New policy started. Fill Policy Group + Month to auto-generate SVKK ID and Reference No.");
+  }, [formik, fetchHolderName, values.year, values.month, values.policyGroup]);
 
   const carryForwardPolicy = useCallback(async () => {
     if (!selectedFetchId) {
@@ -429,8 +525,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
     const carriedValues = policyDetailToAdFormValues(row);
-    const prevYear = Number(carriedValues.year.replace(/\D/g, "").slice(0, 4));
-    const shiftedYear = Number.isFinite(prevYear) && prevYear > 0 ? String(prevYear + 1) : carriedValues.year;
+    const shiftedYear = nextYearLabel(carriedValues.year);
     let nextReferenceNo = carriedValues.refNo;
     try {
       const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
@@ -461,6 +556,17 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const jumpToSection = useCallback((section: AddSectionId) => {
     setActiveSection(section);
   }, []);
+
+  const resetFetchedPolicyState = useCallback(async () => {
+    await formik.setValues(getAdPolicyInitialValues());
+    setFetchMode("fetch");
+    setFetchHolderName("");
+    setFetchRows([]);
+    setSelectedFetchId("");
+    setFetchSuggestions([]);
+    setActiveSuggestionIndex(-1);
+    setFetchNotice(null);
+  }, [formik]);
 
   const openReceiptPreviewFromForm = useCallback(() => {
     const adVariant = toAdProductVariant(values.adProduct) ?? null;
@@ -563,7 +669,49 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [missingUrl, isEdit, policyId]);
 
   useEffect(() => {
+    if (isEdit || selectedFetchId) {
+      return;
+    }
+    const group = values.policyGroup.trim();
+    const month = values.month.trim();
+    const year = values.year.trim();
+    if (!group || !month) {
+      lastAutoIdKeyRef.current = "";
+      svkkSeqRef.current = "";
+      refSeqRef.current = "";
+      if (values.svkkPublicId) void setFieldValue("svkkPublicId", "");
+      if (values.refNo) void setFieldValue("refNo", "");
+      return;
+    }
+    const key = `${group}|${month}|${year}`;
+    if (lastAutoIdKeyRef.current === key) {
+      return;
+    }
+    lastAutoIdKeyRef.current = key;
+    if (svkkSeqRef.current && refSeqRef.current) {
+      const composed = composeIdsFromSeq(group, month, year, svkkSeqRef.current, refSeqRef.current);
+      void setFieldValue("svkkPublicId", composed.svkkPublicId.toUpperCase());
+      void setFieldValue("refNo", composed.referenceNo.toUpperCase());
+      return;
+    }
+    void (async () => {
+      try {
+        const generated = await requestAutoIds(group, month, year);
+        svkkSeqRef.current = generated.svkkSeq || "";
+        refSeqRef.current = generated.refSeq || "";
+        void setFieldValue("svkkPublicId", (generated.svkkPublicId || "").toUpperCase());
+        void setFieldValue("refNo", (generated.referenceNo || "").toUpperCase());
+      } catch {
+        // keep manual editing possible if generator fails
+      }
+    })();
+  }, [isEdit, requestAutoIds, selectedFetchId, setFieldValue, values]);
+
+  useEffect(() => {
     if (isEdit || missingUrl) {
+      return;
+    }
+    if (suppressSuggestions) {
       return;
     }
     const query = fetchSvkkId.trim() || fetchHolderName.trim();
@@ -574,9 +722,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     const timer = setTimeout(() => {
       void loadFetchSuggestions(query);
-    }, 250);
+    }, 120);
     return () => clearTimeout(timer);
-  }, [isEdit, missingUrl, fetchSvkkId, fetchHolderName, loadFetchSuggestions]);
+  }, [isEdit, missingUrl, suppressSuggestions, fetchSvkkId, fetchHolderName, loadFetchSuggestions]);
 
   const ageAnchorDate = values.previousEndDate || values.policyEnd;
 
@@ -669,11 +817,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [values.person, values.members, setFieldValue]);
 
   useEffect(() => {
-    const setAutoField = (field: keyof AdPolicyFormValues, value: number) => {
+    const setAutoField = (
+      field: keyof AdPolicyFormValues,
+      value: number,
+      roundOff = false,
+      showZero = false,
+    ) => {
       if (premiumManual[String(field)]) {
         return;
       }
-      const next = toMoneyString(value);
+      const next = showZero ? toMoneyStringAllowZero(value) : roundOff ? toRoundedIntegerString(value) : toMoneyString(value);
       if (String(values[field] ?? "") !== next) {
         void setFieldValue(field, next);
       }
@@ -733,8 +886,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     let holderPremiumCalc = net;
     const category = values.cat.toUpperCase();
     if (category === "C") holderPremiumCalc = 3000 * personCount;
-    else if (category === "B") holderPremiumCalc = net * 0.5 * personCount;
-    else if (category === "A" || category === "D") holderPremiumCalc = net * personCount;
+    else if (category === "B") holderPremiumCalc = net * 0.5;
+    else if (category === "A" || category === "D") holderPremiumCalc = net;
     const holderPremium = premiumManual.policyHolderPremium
       ? parseInr(values.policyHolderPremium)
       : holderPremiumCalc;
@@ -742,9 +895,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
     const contributionCalc = oneOrTwoLakhPremium - holderPremium;
     const contribution = premiumManual.contribution ? parseInr(values.contribution) : contributionCalc;
-    const excessShortCalc = net - contribution;
+    const excessShortCalc = net - svkkPremiumCalc;
     const excessShort = premiumManual.excessShort ? parseInr(values.excessShort) : excessShortCalc;
-    const differenceAmountCalc = net - (oneOrTwoLakhPremium + holderPremium);
+    const differenceAmountCalc = oneOrTwoLakhPremium + holderPremium - net;
     const differenceAmountPaidByHolder = premiumManual.differenceAmountPaidByHolder
       ? parseInr(values.differenceAmountPaidByHolder)
       : differenceAmountCalc;
@@ -753,14 +906,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("coPremium", net);
     setAutoField("netPremiumCalc", net);
     setAutoField("taxAmount", taxAmount);
-    setAutoField("svkkPremiumCalc", svkkPremiumCalc);
-    setAutoField("vkkPremium", svkkPremiumCalc);
-    setAutoField("commission", commission);
+    setAutoField("svkkPremiumCalc", svkkPremiumCalc, true);
+    setAutoField("vkkPremium", svkkPremiumCalc, true);
+    setAutoField("commission", commission, true);
     setAutoField("vkkCommission", vkkCommission);
     setAutoField("policyHolderPremium", holderPremium);
     setAutoField("contribution", contribution);
     setAutoField("gaamMahajan", contribution);
-    setAutoField("excessShort", excessShort);
+    setAutoField("excessShort", excessShort, false, true);
     setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
     setAutoField("diffAmt", differenceAmountPaidByHolder);
   }, [premiumManual, setFieldValue, values]);
@@ -814,7 +967,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   <RequiredLabel>SVKK ID</RequiredLabel>
                   <Input
                     value={fetchSvkkId}
-                    onChange={(e) => setFetchSvkkId(e.target.value.toUpperCase())}
+                    onChange={(e) => {
+                      setSuppressSuggestions(false);
+                      const nextSvkkId = e.target.value.toUpperCase();
+                      setFetchSvkkId(nextSvkkId);
+                      if (!nextSvkkId.trim()) {
+                        void resetFetchedPolicyState();
+                      }
+                    }}
+                    onKeyDown={handleSuggestionKeyDown}
                     placeholder="Type SVKK ID"
                   />
                 </div>
@@ -822,7 +983,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   <RequiredLabel>Policy Holder</RequiredLabel>
                   <Input
                     value={fetchHolderName}
-                    onChange={(e) => setFetchHolderName(e.target.value)}
+                    onChange={(e) => {
+                      setSuppressSuggestions(false);
+                      setFetchHolderName(e.target.value);
+                    }}
+                    onKeyDown={handleSuggestionKeyDown}
                     placeholder="Type customer name"
                   />
                 </div>
@@ -858,7 +1023,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         <button
                           key={s.svkkPublicId}
                           type="button"
-                          className="hover:bg-muted flex items-center justify-between rounded border px-3 py-2 text-left text-sm"
+                          className={`hover:bg-muted flex items-center justify-between rounded border px-3 py-2 text-left text-sm ${
+                            fetchSuggestions[activeSuggestionIndex]?.svkkPublicId === s.svkkPublicId
+                              ? "bg-muted border-primary"
+                              : ""
+                          }`}
                           onClick={() => void selectFetchSuggestion(s)}
                         >
                           <span>
@@ -1100,7 +1269,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Year</Label>
-                <Input name="year" value={values.year} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 2025-26" />
+                <Input
+                  name="year"
+                  value={values.year}
+                  onChange={handleChange}
+                  onBlur={(e) => {
+                    handleBlur(e);
+                    const normalized = normalizeYearLabel(e.target.value);
+                    if (normalized !== e.target.value) {
+                      void setFieldValue("year", normalized);
+                    }
+                  }}
+                  placeholder="e.g. 2025-26"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Sum Insured (SI)</Label>
