@@ -75,6 +75,7 @@ export type PremiumInput = {
   netPremium: number;
   category: string;
   premiumOneOrTwoLakh: number;
+  numberOfPersons?: number;
 };
 
 export type PremiumOutput = {
@@ -93,6 +94,8 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
   const taxRate = Number.isFinite(input.taxPercent) ? input.taxPercent / 100 : 0;
   const net = Number.isFinite(input.netPremium) ? input.netPremium : 0;
   const basePremium = Number.isFinite(input.premiumOneOrTwoLakh) ? input.premiumOneOrTwoLakh : 0;
+  const personsRaw = Number(input.numberOfPersons ?? 1);
+  const persons = Number.isFinite(personsRaw) && personsRaw > 0 ? Math.floor(personsRaw) : 1;
   const normalizedCategory = String(input.category).trim().toUpperCase();
 
   const taxAmount = gross * taxRate;
@@ -102,11 +105,11 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
 
   let policyHolderPremium = net;
   if (normalizedCategory === "C") {
-    policyHolderPremium = 3000;
+    policyHolderPremium = 3000 * persons;
   } else if (normalizedCategory === "B") {
-    policyHolderPremium = net * 0.5;
+    policyHolderPremium = net * 0.5 * persons;
   } else if (normalizedCategory === "A" || normalizedCategory === "D") {
-    policyHolderPremium = net;
+    policyHolderPremium = net * persons;
   }
 
   const contribution = basePremium - policyHolderPremium;

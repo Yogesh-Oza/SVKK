@@ -14,6 +14,8 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "upload:csv": ["SUPER_ADMIN", "ADMIN"],
   /** Policy document upload to shared Google Drive folder (service account). */
   "upload:google-drive": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
+  /** Policy document upload to OneDrive via Microsoft Graph. */
+  "upload:one-drive": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"],
   "logs:read": ["SUPER_ADMIN", "ADMIN"],
   "mis:read": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   "claim:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],

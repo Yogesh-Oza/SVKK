@@ -43,7 +43,7 @@ export function PolicyDriveUploadButton({
         policyUrl: string;
         updatedAt?: string;
         policyUpdated?: boolean;
-      }>("/upload/google-drive", fd);
+      }>("/upload/one-drive", fd);
       const url = data.policyUrl || data.webViewLink;
       onUploaded(url, data.updatedAt ? { updatedAt: data.updatedAt } : undefined);
       toast.success(
@@ -81,7 +81,7 @@ export function PolicyDriveUploadButton({
         onClick={() => inputRef.current?.click()}
       >
         <Upload className="mr-2 size-4" aria-hidden />
-        {busy ? "Uploading…" : "Upload to Drive"}
+        {busy ? "Uploading…" : "Upload to OneDrive"}
       </Button>
     </>
   );

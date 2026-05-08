@@ -40,7 +40,7 @@ export function canUpdatePolicy(role: SvkkRole) {
   return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
-/** Matches backend `upload:google-drive` (service-account folder; link returned to the user). */
+/** Matches backend upload permissions for policy document link upload. */
 export function canUploadPolicyDrive(role: SvkkRole) {
   return role === "USER" || role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
 }

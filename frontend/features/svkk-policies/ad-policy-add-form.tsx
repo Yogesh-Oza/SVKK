@@ -660,11 +660,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const vkkCommissionCalc = commission * 0.5;
     const vkkCommission = premiumManual.vkkCommission ? parseInr(values.vkkCommission) : vkkCommissionCalc;
 
+    const personCount = Math.max(insuredCount, 1);
     let holderPremiumCalc = net;
     const category = values.cat.toUpperCase();
-    if (category === "C") holderPremiumCalc = 3000;
-    else if (category === "B") holderPremiumCalc = net * 0.5;
-    else if (category === "A" || category === "D") holderPremiumCalc = net;
+    if (category === "C") holderPremiumCalc = 3000 * personCount;
+    else if (category === "B") holderPremiumCalc = net * 0.5 * personCount;
+    else if (category === "A" || category === "D") holderPremiumCalc = net * personCount;
     const holderPremium = premiumManual.policyHolderPremium
       ? parseInr(values.policyHolderPremium)
       : holderPremiumCalc;

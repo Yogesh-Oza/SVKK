@@ -19,6 +19,7 @@ describe("policy-business", () => {
       netPremium: 12000,
       category: "B",
       premiumOneOrTwoLakh: 15000,
+      numberOfPersons: 1,
     });
     expect(out.taxAmount).toBe(1800);
     expect(out.svkkPremium).toBe(11800);
@@ -26,5 +27,36 @@ describe("policy-business", () => {
     expect(out.vkkCommission).toBe(750);
     expect(out.policyHolderPremium).toBe(6000);
     expect(out.contribution).toBe(9000);
+  });
+
+  it("computes full premium flow for category B with 3 persons", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 9000,
+      category: "B",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 3,
+    });
+    expect(out.taxAmount).toBe(1800);
+    expect(out.svkkPremium).toBe(11800);
+    expect(out.commission).toBe(1500);
+    expect(out.vkkCommission).toBe(750);
+    expect(out.policyHolderPremium).toBe(13500);
+    expect(out.contribution).toBe(-1500);
+    expect(out.excessShortAmount).toBe(10500);
+    expect(out.differenceAmountPaidByHolder).toBe(-16500);
+  });
+
+  it("computes category C premium per-person", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 9000,
+      category: "C",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 5,
+    });
+    expect(out.policyHolderPremium).toBe(15000);
   });
 });

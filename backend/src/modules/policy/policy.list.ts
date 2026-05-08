@@ -80,6 +80,10 @@ function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationIn
   return SORTS[s]!;
 }
 
+function containsInsensitive(value: string): Prisma.StringFilter {
+  return { contains: value, mode: "insensitive" } as unknown as Prisma.StringFilter;
+}
+
 /** Include common casings so filters match `MARCH`, `March`, etc. on case-sensitive DB collations. */
 function expandPeriodMonthTextVariants(months: string[]): string[] {
   const out = new Set<string>();
@@ -105,25 +109,25 @@ export function buildPolicyListWhere(
   const searchWhere: Prisma.PolicyWhereInput | undefined = s
     ? {
         OR: [
-          { policyNo: { contains: s } },
-          { referenceNo: { contains: s } },
-          { area: { contains: s } },
-          { nomineeName: { contains: s } },
-          { insuranceCompany: { contains: s } },
-          { insuredParty: { svkkPublicId: { contains: s } } },
-          { insuredParty: { customerId: { contains: s } } },
-          { insuredParty: { name: { contains: s } } },
-          { insuredParty: { mobile: { contains: s } } },
-          { insuredParty: { pan: { contains: s } } },
+          { policyNo: containsInsensitive(s) },
+          { referenceNo: containsInsensitive(s) },
+          { area: containsInsensitive(s) },
+          { nomineeName: containsInsensitive(s) },
+          { insuranceCompany: containsInsensitive(s) },
+          { insuredParty: { svkkPublicId: containsInsensitive(s) } },
+          { insuredParty: { customerId: containsInsensitive(s) } },
+          { insuredParty: { name: containsInsensitive(s) } },
+          { insuredParty: { mobile: containsInsensitive(s) } },
+          { insuredParty: { pan: containsInsensitive(s) } },
           {
             years: {
               some: {
                 deletedAt: null,
                 OR: [
-                  { bankName: { contains: s } },
+                  { bankName: containsInsensitive(s) },
                   {
                     members: {
-                      some: { deletedAt: null, name: { contains: s } },
+                      some: { deletedAt: null, name: containsInsensitive(s) },
                     },
                   },
                   {
@@ -131,9 +135,9 @@ export function buildPolicyListWhere(
                       some: {
                         deletedAt: null,
                         OR: [
-                          { cheque: { number: { contains: s } } },
-                          { cheque: { bankName: { contains: s } } },
-                          { cheque: { nameAsPerCheque: { contains: s } } },
+                          { cheque: { number: containsInsensitive(s) } },
+                          { cheque: { bankName: containsInsensitive(s) } },
+                          { cheque: { nameAsPerCheque: containsInsensitive(s) } },
                         ],
                       },
                     },

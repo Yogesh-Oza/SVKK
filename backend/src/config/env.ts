@@ -37,6 +37,16 @@ const schema = z.object({
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
   /** Full service account JSON as a single line (use \\n in private_key). Optional if GOOGLE_APPLICATION_CREDENTIALS is set. */
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  /**
+   * OneDrive / SharePoint upload target (recommended for policy docs).
+   * `MS_DRIVE_ID` is required for `/upload/one-drive`.
+   */
+  MS_TENANT_ID: z.string().optional(),
+  MS_CLIENT_ID: z.string().optional(),
+  MS_CLIENT_SECRET: z.string().optional(),
+  MS_DRIVE_ID: z.string().optional(),
+  /** Optional nested folder path in drive root, e.g. "SVKK/Policies" */
+  MS_DRIVE_FOLDER_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
