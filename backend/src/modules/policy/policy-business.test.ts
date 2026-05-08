@@ -62,6 +62,18 @@ describe("policy-business", () => {
     expect(out.policyHolderPremium).toBe(15000);
   });
 
+  it("rounds off policy holder premium for category B", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 7736.5,
+      category: "B",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 3,
+    });
+    expect(out.policyHolderPremium).toBe(3868);
+  });
+
   it("computes full premium flow for category A with 3 persons", () => {
     const out = computePremiumDetails({
       grossPremium: 10000,

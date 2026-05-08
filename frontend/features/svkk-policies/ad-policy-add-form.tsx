@@ -877,6 +877,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const taxAmountCalc = gross * (taxPercent / 100);
     const taxAmount = premiumManual.taxAmount ? parseInr(values.taxAmount) : taxAmountCalc;
     const svkkPremiumCalc = gross + taxAmount;
+    const svkkPremiumRounded = Math.round(svkkPremiumCalc);
     const commissionCalc = gross * 0.15;
     const commission = premiumManual.commission ? parseInr(values.commission) : commissionCalc;
     const vkkCommissionCalc = commission * 0.5;
@@ -895,7 +896,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
     const contributionCalc = oneOrTwoLakhPremium - holderPremium;
     const contribution = premiumManual.contribution ? parseInr(values.contribution) : contributionCalc;
-    const excessShortCalc = net - svkkPremiumCalc;
+    const excessShortCalc = net - svkkPremiumRounded;
     const excessShort = premiumManual.excessShort ? parseInr(values.excessShort) : excessShortCalc;
     const differenceAmountCalc = oneOrTwoLakhPremium + holderPremium - net;
     const differenceAmountPaidByHolder = premiumManual.differenceAmountPaidByHolder
@@ -910,7 +911,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("vkkPremium", svkkPremiumCalc, true);
     setAutoField("commission", commission, true);
     setAutoField("vkkCommission", vkkCommission);
-    setAutoField("policyHolderPremium", holderPremium);
+    setAutoField("policyHolderPremium", holderPremium, true);
     setAutoField("contribution", contribution);
     setAutoField("gaamMahajan", contribution);
     setAutoField("excessShort", excessShort, false, true);

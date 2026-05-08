@@ -115,6 +115,7 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
   } else if (normalizedCategory === "A" || normalizedCategory === "D") {
     policyHolderPremium = net;
   }
+  policyHolderPremium = Math.round(policyHolderPremium);
 
   const contribution = basePremium - policyHolderPremium;
   const excessShortAmount = net - svkkPremium;
