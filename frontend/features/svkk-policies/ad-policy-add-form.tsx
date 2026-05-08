@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,14 +17,14 @@ import { getSvkkApiBase } from "@/lib/svkk/config";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import { svkkJson } from "@/lib/svkk/api";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
+import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { toast } from "sonner";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
-import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi } from "./ad-product-variant";
+import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
@@ -168,11 +169,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [fetchHolderName, setFetchHolderName] = useState("");
   const [fetchRows, setFetchRows] = useState<PolicyListRow[]>([]);
   const [selectedFetchId, setSelectedFetchId] = useState("");
-  const [fetchBusy, setFetchBusy] = useState(false);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [fetchNotice, setFetchNotice] = useState<string | null>(null);
   const [fetchSuggestions, setFetchSuggestions] = useState<FetchSuggestion[]>([]);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
+  const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
 
   const initialValues = useMemo(() => {
     if (isEdit && detail) {
@@ -307,7 +308,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       setFetchNotice("Enter SVKK ID first.");
       return;
     }
-    setFetchBusy(true);
     setFetchNotice(null);
     try {
       const query = new URLSearchParams({ search: svkkId, page: "1", pageSize: "50", sort: "createdAt" });
@@ -325,8 +325,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       await loadPolicyDetailIntoForm(newest.id, "Fetched old policy and copied all fields.");
     } catch (e) {
       setFetchNotice(e instanceof Error ? e.message : "Failed to fetch policies");
-    } finally {
-      setFetchBusy(false);
     }
   }, [fetchSvkkId, loadPolicyDetailIntoForm]);
 
@@ -463,6 +461,77 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const jumpToSection = useCallback((section: AddSectionId) => {
     setActiveSection(section);
   }, []);
+
+  const openReceiptPreviewFromForm = useCallback(() => {
+    const adVariant = toAdProductVariant(values.adProduct) ?? null;
+    const personsFromInput = Number(values.person);
+    const personCount =
+      Number.isFinite(personsFromInput) && personsFromInput > 0
+        ? Math.floor(personsFromInput)
+        : Math.max(values.members.length + 1, 1);
+    const firstTxn = values.paymentTransactions[0];
+    const remarksCombined = [values.generalRemark, values.policyChangeRemark]
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join("\n\n");
+    const payload: PolicyDetailForReceipt = {
+      id: policyId,
+      policyNo: values.policyNo.trim() || null,
+      previousPolicyNo: values.previousPolicyNo.trim() || null,
+      referenceNo: values.refNo.trim() || null,
+      adProductVariant: adVariant,
+      area: values.area.trim() || null,
+      village: values.village.trim() || null,
+      personsInsuredCount: personCount,
+      remarks: remarksCombined || null,
+      periodYearText: values.year.trim() || null,
+      periodMonthText: values.month.trim() || null,
+      insuredParty: {
+        name: values.policyHolder.trim() || "Policy Holder",
+        svkkPublicId: values.svkkPublicId.trim() || "—",
+        customerId: values.customerId.trim() || null,
+        pan: values.panNo.trim() || null,
+      },
+      policyType: { name: values.adProduct || "Policy" },
+      category: values.cat.trim() ? { key: values.cat.trim(), name: values.cat.trim() } : null,
+      years: [
+        {
+          yearLabel: values.year.trim() || String(new Date().getFullYear()),
+          sumInsured: parseInr(values.sumInsured),
+          vkkPremium: parseInr(values.vkkPremium || values.svkkPremiumCalc),
+          amountReceived: parseInr(firstTxn?.amountReceived ?? ""),
+          bankName: firstTxn?.bankName?.trim() || values.bank.trim() || null,
+          utrRef: values.onlineTransactionRef.trim() || null,
+          yearRemarks: remarksCombined || null,
+          members: values.members.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim() })),
+          receipts: [],
+          payments:
+            firstTxn && (firstTxn.amountReceived || firstTxn.transactionNumber || firstTxn.bankName)
+              ? [
+                  {
+                    method: firstTxn.mode || null,
+                    amount: parseInr(firstTxn.amountReceived),
+                    cheque:
+                      firstTxn.mode === "CHEQUE"
+                        ? {
+                            number: firstTxn.transactionNumber || "",
+                            bankName: firstTxn.bankName || "",
+                            chequeDate: firstTxn.transactionDate || null,
+                            status: firstTxn.transactionStatus || null,
+                            reason: firstTxn.dishonourReason || null,
+                          }
+                        : null,
+                    transactionMode: firstTxn.mode || null,
+                    transactionDetail: firstTxn.transactionNumber || null,
+                    transactionDate: firstTxn.transactionDate || null,
+                  },
+                ]
+              : [],
+        },
+      ],
+    };
+    setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true }));
+  }, [policyId, values]);
 
   useEffect(() => {
     if (missingUrl || isEdit) {
@@ -804,9 +873,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={() => void fetchPoliciesBySvkkId()} disabled={fetchBusy}>
-                  {fetchBusy ? "Fetching..." : "Fetch Old Policy"}
-                </Button>
                 <Button type="button" variant="outline" onClick={() => void startNewPolicy()}>
                   New Policy
                 </Button>
@@ -1991,19 +2057,47 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               "Save Policy + Auto Receipt"
             )}
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isSubmitting}>
-            Update Policy
-          </Button>
+          {isEdit ? (
+            <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isSubmitting}>
+              Update Policy
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
-            onClick={() => toast.info("Preview is available after policy is saved.")}
+            onClick={openReceiptPreviewFromForm}
             disabled={isSubmitting}
           >
             Generate Receipt Preview
           </Button>
         </div>
       </form>
+      <Dialog open={receiptPreviewHtml != null} onOpenChange={(o) => !o && setReceiptPreviewHtml(null)}>
+        <DialogContent className="flex max-h-[90vh] w-[min(96vw,1280px)] max-w-[min(96vw,1280px)] flex-col gap-4 overflow-hidden sm:max-w-[min(96vw,1280px)]">
+          <DialogHeader>
+            <DialogTitle>Receipt Preview</DialogTitle>
+            <DialogDescription>Preview works with saved or unsaved policy data.</DialogDescription>
+          </DialogHeader>
+          <div className="h-[68vh] overflow-hidden rounded border">
+            <iframe title="Receipt Preview Frame" srcDoc={receiptPreviewHtml ?? ""} className="h-full w-full" />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setReceiptPreviewHtml(null)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const frame = document.querySelector<HTMLIFrameElement>('iframe[title="Receipt Preview Frame"]');
+                frame?.contentWindow?.focus();
+                frame?.contentWindow?.print();
+              }}
+            >
+              Print
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
