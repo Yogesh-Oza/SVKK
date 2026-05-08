@@ -81,7 +81,7 @@ function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationIn
 }
 
 function containsInsensitive(value: string): Prisma.StringFilter {
-  return { contains: value, mode: "insensitive" } as unknown as Prisma.StringFilter;
+  return { contains: value };
 }
 
 /** Include common casings so filters match `MARCH`, `March`, etc. on case-sensitive DB collations. */

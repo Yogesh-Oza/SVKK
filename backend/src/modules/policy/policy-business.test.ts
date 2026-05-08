@@ -59,4 +59,61 @@ describe("policy-business", () => {
     });
     expect(out.policyHolderPremium).toBe(15000);
   });
+
+  it("computes full premium flow for category A with 3 persons", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 9000,
+      category: "A",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 3,
+    });
+    expect(out.taxAmount).toBe(1800);
+    expect(out.svkkPremium).toBe(11800);
+    expect(out.commission).toBe(1500);
+    expect(out.vkkCommission).toBe(750);
+    expect(out.policyHolderPremium).toBe(27000);
+    expect(out.contribution).toBe(-15000);
+    expect(out.excessShortAmount).toBe(24000);
+    expect(out.differenceAmountPaidByHolder).toBe(-30000);
+  });
+
+  it("computes full premium flow for category C with 3 persons", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 9000,
+      category: "C",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 3,
+    });
+    expect(out.taxAmount).toBe(1800);
+    expect(out.svkkPremium).toBe(11800);
+    expect(out.commission).toBe(1500);
+    expect(out.vkkCommission).toBe(750);
+    expect(out.policyHolderPremium).toBe(9000);
+    expect(out.contribution).toBe(3000);
+    expect(out.excessShortAmount).toBe(6000);
+    expect(out.differenceAmountPaidByHolder).toBe(-12000);
+  });
+
+  it("computes full premium flow for category D with 3 persons (same as A)", () => {
+    const out = computePremiumDetails({
+      grossPremium: 10000,
+      taxPercent: 18,
+      netPremium: 9000,
+      category: "D",
+      premiumOneOrTwoLakh: 12000,
+      numberOfPersons: 3,
+    });
+    expect(out.taxAmount).toBe(1800);
+    expect(out.svkkPremium).toBe(11800);
+    expect(out.commission).toBe(1500);
+    expect(out.vkkCommission).toBe(750);
+    expect(out.policyHolderPremium).toBe(27000);
+    expect(out.contribution).toBe(-15000);
+    expect(out.excessShortAmount).toBe(24000);
+    expect(out.differenceAmountPaidByHolder).toBe(-30000);
+  });
 });

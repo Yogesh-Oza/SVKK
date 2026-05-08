@@ -331,7 +331,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [fetchSvkkId, loadPolicyDetailIntoForm]);
 
   const loadFetchSuggestions = useCallback(async (query: string) => {
-    if (query.trim().length < 2) {
+    if (query.trim().length < 1) {
       setFetchSuggestions([]);
       return;
     }
