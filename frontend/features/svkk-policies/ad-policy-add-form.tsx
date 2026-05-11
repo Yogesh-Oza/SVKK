@@ -1478,6 +1478,17 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
+                <Label>Basic Premium</Label>
+                <Input
+                  name="basicPremiumPs"
+                  value={values.basicPremiumPs}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  inputMode="decimal"
+                  placeholder="e.g. 5000"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label>Age</Label>
                 <Input name="age" value={values.age} readOnly className="bg-muted" />
               </div>
@@ -1591,6 +1602,17 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       value={m.addOnsAmount}
                       onChange={handleChange}
                       onBlur={handleBlur}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Basic Premium</Label>
+                    <Input
+                      name={`members[${i}].basicPremium`}
+                      value={m.basicPremium}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      inputMode="decimal"
+                      placeholder="e.g. 5000"
                     />
                   </div>
                   {values.members.length > 1 ? (
