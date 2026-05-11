@@ -16,6 +16,14 @@ import { DropdownCombobox } from "@/components/svkk/dropdown-combobox";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
+import {
+  fetchPremiumSnapshot,
+  normPolicyKey,
+  quoteFromInput,
+  rs,
+  type MemberInput,
+  type PremiumState,
+} from "@/lib/svkk/premium";
 import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
@@ -303,6 +311,22 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [suppressSuggestions, setSuppressSuggestions] = useState(false);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
+  const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await fetchPremiumSnapshot();
+        if (!cancelled) setPremiumStateValue(next);
+      } catch {
+        /* leave defs/charts empty; per-row rendering will show 'No age band found' */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const initialValues = useMemo(() => {
     if (isEdit && detail) {
@@ -377,15 +401,81 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [handleChange, markPremiumManual, setFieldValue],
   );
 
-  const summary = useMemo(() => {
-    const holderBasic = parseInr(values.basicPremiumPs);
-    const membersBasic = values.members.reduce((total, row) => total + parseInr(row.basicPremium), 0);
-    const basic = holderBasic + membersBasic;
-    const gross = parseInr(values.grossPremium);
-    const net = parseInr(values.coPremium);
-    const discount = gross > 0 && net > 0 ? Math.max(gross - net, 0) : 0;
-    return { basic, rider: 0, gross, discount, net };
-  }, [values.basicPremiumPs, values.members, values.grossPremium, values.coPremium]);
+  const quote = useMemo(() => {
+    const rawKey = normPolicyKey(values.adProduct || "");
+    const policyKey = premiumState.charts[rawKey] ? rawKey : "individual";
+    const sumInsured = parseInr(values.sumInsured);
+    const endDate = values.previousEndDate || values.policyEnd || "";
+    const memberCount = 1 + (values.members?.length ?? 0);
+    const holderMember: MemberInput = {
+      name: values.policyHolder || "Policy Holder",
+      dob: values.dob || "",
+      relationship: (values.relation || "self").toLowerCase() || "self",
+      gender:
+        values.holderGender === "M" ? "male" : values.holderGender === "F" ? "female" : "",
+      addOnRider: parseInr(values.holderAddOns),
+    };
+    const memberInputs: MemberInput[] = (values.members || []).map((m, i) => ({
+      name: m.name || `Member ${i + 1}`,
+      dob: m.dob || "",
+      relationship: (m.relationship || "member").toLowerCase() || "member",
+      gender: m.gender === "M" ? "male" : m.gender === "F" ? "female" : "",
+      addOnRider: parseInr(m.addOnsAmount),
+    }));
+    return quoteFromInput(premiumState, {
+      policyType: policyKey,
+      memberCount,
+      sumInsured,
+      endDate,
+      members: [holderMember, ...memberInputs],
+    });
+  }, [
+    premiumState,
+    values.adProduct,
+    values.sumInsured,
+    values.previousEndDate,
+    values.policyEnd,
+    values.policyHolder,
+    values.dob,
+    values.relation,
+    values.holderGender,
+    values.holderAddOns,
+    values.members,
+  ]);
+
+  const summary = useMemo(
+    () => ({
+      basic: quote.basic,
+      rider: quote.rider,
+      gross: quote.gross,
+      discount: quote.disc,
+      net: quote.net,
+    }),
+    [quote],
+  );
+
+  useEffect(() => {
+    if (!quote.rows.length) return;
+    const holderRow = quote.rows[0];
+    if (
+      holderRow &&
+      !holderRow.error &&
+      typeof holderRow.basic === "number" &&
+      holderRow.basic > 0 &&
+      !premiumManual.basicPremiumPs &&
+      parseInr(values.basicPremiumPs) === 0
+    ) {
+      void setFieldValue("basicPremiumPs", String(holderRow.basic));
+    }
+    values.members.forEach((member, index) => {
+      const row = quote.rows[index + 1];
+      if (!row || row.error || typeof row.basic !== "number" || row.basic <= 0) return;
+      const manualKey = `members[${index}].basicPremium`;
+      if (premiumManual[manualKey]) return;
+      if (parseInr(member.basicPremium) > 0) return;
+      void setFieldValue(`members[${index}].basicPremium`, String(row.basic));
+    });
+  }, [quote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
 
   const selectedFetch = useMemo(
     () => fetchRows.find((row) => row.id === selectedFetchId) ?? null,
@@ -1198,46 +1288,82 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Basic Premium</p><p className="font-semibold">₹ {formatInr(summary.basic)}</p></CardContent></Card>
-                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Rider</p><p className="font-semibold">₹ {formatInr(summary.rider)}</p></CardContent></Card>
-                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Gross</p><p className="font-semibold">₹ {formatInr(summary.gross)}</p></CardContent></Card>
-                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Discount</p><p className="font-semibold">₹ {formatInr(summary.discount)}</p></CardContent></Card>
-                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Net Premium</p><p className="font-semibold">₹ {formatInr(summary.net)}</p></CardContent></Card>
+                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Basic Premium</p><p className="font-semibold">₹{rs(summary.basic)}</p></CardContent></Card>
+                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Add-on Rider</p><p className="font-semibold">₹{rs(summary.rider)}</p></CardContent></Card>
+                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Gross Premium</p><p className="font-semibold">₹{rs(summary.gross)}</p></CardContent></Card>
+                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Discount</p><p className="font-semibold">₹{rs(summary.discount)}</p></CardContent></Card>
+                  <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Net Premium</p><p className="font-semibold">₹{rs(summary.net)}</p></CardContent></Card>
                 </div>
                 <div className="overflow-x-auto rounded border">
-                  <table className="w-full min-w-[760px] text-sm">
+                  <table className="w-full min-w-[960px] text-sm">
                     <thead className="bg-muted">
                       <tr>
                         <th className="p-2 text-left">Person</th>
                         <th className="p-2 text-left">Role</th>
+                        <th className="p-2 text-left">DOB</th>
                         <th className="p-2 text-left">Age</th>
-                        <th className="p-2 text-left">Basic</th>
-                        <th className="p-2 text-left">Rider</th>
-                        <th className="p-2 text-left">Discount</th>
-                        <th className="p-2 text-left">Net</th>
+                        <th className="p-2 text-left">Relationship</th>
+                        <th className="p-2 text-left">Gender</th>
+                        <th className="p-2 text-left">Band</th>
+                        <th className="p-2 text-right">Basic</th>
+                        <th className="p-2 text-right">Rider</th>
+                        <th className="p-2 text-right">Gross</th>
+                        <th className="p-2 text-right">Discount %</th>
+                        <th className="p-2 text-right">Discount</th>
+                        <th className="p-2 text-right">Net</th>
+                        <th className="p-2 text-left">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="border-t">
-                        <td className="p-2">{values.policyHolder || "Holder"}</td>
-                        <td className="p-2">holder</td>
-                        <td className="p-2">{values.age || "—"}</td>
-                        <td className="p-2">{parseInr(values.basicPremiumPs) > 0 ? `₹ ${formatInr(parseInr(values.basicPremiumPs))}` : "Age could not be calculated."}</td>
-                        <td className="p-2">—</td>
-                        <td className="p-2">—</td>
-                        <td className="p-2">—</td>
-                      </tr>
-                      {values.members.map((member, index) => (
-                        <tr key={`${member.name}-${index}`} className="border-t">
-                          <td className="p-2">{member.name || `Member ${index + 1}`}</td>
-                          <td className="p-2">member</td>
-                          <td className="p-2">{member.age || "—"}</td>
-                          <td className="p-2">{parseInr(member.basicPremium) > 0 ? `₹ ${formatInr(parseInr(member.basicPremium))}` : "Age could not be calculated."}</td>
-                          <td className="p-2">—</td>
-                          <td className="p-2">—</td>
-                          <td className="p-2">—</td>
-                        </tr>
-                      ))}
+                      {quote.rows.map((row, idx) => {
+                        const isHolder = idx === 0;
+                        const displayName =
+                          row.name || (isHolder ? values.policyHolder || "Holder" : `Member ${idx}`);
+                        return (
+                          <tr key={`${displayName}-${idx}`} className="border-t">
+                            <td className="p-2 font-medium">{displayName}</td>
+                            <td className="p-2 capitalize">{row.role}</td>
+                            <td className="p-2">{row.dob || "—"}</td>
+                            <td className="p-2 tabular-nums">{row.age ?? "—"}</td>
+                            <td className="p-2 capitalize">{row.relationship || "—"}</td>
+                            <td className="p-2 capitalize">{row.gender || "—"}</td>
+                            <td className="p-2">{row.band || "—"}</td>
+                            <td className="p-2 text-right tabular-nums">
+                              {row.error ? (
+                                <span className="text-destructive">{row.error}</span>
+                              ) : (
+                                `₹${rs(row.basic ?? 0)}`
+                              )}
+                            </td>
+                            <td className="p-2 text-right tabular-nums">
+                              {row.error ? "—" : `₹${rs(row.rider ?? 0)}`}
+                            </td>
+                            <td className="p-2 text-right tabular-nums">
+                              {row.error ? "—" : `₹${rs(row.gross ?? 0)}`}
+                            </td>
+                            <td className="p-2 text-right tabular-nums">
+                              {row.error ? "—" : `${row.pct ?? 0}%`}
+                            </td>
+                            <td className="p-2 text-right tabular-nums">
+                              {row.error ? "—" : `₹${rs(row.disc ?? 0)}`}
+                            </td>
+                            <td className="p-2 text-right font-semibold tabular-nums">
+                              {row.error ? "—" : `₹${rs(row.net ?? 0)}`}
+                            </td>
+                            <td className="p-2">
+                              {row.error ? (
+                                <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">
+                                  {row.error}
+                                </span>
+                              ) : (
+                                <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
+                                  Ready
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
