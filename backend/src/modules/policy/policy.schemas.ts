@@ -182,7 +182,7 @@ export const createPolicyBodySchema = z
     policyNo: z.string().optional().nullable(),
     village: z.string().optional().nullable(),
     pod: z.string().optional().nullable(),
-    members: z.array(memberCreateSchema).min(1),
+    members: z.array(memberCreateSchema).min(0),
     initialPayment: initialPaymentSchema.optional(),
     payments: z.array(paymentEntrySchema).optional(),
   })
@@ -254,7 +254,7 @@ export const patchPolicyBodySchema = z
     sumInsured: z.number().positive().optional().nullable(),
     expectedNetPremium: z.number().nonnegative().optional().nullable(),
     insuredParty: insuredPartyPatchSchema.optional(),
-    members: z.array(memberCreateSchema).min(1).optional(),
+    members: z.array(memberCreateSchema).min(0).optional(),
     payments: z.array(paymentEntrySchema).optional(),
   })
   .merge(policyHolderSectionSchema)

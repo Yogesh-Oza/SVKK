@@ -137,7 +137,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     relation: "",
     holderJoiningDate: "",
     holderAddOns: "",
-    person: "1",
+    person: "2",
     sumInsured: "",
     comulativeBonus: "",
     joiningYear: "",

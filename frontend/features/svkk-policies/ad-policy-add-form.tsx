@@ -755,17 +755,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void setFieldValue("members", next);
   };
 
-  const addMember = () => void setFieldValue("members", [...values.members, emptyMemberRow()]);
+  const addMember = () => {
+    const nextMembers = [...values.members, emptyMemberRow()];
+    void setFieldValue("members", nextMembers);
+    void setFieldValue("person", String(nextMembers.length + 1));
+  };
   const removeMember = (i: number) => {
-    if (values.members.length <= 1) {
+    if (values.members.length <= 0) {
       return;
     }
-    void setFieldValue(
-      "members",
-      values.members.filter((_, j) => j !== i),
-    );
-    const nextCount = Math.max(values.members.length - 1, 1);
-    void setFieldValue("person", String(nextCount));
+    const nextMembers = values.members.filter((_, j) => j !== i);
+    void setFieldValue("members", nextMembers);
+    void setFieldValue("person", String(nextMembers.length + 1));
   };
 
   const addPaymentTransaction = () => {
@@ -805,16 +806,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       return;
     }
     const requiredMembers = Math.max(Math.floor(parsed) - 1, 0);
+    if (values.members.length === requiredMembers) {
+      return;
+    }
     if (values.members.length < requiredMembers) {
       const next = [...values.members];
       while (next.length < requiredMembers) {
         next.push(emptyMemberRow());
       }
       void setFieldValue("members", next);
-    } else if (values.members.length > requiredMembers && requiredMembers >= 0) {
-      void setFieldValue("members", values.members.slice(0, requiredMembers));
+    } else {
+      const next = Array.from({ length: requiredMembers }, () => emptyMemberRow());
+      void setFieldValue("members", next);
     }
-  }, [values.person, values.members, setFieldValue]);
+    // Intentionally not depending on values.members to avoid feedback loop
+    // with addMember/removeMember (which set both fields atomically).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.person, setFieldValue]);
 
   useEffect(() => {
     const setAutoField = (
@@ -1615,21 +1623,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       placeholder="e.g. 5000"
                     />
                   </div>
-                  {values.members.length > 1 ? (
-                    <div className="space-y-1">
-                      <Label>Remove Member</Label>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="destructive"
-                        className="shrink-0"
-                        onClick={() => removeMember(i)}
-                        aria-label="Remove member"
-                      >
-                        <Minus className="size-4" />
-                      </Button>
-                    </div>
-                  ) : null}
+                  <div className="space-y-1">
+                    <Label>Remove Member</Label>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="destructive"
+                      className="shrink-0"
+                      onClick={() => removeMember(i)}
+                      aria-label="Remove member"
+                    >
+                      <Minus className="size-4" />
+                    </Button>
+                  </div>
                   <div className="space-y-1">
                     <Label>Gender</Label>
                     <Select value={m.gender} onValueChange={(v) => updateMember(i, { gender: v })}>

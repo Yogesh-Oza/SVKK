@@ -60,9 +60,6 @@ export async function submitAdPolicyRequest({
     throw new Error("Invalid policy type");
   }
   const validMembers = values.members.filter((m) => m.name.trim() && m.dob);
-  if (validMembers.length < 1) {
-    throw new Error("Add at least one member with name and date of birth.");
-  }
 
   const si = parseNum(values.sumInsured);
   if (si == null || si <= 0) {
@@ -262,9 +259,6 @@ export async function submitAdPolicyPatchRequest({
     throw new Error("Invalid policy type");
   }
   const validMembers = values.members.filter((m) => m.name.trim() && m.dob);
-  if (validMembers.length < 1) {
-    throw new Error("Add at least one member with name and date of birth.");
-  }
 
   const si = parseNum(values.sumInsured);
   if (si == null || si <= 0) {
