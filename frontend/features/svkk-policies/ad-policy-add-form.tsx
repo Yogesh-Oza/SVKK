@@ -538,7 +538,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       year: shiftedYear,
       previousPolicyNo: carriedValues.policyNo,
       previousEndDate: carriedValues.policyEnd,
-      policyNo: carriedValues.policyNo || carriedValues.previousPolicyNo,
+      policyNo: "",
+      policyStart: "",
+      policyEnd: "",
       refNo: nextReferenceNo,
     });
     setFetchMode("fetch");
