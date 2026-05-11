@@ -3,6 +3,7 @@ export type SvkkRole = "USER" | "SUPERVISOR" | "ADMIN" | "SUPER_ADMIN";
 export type SvkkNavId =
   | "dashboard"
   | "calculator"
+  | "calculatorAdmin"
   | "policies"
   | "policyNew"
   | "claims"
@@ -15,6 +16,7 @@ export type SvkkNavId =
 const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] = [
   { id: "dashboard", href: "/dashboard", label: "Dashboard", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "calculator", href: "/calculator", label: "Premium calculator", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
+  { id: "calculatorAdmin", href: "/calculator/admin", label: "Calc charts & discounts", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "policies", href: "/policies", label: "Policies", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "policyNew", href: "/policies/new", label: "Add policy", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "claims", href: "/claims", label: "Claims", roles: ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },

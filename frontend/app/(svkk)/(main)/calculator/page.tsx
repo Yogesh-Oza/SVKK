@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Settings2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,13 +25,14 @@ import {
 } from "@/components/ui/table";
 
 import {
-  SAMPLE_CHARTS,
-  SAMPLE_DEFS,
+  STORAGE_KEY_FORM,
   ensureMembers,
+  loadPremiumState,
   quoteFromInput,
   relationshipOptions,
   rs,
   siList,
+  toIsoDate,
   type MemberInput,
   type PolicyKey,
   type PremiumState,
@@ -43,10 +45,6 @@ type FormState = {
   endDate: string;
   members: MemberInput[];
 };
-
-const STORAGE_KEY = "svkk_calc_form_v1";
-const STORAGE_KEY_DEFS = "svkk_calc_defs_v1";
-const STORAGE_KEY_CHARTS = "svkk_calc_charts_v1";
 
 const DEFAULT_FORM: FormState = {
   policyType: "asha_kiran",
@@ -73,27 +71,35 @@ function loadJson<T>(key: string, fallback: T): T {
 
 export default function SvkkCalculatorPage() {
   const [hydrated, setHydrated] = useState(false);
-  const [state] = useState<PremiumState>(() => ({
-    defs: SAMPLE_DEFS,
-    charts: SAMPLE_CHARTS,
+  const [state, setState] = useState<PremiumState>(() => ({
+    defs: {},
+    charts: {},
   }));
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
   useEffect(() => {
-    const storedForm = loadJson<FormState | null>(STORAGE_KEY, null);
+    setState(loadPremiumState());
+    const storedForm = loadJson<FormState | null>(STORAGE_KEY_FORM, null);
     if (storedForm) setForm(storedForm);
-    const storedDefs = loadJson<PremiumState["defs"] | null>(STORAGE_KEY_DEFS, null);
-    if (storedDefs) state.defs = { ...state.defs, ...storedDefs };
-    const storedCharts = loadJson<PremiumState["charts"] | null>(STORAGE_KEY_CHARTS, null);
-    if (storedCharts) state.charts = { ...state.charts, ...storedCharts };
     setHydrated(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-sync defs/charts whenever the admin tab updates localStorage in another
+  // window or after navigating back. Cheap and covers the common edit flow.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === "svkk_calc_defs_v1" || e.key === "svkk_calc_charts_v1") {
+        setState(loadPremiumState());
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+      window.localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(form));
     } catch {
       /* ignore quota */
     }
@@ -131,45 +137,14 @@ export default function SvkkCalculatorPage() {
 
   return (
     <div className="space-y-6">
-      <header
-        className="relative overflow-hidden rounded-[28px] px-7 py-6 text-white shadow-[0_26px_70px_rgba(7,21,43,0.24)]"
-        style={{
-          background:
-            "linear-gradient(135deg,#07152b 0%,#12386f 58%,#0f766e 100%)",
-        }}
-      >
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-20 size-[300px] rounded-full bg-white/10"
-        />
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-32 right-[12%] size-[250px] rounded-full"
-          style={{ background: "rgba(200,155,60,0.22)" }}
-        />
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="grid size-14 place-items-center rounded-[18px] border border-white/25 bg-white/15 font-black tracking-wider shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-              SVKK
-            </div>
-            <div>
-              <h1 className="m-0 text-3xl font-bold leading-[1.08] tracking-tight sm:text-[32px]">
-                Premium Calculator
-              </h1>
-              <p className="mt-1 max-w-xl text-sm leading-relaxed text-white/75">
-                Enter policy details below to calculate member-wise premium with completed-age
-                calculation, add-on rider, discount and net premium.
-              </p>
-            </div>
-          </div>
-          <Badge
-            className="h-10 gap-1.5 rounded-full border border-white/25 bg-white/15 px-4 text-xs font-extrabold uppercase tracking-wider text-white backdrop-blur-md hover:bg-white/15"
-            variant="secondary"
-          >
-            <Sparkles className="size-3.5" /> Live Premium Engine
-          </Badge>
-        </div>
-      </header>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Premium Calculator</h1>
+        <Button asChild size="sm" variant="outline" className="gap-1.5">
+          <Link href="/calculator/admin">
+            <Settings2 className="size-4" /> Charts &amp; discounts
+          </Link>
+        </Button>
+      </div>
 
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-5 p-6">
@@ -229,9 +204,9 @@ export default function SvkkCalculatorPage() {
               hint="Age is calculated from DOB and policy end date."
             >
               <Input
+                type="date"
                 className="h-11"
-                value={form.endDate}
-                placeholder="DD.MM.YYYY or YYYY-MM-DD"
+                value={toIsoDate(form.endDate)}
                 onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
               />
             </FieldShell>
@@ -263,9 +238,9 @@ export default function SvkkCalculatorPage() {
                     </CellShell>
                     <CellShell label="DOB">
                       <Input
+                        type="date"
                         className="h-10"
-                        value={m.dob}
-                        placeholder="DD.MM.YYYY or YYYY-MM-DD"
+                        value={toIsoDate(m.dob)}
                         onChange={(e) => updateMember(i, { dob: e.target.value })}
                       />
                     </CellShell>

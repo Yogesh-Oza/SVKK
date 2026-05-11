@@ -5,6 +5,7 @@ import {
   type SvkkRole,
 } from "@/lib/svkk/permissions";
 import {
+  IconAdjustments,
   IconCalculator,
   IconChartBar,
   IconFileDescription,
@@ -21,6 +22,7 @@ import type { ComponentType } from "react";
 const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   dashboard: IconLayoutDashboard,
   calculator: IconCalculator,
+  calculatorAdmin: IconAdjustments,
   policies: IconFileDescription,
   policyNew: IconFilePlus,
   claims: IconStethoscope,
@@ -39,6 +41,19 @@ export function getSvkkNavGroupsForRole(role: SvkkRole): NavGroup[] {
   const items: NavItem[] = [];
   for (let i = 0; i < flat.length; i += 1) {
     const n = flat[i]!;
+    if (n.id === "calculator" && flat[i + 1]?.id === "calculatorAdmin") {
+      const adm = flat[i + 1]!;
+      items.push({
+        title: "Premium calculator",
+        icon: IconCalculator,
+        items: [
+          { title: "Calculator", url: n.href, icon: IconCalculator },
+          { title: "Charts & discounts", url: adm.href, icon: IconAdjustments },
+        ],
+      });
+      i += 1;
+      continue;
+    }
     if (n.id === "policies" && flat[i + 1]?.id === "policyNew") {
       const add = flat[i + 1]!;
       items.push({

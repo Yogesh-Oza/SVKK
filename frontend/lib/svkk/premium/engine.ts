@@ -53,6 +53,17 @@ export function dateParse(v: unknown): Date | null {
     : null;
 }
 
+/** Format a Date (or anything `dateParse` can read) as `YYYY-MM-DD` for HTML
+ *  `<input type="date">`. Returns "" if the value can't be parsed. */
+export function toIsoDate(v: unknown): string {
+  const d = dateParse(v);
+  if (!d) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** "Completed age" between DOB and end date, identical to reference logic. */
 export function customAge(dob: unknown, endDate: unknown): number | null {
   const b = dateParse(dob);
