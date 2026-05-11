@@ -1,4 +1,5 @@
 import { apiPatch, apiPost } from "@/lib/svkk/api";
+import { AxiosError } from "axios";
 import { toAdProductVariant } from "./ad-product-variant";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 
@@ -228,9 +229,20 @@ export async function submitAdPolicyRequest({
     body.paymentMode = "CASH";
   }
 
-  const res = await apiPost<Record<string, unknown>>("/policies", body, {
-    headers: { "Idempotency-Key": idemKey },
-  });
+  let res: Record<string, unknown>;
+  try {
+    res = await apiPost<Record<string, unknown>>("/policies", body, {
+      headers: { "Idempotency-Key": idemKey },
+    });
+  } catch (e) {
+    if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
+      const msg = (e.response.data as { message?: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) {
+        throw new Error(msg);
+      }
+    }
+    throw e;
+  }
   const id = typeof res.id === "string" ? res.id : null;
   if (!id) {
     throw new Error("Created but response had no id");
@@ -396,5 +408,15 @@ export async function submitAdPolicyPatchRequest({
     body.paymentMode = "CASH";
   }
 
-  await apiPatch(`/policies/${policyId}`, body);
+  try {
+    await apiPatch(`/policies/${policyId}`, body);
+  } catch (e) {
+    if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
+      const msg = (e.response.data as { message?: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) {
+        throw new Error(msg);
+      }
+    }
+    throw e;
+  }
 }

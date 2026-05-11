@@ -28,38 +28,23 @@ export function NotificationBell() {
   const [loading, setLoading] = React.useState(false);
   const router = useRouter();
 
-  const fetchUnreadCount = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications?unread=true&limit=99");
-      if (res.ok) {
-        const data = await res.json();
-        setUnreadCount(data.notifications?.length ?? 0);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const fetchNotifications = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/notifications?limit=10");
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data.notifications ?? []);
+        const next: Notification[] = data.notifications ?? [];
+        setNotifications(next);
+        setUnreadCount(next.filter((n) => !n.isRead).length);
       }
     } catch {
       setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
   }, []);
-
-  React.useEffect(() => {
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
 
   React.useEffect(() => {
     if (open) {

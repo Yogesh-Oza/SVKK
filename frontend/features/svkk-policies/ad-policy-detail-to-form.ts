@@ -261,7 +261,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
             gender: m.gender || "M",
           };
         })
-      : [emptyMemberRow()];
+      : [];
 
   const holderDob = isoToDateInput(row.insuredParty.dateOfBirth ?? "");
 

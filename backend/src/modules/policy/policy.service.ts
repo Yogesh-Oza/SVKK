@@ -50,7 +50,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     throw new AppError("CHART_TYPE_MISMATCH", "Chart does not belong to policy type", 400);
   }
 
-  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const result = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
     if (input.categoryId) {
       const c = await tx.category.findUnique({ where: { id: input.categoryId } });
       if (!c) {
@@ -149,54 +150,72 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     const finalPolicyNo =
       (input.policyNo?.trim() || "") || (input.previousPolicyNo?.trim() || "") || undefined;
 
-    const policy = await tx.policy.create({
-      data: {
-        insuredPartyId: party.id,
-        policyTypeId: input.policyTypeId,
-        categoryId: input.categoryId ?? undefined,
-        createdById: input.actorUserId,
-        policyNo: finalPolicyNo,
-        village: input.village ?? undefined,
-        pod: input.pod ?? undefined,
-        addressLine1: input.addressLine1 ?? undefined,
-        addressLine2: input.addressLine2 ?? undefined,
-        addressLine3: input.addressLine3 ?? undefined,
-        addressLine4: input.addressLine4 ?? undefined,
-        city: input.city ?? undefined,
-        state: input.state ?? undefined,
-        pincode: input.pincode ?? undefined,
-        contactPhone: input.contactPhone ?? undefined,
-        nomineeName: input.nomineeName ?? undefined,
-        nomineeRelation: input.nomineeRelation ?? undefined,
-        loanRef: input.loanRef ?? undefined,
-        courierTracking: input.courierTracking ?? undefined,
-        remarks: input.remarks ?? undefined,
-        adProductVariant: input.adProductVariant ?? undefined,
-        insuranceCompany: input.insuranceCompany ?? undefined,
-        tpa: input.tpa ?? undefined,
-        categoryText: input.categoryText ?? undefined,
-        holderRelationship: input.holderRelationship ?? undefined,
-        holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
-        personsInsuredCount: personsCount,
-        area: input.area ?? undefined,
-        referenceNo: generatedReferenceNo ?? undefined,
-        mobileSecondary: input.mobileSecondary ?? undefined,
-        policyGrouping: input.policyGrouping ?? undefined,
-        policyUrl: input.policyUrl ?? undefined,
-        loanStatus: input.loanStatus ?? undefined,
-        loanAmount: input.loanAmount != null ? input.loanAmount : undefined,
-        refundChequeAmount: input.refundChequeAmount != null ? input.refundChequeAmount : undefined,
-        refundChequeNo: input.refundChequeNo ?? undefined,
-        refundChequeDate: input.refundChequeDate ?? undefined,
-        cdAccountUsed: input.cdAccountUsed ?? undefined,
-        cdAmount: input.cdAmount != null ? input.cdAmount : undefined,
-        courierStatus: input.courierStatus ?? undefined,
-        courierDate: input.courierDate ?? undefined,
-        courierAddress: input.courierAddress ?? undefined,
-        periodYearText: input.periodYearText ?? undefined,
-        periodMonthText: input.periodMonthText ?? undefined,
-      },
-    });
+    let policy;
+    try {
+      policy = await tx.policy.create({
+        data: {
+          insuredPartyId: party.id,
+          policyTypeId: input.policyTypeId,
+          categoryId: input.categoryId ?? undefined,
+          createdById: input.actorUserId,
+          policyNo: finalPolicyNo,
+          village: input.village ?? undefined,
+          pod: input.pod ?? undefined,
+          addressLine1: input.addressLine1 ?? undefined,
+          addressLine2: input.addressLine2 ?? undefined,
+          addressLine3: input.addressLine3 ?? undefined,
+          addressLine4: input.addressLine4 ?? undefined,
+          city: input.city ?? undefined,
+          state: input.state ?? undefined,
+          pincode: input.pincode ?? undefined,
+          contactPhone: input.contactPhone ?? undefined,
+          nomineeName: input.nomineeName ?? undefined,
+          nomineeRelation: input.nomineeRelation ?? undefined,
+          loanRef: input.loanRef ?? undefined,
+          courierTracking: input.courierTracking ?? undefined,
+          remarks: input.remarks ?? undefined,
+          adProductVariant: input.adProductVariant ?? undefined,
+          insuranceCompany: input.insuranceCompany ?? undefined,
+          tpa: input.tpa ?? undefined,
+          categoryText: input.categoryText ?? undefined,
+          holderRelationship: input.holderRelationship ?? undefined,
+          holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
+          personsInsuredCount: personsCount,
+          area: input.area ?? undefined,
+          referenceNo: generatedReferenceNo ?? undefined,
+          mobileSecondary: input.mobileSecondary ?? undefined,
+          policyGrouping: input.policyGrouping ?? undefined,
+          policyUrl: input.policyUrl ?? undefined,
+          loanStatus: input.loanStatus ?? undefined,
+          loanAmount: input.loanAmount != null ? input.loanAmount : undefined,
+          refundChequeAmount: input.refundChequeAmount != null ? input.refundChequeAmount : undefined,
+          refundChequeNo: input.refundChequeNo ?? undefined,
+          refundChequeDate: input.refundChequeDate ?? undefined,
+          cdAccountUsed: input.cdAccountUsed ?? undefined,
+          cdAmount: input.cdAmount != null ? input.cdAmount : undefined,
+          courierStatus: input.courierStatus ?? undefined,
+          courierDate: input.courierDate ?? undefined,
+          courierAddress: input.courierAddress ?? undefined,
+          periodYearText: input.periodYearText ?? undefined,
+          periodMonthText: input.periodMonthText ?? undefined,
+        },
+      });
+    } catch (e) {
+      // Unique constraint (e.g. referenceNo) - return a clean error for UI.
+      if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
+        const target = (e as { meta?: { target?: string | string[] } }).meta?.target;
+        const targetStr = Array.isArray(target) ? target.join(",") : String(target ?? "");
+        if (targetStr.includes("referenceNo")) {
+          throw new AppError(
+            "DUPLICATE_REFERENCE_NO",
+            `Reference No already exists${generatedReferenceNo ? ` (${generatedReferenceNo})` : ""}. Please generate a new Reference No.`,
+            409,
+          );
+        }
+        throw new AppError("CONFLICT", "Duplicate unique field", 409);
+      }
+      throw e;
+    }
 
     const year = await tx.policyYear.create({
       data: {
@@ -309,8 +328,11 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
 
     await syncPolicyListVkkPremium(tx, policy.id);
 
-    return { party, policy, year };
-  });
+      return { party, policy, year };
+    },
+    // Policy creation can involve many sequential writes; allow more than the 5s default.
+    { timeout: 20_000, maxWait: 20_000 },
+  );
 
   await writeActivityLog({
     userId: input.actorUserId,
@@ -699,7 +721,8 @@ export async function updatePolicySections(input: {
 
   const beforeSnapshot = { policy: existing, yearLabel: input.year?.yearLabel };
 
-  const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const updated = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
     let bumpVersionWithoutPolicyRow = false;
 
     if (hasInsuredParty && input.insuredParty) {
@@ -782,7 +805,7 @@ export async function updatePolicySections(input: {
       await syncPolicyListVkkPremium(tx, input.policyId);
     }
 
-    return tx.policy.findUniqueOrThrow({
+      return tx.policy.findUniqueOrThrow({
       where: { id: input.policyId },
       include: {
         insuredParty: true,
@@ -797,8 +820,11 @@ export async function updatePolicySections(input: {
           },
         },
       },
-    });
-  });
+      });
+    },
+    // Updates can also be multi-write + include refresh sync; avoid expiring the tx.
+    { timeout: 20_000, maxWait: 20_000 },
+  );
 
   await writeActivityLog({
     userId: input.actorUserId,

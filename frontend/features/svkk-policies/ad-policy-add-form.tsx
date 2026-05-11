@@ -338,6 +338,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
+  const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -405,20 +406,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         return applyBackendFieldErrors(fe);
       };
 
-      if (isEdit && policyId && detail) {
-        const y = detail.years.find((yy) => yy.yearLabel === editYearLabel) ?? detail.years[0];
+      const editCtx =
+        isEdit && policyId && detail
+          ? { policyId, detail }
+          : !isEdit && fetchedPolicyForUpdate
+            ? { policyId: fetchedPolicyForUpdate.id, detail: fetchedPolicyForUpdate }
+            : null;
+
+      if (editCtx) {
+        const y = editCtx.detail.years.find((yy) => yy.yearLabel === editYearLabel) ?? editCtx.detail.years[0];
         if (!y) {
           setApiErr("This policy has no year row to update.");
           return;
         }
         try {
           await submitAdPolicyPatchRequest({
-            policyId,
+            policyId: editCtx.policyId,
             values,
-            expectedUpdatedAt: detail.updatedAt,
+            expectedUpdatedAt: editCtx.detail.updatedAt,
             yearLabel: y.yearLabel,
           });
-          void router.push(`/policies/${policyId}`);
+          void router.push(`/policies/${editCtx.policyId}`);
         } catch (e) {
           if (tryApplyBackendValidationErrors(e)) {
             setApiErr("Please fix the highlighted fields and try again.");
@@ -486,7 +494,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const policyKey = premiumState.charts[rawKey] ? rawKey : "individual";
     const sumInsured = parseInr(values.sumInsured);
     const endDate = values.previousEndDate || values.policyEnd || "";
-    const memberCount = 1 + (values.members?.length ?? 0);
+    // Ignore placeholder/blank member rows (e.g. fetched policies with 0 members).
+    const validMembers = (values.members || []).filter((m) => Boolean(m.name?.trim()) && Boolean(m.dob));
+    const memberCount = 1 + validMembers.length;
     const holderMember: MemberInput = {
       name: values.policyHolder || "Policy Holder",
       dob: values.dob || "",
@@ -495,9 +505,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         values.holderGender === "M" ? "male" : values.holderGender === "F" ? "female" : "",
       addOnRider: parseInr(values.holderAddOns),
     };
-    const memberInputs: MemberInput[] = (values.members || []).map((m, i) => ({
-      name: m.name || `Member ${i + 1}`,
-      dob: m.dob || "",
+    const memberInputs: MemberInput[] = validMembers.map((m, i) => ({
+      name: m.name.trim() || `Member ${i + 1}`,
+      dob: m.dob,
       relationship: (m.relationship || "member").toLowerCase() || "member",
       gender: m.gender === "M" ? "male" : m.gender === "F" ? "female" : "",
       addOnRider: parseInr(m.addOnsAmount),
@@ -594,6 +604,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         await formik.setValues(nextValues);
         setFetchMode("fetch");
         setFetchNotice(modeNotice);
+        // When we "fetch & load", user expects to update the same policy (not create a new one).
+        setFetchedPolicyForUpdate(row);
       } catch (e) {
         setFetchNotice(e instanceof Error ? e.message : "Failed to load policy details");
       }
@@ -728,6 +740,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     refSeqRef.current = "";
     setFetchMode("new");
     setFetchNotice("New policy started. Fill Policy Group + Month to auto-generate SVKK ID and Reference No.");
+    setFetchedPolicyForUpdate(null);
   }, [formik, fetchHolderName, values.year, values.month, values.policyGroup]);
 
   const carryForwardPolicy = useCallback(async () => {
@@ -786,6 +799,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     });
     setFetchMode("fetch");
     setFetchNotice("Carry Forward / Renew copied all prior fields.");
+    // Carry forward creates a *new* policy/year; do not show Update button.
+    setFetchedPolicyForUpdate(null);
   }, [formik, requestAutoIds, selectedFetchId]);
 
   const selectYearPolicy = useCallback(
@@ -2674,18 +2689,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-          <Button type="submit" disabled={isBusy} className="min-w-40">
-            {isBusy ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save Policy + Auto Receipt"
-            )}
-          </Button>
-          {isEdit ? (
-            <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isBusy}>
+          {isEdit || fetchedPolicyForUpdate ? (
+            <Button type="submit" disabled={isBusy} className="min-w-40">
               {isBusy ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -2695,7 +2700,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 "Update Policy"
               )}
             </Button>
-          ) : null}
+          ) : (
+            <Button type="submit" disabled={isBusy} className="min-w-40">
+              {isBusy ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Policy + Auto Receipt"
+            )}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
