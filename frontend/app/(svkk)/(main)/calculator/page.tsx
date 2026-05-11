@@ -1,10 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -20,559 +22,462 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { getSvkkApiBase } from "@/lib/svkk/config";
-import { svkkJson } from "@/lib/svkk/api";
+
 import {
-  CalendarDays,
-  Calculator,
-  IndianRupee,
-  Loader2,
-  Plus,
-  Sparkles,
-  Trash2,
-  UserRound,
-  Users,
-} from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+  SAMPLE_CHARTS,
+  SAMPLE_DEFS,
+  ensureMembers,
+  quoteFromInput,
+  relationshipOptions,
+  rs,
+  siList,
+  type MemberInput,
+  type PolicyKey,
+  type PremiumState,
+} from "@/lib/svkk/premium";
 
-type PolicyTypeRow = {
-  id: string;
-  key: string;
-  name: string;
-  chartMode: string;
-  description: string | null;
+type FormState = {
+  policyType: PolicyKey;
+  memberCount: number;
+  sumInsured: number;
+  endDate: string;
+  members: MemberInput[];
 };
 
-type ChartRow = {
-  id: string;
-  policyTypeId: string;
-  version: number;
-  effectiveFrom: string;
-  chartKind: string;
+const STORAGE_KEY = "svkk_calc_form_v1";
+const STORAGE_KEY_DEFS = "svkk_calc_defs_v1";
+const STORAGE_KEY_CHARTS = "svkk_calc_charts_v1";
+
+const DEFAULT_FORM: FormState = {
+  policyType: "asha_kiran",
+  memberCount: 3,
+  sumInsured: 500000,
+  endDate: "14.10.2026",
+  members: [
+    { name: "Policy Holder", dob: "13.10.1987", relationship: "self", gender: "male", addOnRider: 0 },
+    { name: "Spouse", dob: "05.06.1990", relationship: "spouse", gender: "female", addOnRider: 0 },
+    { name: "Daughter", dob: "11.08.2014", relationship: "daughter", gender: "female", addOnRider: 0 },
+  ],
 };
 
-type PremiumResult = {
-  netPremium: number;
-  lines: { name: string; relationship: string; net: number; band: string }[];
-};
-
-type Member = {
-  id: string;
-  name: string;
-  dob: string;
-  relationship: string;
-  gender: string;
-};
-
-function newMember(over: Partial<Member> = {}): Member {
-  return {
-    id: crypto.randomUUID(),
-    name: "",
-    dob: "",
-    relationship: "self",
-    gender: "M",
-    ...over,
-  };
-}
-
-function formatChartOption(c: ChartRow): string {
-  const kind = c.chartKind
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-  return `v${c.version} · ${kind}`;
-}
-
-const RELATIONSHIPS = [
-  { value: "self", label: "Self" },
-  { value: "spouse", label: "Spouse" },
-  { value: "son", label: "Son" },
-  { value: "daughter", label: "Daughter" },
-  { value: "father", label: "Father" },
-  { value: "mother", label: "Mother" },
-  { value: "other", label: "Other" },
-] as const;
-
-function MemberForm({
-  index,
-  value,
-  onChange,
-  onRemove,
-  canRemove,
-}: {
-  index: number;
-  value: Member;
-  onChange: (v: Member) => void;
-  onRemove: () => void;
-  canRemove: boolean;
-}) {
-  const nameId = useId();
-  const dobId = useId();
-  const relId = useId();
-  const genId = useId();
-
-  return (
-    <div className="from-muted/20 to-card bg-linear-to-b space-y-4 rounded-xl border p-4 shadow-sm sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="bg-primary/8 text-primary border-primary/20 flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold tabular-nums">
-            {index + 1}
-          </div>
-          <div>
-            <p className="text-foreground text-sm font-medium">Insured member</p>
-            <p className="text-muted-foreground text-xs">Details as per proposal</p>
-          </div>
-        </div>
-        {canRemove ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-destructive size-8 shrink-0"
-            onClick={onRemove}
-            aria-label={`Remove member ${index + 1}`}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        ) : null}
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={nameId} className="text-xs font-medium">
-            Full name
-          </Label>
-          <div className="relative">
-            <UserRound className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-            <Input
-              id={nameId}
-              className="pl-9"
-              value={value.name}
-              onChange={(e) => onChange({ ...value, name: e.target.value })}
-              placeholder="As on ID / policy"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={dobId} className="text-xs font-medium">
-            Date of birth
-          </Label>
-          <div className="relative">
-            <CalendarDays className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-            <Input
-              id={dobId}
-              type="date"
-              className="pl-9"
-              value={value.dob}
-              onChange={(e) => onChange({ ...value, dob: e.target.value })}
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={genId} className="text-xs font-medium">
-            Gender
-          </Label>
-          <Select
-            value={value.gender}
-            onValueChange={(gender) => onChange({ ...value, gender })}
-          >
-            <SelectTrigger id={genId} className="w-full">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="M">Male</SelectItem>
-              <SelectItem value="F">Female</SelectItem>
-              <SelectItem value="O">Other</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={relId} className="text-xs font-medium">
-            Relationship to proposer
-          </Label>
-          <Select
-            value={value.relationship}
-            onValueChange={(relationship) => onChange({ ...value, relationship })}
-          >
-            <SelectTrigger id={relId} className="w-full">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent>
-              {RELATIONSHIPS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatInr(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(n);
+function loadJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export default function SvkkCalculatorPage() {
-  const [policyTypes, setPolicyTypes] = useState<PolicyTypeRow[]>([]);
-  const [charts, setCharts] = useState<ChartRow[]>([]);
-  const [policyTypeId, setPolicyTypeId] = useState("");
-  const [policyChartId, setPolicyChartId] = useState("");
-  const [policyEnd, setPolicyEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [sumInsured, setSumInsured] = useState("500000");
-  const [members, setMembers] = useState<Member[]>(() => [newMember()]);
-  const [result, setResult] = useState<PremiumResult | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [typesLoading, setTypesLoading] = useState(true);
-  const missingUrl = !getSvkkApiBase();
+  const [hydrated, setHydrated] = useState(false);
+  const [state] = useState<PremiumState>(() => ({
+    defs: SAMPLE_DEFS,
+    charts: SAMPLE_CHARTS,
+  }));
+  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
-  const loadTypes = useCallback(async () => {
-    const rows = await svkkJson<PolicyTypeRow[]>("/calculation/reference/policy-types");
-    setPolicyTypes(rows);
-    setPolicyTypeId((prev) => prev || rows[0]?.id || "");
-  }, []);
-
-  const loadCharts = useCallback(async (ptId: string) => {
-    if (!ptId) {
-      return;
-    }
-    const rows = await svkkJson<ChartRow[]>(
-      `/calculation/reference/charts?policyTypeId=${encodeURIComponent(ptId)}`,
-    );
-    setCharts(rows);
-    const firstHolder = rows.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
-    if (firstHolder) {
-      setPolicyChartId(firstHolder.id);
-    } else if (rows[0]) {
-      setPolicyChartId(rows[0].id);
-    } else {
-      setPolicyChartId("");
-    }
+  useEffect(() => {
+    const storedForm = loadJson<FormState | null>(STORAGE_KEY, null);
+    if (storedForm) setForm(storedForm);
+    const storedDefs = loadJson<PremiumState["defs"] | null>(STORAGE_KEY_DEFS, null);
+    if (storedDefs) state.defs = { ...state.defs, ...storedDefs };
+    const storedCharts = loadJson<PremiumState["charts"] | null>(STORAGE_KEY_CHARTS, null);
+    if (storedCharts) state.charts = { ...state.charts, ...storedCharts };
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (missingUrl) {
-      return;
-    }
-    void (async () => {
-      setTypesLoading(true);
-      try {
-        await loadTypes();
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : "Failed to load policy types");
-      } finally {
-        setTypesLoading(false);
-      }
-    })();
-  }, [missingUrl, loadTypes]);
-
-  useEffect(() => {
-    if (missingUrl || !policyTypeId) {
-      return;
-    }
-    void (async () => {
-      try {
-        setErr(null);
-        await loadCharts(policyTypeId);
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : "Failed to load charts");
-      }
-    })();
-  }, [policyTypeId, missingUrl, loadCharts]);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    setResult(null);
-    setLoading(true);
+    if (!hydrated) return;
     try {
-      const body = {
-        policyTypeId,
-        policyChartId,
-        policyEnd: new Date(policyEnd).toISOString(),
-        sumInsured: Number(sumInsured),
-        members: members.map((m) => ({
-          name: m.name,
-          dob: new Date(m.dob).toISOString(),
-          relationship: m.relationship,
-          gender: m.gender,
-        })),
-      };
-      const res = await svkkJson<PremiumResult>("/calculation/live", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      setResult(res);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Calculation failed");
-    } finally {
-      setLoading(false);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    } catch {
+      /* ignore quota */
     }
-  }
+  }, [form, hydrated]);
 
-  if (missingUrl) {
-    return (
-      <p className="text-destructive text-sm">
-        Set <code className="font-mono">NEXT_PUBLIC_API_URL</code> in <code className="font-mono">frontend/.env</code>
-      </p>
-    );
-  }
+  const sis = useMemo(() => siList(state.charts, form.policyType), [state.charts, form.policyType]);
 
-  const selectedType = policyTypes.find((p) => p.id === policyTypeId);
-  const sumInsuredNum = Number(sumInsured.replace(/,/g, ""));
-  const sumInsuredValid = Number.isFinite(sumInsuredNum) && sumInsuredNum > 0;
+  useEffect(() => {
+    setForm((prev) => {
+      const members = ensureMembers(prev.members, prev.memberCount, prev.policyType);
+      const nextSi = sis.length && !sis.includes(Number(prev.sumInsured)) ? sis[0]! : prev.sumInsured;
+      if (members === prev.members && nextSi === prev.sumInsured) return prev;
+      return { ...prev, members, sumInsured: nextSi };
+    });
+  }, [form.policyType, form.memberCount, sis]);
+
+  const quote = useMemo(
+    () =>
+      quoteFromInput(state, {
+        policyType: form.policyType,
+        memberCount: form.memberCount,
+        sumInsured: form.sumInsured,
+        endDate: form.endDate,
+        members: form.members,
+      }),
+    [state, form],
+  );
+
+  const updateMember = (index: number, patch: Partial<MemberInput>) => {
+    setForm((prev) => ({
+      ...prev,
+      members: prev.members.map((m, i) => (i === index ? { ...m, ...patch } : m)),
+    }));
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 pb-10">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 text-primary border-primary/15 flex h-12 w-12 items-center justify-center rounded-2xl border shadow-sm">
-              <Calculator className="size-6" />
+    <div className="space-y-6">
+      <header
+        className="relative overflow-hidden rounded-[28px] px-7 py-6 text-white shadow-[0_26px_70px_rgba(7,21,43,0.24)]"
+        style={{
+          background:
+            "linear-gradient(135deg,#07152b 0%,#12386f 58%,#0f766e 100%)",
+        }}
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-20 size-[300px] rounded-full bg-white/10"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -bottom-32 right-[12%] size-[250px] rounded-full"
+          style={{ background: "rgba(200,155,60,0.22)" }}
+        />
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="grid size-14 place-items-center rounded-[18px] border border-white/25 bg-white/15 font-black tracking-wider shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+              SVKK
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Premium calculator</h1>
-              <p className="text-muted-foreground mt-0.5 max-w-xl text-pretty text-sm">
-                Run a live chart quote: pick policy, chart, sum insured, and members. Net premium
-                updates from your active rate tables.
+              <h1 className="m-0 text-3xl font-bold leading-[1.08] tracking-tight sm:text-[32px]">
+                Premium Calculator
+              </h1>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-white/75">
+                Enter policy details below to calculate member-wise premium with completed-age
+                calculation, add-on rider, discount and net premium.
               </p>
             </div>
           </div>
-        </div>
-        {result ? (
-          <Badge variant="secondary" className="h-8 w-fit gap-1 px-3 text-xs">
-            <Sparkles className="size-3.5" />
-            Estimate ready
+          <Badge
+            className="h-10 gap-1.5 rounded-full border border-white/25 bg-white/15 px-4 text-xs font-extrabold uppercase tracking-wider text-white backdrop-blur-md hover:bg-white/15"
+            variant="secondary"
+          >
+            <Sparkles className="size-3.5" /> Live Premium Engine
           </Badge>
-        ) : null}
-      </div>
+        </div>
+      </header>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[1fr_minmax(300px,380px)]">
-        <form onSubmit={onSubmit} className="space-y-6">
-          <Card className="overflow-hidden border shadow-sm">
-            <CardHeader className="bg-muted/30 border-b">
-              <div className="flex items-start gap-3">
-                <div className="bg-background flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm">
-                  <IndianRupee className="text-primary size-5" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Policy & coverage</CardTitle>
-                  <CardDescription>
-                    Select the product and rate chart, then the policy end date and sum insured that
-                    match your chart column.
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5 pt-6">
-              {typesLoading ? (
-                <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                  <Loader2 className="size-4 animate-spin" />
-                  Loading policy products…
-                </div>
-              ) : null}
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="pt">Policy type</Label>
-                  <Select value={policyTypeId} onValueChange={setPolicyTypeId} disabled={typesLoading || !policyTypes.length}>
-                    <SelectTrigger id="pt" className="h-11 w-full text-left">
-                      <SelectValue placeholder="Choose a product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {policyTypes.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <span className="font-medium">{p.name}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedType?.description ? (
-                    <p className="text-muted-foreground text-xs leading-relaxed">{selectedType.description}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="ch">Policy chart (quote basis)</Label>
-                  <Select value={policyChartId} onValueChange={setPolicyChartId} disabled={!charts.length}>
-                    <SelectTrigger id="ch" className="h-11 w-full text-left">
-                      <SelectValue placeholder="Choose chart version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {charts.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {formatChartOption(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs">Usually the holder or combined family chart.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pe">Policy end</Label>
-                  <div className="relative">
-                    <CalendarDays className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-                    <Input
-                      id="pe"
-                      type="date"
-                      className="h-11 pl-9"
-                      value={policyEnd}
-                      onChange={(e) => setPolicyEnd(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="si">Sum insured (₹)</Label>
-                  <div className="relative">
-                    <IndianRupee className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-                    <Input
-                      id="si"
-                      className="h-11 pl-9 font-mono tabular-nums"
-                      value={sumInsured}
-                      onChange={(e) => setSumInsured(e.target.value.replace(/[^\d]/g, ""))}
-                      inputMode="numeric"
-                      placeholder="500000"
-                    />
-                  </div>
-                  {sumInsuredValid ? (
-                    <p className="text-muted-foreground text-xs">
-                      = {new Intl.NumberFormat("en-IN").format(sumInsuredNum)} (must match a column in
-                      the selected chart)
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border shadow-sm">
-            <CardHeader className="bg-muted/30 border-b">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="bg-background flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm">
-                    <Users className="text-primary size-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg">Insured members</CardTitle>
-                    <CardDescription>Add every person covered; proposer is usually member 1 (self).</CardDescription>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 gap-1.5"
-                  onClick={() => setMembers((m) => [...m, newMember()])}
-                >
-                  <Plus className="size-4" />
-                  Add member
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-6">
-              {members.map((m, i) => (
-                <MemberForm
-                  key={m.id}
-                  index={i}
-                  value={m}
-                  canRemove={members.length > 1}
-                  onChange={(v) => setMembers((prev) => prev.map((p) => (p.id === m.id ? v : p)))}
-                  onRemove={() => setMembers((prev) => prev.filter((p) => p.id !== m.id))}
-                />
-              ))}
-            </CardContent>
-            <Separator />
-            <CardFooter className="bg-muted/10 flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-              {err ? (
-                <p className="text-destructive w-full text-sm sm:order-2 sm:max-w-md">{err}</p>
-              ) : (
-                <p className="text-muted-foreground w-full text-xs sm:order-2 sm:max-w-md">
-                  Ensure DOBs and sum insured are valid for the API before running.
-                </p>
-              )}
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full min-w-[200px] gap-2 sm:w-auto"
-                disabled={loading || !policyChartId || !sumInsuredValid}
+      <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
+        <CardContent className="space-y-5 p-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <FieldShell label="Policy Type" hint={state.defs[form.policyType]?.description}>
+              <Select
+                value={form.policyType}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, policyType: v }))}
               >
-                {loading ? <Loader2 className="size-4 animate-spin" /> : <Calculator className="size-4" />}
-                {loading ? "Calculating…" : "Calculate premium"}
-              </Button>
-            </CardFooter>
-          </Card>
-        </form>
+                <SelectTrigger className="h-11 w-full text-left">
+                  <SelectValue placeholder="Choose a product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(state.defs).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>
+                      {v.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FieldShell>
+            <FieldShell label="Number of Members">
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                inputMode="numeric"
+                className="h-11"
+                value={form.memberCount}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    memberCount: Math.max(1, Math.min(10, Number(e.target.value) || 1)),
+                  }))
+                }
+              />
+            </FieldShell>
+            <FieldShell label="Sum Insured">
+              <Select
+                value={String(form.sumInsured)}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, sumInsured: Number(v) }))}
+              >
+                <SelectTrigger className="h-11 w-full text-left">
+                  <SelectValue placeholder="Select SI" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sis.map((si) => (
+                    <SelectItem key={si} value={String(si)}>
+                      ₹{rs(si)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FieldShell>
+            <FieldShell
+              label="End Date of Policy"
+              hint="Age is calculated from DOB and policy end date."
+            >
+              <Input
+                className="h-11"
+                value={form.endDate}
+                placeholder="DD.MM.YYYY or YYYY-MM-DD"
+                onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+            </FieldShell>
+          </div>
 
-        <aside className="lg:sticky lg:top-4 space-y-4">
-          {result ? (
-            <Card className="from-primary/5 border-primary/20 bg-linear-to-b to-card overflow-hidden border-2 shadow-md">
-              <CardHeader className="pb-2">
-                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                  Result
-                </p>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight tabular-nums sm:text-4xl">
-                    {formatInr(result.netPremium)}
-                  </span>
+          <div className="space-y-4">
+            {form.members.map((m, i) => {
+              const opts = relationshipOptions(form.policyType, i);
+              return (
+                <div
+                  key={i}
+                  className="rounded-[20px] border border-[#e2ebf5] bg-linear-to-b from-white to-[#f8fbff] p-4 shadow-[0_4px_18px_rgba(15,23,42,0.04)] sm:p-5"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-base font-extrabold tracking-tight text-[#0b1728]">
+                      {i === 0 ? "Policy Holder" : `Member ${i}`}
+                    </h4>
+                    <span className="rounded-full bg-[#eef5ff] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#174ea6]">
+                      {i === 0 ? "Holder" : "Member"}
+                    </span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <CellShell label="Name">
+                      <Input
+                        className="h-10"
+                        value={m.name}
+                        onChange={(e) => updateMember(i, { name: e.target.value })}
+                      />
+                    </CellShell>
+                    <CellShell label="DOB">
+                      <Input
+                        className="h-10"
+                        value={m.dob}
+                        placeholder="DD.MM.YYYY or YYYY-MM-DD"
+                        onChange={(e) => updateMember(i, { dob: e.target.value })}
+                      />
+                    </CellShell>
+                    <CellShell label="Relationship">
+                      <Select
+                        value={m.relationship}
+                        onValueChange={(v) => updateMember(i, { relationship: v })}
+                      >
+                        <SelectTrigger className="h-10 w-full text-left capitalize">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {opts.map((o) => (
+                            <SelectItem key={o} value={o} className="capitalize">
+                              {o.replace(/_/g, " ")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </CellShell>
+                    <CellShell label="Gender">
+                      <Select
+                        value={m.gender || "_"}
+                        onValueChange={(v) =>
+                          updateMember(i, {
+                            gender: v === "_" ? "" : (v as MemberInput["gender"]),
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-10 w-full text-left">
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">Select</SelectItem>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </CellShell>
+                  </div>
+                  <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
+                    <CellShell label="Add-on Rider">
+                      <Input
+                        type="number"
+                        min={0}
+                        className="h-10"
+                        value={m.addOnRider}
+                        onChange={(e) =>
+                          updateMember(i, { addOnRider: Math.max(0, Number(e.target.value) || 0) })
+                        }
+                      />
+                    </CellShell>
+                    <p className="text-xs leading-relaxed text-[#66798f]">
+                      Age is auto-calculated from DOB and policy end date.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-muted-foreground text-sm">Net premium (as returned by the engine)</p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-2 text-xs font-medium">Breakdown</p>
-                <div className="overflow-hidden rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50 hover:bg-muted/50">
-                        <TableHead className="h-9 text-xs">Member</TableHead>
-                        <TableHead className="h-9 text-xs">Rel.</TableHead>
-                        <TableHead className="h-9 text-right text-xs">Net</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {result.lines.map((l, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="text-sm font-medium">{l.name || "—"}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm capitalize">
-                            {l.relationship}
-                          </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums">
-                            {formatInr(l.net)}
-                            <span className="text-muted-foreground block text-xs font-normal">
-                              {l.band}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="bg-muted/20 border-dashed">
-              <CardHeader>
-                <CardTitle className="text-base">Premium estimate</CardTitle>
-                <CardDescription>
-                  Your net premium and per-member lines will show here after a successful run.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-muted-foreground flex items-center justify-center gap-2 rounded-lg border border-dashed py-10 text-sm">
-                  <Calculator className="size-5 opacity-50" />
-                  Awaiting calculation
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </aside>
-      </div>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <Stat label="Basic Premium" value={`₹${rs(quote.basic)}`} />
+            <Stat label="Add-on Rider" value={`₹${rs(quote.rider)}`} />
+            <Stat label="Gross Premium" value={`₹${rs(quote.gross)}`} />
+            <Stat label="Discount" value={`₹${rs(quote.disc)}`} />
+            <Stat label="Net Premium" value={`₹${rs(quote.net)}`} dark />
+          </div>
+
+          <div className="overflow-auto rounded-[20px] border border-[#e2eaf4] bg-white shadow-[0_3px_16px_rgba(15,23,42,0.04)]">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-[#f4f8fd] hover:bg-[#f4f8fd]">
+                  {[
+                    "Person",
+                    "Role",
+                    "DOB",
+                    "Age",
+                    "Relationship",
+                    "Gender",
+                    "Band",
+                    "Basic",
+                    "Rider",
+                    "Gross",
+                    "Discount %",
+                    "Discount",
+                    "Net",
+                    "Status",
+                  ].map((h) => (
+                    <TableHead
+                      key={h}
+                      className="h-10 whitespace-nowrap text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#61758b]"
+                    >
+                      {h}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {quote.rows.map((r, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium">{r.name || "—"}</TableCell>
+                    <TableCell className="capitalize">{r.role}</TableCell>
+                    <TableCell>{r.dob || "—"}</TableCell>
+                    <TableCell className="tabular-nums">{r.age ?? "—"}</TableCell>
+                    <TableCell className="capitalize">{r.relationship}</TableCell>
+                    <TableCell className="capitalize">{r.gender || "—"}</TableCell>
+                    <TableCell>{r.band || "—"}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {r.error ? (
+                        <span className="text-destructive">{r.error}</span>
+                      ) : (
+                        `₹${rs(r.basic ?? 0)}`
+                      )}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {r.error ? "—" : `₹${rs(r.rider ?? 0)}`}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {r.error ? "—" : `₹${rs(r.gross ?? 0)}`}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {r.error ? "—" : `${r.pct ?? 0}%`}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {r.error ? "—" : `₹${rs(r.disc ?? 0)}`}
+                    </TableCell>
+                    <TableCell className="font-semibold tabular-nums">
+                      {r.error ? "—" : `₹${rs(r.net ?? 0)}`}
+                    </TableCell>
+                    <TableCell>
+                      {r.error ? (
+                        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">
+                          {r.error}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
+                          Ready
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
+
+function FieldShell({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[18px] border border-[#e1e9f2] bg-linear-to-b from-white to-[#f8fbff] p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+      <Label className="mb-2 block text-[13px] font-extrabold text-[#1d2c42]">{label}</Label>
+      {children}
+      {hint ? (
+        <p className="mt-2 text-xs leading-relaxed text-[#66798f]">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function CellShell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[12px] font-bold text-[#1d2c42]">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  dark = false,
+}: {
+  label: string;
+  value: string;
+  dark?: boolean;
+}) {
+  if (dark) {
+    return (
+      <div
+        className="rounded-[18px] border border-[#143b75] p-4 text-white shadow-[0_4px_18px_rgba(15,23,42,0.04)]"
+        style={{
+          background: "linear-gradient(135deg,#07152b 0%,#12386f 100%)",
+        }}
+      >
+        <b className="block text-[12px] font-bold uppercase tracking-[0.09em] text-slate-300">
+          {label}
+        </b>
+        <div className="mt-2 text-2xl font-black tracking-tight">{value}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-[18px] border border-[#e3ebf5] bg-linear-to-b from-white to-[#f8fbff] p-4 shadow-[0_4px_18px_rgba(15,23,42,0.04)]">
+      <b className="block text-[12px] font-bold uppercase tracking-[0.09em] text-[#71849a]">
+        {label}
+      </b>
+      <div className="mt-2 text-2xl font-black tracking-tight text-[#0b1728]">{value}</div>
+    </div>
+  );
+}
+
