@@ -121,16 +121,7 @@ export const adPolicyValidationSchema = yup.object({
   twoLakhF: yup.string().optional(),
   policyHolderPremium: yup.string().optional(),
   gaamMahajan: yup.string().optional(),
-  excessShort: yup
-    .string()
-    .optional()
-    .test("nonNegative", "Number must be greater than or equal to 0", (v) => {
-      if (!v) {
-        return true;
-      }
-      const n = Number(String(v).replace(/,/g, "").trim());
-      return Number.isFinite(n) ? n >= 0 : false;
-    }),
+  excessShort: yup.string().optional(),
   diffAmt: yup.string().optional(),
   loanStatus: yup.string().optional(),
   loanNo: yup.string().optional(),

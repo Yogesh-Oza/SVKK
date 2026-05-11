@@ -378,6 +378,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         const keyMap: Record<string, keyof AdPolicyFormValues> = {
           excessShortAmount: "excessShort",
           diffPaidByHolder: "diffAmt",
+          gaamMahajanContribution: "contribution",
+          gaamMahajanVkk: "gaamMahajan",
         };
 
         let applied = false;
@@ -2326,6 +2328,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 onChange={handlePremiumInput("contribution")}
                 onBlur={handleBlur}
               />
+              <FormikError name="contribution" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
               <Label>Excess / Short Amount</Label>
@@ -2335,6 +2338,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 onChange={handlePremiumInput("excessShort")}
                 onBlur={handleBlur}
               />
+              <FormikError name="excessShort" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
               <Label>Difference Amount Paid by Policyholder</Label>
@@ -2343,6 +2347,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 value={values.differenceAmountPaidByHolder}
                 onChange={handlePremiumInput("differenceAmountPaidByHolder", ["diffAmt"])}
                 onBlur={handleBlur}
+              />
+              <FormikError
+                name="differenceAmountPaidByHolder"
+                errors={errors}
+                touched={touched}
+                submitCount={submitCount}
               />
             </div>
           </CardContent>

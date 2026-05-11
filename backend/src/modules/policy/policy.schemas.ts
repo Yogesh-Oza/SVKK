@@ -48,7 +48,8 @@ export const policyYearSectionSchema = z.object({
   vkkCommission: z.number().nonnegative().optional().nullable(),
   policyHolderContribution: z.number().nonnegative().optional().nullable(),
   premiumOneOrTwoLakh: z.number().nonnegative().optional().nullable(),
-  gaamMahajanContribution: z.number().nonnegative().optional().nullable(),
+  // Can be negative (reconciliation / adjustment).
+  gaamMahajanContribution: z.number().optional().nullable(),
   differenceAmountPaidByHolder: z.number().optional().nullable(),
 });
 
@@ -157,8 +158,9 @@ const adPolicyExtraSchema = z.object({
   commissionAmount: z.number().nonnegative().nullish().optional(),
   twoLacFloater: z.number().nonnegative().nullish().optional(),
   yearPolicyHolderPremium: z.number().nonnegative().nullish().optional(),
-  gaamMahajanVkk: z.number().nonnegative().nullish().optional(),
-  excessShortAmount: z.number().nonnegative().nullish().optional(),
+  // Can be negative (short/excess reconciliation adjustments).
+  gaamMahajanVkk: z.number().nullish().optional(),
+  excessShortAmount: z.number().nullish().optional(),
   diffPaidByHolder: z.number().nonnegative().nullish().optional(),
 });
 
