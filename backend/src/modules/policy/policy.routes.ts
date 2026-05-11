@@ -228,6 +228,7 @@ function patchBodyToInput(
   if (rest.state !== undefined) policy.state = rest.state;
   if (rest.pincode !== undefined) policy.pincode = rest.pincode;
   if (rest.contactPhone !== undefined) policy.contactPhone = rest.contactPhone;
+  if (rest.whatsappNo !== undefined) policy.whatsappNo = rest.whatsappNo;
   if (rest.nomineeName !== undefined) policy.nomineeName = rest.nomineeName;
   if (rest.nomineeRelation !== undefined) policy.nomineeRelation = rest.nomineeRelation;
   if (rest.loanRef !== undefined) policy.loanRef = rest.loanRef;

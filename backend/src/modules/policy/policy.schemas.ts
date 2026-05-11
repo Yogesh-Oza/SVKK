@@ -23,6 +23,7 @@ export const policyHolderSectionSchema = z.object({
   state: z.string().max(120).optional().nullable(),
   pincode: z.string().max(20).optional().nullable(),
   contactPhone: z.string().max(20).optional().nullable(),
+  whatsappNo: z.string().max(20).optional().nullable(),
   nomineeName: z.string().max(200).optional().nullable(),
   nomineeRelation: z.string().max(100).optional().nullable(),
   loanRef: z.string().max(120).optional().nullable(),

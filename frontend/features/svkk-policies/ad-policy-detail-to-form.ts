@@ -38,6 +38,7 @@ type ChequeApi = {
 
 /** Subset of `GET /policies/:id` JSON used to prefill the AD policy form. */
 export type SvkkPolicyDetailForForm = {
+  id: string;
   updatedAt: string;
   adProductVariant?: string | null;
   policyNo: string | null;
@@ -57,6 +58,7 @@ export type SvkkPolicyDetailForForm = {
   nomineeName: string | null;
   nomineeRelation: string | null;
   contactPhone: string | null;
+  whatsappNo?: string | null;
   remarks: string | null;
   referenceNo: string | null;
   periodYearText: string | null;
@@ -330,7 +332,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     pincode: row.pincode ?? "",
     mobileFirst: row.insuredParty.mobile ?? "",
     mobileSecond: row.mobileSecondary ?? "",
-    whatsappNo: "",
+    whatsappNo: row.whatsappNo ?? "",
     email: row.insuredParty.email ?? "",
     refundChequeAmt: decStr(row.refundChequeAmount),
     refundChequeNo: row.refundChequeNo ?? "",

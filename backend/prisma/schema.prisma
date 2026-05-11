@@ -238,6 +238,7 @@ model Policy {
   state               String?           @db.VarChar(120)
   pincode             String?           @db.VarChar(20)
   contactPhone        String?           @db.VarChar(20)
+  whatsappNo          String?           @db.VarChar(20)
   nomineeName         String?           @db.VarChar(200)
   nomineeRelation     String?           @db.VarChar(100)
   loanRef             String?           @db.VarChar(120)

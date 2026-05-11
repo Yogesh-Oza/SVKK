@@ -169,6 +169,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           state: input.state ?? undefined,
           pincode: input.pincode ?? undefined,
           contactPhone: input.contactPhone ?? undefined,
+        whatsappNo: input.whatsappNo ?? undefined,
           nomineeName: input.nomineeName ?? undefined,
           nomineeRelation: input.nomineeRelation ?? undefined,
           loanRef: input.loanRef ?? undefined,
@@ -179,6 +180,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           tpa: input.tpa ?? undefined,
           categoryText: input.categoryText ?? undefined,
           holderRelationship: input.holderRelationship ?? undefined,
+          holderGender: input.holderGender ?? undefined,
           holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
           personsInsuredCount: personsCount,
           area: input.area ?? undefined,
@@ -456,6 +458,7 @@ export type PolicySectionPatch = {
   state?: string | null;
   pincode?: string | null;
   contactPhone?: string | null;
+  whatsappNo?: string | null;
   nomineeName?: string | null;
   nomineeRelation?: string | null;
   loanRef?: string | null;

@@ -128,7 +128,6 @@ export const adPolicyValidationSchema = yup.object({
   loanAmt: yup.string().optional(),
   previousPolicyNo: yup.string().optional(),
   previousEndDate: yup.string().optional(),
-  policyGroup: yup.string().optional(),
   holderJoiningDate: yup.string().optional(),
   holderAddOns: yup.string().optional(),
   courierCompany: yup.string().optional(),
