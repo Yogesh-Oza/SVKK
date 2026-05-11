@@ -884,21 +884,21 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const vkkCommission = premiumManual.vkkCommission ? parseInr(values.vkkCommission) : vkkCommissionCalc;
 
     const personCount = Math.max(insuredCount, 1);
+    const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
     let holderPremiumCalc = net;
     const category = values.cat.toUpperCase();
     if (category === "C") holderPremiumCalc = 3000 * personCount;
-    else if (category === "B") holderPremiumCalc = net * 0.5;
+    else if (category === "B") holderPremiumCalc = oneOrTwoLakhPremium * 0.5;
     else if (category === "A" || category === "D") holderPremiumCalc = net;
     const holderPremium = premiumManual.policyHolderPremium
       ? parseInr(values.policyHolderPremium)
       : holderPremiumCalc;
 
-    const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
     const contributionCalc = oneOrTwoLakhPremium - holderPremium;
     const contribution = premiumManual.contribution ? parseInr(values.contribution) : contributionCalc;
     const excessShortCalc = net - svkkPremiumRounded;
     const excessShort = premiumManual.excessShort ? parseInr(values.excessShort) : excessShortCalc;
-    const differenceAmountCalc = oneOrTwoLakhPremium + holderPremium - net;
+    const differenceAmountCalc = net - oneOrTwoLakhPremium + holderPremium;
     const differenceAmountPaidByHolder = premiumManual.differenceAmountPaidByHolder
       ? parseInr(values.differenceAmountPaidByHolder)
       : differenceAmountCalc;
