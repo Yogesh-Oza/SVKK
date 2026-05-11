@@ -1,5 +1,4 @@
 import type { AdMemberRow } from "./ad-member-types";
-import { emptyMemberRow } from "./ad-member-types";
 
 export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE" | "CASH";
 export type AdPolicyTransactionModeForm = "ONLINE" | "CHEQUE" | "CASH" | "NEFT";
@@ -137,12 +136,12 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     relation: "",
     holderJoiningDate: "",
     holderAddOns: "",
-    person: "2",
+    person: "1",
     sumInsured: "",
     comulativeBonus: "",
     joiningYear: "",
     basicPremiumPs: "",
-    members: [emptyMemberRow()],
+    members: [],
     paymentMode: "CHEQUE",
     onlineTransactionRef: "",
     policyChequeNo: "",

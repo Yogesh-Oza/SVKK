@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Download,
   Loader2,
   PlusCircle,
   RotateCcw,
@@ -62,6 +63,46 @@ const EMPTY_NEW: AdminNew = {
   mode: "same",
   discountType: "count",
 };
+
+/**
+ * Sample CSVs admins can download to learn the expected shape.
+ * Column 1 is age (single number, or "min-max"). Remaining headers are SI
+ * values; cells are premiums in INR. Parser is in `lib/svkk/premium/csv.ts`.
+ */
+const SAMPLE_COMMON_CSV = `Age,300000,500000,1000000
+0-17,1800,2800,4900
+18-35,2400,3500,6200
+36-45,3400,4900,8600
+46-60,4700,6900,11800
+61-100,7600,10800,17300
+`;
+
+const SAMPLE_HOLDER_CSV = `Age,300000,500000,1000000
+18-35,2800,4100,7200
+36-45,3900,5700,9800
+46-60,5600,8100,13700
+61-100,8900,12500,19800
+`;
+
+const SAMPLE_MEMBER_CSV = `Age,300000,500000,1000000
+0-17,1500,2300,4100
+18-35,2100,3100,5600
+36-45,3100,4500,7900
+46-60,4500,6500,11100
+61-100,7100,10100,16400
+`;
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function CalculatorAdminPage() {
   const [hydrated, setHydrated] = useState(false);
@@ -310,6 +351,10 @@ export default function CalculatorAdminPage() {
                     label="Upload common chart"
                     hint="Single chart for all members, fronted by the holder's age."
                     onFile={(f) => void uploadChart(f, "common")}
+                    sample={{
+                      filename: `${policy}-common-chart-sample.csv`,
+                      content: SAMPLE_COMMON_CSV,
+                    }}
                   />
                 ) : (
                   <>
@@ -317,11 +362,19 @@ export default function CalculatorAdminPage() {
                       label="Upload holder chart"
                       hint="Use Age / Age Group in the first column and Sum Insured values in the next columns."
                       onFile={(f) => void uploadChart(f, "holder")}
+                      sample={{
+                        filename: `${policy}-holder-chart-sample.csv`,
+                        content: SAMPLE_HOLDER_CSV,
+                      }}
                     />
                     <ChartUpload
                       label="Upload member chart"
                       hint="Same CSV shape — premiums for non-holder members."
                       onFile={(f) => void uploadChart(f, "member")}
+                      sample={{
+                        filename: `${policy}-member-chart-sample.csv`,
+                        content: SAMPLE_MEMBER_CSV,
+                      }}
                     />
                   </>
                 )}
@@ -516,10 +569,12 @@ function ChartUpload({
   label,
   hint,
   onFile,
+  sample,
 }: {
   label: string;
   hint: string;
   onFile: (f: File) => void;
+  sample?: { filename: string; content: string };
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -548,8 +603,29 @@ function ChartUpload({
         <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
           Choose CSV
         </Button>
+        {sample ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-[#174ea6] hover:bg-[#eef5ff]"
+            onClick={() => downloadCsv(sample.filename, sample.content)}
+          >
+            <Download className="size-4" /> Download sample CSV
+          </Button>
+        ) : null}
         <span className="text-xs text-[#66798f]">{fileName ?? "No file chosen"}</span>
       </div>
+      {sample ? (
+        <details className="mt-3 rounded-md border border-[#d9e3ee] bg-white/70 px-3 py-2 text-xs text-[#46546b]">
+          <summary className="cursor-pointer font-bold text-[#174ea6]">
+            Preview sample format
+          </summary>
+          <pre className="mt-2 overflow-auto whitespace-pre font-mono text-[11px] leading-snug text-[#0b1728]">
+{sample.content}
+          </pre>
+        </details>
+      ) : null}
     </div>
   );
 }

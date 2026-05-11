@@ -237,6 +237,26 @@ async function main() {
     { type: DropdownType.SUM_INSURED, value: "1000000", label: "10,00,000", sortOrder: 4 },
     { type: DropdownType.SUM_INSURED, value: "1500000", label: "15,00,000", sortOrder: 5 },
     { type: DropdownType.SUM_INSURED, value: "2000000", label: "20,00,000", sortOrder: 6 },
+
+    // Gujarat-flavour demo data so the add-policy form has non-empty dropdowns
+    // out of the box. Admins can rename/delete; re-running seed will recreate.
+    { type: DropdownType.CITY, value: "ahmedabad", label: "Ahmedabad", sortOrder: 0 },
+    { type: DropdownType.CITY, value: "surat", label: "Surat", sortOrder: 1 },
+    { type: DropdownType.CITY, value: "vadodara", label: "Vadodara", sortOrder: 2 },
+    { type: DropdownType.CITY, value: "rajkot", label: "Rajkot", sortOrder: 3 },
+    { type: DropdownType.CITY, value: "gandhinagar", label: "Gandhinagar", sortOrder: 4 },
+
+    { type: DropdownType.VILLAGE, value: "vrundavan", label: "Vrundavan", sortOrder: 0 },
+    { type: DropdownType.VILLAGE, value: "gokul", label: "Gokul", sortOrder: 1 },
+    { type: DropdownType.VILLAGE, value: "mathura", label: "Mathura", sortOrder: 2 },
+    { type: DropdownType.VILLAGE, value: "becharaji", label: "Becharaji", sortOrder: 3 },
+    { type: DropdownType.VILLAGE, value: "idar", label: "Idar", sortOrder: 4 },
+
+    { type: DropdownType.AREA, value: "naroda", label: "Naroda", sortOrder: 0 },
+    { type: DropdownType.AREA, value: "bopal", label: "Bopal", sortOrder: 1 },
+    { type: DropdownType.AREA, value: "maninagar", label: "Maninagar", sortOrder: 2 },
+    { type: DropdownType.AREA, value: "satellite", label: "Satellite", sortOrder: 3 },
+    { type: DropdownType.AREA, value: "vastrapur", label: "Vastrapur", sortOrder: 4 },
   ];
 
   for (const d of dropdownSeed) {
@@ -263,6 +283,22 @@ async function main() {
         });
       }
     }
+  }
+
+  // Demo Policy Groupings so the add-policy "Policy Group" combobox isn't
+  // empty out of the box. Idempotent via the unique `name`.
+  const policyGroupingSeed: { name: string }[] = [
+    { name: "SVKK" },
+    { name: "NVKK" },
+    { name: "RTY" },
+    { name: "OTHER" },
+  ];
+  for (const g of policyGroupingSeed) {
+    await prisma.policyGroupingOption.upsert({
+      where: { name: g.name },
+      update: {},
+      create: g,
+    });
   }
 
   const userHash = await bcrypt.hash("user123!", 12);

@@ -1494,7 +1494,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Person</Label>
-                <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 2" />
+                <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 1" />
               </div>
               <div className="space-y-2">
                 <Label>Village</Label>
