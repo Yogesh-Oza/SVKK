@@ -111,7 +111,7 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
   if (normalizedCategory === "C") {
     policyHolderPremium = 3000 * persons;
   } else if (normalizedCategory === "B") {
-    policyHolderPremium = net * 0.5;
+    policyHolderPremium = basePremium * 0.5;
   } else if (normalizedCategory === "A" || normalizedCategory === "D") {
     policyHolderPremium = net;
   }
@@ -119,7 +119,7 @@ export function computePremiumDetails(input: PremiumInput): PremiumOutput {
 
   const contribution = basePremium - policyHolderPremium;
   const excessShortAmount = net - svkkPremium;
-  const differenceAmountPaidByHolder = basePremium + policyHolderPremium - net;
+  const differenceAmountPaidByHolder = net - basePremium + policyHolderPremium;
 
   return {
     taxAmount,
