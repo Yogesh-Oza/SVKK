@@ -177,6 +177,11 @@ model PolicyType {
   name        String
   chartMode   ChartMode @default(SINGLE)
   description String?   @db.Text
+  /// Frontend-shaped discount config. Calculation is client-side; this is the
+  /// source of truth admins edit through the calculator's admin panel.
+  /// Shape: { type: "count"|"daughter"|"different", different?: "yes"|"no",
+  ///          holder?, member?, daughter?, byCount?: Record<"1".."7", number> }
+  discountConfig Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

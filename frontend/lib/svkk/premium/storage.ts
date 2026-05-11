@@ -1,57 +1,103 @@
-import { SAMPLE_CHARTS, SAMPLE_DEFS } from "./sample-data";
-import type { ChartData, PolicyDef, PremiumState } from "./types";
+import { svkkJson } from "@/lib/svkk/api";
+import type {
+  ChartBand,
+  ChartData,
+  DiscountConfig,
+  PolicyDef,
+  PremiumState,
+} from "./types";
 
+/** Key for the per-browser form state on the calculator page (policy choice,
+ *  members, end date, etc.). Calculation source-of-truth lives on the server. */
 export const STORAGE_KEY_FORM = "svkk_calc_form_v1";
-export const STORAGE_KEY_DEFS = "svkk_calc_defs_v1";
-export const STORAGE_KEY_CHARTS = "svkk_calc_charts_v1";
 
-function safeJson<T>(raw: string | null, fallback: T): T {
-  if (raw == null) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function readKey<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    return safeJson<T>(window.localStorage.getItem(key), fallback);
-  } catch {
-    return fallback;
-  }
-}
-
-function writeKey(key: string, value: unknown): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore quota */
-  }
-}
-
-/**
- * Load the persisted defs/charts from localStorage, falling back to the
- * bundled samples. Both halves are merged: a partial override doesn't wipe
- * the built-in policies.
- */
-export function loadPremiumState(): PremiumState {
-  const defs = readKey<Record<string, PolicyDef> | null>(STORAGE_KEY_DEFS, null);
-  const charts = readKey<Record<string, ChartData> | null>(STORAGE_KEY_CHARTS, null);
-  return {
-    defs: { ...SAMPLE_DEFS, ...(defs ?? {}) },
-    charts: { ...SAMPLE_CHARTS, ...(charts ?? {}) },
+/** Backend wire shape for the snapshot endpoint. */
+export interface SnapshotPolicy {
+  id?: string;
+  key: string;
+  name: string;
+  description: string;
+  mode: "same" | "different";
+  discount: DiscountConfig | null;
+  charts: {
+    combined?: ChartBand[];
+    holder?: ChartBand[];
+    member?: ChartBand[];
   };
 }
 
-export function savePremiumDefs(defs: Record<string, PolicyDef>) {
-  writeKey(STORAGE_KEY_DEFS, defs);
+export interface PremiumSnapshot {
+  policyTypes: SnapshotPolicy[];
 }
 
-export function savePremiumCharts(charts: Record<string, ChartData>) {
-  writeKey(STORAGE_KEY_CHARTS, charts);
+const DEFAULT_DISCOUNT: DiscountConfig = {
+  type: "count",
+  different: "no",
+  holder: "",
+  member: "",
+  daughter: "",
+  byCount: { 1: 0, 2: 5, 3: 5, 4: 10, 5: 10, 6: 10, 7: 10 },
+};
+
+/** Server snapshot → PremiumState used by the calc engine. */
+export function snapshotToState(snap: PremiumSnapshot): PremiumState {
+  const defs: Record<string, PolicyDef> = {};
+  const charts: Record<string, ChartData> = {};
+  for (const p of snap.policyTypes) {
+    defs[p.key] = {
+      label: p.name,
+      description: p.description ?? "",
+      mode: p.mode,
+      discount: p.discount ?? DEFAULT_DISCOUNT,
+    };
+    if (p.mode === "different") {
+      charts[p.key] = {
+        holder: p.charts.holder ?? [],
+        member: p.charts.member ?? [],
+      };
+    } else {
+      charts[p.key] = p.charts.combined ?? [];
+    }
+  }
+  return { defs, charts };
+}
+
+/** PremiumState → server snapshot for the bulk save. */
+export function stateToSnapshot(state: PremiumState): PremiumSnapshot {
+  const policyTypes: SnapshotPolicy[] = Object.entries(state.defs).map(([key, def]) => {
+    const chart = state.charts[key];
+    const isDifferent = def.mode === "different";
+    return {
+      key,
+      name: def.label,
+      description: def.description ?? "",
+      mode: def.mode,
+      discount: def.discount,
+      charts: isDifferent
+        ? {
+            holder: Array.isArray(chart) ? [] : chart?.holder ?? [],
+            member: Array.isArray(chart) ? [] : chart?.member ?? [],
+          }
+        : {
+            combined: Array.isArray(chart) ? chart : chart?.holder ?? [],
+          },
+    };
+  });
+  return { policyTypes };
+}
+
+/** Single GET that hydrates the whole calculator. */
+export async function fetchPremiumSnapshot(): Promise<PremiumState> {
+  const snap = await svkkJson<PremiumSnapshot>("/calculation/admin/snapshot");
+  return snapshotToState(snap);
+}
+
+/** Single PUT that persists every edit from the admin panel. */
+export async function savePremiumSnapshot(state: PremiumState): Promise<void> {
+  await svkkJson<{ ok: true }>("/calculation/admin/snapshot", {
+    method: "PUT",
+    body: JSON.stringify(stateToSnapshot(state)),
+  });
 }
 
 /** "  Senior Secure!! " → "senior_secure" */

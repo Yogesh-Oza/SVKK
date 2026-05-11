@@ -4,15 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  Calculator,
-  CheckCircle2,
+  Loader2,
   PlusCircle,
+  RotateCcw,
   Save,
-  ShieldCheck,
   Upload,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,12 +34,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import {
+  fetchPremiumSnapshot,
   fileToChartRows,
-  loadPremiumState,
   normPolicyKey,
   rs,
-  savePremiumCharts,
-  savePremiumDefs,
+  savePremiumSnapshot,
   type ChartBand,
   type ChartData,
   type DiscountConfig,
@@ -69,33 +66,80 @@ const EMPTY_NEW: AdminNew = {
 export default function CalculatorAdminPage() {
   const [hydrated, setHydrated] = useState(false);
   const [state, setState] = useState<PremiumState>({ defs: {}, charts: {} });
+  /** Last server-known snapshot. Compared with `state` to derive dirty-ness. */
+  const [serverState, setServerState] = useState<PremiumState>({ defs: {}, charts: {} });
   const [tab, setTab] = useState<"charts" | "discounts">("charts");
   const [policy, setPolicy] = useState<PolicyKey>("asha_kiran");
   const [newPolicy, setNewPolicy] = useState<AdminNew>(EMPTY_NEW);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ tone: "info" | "ok" | "err"; text: string }>({
     tone: "info",
     text: "Policy charts and discount settings are ready for configuration.",
   });
 
   useEffect(() => {
-    const loaded = loadPremiumState();
-    setState(loaded);
-    if (!loaded.defs[policy]) {
-      const first = Object.keys(loaded.defs)[0];
-      if (first) setPolicy(first);
-    }
-    setHydrated(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await fetchPremiumSnapshot();
+        if (cancelled) return;
+        setState(next);
+        setServerState(structuredClone(next));
+        const first = Object.keys(next.defs)[0];
+        if (first && !next.defs[policy]) setPolicy(first);
+      } catch (e) {
+        if (!cancelled)
+          setMsg({
+            tone: "err",
+            text: `Failed to load: ${e instanceof Error ? e.message : String(e)}`,
+          });
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const dirty = useMemo(
+    () => JSON.stringify(state) !== JSON.stringify(serverState),
+    [state, serverState],
+  );
+
+  // Mutators just update local state — nothing hits the network until Save.
   const persistDefs = (next: Record<string, PolicyDef>) => {
     setState((s) => ({ ...s, defs: next }));
-    savePremiumDefs(next);
   };
   const persistCharts = (next: Record<string, ChartData>) => {
     setState((s) => ({ ...s, charts: next }));
-    savePremiumCharts(next);
   };
+
+  async function onSave() {
+    setSaving(true);
+    setMsg({ tone: "info", text: "Saving…" });
+    try {
+      await savePremiumSnapshot(state);
+      // Re-fetch so server-generated ids and any normalized values are reflected.
+      const fresh = await fetchPremiumSnapshot();
+      setState(fresh);
+      setServerState(structuredClone(fresh));
+      setMsg({ tone: "ok", text: "Saved." });
+    } catch (e) {
+      setMsg({
+        tone: "err",
+        text: `Save failed: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onDiscard() {
+    setState(structuredClone(serverState));
+    setMsg({ tone: "info", text: "Reverted to last saved." });
+  }
 
   const def = state.defs[policy];
   const chart = state.charts[policy];
@@ -179,61 +223,48 @@ export default function CalculatorAdminPage() {
   }
 
   if (!hydrated) {
-    return <p className="text-muted-foreground text-sm">Loading admin…</p>;
+    return (
+      <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Loader2 className="size-4 animate-spin" /> Loading admin…
+      </p>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <header
-        className="relative overflow-hidden rounded-[28px] px-7 py-6 text-white shadow-[0_26px_70px_rgba(7,21,43,0.24)]"
-        style={{
-          background: "linear-gradient(135deg,#07152b 0%,#12386f 58%,#0f766e 100%)",
-        }}
-      >
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-20 size-[300px] rounded-full bg-white/10"
-        />
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-32 right-[12%] size-[250px] rounded-full"
-          style={{ background: "rgba(200,155,60,0.22)" }}
-        />
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="grid size-14 place-items-center rounded-[18px] border border-white/25 bg-white/15 font-black tracking-wider shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-              <ShieldCheck className="size-7" />
-            </div>
-            <div>
-              <h1 className="m-0 text-3xl font-bold leading-[1.08] tracking-tight sm:text-[32px]">
-                Admin Panel
-              </h1>
-              <p className="mt-1 max-w-xl text-sm leading-relaxed text-white/75">
-                Manage policy types, premium charts and discount rules from one secure
-                administrative panel.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              asChild
-              size="sm"
-              variant="secondary"
-              className="h-10 gap-1.5 rounded-full border border-white/25 bg-white/15 px-4 text-xs font-extrabold uppercase tracking-wider text-white shadow-none hover:bg-white/25"
-            >
-              <Link href="/calculator">
-                <ArrowLeft className="size-3.5" /> Calculator
-              </Link>
-            </Button>
-            <Badge
-              className="h-10 gap-1.5 rounded-full border border-white/25 bg-white/15 px-4 text-xs font-extrabold uppercase tracking-wider text-white backdrop-blur-md hover:bg-white/15"
-              variant="secondary"
-            >
-              <Calculator className="size-3.5" /> Local Storage
-            </Badge>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            Manage policy types, premium charts and discount rules. Saved to the database.
+          </p>
         </div>
-      </header>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <Link href="/calculator">
+              <ArrowLeft className="size-4" /> Calculator
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5"
+            onClick={onDiscard}
+            disabled={saving || !dirty}
+          >
+            <RotateCcw className="size-4" /> Discard
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => void onSave()}
+            disabled={saving || !dirty}
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {saving ? "Saving…" : dirty ? "Save changes" : "All saved"}
+          </Button>
+        </div>
+      </div>
 
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-5 p-6">
@@ -585,7 +616,7 @@ function DiscountEditor({
   const d = def.discount;
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <Field label="Discount Type">
           <Select
             value={d.type}
@@ -620,11 +651,6 @@ function DiscountEditor({
             </SelectContent>
           </Select>
         </Field>
-        <div className="flex items-end">
-          <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-extrabold text-emerald-700">
-            <CheckCircle2 className="size-4" /> Auto-saved to this browser
-          </div>
-        </div>
       </div>
 
       {d.type === "count" ? (

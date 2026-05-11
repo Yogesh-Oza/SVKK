@@ -111,14 +111,38 @@ async function main() {
     });
   }
 
+  // Frontend-shaped discount configs (what the calculator engine reads). These
+  // also match the HTML reference's `sampleDefs[*].discount` so the engine
+  // produces identical numbers.
+  const ASHA_KIRAN_DISCOUNT = {
+    type: "daughter",
+    different: "no",
+    holder: "",
+    member: "",
+    daughter: 50,
+    byCount: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 },
+  };
+  const AD_POLICY_DISCOUNT = {
+    type: "count",
+    different: "no",
+    holder: "",
+    member: "",
+    daughter: "",
+    byCount: { "1": 0, "2": 5, "3": 5, "4": 10, "5": 10, "6": 10, "7": 10 },
+  };
+
   const ash = await prisma.policyType.upsert({
     where: { key: "asha_kiran" },
-    update: { chartMode: ChartMode.HOLDER_MEMBER },
+    update: {
+      chartMode: ChartMode.HOLDER_MEMBER,
+      discountConfig: ASHA_KIRAN_DISCOUNT,
+    },
     create: {
       key: "asha_kiran",
       name: "Asha Kiran",
       chartMode: ChartMode.HOLDER_MEMBER,
       description: "Separate holder and member charts",
+      discountConfig: ASHA_KIRAN_DISCOUNT,
     },
   });
 
@@ -127,12 +151,16 @@ async function main() {
 
   const ad = await prisma.policyType.upsert({
     where: { key: "ad_policy" },
-    update: { chartMode: ChartMode.HOLDER_MEMBER },
+    update: {
+      chartMode: ChartMode.HOLDER_MEMBER,
+      discountConfig: AD_POLICY_DISCOUNT,
+    },
     create: {
       key: "ad_policy",
       name: "AD Policy",
       chartMode: ChartMode.HOLDER_MEMBER,
       description: "Data-entry policy (Family Floater / Individual / Asha Kiran) with full AD form",
+      discountConfig: AD_POLICY_DISCOUNT,
     },
   });
   await upsertPolicyChart(ad.id, 1, PolicyChartKind.HOLDER, holderMatrix);

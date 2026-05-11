@@ -27,7 +27,7 @@ import {
 import {
   STORAGE_KEY_FORM,
   ensureMembers,
-  loadPremiumState,
+  fetchPremiumSnapshot,
   quoteFromInput,
   relationshipOptions,
   rs,
@@ -76,24 +76,36 @@ export default function SvkkCalculatorPage() {
     charts: {},
   }));
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    setState(loadPremiumState());
-    const storedForm = loadJson<FormState | null>(STORAGE_KEY_FORM, null);
-    if (storedForm) setForm(storedForm);
-    setHydrated(true);
-  }, []);
-
-  // Re-sync defs/charts whenever the admin tab updates localStorage in another
-  // window or after navigating back. Cheap and covers the common edit flow.
-  useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key === "svkk_calc_defs_v1" || e.key === "svkk_calc_charts_v1") {
-        setState(loadPremiumState());
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await fetchPremiumSnapshot();
+        if (cancelled) return;
+        setState(next);
+        // If the persisted policy isn't on the server snapshot (e.g. renamed),
+        // fall back to whatever the server returned first.
+        setForm((prev) => {
+          const nextPolicy = next.defs[prev.policyType]
+            ? prev.policyType
+            : Object.keys(next.defs)[0] ?? prev.policyType;
+          return prev.policyType === nextPolicy ? prev : { ...prev, policyType: nextPolicy };
+        });
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        if (!cancelled) {
+          const storedForm = loadJson<FormState | null>(STORAGE_KEY_FORM, null);
+          if (storedForm) setForm(storedForm);
+          setHydrated(true);
+        }
       }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -145,6 +157,9 @@ export default function SvkkCalculatorPage() {
           </Link>
         </Button>
       </div>
+      {loadError ? (
+        <p className="text-destructive text-sm">{loadError}</p>
+      ) : null}
 
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-5 p-6">
