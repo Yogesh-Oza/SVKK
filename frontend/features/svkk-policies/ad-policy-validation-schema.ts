@@ -21,8 +21,11 @@ const memberRowSchema = yup.object({
 /** Validation for Add AD policy (mandatory fields per business rules). */
 export const adPolicyValidationSchema = yup.object({
   svkkPublicId: yup.string().trim().optional(),
-  policyHolder: yup.string().trim().optional(),
-  adProduct: yup.string().oneOf(adProductValues, "Select policy type").optional(),
+  policyHolder: yup.string().trim().required("Holder name is required"),
+  adProduct: yup
+    .string()
+    .required("Select policy type")
+    .oneOf(adProductValues, "Select policy type"),
   customerId: yup.string().trim().optional(),
   panNo: yup
     .string()
@@ -30,12 +33,16 @@ export const adPolicyValidationSchema = yup.object({
     .optional()
     .transform((v) => (v ? v.toUpperCase() : v))
     .matches(PAN_RE, "Invalid PAN format"),
-  dob: yup.string().optional(),
-  area: yup.string().trim().optional(),
-  village: yup.string().trim().optional(),
-  person: yup.string().trim().optional(),
-  cat: yup.string().trim().optional(),
-  sumInsured: yup.string().optional(),
+  dob: yup.string().required("Date of birth is required"),
+  area: yup.string().trim().required("Area is required"),
+  village: yup.string().trim().required("Village is required"),
+  person: yup
+    .string()
+    .trim()
+    .required("Number of persons is required")
+    .test("min1", "At least 1 person", (v) => Number(v) >= 1),
+  cat: yup.string().trim().required("Select category"),
+  sumInsured: yup.string().required("Select sum insured"),
   vkkPremium: yup.string().optional(),
   coPremium: yup.string().optional(),
   paymentMode: yup
@@ -66,7 +73,12 @@ export const adPolicyValidationSchema = yup.object({
   city: yup.string().trim().optional(),
   pincode: yup.string().trim().optional(),
 
-  mobileFirst: yup.string().optional(),
+  mobileFirst: yup
+    .string()
+    .required("Primary mobile is required")
+    .test("digits", "Enter a valid mobile number (10+ digits)", (v) =>
+      Boolean(v && v.replace(/\D/g, "").length >= 10),
+    ),
   mobileSecond: yup.string().optional(),
   whatsappNo: yup
     .string()
@@ -77,8 +89,11 @@ export const adPolicyValidationSchema = yup.object({
   email: yup.string().trim().email("Enter a valid email").required("Email ID is required"),
 
   refNo: yup.string().trim().optional(),
-  year: yup.string().trim().optional(),
-  month: yup.string().trim().optional(),
+  year: yup.string().trim().required("Year is required"),
+  month: yup.string().trim().required("Select month"),
+  // "Policy Group" (used for SVKK ID / reference sequence)
+  policyGroup: yup.string().trim().required("Policy group is required"),
+  // Legacy internal grouping field (still kept in form values)
   policyGrouping: yup.string().trim().optional(),
   generalRemark: yup.string().trim().optional(),
   policyChangeRemark: yup.string().trim().optional(),
@@ -93,11 +108,11 @@ export const adPolicyValidationSchema = yup.object({
   policyNo: yup.string().optional(),
   company: yup.string().optional(),
   tpa: yup.string().optional(),
-  policyStart: yup.string().optional(),
-  policyEnd: yup.string().optional(),
+  policyStart: yup.string().required("Policy start date is required"),
+  policyEnd: yup.string().required("Policy end date is required"),
   age: yup.string().optional(),
-  relation: yup.string().optional(),
-  holderGender: yup.string().optional(),
+  relation: yup.string().required("Relationship is required"),
+  holderGender: yup.string().required("Gender is required"),
   comulativeBonus: yup.string().optional(),
   joiningYear: yup.string().optional(),
   basicPremiumPs: yup.string().optional(),
@@ -106,7 +121,16 @@ export const adPolicyValidationSchema = yup.object({
   twoLakhF: yup.string().optional(),
   policyHolderPremium: yup.string().optional(),
   gaamMahajan: yup.string().optional(),
-  excessShort: yup.string().optional(),
+  excessShort: yup
+    .string()
+    .optional()
+    .test("nonNegative", "Number must be greater than or equal to 0", (v) => {
+      if (!v) {
+        return true;
+      }
+      const n = Number(String(v).replace(/,/g, "").trim());
+      return Number.isFinite(n) ? n >= 0 : false;
+    }),
   diffAmt: yup.string().optional(),
   loanStatus: yup.string().optional(),
   loanNo: yup.string().optional(),

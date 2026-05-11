@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
-import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
+import { FilePlus, FilePenLine, Loader2, Minus, Plus, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
@@ -206,6 +207,30 @@ function composeIdsFromSeq(grouping: string, month: string, year: string, svkkSe
 }
 
 /**
+ * Field label paired with a small sparkles icon + tooltip indicating the
+ * value is filled in by the system. Used for SVKK ID / Reference No on the
+ * Policy Details section.
+ */
+function AutoFieldLabel({ children, hint }: { children: React.ReactNode; hint: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="m-0">{children}</Label>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="inline-flex size-4 cursor-help items-center justify-center rounded-full text-[#174ea6]"
+            aria-label="Auto-generated"
+          >
+            <Sparkles className="size-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{hint}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+/**
  * Fallback option lists. The form prefers dynamic options from `useDropdownOptions()`
  * (admin-managed via /admin/dropdowns). These are used only when the API has not
  * yet returned (first render) so the UI never goes blank.
@@ -262,6 +287,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const { user } = useSvkkAuth();
   const idPrefix = useId();
   const idemKeyRef = useRef(crypto.randomUUID());
+  const formRootRef = useRef<HTMLFormElement | null>(null);
   const lastAutoIdKeyRef = useRef("");
   const svkkSeqRef = useRef("");
   const refSeqRef = useRef("");
@@ -341,8 +367,42 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     validationSchema: adPolicyValidationSchema,
     validateOnBlur: true,
     validateOnChange: true,
-    onSubmit: async (values) => {
+    onSubmit: async (values, helpers) => {
       setApiErr(null);
+      const applyBackendFieldErrors = (fieldErrors: unknown) => {
+        if (!fieldErrors || typeof fieldErrors !== "object") {
+          return false;
+        }
+
+        // Backend field names don't always match the form field names.
+        const keyMap: Record<string, keyof AdPolicyFormValues> = {
+          excessShortAmount: "excessShort",
+          diffPaidByHolder: "diffAmt",
+        };
+
+        let applied = false;
+        for (const [rawKey, rawVal] of Object.entries(fieldErrors as Record<string, unknown>)) {
+          const formKey = (keyMap[rawKey] ?? rawKey) as keyof AdPolicyFormValues;
+          const msg =
+            Array.isArray(rawVal) ? rawVal.filter((x) => typeof x === "string").join(", ") : String(rawVal ?? "");
+          if (!msg) {
+            continue;
+          }
+          helpers.setFieldError(String(formKey), msg);
+          applied = true;
+        }
+        return applied;
+      };
+
+      const tryApplyBackendValidationErrors = (e: unknown): boolean => {
+        const data = (e as { response?: { data?: unknown } } | undefined)?.response?.data;
+        if (!data || typeof data !== "object") {
+          return false;
+        }
+        const fe = (data as { fieldErrors?: unknown }).fieldErrors;
+        return applyBackendFieldErrors(fe);
+      };
+
       if (isEdit && policyId && detail) {
         const y = detail.years.find((yy) => yy.yearLabel === editYearLabel) ?? detail.years[0];
         if (!y) {
@@ -358,6 +418,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           });
           void router.push(`/policies/${policyId}`);
         } catch (e) {
+          if (tryApplyBackendValidationErrors(e)) {
+            setApiErr("Please fix the highlighted fields and try again.");
+            return;
+          }
           setApiErr(e instanceof Error ? e.message : "Update failed");
         }
         return;
@@ -375,13 +439,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         });
         void router.push(`/policies/${id}`);
       } catch (e) {
+        if (tryApplyBackendValidationErrors(e)) {
+          setApiErr("Please fix the highlighted fields and try again.");
+          return;
+        }
         setApiErr(e instanceof Error ? e.message : "Create failed");
       }
     },
   });
 
-  const { values, errors, touched, handleSubmit, handleChange, handleBlur, setFieldValue, isSubmitting, submitCount } =
-    formik;
+  const {
+    values,
+    errors,
+    touched,
+    handleSubmit,
+    handleChange,
+    handleBlur,
+    setFieldValue,
+    isSubmitting,
+    submitCount,
+  } = formik;
+  const isBusy = isSubmitting;
   const [premiumManual, setPremiumManual] = useState<Record<string, boolean>>({});
 
   const markPremiumManual = useCallback((field: string) => {
@@ -719,6 +797,130 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const jumpToSection = useCallback((section: AddSectionId) => {
     setActiveSection(section);
   }, []);
+
+  const sectionForFieldPath = useCallback((path: string): AddSectionId => {
+    if (!path) return "policy_details";
+    if (
+      path.startsWith("svkkPublicId") ||
+      path.startsWith("customerId") ||
+      path.startsWith("policyNo") ||
+      path.startsWith("adProduct") ||
+      path.startsWith("cat") ||
+      path.startsWith("month") ||
+      path.startsWith("year") ||
+      path.startsWith("sumInsured") ||
+      path.startsWith("person") ||
+      path.startsWith("area") ||
+      path.startsWith("village") ||
+      path.startsWith("policyStart") ||
+      path.startsWith("policyEnd") ||
+      path.startsWith("policyGrouping")
+    ) {
+      return "policy_details";
+    }
+    if (path.startsWith("policyHolder") || path.startsWith("dob") || path.startsWith("holderGender") || path.startsWith("relation")) {
+      return "policy_holder_details";
+    }
+    if (path.startsWith("members")) {
+      return "members_details";
+    }
+    if (
+      path.startsWith("address") ||
+      path.startsWith("addressTwo") ||
+      path.startsWith("addressThree") ||
+      path.startsWith("addressFour") ||
+      path.startsWith("city") ||
+      path.startsWith("pincode") ||
+      path.startsWith("mobileFirst") ||
+      path.startsWith("mobileSecond") ||
+      path.startsWith("whatsappNo") ||
+      path.startsWith("email")
+    ) {
+      return "address_contacts";
+    }
+    if (
+      path.startsWith("basicPremiumPs") ||
+      path.startsWith("grossPremium") ||
+      path.startsWith("commission") ||
+      path.startsWith("twoLakhF") ||
+      path.startsWith("policyHolderPremium") ||
+      path.startsWith("gaamMahajan") ||
+      path.startsWith("excessShort") ||
+      path.startsWith("diffAmt") ||
+      path.startsWith("taxPercent") ||
+      path.startsWith("taxAmount") ||
+      path.startsWith("svkkPremiumCalc") ||
+      path.startsWith("netPremiumCalc") ||
+      path.startsWith("vkkCommission") ||
+      path.startsWith("contribution") ||
+      path.startsWith("differenceAmountPaidByHolder")
+    ) {
+      return "premium_details";
+    }
+    if (
+      path.startsWith("paymentMode") ||
+      path.startsWith("onlineTransactionRef") ||
+      path.startsWith("policyChequeNo") ||
+      path.startsWith("bank") ||
+      path.startsWith("accountNo") ||
+      path.startsWith("branch") ||
+      path.startsWith("nameAsPerCheque") ||
+      path.startsWith("ifsc") ||
+      path.startsWith("notOver") ||
+      path.startsWith("chequeDate") ||
+      path.startsWith("chequeStatus") ||
+      path.startsWith("reasonDishonoured") ||
+      path.startsWith("paymentTransactions")
+    ) {
+      return "payment_bank_details";
+    }
+    if (path.startsWith("nominee")) {
+      return "nominee_details";
+    }
+    if (
+      path.startsWith("loanStatus") ||
+      path.startsWith("loanNo") ||
+      path.startsWith("loanAmt") ||
+      path.startsWith("cdAccountStatus") ||
+      path.startsWith("cdAmount") ||
+      path.startsWith("refundChequeAmt") ||
+      path.startsWith("refundChequeNo") ||
+      path.startsWith("refundChequeDate")
+    ) {
+      return "loan_details";
+    }
+    if (path.startsWith("courier") || path.startsWith("podNumber") || path.startsWith("notCourier")) {
+      return "courier";
+    }
+    if (path.startsWith("generalRemark") || path.startsWith("policyChangeRemark")) {
+      return "remark";
+    }
+    return "policy_details";
+  }, []);
+
+  const redirectToFirstError = useCallback(
+    async (formErrors: unknown) => {
+      const keys = formErrors && typeof formErrors === "object" ? Object.keys(formErrors as Record<string, unknown>) : [];
+      const firstPath = keys[0] ?? "";
+      const section = sectionForFieldPath(firstPath);
+      setActiveSection(section);
+
+      // Ensure errors render even if the field wasn't touched yet.
+      await formik.setTouched({ ...(touched as any), [firstPath]: true } as any, true);
+
+      // Try to focus/scroll the first invalid input for immediate visibility.
+      requestAnimationFrame(() => {
+        const root = formRootRef.current;
+        if (!root) return;
+        const el =
+          (root.querySelector(`[name="${CSS.escape(firstPath)}"]`) as HTMLElement | null) ??
+          (root.querySelector(`[id="${CSS.escape(firstPath)}"]`) as HTMLElement | null);
+        el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.focus?.();
+      });
+    },
+    [formik, sectionForFieldPath, touched],
+  );
 
   const resetFetchedPolicyState = useCallback(async () => {
     await formik.setValues(getAdPolicyInitialValues());
@@ -1119,7 +1321,24 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6 select-text" noValidate>
+      <form
+        ref={formRootRef}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void (async () => {
+            const formErrors = await formik.validateForm();
+            if (Object.keys(formErrors).length > 0) {
+              setApiErr("Please fill all required fields (check each section) and try again.");
+              await redirectToFirstError(formErrors);
+              return;
+            }
+            setApiErr(null);
+            await formik.submitForm();
+          })();
+        }}
+        className="space-y-6 select-text"
+        noValidate
+      >
         {apiErr ? <p className="text-destructive text-sm">{apiErr}</p> : null}
 
         {!isEdit ? (
@@ -1391,11 +1610,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           <Card id="section-policy-details">
             <CardHeader>
               <CardTitle>Policy Details</CardTitle>
-              <CardDescription>SVKK ID, policy identifiers, coverage period, and grouping (legacy layout).</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
-                <Label>SVKK ID</Label>
+                <AutoFieldLabel hint="Auto-generated from Policy Group + Month sequence. You can override manually.">
+                  SVKK ID
+                </AutoFieldLabel>
                 <Input
                   name="svkkPublicId"
                   value={values.svkkPublicId}
@@ -1419,12 +1639,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Input name="policyNo" value={values.policyNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2">
-                <Label>Policy Type</Label>
+                <RequiredLabel>Policy Type</RequiredLabel>
                 <Select
                   value={values.adProduct || "__none__"}
                   onValueChange={(v) => void setFieldValue("adProduct", v === "__none__" ? "" : v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select policy type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1436,9 +1656,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ))}
                   </SelectContent>
                 </Select>
+                <FormikError name="adProduct" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Category</Label>
+                <RequiredLabel>Category</RequiredLabel>
                 <DropdownCombobox
                   value={values.cat}
                   onChange={(v) => void setFieldValue("cat", v)}
@@ -1446,14 +1667,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select category"
                   searchPlaceholder="Search category"
                 />
+                <FormikError name="cat" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Month</Label>
+                <RequiredLabel>Month</RequiredLabel>
                 <Select
                   value={values.month || "__none__"}
                   onValueChange={(v) => void setFieldValue("month", v === "__none__" ? "" : v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select month" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1465,9 +1687,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ))}
                   </SelectContent>
                 </Select>
+                <FormikError name="month" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Year</Label>
+                <RequiredLabel>Year</RequiredLabel>
                 <Input
                   name="year"
                   value={values.year}
@@ -1481,9 +1704,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   }}
                   placeholder="e.g. 2025-26"
                 />
+                <FormikError name="year" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Sum Insured (SI)</Label>
+                <RequiredLabel>Sum Insured (SI)</RequiredLabel>
                 <DropdownCombobox
                   value={values.sumInsured}
                   onChange={(v) => void setFieldValue("sumInsured", v)}
@@ -1491,13 +1715,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select sum insured"
                   searchPlaceholder="Search amount"
                 />
+                <FormikError name="sumInsured" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Person</Label>
+                <RequiredLabel>Person</RequiredLabel>
                 <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 1" />
+                <FormikError name="person" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Village</Label>
+                <RequiredLabel>Village</RequiredLabel>
                 <DropdownCombobox
                   value={values.village}
                   onChange={(v) => void setFieldValue("village", v)}
@@ -1505,9 +1731,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select village"
                   searchPlaceholder="Search village"
                 />
+                <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Area</Label>
+                <RequiredLabel>Area</RequiredLabel>
                 <DropdownCombobox
                   value={values.area}
                   onChange={(v) => void setFieldValue("area", v)}
@@ -1515,10 +1742,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select area"
                   searchPlaceholder="Search area"
                 />
+                <FormikError name="area" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Policy End Date</Label>
+                <RequiredLabel>Policy End Date</RequiredLabel>
                 <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
+                <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Previous Policy No</Label>
@@ -1535,7 +1764,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
-                <Label>Policy Group</Label>
+                <RequiredLabel>Policy Group</RequiredLabel>
                 <DropdownCombobox
                   value={values.policyGroup}
                   onChange={(v) => void setFieldValue("policyGroup", v)}
@@ -1543,10 +1772,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select policy group"
                   searchPlaceholder="Search policy group"
                 />
+                <FormikError name="policyGroup" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Policy Start</Label>
+                <RequiredLabel>Policy Start</RequiredLabel>
                 <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
+                <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Insurance company</Label>
@@ -1566,7 +1797,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
-                <Label>Reference No</Label>
+                <AutoFieldLabel hint="Auto-generated from Policy Group + Year + Month sequence. You can override manually.">
+                  Reference No
+                </AutoFieldLabel>
                 <Input name="refNo" value={values.refNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2 sm:col-span-2 lg:col-span-4">
@@ -1607,7 +1840,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2 sm:col-span-2">
-                <Label>Holder Name</Label>
+                <RequiredLabel>Holder Name</RequiredLabel>
                 <Input
                   name="policyHolder"
                   value={values.policyHolder}
@@ -1615,6 +1848,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onBlur={handleBlur}
                   autoComplete="name"
                 />
+                <FormikError name="policyHolder" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>PAN Card</Label>
@@ -1629,7 +1863,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
-                <Label>Village</Label>
+                <RequiredLabel>Village</RequiredLabel>
                 <DropdownCombobox
                   value={values.village}
                   onChange={(v) => void setFieldValue("village", v)}
@@ -1637,9 +1871,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select village"
                   searchPlaceholder="Search village"
                 />
+                <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
+                <RequiredLabel htmlFor={`${idPrefix}-dob`}>DOB</RequiredLabel>
                 <Input
                   id={`${idPrefix}-dob`}
                   name="dob"
@@ -1648,9 +1883,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onChange={handleChange}
                   onBlur={handleBlur}
                 />
+                <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Gender</Label>
+                <RequiredLabel>Gender</RequiredLabel>
                 <DropdownCombobox
                   value={values.holderGender}
                   onChange={(v) => void setFieldValue("holderGender", v)}
@@ -1658,9 +1894,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select gender"
                   searchPlaceholder="Search gender"
                 />
+                <FormikError name="holderGender" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Relationship</Label>
+                <RequiredLabel>Relationship</RequiredLabel>
                 <DropdownCombobox
                   value={values.relation}
                   onChange={(v) => void setFieldValue("relation", v)}
@@ -1668,6 +1905,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   placeholder="Select relation"
                   searchPlaceholder="Search relation"
                 />
+                <FormikError name="relation" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Joining Date</Label>
@@ -2267,7 +2505,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               />
             </div>
             <div className="space-y-2">
-              <Label>Area</Label>
+              <RequiredLabel>Area</RequiredLabel>
               <DropdownCombobox
                 value={values.area}
                 onChange={(v) => void setFieldValue("area", v)}
@@ -2275,6 +2513,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 placeholder="Select area"
                 searchPlaceholder="Search area"
               />
+              <FormikError name="area" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
               <Label>City</Label>
@@ -2291,7 +2530,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Input name="pincode" value={values.pincode} onChange={handleChange} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <Label>Primary Mobile Number</Label>
+              <RequiredLabel>Primary Mobile Number</RequiredLabel>
               <Input
                 name="mobileFirst"
                 value={values.mobileFirst}
@@ -2300,6 +2539,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 inputMode="tel"
                 autoComplete="tel"
               />
+              <FormikError name="mobileFirst" errors={errors} touched={touched} submitCount={submitCount} />
             </div>
             <div className="space-y-2">
               <Label>Secondary Mobile Number</Label>
@@ -2424,8 +2664,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-          <Button type="submit" disabled={isSubmitting} className="min-w-40">
-            {isSubmitting ? (
+          <Button type="submit" disabled={isBusy} className="min-w-40">
+            {isBusy ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
                 Saving...
@@ -2435,15 +2675,22 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             )}
           </Button>
           {isEdit ? (
-            <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isSubmitting}>
-              Update Policy
+            <Button type="button" variant="outline" onClick={() => void handleSubmit()} disabled={isBusy}>
+              {isBusy ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Policy"
+              )}
             </Button>
           ) : null}
           <Button
             type="button"
             variant="outline"
             onClick={openReceiptPreviewFromForm}
-            disabled={isSubmitting}
+            disabled={isBusy}
           >
             Generate Receipt Preview
           </Button>
