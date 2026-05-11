@@ -4,6 +4,7 @@ import {
   ChartMode,
   PolicyChartKind,
   CategoryType,
+  DropdownType,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -46,6 +47,36 @@ const memberMatrix = {
   ],
   daughterDiscountPercent: 50,
 };
+
+/**
+ * Idempotent chart seeder. The pre-existing wipe-and-recreate approach blew up
+ * with P2003 (FK) once real PolicyYear rows referenced these charts. Upserting
+ * via the `[policyTypeId, version, chartKind]` unique key keeps existing IDs
+ * intact so PolicyYear references stay valid.
+ */
+async function upsertPolicyChart(
+  policyTypeId: string,
+  version: number,
+  chartKind: PolicyChartKind,
+  premiumMatrix: typeof holderMatrix | typeof memberMatrix,
+) {
+  await prisma.policyChart.upsert({
+    where: {
+      policyTypeId_version_chartKind: { policyTypeId, version, chartKind },
+    },
+    update: {
+      premiumMatrix,
+      effectiveFrom: new Date("2025-01-01"),
+    },
+    create: {
+      policyTypeId,
+      version,
+      effectiveFrom: new Date("2025-01-01"),
+      chartKind,
+      premiumMatrix,
+    },
+  });
+}
 
 async function main() {
   const passwordHash = await bcrypt.hash("admin123!", 12);
@@ -91,26 +122,8 @@ async function main() {
     },
   });
 
-  await prisma.policyChart.deleteMany({ where: { policyTypeId: ash.id, version: 1 } });
-
-  await prisma.policyChart.createMany({
-    data: [
-      {
-        policyTypeId: ash.id,
-        version: 1,
-        effectiveFrom: new Date("2025-01-01"),
-        chartKind: PolicyChartKind.HOLDER,
-        premiumMatrix: holderMatrix,
-      },
-      {
-        policyTypeId: ash.id,
-        version: 1,
-        effectiveFrom: new Date("2025-01-01"),
-        chartKind: PolicyChartKind.MEMBER,
-        premiumMatrix: memberMatrix,
-      },
-    ],
-  });
+  await upsertPolicyChart(ash.id, 1, PolicyChartKind.HOLDER, holderMatrix);
+  await upsertPolicyChart(ash.id, 1, PolicyChartKind.MEMBER, memberMatrix);
 
   const ad = await prisma.policyType.upsert({
     where: { key: "ad_policy" },
@@ -122,25 +135,8 @@ async function main() {
       description: "Data-entry policy (Family Floater / Individual / Asha Kiran) with full AD form",
     },
   });
-  await prisma.policyChart.deleteMany({ where: { policyTypeId: ad.id, version: 1 } });
-  await prisma.policyChart.createMany({
-    data: [
-      {
-        policyTypeId: ad.id,
-        version: 1,
-        effectiveFrom: new Date("2025-01-01"),
-        chartKind: PolicyChartKind.HOLDER,
-        premiumMatrix: holderMatrix,
-      },
-      {
-        policyTypeId: ad.id,
-        version: 1,
-        effectiveFrom: new Date("2025-01-01"),
-        chartKind: PolicyChartKind.MEMBER,
-        premiumMatrix: memberMatrix,
-      },
-    ],
-  });
+  await upsertPolicyChart(ad.id, 1, PolicyChartKind.HOLDER, holderMatrix);
+  await upsertPolicyChart(ad.id, 1, PolicyChartKind.MEMBER, memberMatrix);
 
   const perms = [
     { role: UserRole.SUPER_ADMIN, module: "*", action: "*" },
@@ -165,6 +161,54 @@ async function main() {
       where: { key: c.key },
       update: { name: c.name, type: c.type },
       create: c,
+    });
+  }
+
+  const dropdownSeed: { type: DropdownType; value: string; label: string; sortOrder: number }[] = [
+    { type: DropdownType.GENDER, value: "M", label: "Male", sortOrder: 10 },
+    { type: DropdownType.GENDER, value: "F", label: "Female", sortOrder: 20 },
+    { type: DropdownType.GENDER, value: "O", label: "Other", sortOrder: 30 },
+
+    { type: DropdownType.RELATION, value: "Self", label: "Self", sortOrder: 10 },
+    { type: DropdownType.RELATION, value: "Spouse", label: "Spouse", sortOrder: 20 },
+    { type: DropdownType.RELATION, value: "Son", label: "Son", sortOrder: 30 },
+    { type: DropdownType.RELATION, value: "Daughter", label: "Daughter", sortOrder: 40 },
+    { type: DropdownType.RELATION, value: "Father", label: "Father", sortOrder: 50 },
+    { type: DropdownType.RELATION, value: "Mother", label: "Mother", sortOrder: 60 },
+    { type: DropdownType.RELATION, value: "Brother", label: "Brother", sortOrder: 70 },
+    { type: DropdownType.RELATION, value: "Sister", label: "Sister", sortOrder: 80 },
+    { type: DropdownType.RELATION, value: "Grandfather", label: "Grandfather", sortOrder: 90 },
+    { type: DropdownType.RELATION, value: "Grandmother", label: "Grandmother", sortOrder: 100 },
+    { type: DropdownType.RELATION, value: "Father-in-law", label: "Father-in-law", sortOrder: 110 },
+    { type: DropdownType.RELATION, value: "Mother-in-law", label: "Mother-in-law", sortOrder: 120 },
+    { type: DropdownType.RELATION, value: "Other", label: "Other", sortOrder: 200 },
+
+    { type: DropdownType.YES_NO, value: "YES", label: "YES", sortOrder: 10 },
+    { type: DropdownType.YES_NO, value: "NO", label: "NO", sortOrder: 20 },
+
+    { type: DropdownType.PAYMENT_MODE, value: "ONLINE", label: "Online", sortOrder: 10 },
+    { type: DropdownType.PAYMENT_MODE, value: "CHEQUE", label: "Cheque", sortOrder: 20 },
+    { type: DropdownType.PAYMENT_MODE, value: "CASH", label: "Cash", sortOrder: 30 },
+    { type: DropdownType.PAYMENT_MODE, value: "NEFT", label: "NEFT", sortOrder: 40 },
+
+    { type: DropdownType.TRANSACTION_STATUS, value: "CLEARED", label: "Cleared", sortOrder: 10 },
+    { type: DropdownType.TRANSACTION_STATUS, value: "DISHONOURED", label: "Dishonoured", sortOrder: 20 },
+    { type: DropdownType.TRANSACTION_STATUS, value: "PENDING", label: "Pending", sortOrder: 30 },
+
+    { type: DropdownType.SUM_INSURED, value: "100000", label: "1,00,000", sortOrder: 10 },
+    { type: DropdownType.SUM_INSURED, value: "200000", label: "2,00,000", sortOrder: 20 },
+    { type: DropdownType.SUM_INSURED, value: "300000", label: "3,00,000", sortOrder: 30 },
+    { type: DropdownType.SUM_INSURED, value: "500000", label: "5,00,000", sortOrder: 40 },
+    { type: DropdownType.SUM_INSURED, value: "1000000", label: "10,00,000", sortOrder: 50 },
+    { type: DropdownType.SUM_INSURED, value: "1500000", label: "15,00,000", sortOrder: 60 },
+    { type: DropdownType.SUM_INSURED, value: "2000000", label: "20,00,000", sortOrder: 70 },
+  ];
+
+  for (const d of dropdownSeed) {
+    await prisma.dropdownOption.upsert({
+      where: { type_value: { type: d.type, value: d.value } },
+      update: { label: d.label, sortOrder: d.sortOrder, isSystem: true, isActive: true },
+      create: { ...d, isSystem: true, isActive: true },
     });
   }
 

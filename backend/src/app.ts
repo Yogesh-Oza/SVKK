@@ -16,6 +16,7 @@ import { createReceiptRouter } from "./modules/receipt/receipt.routes.js";
 import { createUsersRouter } from "./modules/users/users.routes.js";
 import { createFilesRouter } from "./modules/files/files.routes.js";
 import { createCategoryRouter } from "./modules/category/category.routes.js";
+import { createDropdownsRouter } from "./modules/dropdowns/dropdowns.routes.js";
 import { globalApiRateLimit } from "./middlewares/rate-limit.js";
 
 export function createApp(env: Env, rootLog: AppLogger) {
@@ -40,6 +41,7 @@ export function createApp(env: Env, rootLog: AppLogger) {
   v1.use("/auth", createAuthRouter(env));
   v1.use("/files", createFilesRouter(env));
   v1.use("/categories", createCategoryRouter(env));
+  v1.use("/dropdowns", createDropdownsRouter(env));
   v1.use("/policies", createPolicyRouter(env));
   v1.use("/calculation", createCalculationRouter(env));
   v1.use("/admin", createAdminRouter(env));

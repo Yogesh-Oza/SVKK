@@ -91,6 +91,20 @@ enum ChequeStatus {
   DISHONOURED
 }
 
+/// Master list of dropdown kinds that are admin-editable from the Form Dropdowns tab.
+/// Add a new value here + run prisma db push to introduce a new dropdown.
+enum DropdownType {
+  AREA
+  VILLAGE
+  CITY
+  RELATION
+  GENDER
+  SUM_INSURED
+  PAYMENT_MODE
+  TRANSACTION_STATUS
+  YES_NO
+}
+
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
@@ -440,6 +454,25 @@ model PolicyGroupingOption {
   id        String   @id @default(cuid())
   name      String   @unique @db.VarChar(64)
   createdAt DateTime @default(now())
+}
+
+/// Generic admin-editable dropdown option (used by the policy add/edit form).
+/// `value` is the persisted code; `label` is what users see.
+/// `isSystem` rows are seeded defaults; deleting them is still allowed but they
+/// will be re-seeded on next `prisma db seed`.
+model DropdownOption {
+  id        String       @id @default(cuid())
+  type      DropdownType
+  value     String       @db.VarChar(64)
+  label     String       @db.VarChar(128)
+  sortOrder Int          @default(0)
+  isActive  Boolean      @default(true)
+  isSystem  Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([type, value])
+  @@index([type, sortOrder])
 }
 
 model ActivityLog {

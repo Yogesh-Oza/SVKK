@@ -12,10 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DropdownCombobox } from "@/components/svkk/dropdown-combobox";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import { svkkJson } from "@/lib/svkk/api";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { FilePlus, FilePenLine, Loader2, Minus, Plus } from "lucide-react";
@@ -195,34 +197,50 @@ function composeIdsFromSeq(grouping: string, month: string, year: string, svkkSe
   };
 }
 
-const GENDERS = [
+/**
+ * Fallback option lists. The form prefers dynamic options from `useDropdownOptions()`
+ * (admin-managed via /admin/dropdowns). These are used only when the API has not
+ * yet returned (first render) so the UI never goes blank.
+ */
+const FALLBACK_GENDERS = [
   { value: "M", label: "Male" },
   { value: "F", label: "Female" },
   { value: "O", label: "Other" },
 ];
 
-
-const YES_NO = [
-  { value: "", label: "—" },
+const FALLBACK_YES_NO = [
   { value: "YES", label: "YES" },
   { value: "NO", label: "NO" },
-] as const;
+];
 
-const RELATIONSHIP_OPTIONS = [
-  "Self",
-  "Spouse",
-  "Son",
-  "Daughter",
-  "Father",
-  "Mother",
-  "Brother",
-  "Sister",
-  "Grandfather",
-  "Grandmother",
-  "Father-in-law",
-  "Mother-in-law",
-  "Other",
-] as const;
+const FALLBACK_RELATIONSHIP_OPTIONS = [
+  { value: "Self", label: "Self" },
+  { value: "Spouse", label: "Spouse" },
+  { value: "Son", label: "Son" },
+  { value: "Daughter", label: "Daughter" },
+  { value: "Father", label: "Father" },
+  { value: "Mother", label: "Mother" },
+  { value: "Brother", label: "Brother" },
+  { value: "Sister", label: "Sister" },
+  { value: "Grandfather", label: "Grandfather" },
+  { value: "Grandmother", label: "Grandmother" },
+  { value: "Father-in-law", label: "Father-in-law" },
+  { value: "Mother-in-law", label: "Mother-in-law" },
+  { value: "Other", label: "Other" },
+];
+
+const FALLBACK_PAYMENT_MODES = [
+  { value: "ONLINE", label: "Online" },
+  { value: "CHEQUE", label: "Cheque" },
+  { value: "CASH", label: "Cash" },
+  { value: "NEFT", label: "NEFT" },
+];
+
+const FALLBACK_TRANSACTION_STATUS = [
+  { value: "CLEARED", label: "Cleared" },
+  { value: "DISHONOURED", label: "Dishonoured" },
+  { value: "PENDING", label: "Pending" },
+];
 
 export type AdPolicyAddFormProps = {
   /** When set, loads this policy and saves via PATCH (same fields as Add policy). */
@@ -242,6 +260,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
+
+  const { options: ddOptions } = useDropdownOptions();
+  const genderOptions = ddOptions.GENDER.length ? ddOptions.GENDER : FALLBACK_GENDERS;
+  const relationOptions = ddOptions.RELATION.length ? ddOptions.RELATION : FALLBACK_RELATIONSHIP_OPTIONS;
+  const yesNoOptions = ddOptions.YES_NO.length ? ddOptions.YES_NO : FALLBACK_YES_NO;
+  const paymentModeOptions = ddOptions.PAYMENT_MODE.length ? ddOptions.PAYMENT_MODE : FALLBACK_PAYMENT_MODES;
+  const transactionStatusOptions = ddOptions.TRANSACTION_STATUS.length
+    ? ddOptions.TRANSACTION_STATUS
+    : FALLBACK_TRANSACTION_STATUS;
+  const areaOptions = ddOptions.AREA;
+  const villageOptions = ddOptions.VILLAGE;
+  const cityOptions = ddOptions.CITY;
+  const sumInsuredOptions = ddOptions.SUM_INSURED;
+  const categoryOptions = ddOptions.categories.length
+    ? ddOptions.categories
+    : POLICY_CATEGORY_OPTIONS.map((k) => ({ value: k, label: k }));
+  const policyGroupOptions = ddOptions.policyGroupings.length
+    ? ddOptions.policyGroupings
+    : [
+        { value: "SVKK", label: "SVKK" },
+        { value: "NVKK", label: "NVKK" },
+        { value: "RTY", label: "RTY" },
+        { value: "OTHER", label: "OTHER" },
+      ];
 
   const [policyTypeId, setPolicyTypeId] = useState("");
   const [policyChartId, setPolicyChartId] = useState("");
@@ -1271,22 +1313,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select
-                  value={values.cat || "__none__"}
-                  onValueChange={(v) => void setFieldValue("cat", v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select category</SelectItem>
-                    {POLICY_CATEGORY_OPTIONS.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <DropdownCombobox
+                  value={values.cat}
+                  onChange={(v) => void setFieldValue("cat", v)}
+                  options={categoryOptions}
+                  placeholder="Select category"
+                  searchPlaceholder="Search category"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Month</Label>
@@ -1325,7 +1358,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Sum Insured (SI)</Label>
-                <Input name="sumInsured" value={values.sumInsured} onChange={handleChange} onBlur={handleBlur} />
+                <DropdownCombobox
+                  value={values.sumInsured}
+                  onChange={(v) => void setFieldValue("sumInsured", v)}
+                  options={sumInsuredOptions}
+                  placeholder="Select sum insured"
+                  searchPlaceholder="Search amount"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Person</Label>
@@ -1333,11 +1372,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Village</Label>
-                <Input name="village" value={values.village} onChange={handleChange} onBlur={handleBlur} />
+                <DropdownCombobox
+                  value={values.village}
+                  onChange={(v) => void setFieldValue("village", v)}
+                  options={villageOptions}
+                  placeholder="Select village"
+                  searchPlaceholder="Search village"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Area</Label>
-                <Input name="area" value={values.area} onChange={handleChange} onBlur={handleBlur} />
+                <DropdownCombobox
+                  value={values.area}
+                  onChange={(v) => void setFieldValue("area", v)}
+                  options={areaOptions}
+                  placeholder="Select area"
+                  searchPlaceholder="Search area"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Policy End Date</Label>
@@ -1359,21 +1410,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Policy Group</Label>
-                <Select
-                  value={values.policyGroup || "__none__"}
-                  onValueChange={(v) => void setFieldValue("policyGroup", v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select policy group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select policy group</SelectItem>
-                    <SelectItem value="SVKK">SVKK</SelectItem>
-                    <SelectItem value="NVKK">NVKK</SelectItem>
-                    <SelectItem value="RTY">RTY</SelectItem>
-                    <SelectItem value="OTHER">OTHER</SelectItem>
-                  </SelectContent>
-                </Select>
+                <DropdownCombobox
+                  value={values.policyGroup}
+                  onChange={(v) => void setFieldValue("policyGroup", v)}
+                  options={policyGroupOptions}
+                  placeholder="Select policy group"
+                  searchPlaceholder="Search policy group"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Policy Start</Label>
@@ -1461,7 +1504,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Village</Label>
-                <Input name="village" value={values.village} onChange={handleChange} onBlur={handleBlur} />
+                <DropdownCombobox
+                  value={values.village}
+                  onChange={(v) => void setFieldValue("village", v)}
+                  options={villageOptions}
+                  placeholder="Select village"
+                  searchPlaceholder="Search village"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
@@ -1476,26 +1525,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Gender</Label>
-                <Select
-                  value={values.holderGender ? values.holderGender : "__none__"}
-                  onValueChange={(v) => void setFieldValue("holderGender", v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">—</SelectItem>
-                    {GENDERS.map((g) => (
-                      <SelectItem key={g.value} value={g.value}>
-                        {g.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <DropdownCombobox
+                  value={values.holderGender}
+                  onChange={(v) => void setFieldValue("holderGender", v)}
+                  options={genderOptions}
+                  placeholder="Select gender"
+                  searchPlaceholder="Search gender"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Relationship</Label>
-                <Input name="relation" value={values.relation} onChange={handleChange} onBlur={handleBlur} />
+                <DropdownCombobox
+                  value={values.relation}
+                  onChange={(v) => void setFieldValue("relation", v)}
+                  options={relationOptions}
+                  placeholder="Select relation"
+                  searchPlaceholder="Search relation"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Joining Date</Label>
@@ -1562,22 +1608,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-1">
                     <Label>Relation</Label>
-                    <Select
-                      value={m.relationship || "__none__"}
-                      onValueChange={(v) => updateMember(i, { relationship: v === "__none__" ? "" : v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select relationship" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Select relationship</SelectItem>
-                        {RELATIONSHIP_OPTIONS.map((rel) => (
-                          <SelectItem key={rel} value={rel}>
-                            {rel}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DropdownCombobox
+                      value={m.relationship}
+                      onChange={(v) => updateMember(i, { relationship: v })}
+                      options={relationOptions}
+                      placeholder="Select relation"
+                      searchPlaceholder="Search relation"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label>Date of Birth</Label>
@@ -1609,11 +1646,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-1">
                     <Label>Sum Insured</Label>
-                    <Input
-                      name={`members[${i}].sumInsured`}
+                    <DropdownCombobox
                       value={m.sumInsured}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
+                      onChange={(v) => updateMember(i, { sumInsured: v })}
+                      options={sumInsuredOptions}
+                      placeholder="Select sum insured"
+                      searchPlaceholder="Search amount"
                     />
                   </div>
                   <div className="space-y-1">
@@ -1669,18 +1707,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-1">
                     <Label>Gender</Label>
-                    <Select value={m.gender} onValueChange={(v) => updateMember(i, { gender: v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select gender" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GENDERS.map((g) => (
-                          <SelectItem key={g.value} value={g.value}>
-                            {g.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DropdownCombobox
+                      value={m.gender}
+                      onChange={(v) => updateMember(i, { gender: v })}
+                      options={genderOptions}
+                      placeholder="Select gender"
+                      searchPlaceholder="Search gender"
+                    />
                   </div>
                 </div>
               </div>
@@ -1730,20 +1763,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="space-y-1">
                         <Label>Mode of Payment*</Label>
-                        <Select
+                        <DropdownCombobox
                           value={transaction.mode}
-                          onValueChange={(v) => void setFieldValue(`paymentTransactions[${index}].mode`, v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Mode of Payment" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ONLINE">Online</SelectItem>
-                            <SelectItem value="CHEQUE">Cheque</SelectItem>
-                            <SelectItem value="CASH">Cash</SelectItem>
-                            <SelectItem value="NEFT">NEFT</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          onChange={(v) =>
+                            void setFieldValue(`paymentTransactions[${index}].mode`, v)
+                          }
+                          options={paymentModeOptions}
+                          placeholder="Mode of Payment"
+                          searchPlaceholder="Search mode"
+                        />
                       </div>
                       <div className="space-y-1">
                         <Label>Transaction Number</Label>
@@ -1812,25 +1840,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       </div>
                       <div className="space-y-1">
                         <Label>Transaction Status</Label>
-                        <Select
-                          value={transaction.transactionStatus || "__none__"}
-                          onValueChange={(v) =>
+                        <DropdownCombobox
+                          value={transaction.transactionStatus}
+                          onChange={(v) =>
                             void setFieldValue(
                               `paymentTransactions[${index}].transactionStatus`,
-                              v === "__none__" ? "" : v,
+                              v,
                             )
                           }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Transaction Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Status Pending</SelectItem>
-                            <SelectItem value="CLEARED">Cleared</SelectItem>
-                            <SelectItem value="DISHONOURED">Dishonoured</SelectItem>
-                            <SelectItem value="PENDING">Pending</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          options={transactionStatusOptions}
+                          placeholder="Transaction Status"
+                          searchPlaceholder="Search status"
+                        />
                       </div>
                       <div className="space-y-1">
                         <Label>Dishonour Reason</Label>
@@ -1975,21 +1996,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>Loan Taken (Yes/No)</Label>
-              <Select
-                value={values.loanStatus || "none"}
-                onValueChange={(v) => void setFieldValue("loanStatus", v === "none" ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  {YES_NO.map((o) => (
-                    <SelectItem key={o.value || "n"} value={o.value || "none"}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DropdownCombobox
+                value={values.loanStatus}
+                onChange={(v) => void setFieldValue("loanStatus", v)}
+                options={yesNoOptions}
+                placeholder="—"
+                searchPlaceholder="Search"
+              />
             </div>
             <div className="space-y-2">
               <Label>Loan Amount</Label>
@@ -2001,21 +2014,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>CD Account Used</Label>
-              <Select
-                value={values.cdAccountStatus || "none"}
-                onValueChange={(v) => void setFieldValue("cdAccountStatus", v === "none" ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {YES_NO.map((o) => (
-                    <SelectItem key={`cd-${o.value}`} value={o.value || "none"}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DropdownCombobox
+                value={values.cdAccountStatus}
+                onChange={(v) => void setFieldValue("cdAccountStatus", v)}
+                options={yesNoOptions}
+                placeholder="—"
+                searchPlaceholder="Search"
+              />
             </div>
             <div className="space-y-2">
               <Label>CD Amount</Label>
@@ -2074,11 +2079,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Nominee Relation</Label>
-              <Input
-                name="nomineeRelation"
+              <DropdownCombobox
                 value={values.nomineeRelation}
-                onChange={handleChange}
-                onBlur={handleBlur}
+                onChange={(v) => void setFieldValue("nomineeRelation", v)}
+                options={relationOptions}
+                placeholder="Select relation"
+                searchPlaceholder="Search relation"
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
@@ -2136,11 +2142,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>Area</Label>
-              <Input name="area" value={values.area} onChange={handleChange} onBlur={handleBlur} />
+              <DropdownCombobox
+                value={values.area}
+                onChange={(v) => void setFieldValue("area", v)}
+                options={areaOptions}
+                placeholder="Select area"
+                searchPlaceholder="Search area"
+              />
             </div>
             <div className="space-y-2">
               <Label>City</Label>
-              <Input name="city" value={values.city} onChange={handleChange} onBlur={handleBlur} />
+              <DropdownCombobox
+                value={values.city}
+                onChange={(v) => void setFieldValue("city", v)}
+                options={cityOptions}
+                placeholder="Select city"
+                searchPlaceholder="Search city"
+              />
             </div>
             <div className="space-y-2">
               <Label>PIN Code</Label>
@@ -2202,21 +2220,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Courier Status (YES/NO)</Label>
-                <Select
-                  value={values.notCourier || "none"}
-                  onValueChange={(v) => void setFieldValue("notCourier", v === "none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {YES_NO.map((o) => (
-                      <SelectItem key={`cr-${o.value}`} value={o.value || "none"}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <DropdownCombobox
+                  value={values.notCourier}
+                  onChange={(v) => void setFieldValue("notCourier", v)}
+                  options={yesNoOptions}
+                  placeholder="—"
+                  searchPlaceholder="Search"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Courier Date</Label>

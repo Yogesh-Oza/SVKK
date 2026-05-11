@@ -4,9 +4,11 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
-import { CategoryType, ChartMode, PolicyChartKind } from "@prisma/client";
+import { CategoryType, ChartMode, DropdownType, PolicyChartKind } from "@prisma/client";
 import { invalidateChartCache } from "../premium/chart-cache.js";
 import type { PremiumMatrixJson } from "../premium/premium.types.js";
+
+const dropdownTypeValues = Object.values(DropdownType) as [DropdownType, ...DropdownType[]];
 
 export function createAdminRouter(env: Env) {
   const r = Router();
@@ -221,6 +223,81 @@ export function createAdminRouter(env: Env) {
         orderBy: [{ policyTypeId: "asc" }, { version: "desc" }],
       });
       res.json(rows);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Form Dropdowns: generic admin CRUD for DropdownOption rows
+  r.get("/dropdowns", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      const typeFilter = req.query.type
+        ? z.enum(dropdownTypeValues).parse(req.query.type)
+        : undefined;
+      const rows = await prisma.dropdownOption.findMany({
+        where: typeFilter ? { type: typeFilter } : undefined,
+        orderBy: [{ type: "asc" }, { sortOrder: "asc" }, { label: "asc" }],
+      });
+      res.json({ items: rows });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post("/dropdowns", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          type: z.enum(dropdownTypeValues),
+          value: z.string().trim().min(1).max(64),
+          label: z.string().trim().min(1).max(128),
+          sortOrder: z.number().int().optional(),
+          isActive: z.boolean().optional(),
+        })
+        .parse(req.body);
+      const row = await prisma.dropdownOption.create({
+        data: {
+          type: body.type,
+          value: body.value,
+          label: body.label,
+          sortOrder: body.sortOrder ?? 0,
+          isActive: body.isActive ?? true,
+          isSystem: false,
+        },
+      });
+      res.status(201).json(row);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.patch("/dropdowns/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      const id = z.string().min(1).parse(req.params.id);
+      const body = z
+        .object({
+          value: z.string().trim().min(1).max(64).optional(),
+          label: z.string().trim().min(1).max(128).optional(),
+          sortOrder: z.number().int().optional(),
+          isActive: z.boolean().optional(),
+        })
+        .parse(req.body);
+      const row = await prisma.dropdownOption.update({
+        where: { id },
+        data: body,
+      });
+      res.json(row);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.delete("/dropdowns/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+    try {
+      await prisma.dropdownOption.delete({
+        where: { id: String(req.params.id) },
+      });
+      res.status(204).end();
     } catch (e) {
       next(e);
     }
