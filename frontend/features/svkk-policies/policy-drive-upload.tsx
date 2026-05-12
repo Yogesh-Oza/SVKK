@@ -51,15 +51,20 @@ export function PolicyDriveUploadButton({
 
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files;
-    e.target.value = "";
     if (!selected || selected.length === 0) return;
+
+    // Snapshot into a plain array BEFORE clearing the input,
+    // because resetting .value empties the live FileList reference.
+    const allFiles = Array.from(selected);
+    e.target.value = "";
+
     if (!getSvkkApiBase()) {
       toast.error("NEXT_PUBLIC_API_URL is not set.");
       return;
     }
 
-    const files = Array.from(selected).slice(0, maxFiles);
-    if (selected.length > maxFiles) {
+    const files = allFiles.slice(0, maxFiles);
+    if (allFiles.length > maxFiles) {
       toast.warning(`Only the first ${maxFiles} file(s) will be uploaded (limit ${maxFiles}).`);
     }
 

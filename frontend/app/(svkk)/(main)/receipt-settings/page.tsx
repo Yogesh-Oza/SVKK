@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { toast } from "sonner";
 
-export default function SettingsPage() {
+export default function ReceiptSettingsPage() {
   const [headerUrl, setHeaderUrl] = useState("");
   const [footerUrl, setFooterUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -98,9 +98,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Receipt Settings</h1>
         <p className="text-muted-foreground mt-0.5 text-sm">
-          Manage receipt images and other application-wide settings.
+          Manage receipt header and footer images. Changes reflect on all receipts immediately.
         </p>
       </div>
 

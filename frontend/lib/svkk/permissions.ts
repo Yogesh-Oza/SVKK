@@ -24,7 +24,7 @@ const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] =
   { id: "admin", href: "/admin", label: "Admin", roles: ["ADMIN", "SUPER_ADMIN"] },
   { id: "logs", href: "/logs", label: "Activity logs", roles: ["ADMIN", "SUPER_ADMIN"] },
   { id: "users", href: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
-  { id: "settings", href: "/settings", label: "Settings", roles: ["ADMIN", "SUPER_ADMIN"] },
+  { id: "settings", href: "/receipt-settings", label: "Receipt Settings", roles: ["ADMIN", "SUPER_ADMIN"] },
 ];
 
 /**
