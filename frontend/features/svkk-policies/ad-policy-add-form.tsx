@@ -1829,8 +1829,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <PolicyDriveUploadButton
                       policyId={isEdit ? policyId : undefined}
                       expectedUpdatedAt={isEdit && detail ? detail.updatedAt : undefined}
-                      onUploaded={(url, meta) => {
-                        const next = [...values.urls, url].slice(0, 5);
+                      maxFiles={5 - values.urls.length}
+                      onUploaded={(newUrls, meta) => {
+                        const next = [...values.urls, ...newUrls].slice(0, 5);
                         void setFieldValue("urls", next);
                         if (isEdit && detail && meta?.updatedAt) {
                           setDetail((d) => (d ? { ...d, updatedAt: meta.updatedAt!, policyUrl: JSON.stringify(next) } : d));
