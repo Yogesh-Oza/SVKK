@@ -99,6 +99,7 @@ type PolicyDetail = {
   city: string | null;
   pincode: string | null;
   contactPhone: string | null;
+  whatsappNo: string | null;
   mobileSecondary?: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
