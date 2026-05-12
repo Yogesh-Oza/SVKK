@@ -1372,7 +1372,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
-                  <RequiredLabel>SVKK ID</RequiredLabel>
+                  <Label>SVKK ID</Label>
                   <Input
                     value={fetchSvkkId}
                     onChange={(e) => {
@@ -1762,7 +1762,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="area" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Policy End Date</RequiredLabel>
+                <Label>Policy End Date</Label>
                 <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
                 <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
@@ -1781,7 +1781,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Policy Group</RequiredLabel>
+                <Label>Policy Group</Label>
                 <DropdownCombobox
                   value={values.policyGroup}
                   onChange={(v) => void setFieldValue("policyGroup", v)}
@@ -1792,7 +1792,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="policyGroup" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Policy Start</RequiredLabel>
+                <Label>Policy Start</Label>
                 <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
                 <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
@@ -1843,6 +1843,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   ) : null}
                 </div>
               </div>
+              <div className="space-y-2 sm:col-span-2 lg:col-span-4">
+                <Label>URL</Label>
+                <Input
+                  name="url2"
+                  value={values.url2}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className="min-w-0 flex-1"
+                />
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -1880,6 +1890,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
+                <Label>Aadhaar No.</Label>
+                <Input
+                  name="aadhaarNo"
+                  value={values.aadhaarNo}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  maxLength={12}
+                  autoComplete="off"
+                  placeholder="12-digit Aadhaar number"
+                />
+                <FormikError name="aadhaarNo" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
                 <RequiredLabel>Village</RequiredLabel>
                 <DropdownCombobox
                   value={values.village}
@@ -1891,7 +1914,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel htmlFor={`${idPrefix}-dob`}>DOB</RequiredLabel>
+                <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
                 <Input
                   id={`${idPrefix}-dob`}
                   name="dob"
@@ -1903,7 +1926,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Gender</RequiredLabel>
+                <Label>Gender</Label>
                 <DropdownCombobox
                   value={values.holderGender}
                   onChange={(v) => void setFieldValue("holderGender", v)}
@@ -1914,7 +1937,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="holderGender" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Relationship</RequiredLabel>
+                <Label>Relationship</Label>
                 <DropdownCombobox
                   value={values.relation}
                   onChange={(v) => void setFieldValue("relation", v)}
@@ -2251,6 +2274,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         />
                       </div>
                       <div className="space-y-1">
+                        <Label>Other Charges</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].otherCharges`}
+                          value={transaction.otherCharges}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
                         <Label>Amount Received</Label>
                         <Input
                           name={`paymentTransactions[${index}].amountReceived`}
@@ -2555,7 +2586,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Input name="pincode" value={values.pincode} onChange={handleChange} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <RequiredLabel>Primary Mobile Number</RequiredLabel>
+              <Label>Primary Mobile Number</Label>
               <Input
                 name="mobileFirst"
                 value={values.mobileFirst}

@@ -72,11 +72,15 @@ export async function submitAdPolicyRequest({
   const yearLabel = values.year.trim() || String(new Date().getFullYear());
   const combinedRemarks = buildCombinedRemarks(values);
 
+  const mobileRaw = values.mobileFirst.replace(/\D/g, "").slice(0, 12)
+    || values.whatsappNo.replace(/\D/g, "").slice(0, 12);
+
   const body: Record<string, unknown> = {
-    mobile: values.mobileFirst.replace(/\D/g, "").slice(0, 12),
+    mobile: mobileRaw || null,
     partyName: values.policyHolder.trim(),
     email: values.email.trim() || null,
     pan: values.panNo.trim() || null,
+    aadhaarNo: values.aadhaarNo.trim() || null,
     dateOfBirth: values.dob ? new Date(values.dob).toISOString() : null,
     policyTypeId,
     policyChartId,
@@ -106,6 +110,7 @@ export async function submitAdPolicyRequest({
     mobileSecondary: values.mobileSecond.trim() || null,
     policyGrouping: values.policyGrouping || null,
     policyUrl: values.url.trim() || null,
+    policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
@@ -185,6 +190,7 @@ export async function submitAdPolicyRequest({
         notOver: row.notOver.trim() || null,
         dishonourReason: row.dishonourReason.trim() || null,
         returnCharges: parseNum(row.returnCharges) ?? null,
+        otherCharges: parseNum(row.otherCharges) ?? null,
       })),
   };
 
@@ -290,6 +296,7 @@ export async function submitAdPolicyPatchRequest({
       mobile: values.mobileFirst.replace(/\D/g, "").slice(0, 12),
       email: values.email.trim() || null,
       pan: values.panNo.trim() || null,
+      aadhaarNo: values.aadhaarNo.trim() || null,
       dateOfBirth: values.dob ? new Date(values.dob).toISOString() : null,
       customerId: values.customerId.trim() || null,
       svkkPublicId: values.svkkPublicId.trim() || null,
@@ -331,6 +338,7 @@ export async function submitAdPolicyPatchRequest({
     mobileSecondary: values.mobileSecond.trim() || null,
     policyGrouping: values.policyGrouping || null,
     policyUrl: values.url.trim() || null,
+    policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
@@ -395,6 +403,7 @@ export async function submitAdPolicyPatchRequest({
         notOver: row.notOver.trim() || null,
         dishonourReason: row.dishonourReason.trim() || null,
         returnCharges: parseNum(row.returnCharges) ?? null,
+        otherCharges: parseNum(row.otherCharges) ?? null,
       })),
   };
 

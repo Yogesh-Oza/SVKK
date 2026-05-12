@@ -36,7 +36,8 @@ export async function syncPolicyListVkkPremium(tx: Prisma.TransactionClient, pol
 }
 
 export async function createPolicyWithYear(input: CreatePolicyInput) {
-  const mobile = normalizeMobile(input.mobile);
+  const mobileRaw = input.mobile?.trim() || input.whatsappNo?.trim() || "";
+  const mobile = normalizeMobile(mobileRaw);
   const period = String(new Date().getFullYear());
 
   const chart = await prisma.policyChart.findUnique({
@@ -102,6 +103,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
             name: input.partyName,
             email: input.email ?? undefined,
             pan: input.pan?.toUpperCase() ?? undefined,
+            aadhaarNo: input.aadhaarNo ?? undefined,
             dateOfBirth: input.dateOfBirth ?? undefined,
           },
         });
@@ -119,6 +121,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           email: input.email ?? undefined,
           customerId: customerId ?? party.customerId ?? undefined,
           pan: input.pan?.toUpperCase() ?? party.pan,
+          aadhaarNo: input.aadhaarNo ?? party.aadhaarNo,
           dateOfBirth: input.dateOfBirth ?? party.dateOfBirth,
           ...(customSvkk ? { svkkPublicId: customSvkk } : {}),
         },
@@ -188,6 +191,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           mobileSecondary: input.mobileSecondary ?? undefined,
           policyGrouping: input.policyGrouping ?? undefined,
           policyUrl: input.policyUrl ?? undefined,
+          policyUrl2: input.policyUrl2 ?? undefined,
           loanStatus: input.loanStatus ?? undefined,
           loanAmount: input.loanAmount != null ? input.loanAmount : undefined,
           refundChequeAmount: input.refundChequeAmount != null ? input.refundChequeAmount : undefined,
@@ -322,7 +326,17 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
             amount: paymentRow.amount,
             method: paymentRow.method,
             status: mappedStatus,
-            // Extended transaction columns are persisted after Prisma client regeneration.
+            transactionNumber: paymentRow.transactionNumber ?? undefined,
+            transactionDate: paymentRow.transactionDate ?? undefined,
+            bankName: paymentRow.bankName ?? undefined,
+            branchName: paymentRow.branchName ?? undefined,
+            accountNumber: paymentRow.accountNumber ?? undefined,
+            nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+            ifscCode: paymentRow.ifscCode ?? undefined,
+            notOver: paymentRow.notOver ?? undefined,
+            dishonourReason: paymentRow.dishonourReason ?? undefined,
+            returnCharges: paymentRow.returnCharges ?? undefined,
+            otherCharges: paymentRow.otherCharges ?? undefined,
           },
         });
       }
@@ -440,6 +454,7 @@ export type InsuredPartySectionPatch = {
   mobile?: string;
   email?: string | null;
   pan?: string | null;
+  aadhaarNo?: string | null;
   dateOfBirth?: Date | null;
   customerId?: string | null;
   svkkPublicId?: string | null;
@@ -479,6 +494,7 @@ export type PolicySectionPatch = {
   mobileSecondary?: string | null;
   policyGrouping?: string | null;
   policyUrl?: string | null;
+  policyUrl2?: string | null;
   loanStatus?: string | null;
   loanAmount?: number | null;
   refundChequeAmount?: number | null;
@@ -549,6 +565,7 @@ async function applyInsuredPartyPatch(
   if (slim.partyName !== undefined) data.name = slim.partyName;
   if (slim.email !== undefined) data.email = slim.email === "" ? null : slim.email;
   if (slim.pan !== undefined) data.pan = slim.pan;
+  if (slim.aadhaarNo !== undefined) data.aadhaarNo = slim.aadhaarNo;
   if (slim.dateOfBirth !== undefined) data.dateOfBirth = slim.dateOfBirth;
   if (slim.customerId !== undefined) {
     data.customerId = slim.customerId;

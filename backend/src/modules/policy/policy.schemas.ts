@@ -96,6 +96,7 @@ const paymentEntrySchema = z.object({
   notOver: z.string().max(50).optional().nullable(),
   dishonourReason: z.string().max(8000).optional().nullable(),
   returnCharges: z.number().nonnegative().optional().nullable(),
+  otherCharges: z.number().nonnegative().optional().nullable(),
 });
 
 export const memberCreateSchema = z.object({
@@ -134,6 +135,7 @@ const adPolicyExtraSchema = z.object({
   mobileSecondary: z.string().max(20).optional().nullable(),
   policyGrouping: z.string().trim().max(64).optional().nullable(),
   policyUrl: z.string().max(500).optional().nullable(),
+  policyUrl2: z.string().max(500).optional().nullable(),
   loanStatus: z.string().max(10).optional().nullable(),
   loanAmount: z.number().nonnegative().nullish().optional(),
   refundChequeAmount: z.number().nonnegative().nullish().optional(),
@@ -168,22 +170,22 @@ const adPolicyExtraSchema = z.object({
 /** Create policy: year-level financial fields apply to the first `PolicyYear`. */
 export const createPolicyBodySchema = z
   .object({
-    mobile: z.string().min(1),
+    mobile: z.string().optional().nullable(),
     partyName: z.string().min(1),
-    email: z.string().email().optional().nullable(),
+    email: z.string().email(),
     pan: optionalPan,
+    aadhaarNo: z.string().max(12).optional().nullable(),
     dateOfBirth: z.coerce.date().optional().nullable(),
     policyTypeId: z.string().min(1),
-    categoryId: z.string().min(1).optional().nullable(),
+    categoryId: z.string().min(1),
     yearLabel: z.string().min(1),
     policyChartId: z.string().min(1),
     policyStart: z.coerce.date().optional().nullable(),
     policyEnd: z.coerce.date().optional().nullable(),
     sumInsured: z.number().positive(),
-    /// Expected net premium for reconciliation (defaults to `amountReceived` if provided)
     expectedNetPremium: z.number().nonnegative().optional().nullable(),
     policyNo: z.string().optional().nullable(),
-    village: z.string().optional().nullable(),
+    village: z.string().min(1),
     pod: z.string().optional().nullable(),
     members: z.array(memberCreateSchema).min(0),
     initialPayment: initialPaymentSchema.optional(),
@@ -191,7 +193,13 @@ export const createPolicyBodySchema = z
   })
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)
-  .merge(adPolicyExtraSchema);
+  .merge(adPolicyExtraSchema)
+  .extend({
+    whatsappNo: z.string().min(1).max(20),
+    area: z.string().min(1).max(200),
+    personsInsuredCount: z.coerce.number().int().min(1),
+    periodMonthText: z.string().min(1).max(20),
+  });
 
 export const yearValueKeys = [
   "policyStart",
@@ -237,6 +245,7 @@ const insuredPartyPatchSchema = z.object({
       z.union([z.string().regex(panRegex), z.null()]).optional(),
     )
     .optional(),
+  aadhaarNo: z.string().max(12).optional().nullable(),
   dateOfBirth: z.coerce.date().optional().nullable(),
   customerId: z.string().max(64).optional().nullable(),
   svkkPublicId: z.string().min(1).max(64).optional().nullable(),

@@ -91,6 +91,7 @@ type PolicyDetail = {
   periodMonthText: string | null;
   policyGrouping: string | null;
   policyUrl: string | null;
+  policyUrl2: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   addressLine3: string | null;
@@ -121,6 +122,7 @@ type PolicyDetail = {
     email: string | null;
     customerId: string | null;
     pan: string | null;
+    aadhaarNo: string | null;
     dateOfBirth: string | null;
   };
   policyType: { name: string };
@@ -385,6 +387,25 @@ export default function SvkkPolicyDetailPage() {
                     </div>
                   </td>
                 </tr>
+                <tr>
+                  <th className={thClass}>URL</th>
+                  <td className={tdClass} colSpan={4}>
+                    <span className="min-w-0 break-all">
+                      {row.policyUrl2 ? (
+                        <a
+                          href={row.policyUrl2}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline"
+                        >
+                          {row.policyUrl2}
+                        </a>
+                      ) : (
+                        ""
+                      )}
+                    </span>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -396,46 +417,46 @@ export default function SvkkPolicyDetailPage() {
                 <tr>
                   <th className={thClass}>Policy holder name</th>
                   <th className={thClass}>PAN card no</th>
+                  <th className={thClass}>Aadhaar No.</th>
                   <th className={thClass}>Village</th>
                   <th className={thClass}>Date of birth</th>
-                  <th className={thClass}>Age</th>
                 </tr>
                 <tr>
                   <td className={tdClass}>{row.insuredParty.name}</td>
                   <td className={tdClass}>{row.insuredParty.pan ?? ""}</td>
+                  <td className={tdClass}>{row.insuredParty.aadhaarNo ?? ""}</td>
                   <td className={tdClass}>{row.village ?? ""}</td>
                   <td className={tdClass}>
                     {row.insuredParty.dateOfBirth ? formatDateDmy(row.insuredParty.dateOfBirth) : ""}
                   </td>
-                  <td className={tdClass}>{holderAge(row)}</td>
                 </tr>
                 <tr>
+                  <th className={thClass}>Age</th>
                   <th className={thClass}>Relationship</th>
                   <th className={thClass}>Nominee&apos;s name</th>
                   <th className={thClass}>Nominee&apos;s relation</th>
                   <th className={thClass}>Address</th>
-                  <th className={thClass}>Address two</th>
                 </tr>
                 <tr>
+                  <td className={tdClass}>{holderAge(row)}</td>
                   <td className={tdClass}>{row.holderRelationship ?? ""}</td>
                   <td className={tdClass}>{row.nomineeName ?? ""}</td>
                   <td className={tdClass}>{row.nomineeRelation ?? ""}</td>
-                  <td className={tdClass}>{row.addressLine1 ?? ""}</td>
-                  <td className={tdClass}>{row.addressLine2 ?? ""}</td>
+                  <td className={tdClass}>{row.addressLine1 ?? ""}{row.addressLine2 ? `, ${row.addressLine2}` : ""}</td>
                 </tr>
                 <tr>
-                  <th className={thClass}>Address three</th>
-                  <th className={thClass}>Address four</th>
+                  <th className={thClass}>Address (cont.)</th>
                   <th className={thClass}>Area</th>
                   <th className={thClass}>City</th>
                   <th className={thClass}>PIN code</th>
+                  <th className={thClass}>WhatsApp No.</th>
                 </tr>
                 <tr>
-                  <td className={tdClass}>{row.addressLine3 ?? ""}</td>
-                  <td className={tdClass}>{row.addressLine4 ?? ""}</td>
+                  <td className={tdClass}>{row.addressLine3 ?? ""}{row.addressLine4 ? `, ${row.addressLine4}` : ""}</td>
                   <td className={tdClass}>{row.area ?? ""}</td>
                   <td className={tdClass}>{row.city ?? ""}</td>
                   <td className={tdClass}>{row.pincode ?? ""}</td>
+                  <td className={tdClass}>{row.whatsappNo ?? ""}</td>
                 </tr>
                 <tr>
                   <th className={thClass}>Primary mobile no</th>
@@ -447,9 +468,7 @@ export default function SvkkPolicyDetailPage() {
                 <tr>
                   <td className={tdClass}>{row.insuredParty.mobile}</td>
                   <td className={tdClass}>{row.mobileSecondary ?? row.contactPhone ?? ""}</td>
-                  <td className={tdClass} colSpan={3}>
-                    {row.insuredParty.email ?? ""}
-                  </td>
+                  <td className={tdClass} colSpan={3}>{row.insuredParty.email ?? ""}</td>
                 </tr>
               </tbody>
             </table>

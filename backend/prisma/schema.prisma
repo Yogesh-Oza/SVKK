@@ -160,6 +160,7 @@ model InsuredParty {
   email        String?
   /// PAN: validate format in app; optional for incomplete records
   pan          String?   @db.VarChar(20)
+  aadhaarNo    String?   @db.VarChar(12)
   dateOfBirth  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -260,6 +261,7 @@ model Policy {
   mobileSecondary     String?           @db.VarChar(20)
   policyGrouping      String?           @db.VarChar(64)
   policyUrl           String?           @db.VarChar(500)
+  policyUrl2          String?           @db.VarChar(500)
   loanStatus          String?           @db.VarChar(10)
   loanAmount          Decimal?          @db.Decimal(14, 2)
   refundChequeAmount  Decimal?          @db.Decimal(14, 2)
@@ -410,6 +412,7 @@ model Payment {
   notOver           String?       @db.VarChar(50)
   dishonourReason   String?       @db.Text
   returnCharges     Decimal?      @db.Decimal(14, 2)
+  otherCharges      Decimal?      @db.Decimal(14, 2)
   status            PaymentStatus @default(PENDING)
   method            PayMethod
   chequeId          String?

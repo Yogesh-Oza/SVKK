@@ -16,6 +16,7 @@ export type AdPolicyPaymentTransactionForm = {
   transactionStatus: "CLEARED" | "DISHONOURED" | "PENDING" | "";
   dishonourReason: string;
   returnCharges: string;
+  otherCharges: string;
   amountReceived: string;
 };
 
@@ -28,6 +29,7 @@ export type AdPolicyFormValues = {
   /** UI-only: legacy HTML "HOLDER GENDER"; not persisted (InsuredParty has no gender column). */
   holderGender: string;
   panNo: string;
+  aadhaarNo: string;
   company: string;
   tpa: string;
   previousPolicyNo: string;
@@ -111,6 +113,7 @@ export type AdPolicyFormValues = {
   month: string;
   policyGrouping: string;
   url: string;
+  url2: string;
 };
 
 export function getAdPolicyInitialValues(): AdPolicyFormValues {
@@ -122,6 +125,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     policyHolder: "",
     holderGender: "",
     panNo: "",
+    aadhaarNo: "",
     company: "",
     tpa: "",
     previousPolicyNo: "",
@@ -168,6 +172,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
         transactionStatus: "",
         dishonourReason: "",
         returnCharges: "",
+        otherCharges: "",
         amountReceived: "",
       },
     ],
@@ -221,5 +226,6 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     month: String(new Date().getMonth() + 1),
     policyGrouping: "",
     url: "",
+    url2: "",
   };
 }

@@ -33,7 +33,12 @@ export const adPolicyValidationSchema = yup.object({
     .optional()
     .transform((v) => (v ? v.toUpperCase() : v))
     .matches(PAN_RE, "Invalid PAN format"),
-  dob: yup.string().required("Date of birth is required"),
+  aadhaarNo: yup
+    .string()
+    .trim()
+    .optional()
+    .test("aadhaar", "Aadhaar must be 12 digits", (v) => !v || /^\d{12}$/.test(v)),
+  dob: yup.string().optional(),
   area: yup.string().trim().required("Area is required"),
   village: yup.string().trim().required("Village is required"),
   person: yup
@@ -75,9 +80,9 @@ export const adPolicyValidationSchema = yup.object({
 
   mobileFirst: yup
     .string()
-    .required("Primary mobile is required")
+    .optional()
     .test("digits", "Enter a valid mobile number (10+ digits)", (v) =>
-      Boolean(v && v.replace(/\D/g, "").length >= 10),
+      !v ? true : Boolean(v.replace(/\D/g, "").length >= 10),
     ),
   mobileSecond: yup.string().optional(),
   whatsappNo: yup
@@ -91,9 +96,7 @@ export const adPolicyValidationSchema = yup.object({
   refNo: yup.string().trim().optional(),
   year: yup.string().trim().required("Year is required"),
   month: yup.string().trim().required("Select month"),
-  // "Policy Group" (used for SVKK ID / reference sequence)
-  policyGroup: yup.string().trim().required("Policy group is required"),
-  // Legacy internal grouping field (still kept in form values)
+  policyGroup: yup.string().trim().optional(),
   policyGrouping: yup.string().trim().optional(),
   generalRemark: yup.string().trim().optional(),
   policyChangeRemark: yup.string().trim().optional(),
@@ -104,15 +107,14 @@ export const adPolicyValidationSchema = yup.object({
     .test("members", "Members are invalid", (arr) => !arr || arr.length >= 0)
     .required(),
 
-  // Optional / not validated (still in form)
   policyNo: yup.string().optional(),
   company: yup.string().optional(),
   tpa: yup.string().optional(),
-  policyStart: yup.string().required("Policy start date is required"),
-  policyEnd: yup.string().required("Policy end date is required"),
+  policyStart: yup.string().optional(),
+  policyEnd: yup.string().optional(),
   age: yup.string().optional(),
-  relation: yup.string().required("Relationship is required"),
-  holderGender: yup.string().required("Gender is required"),
+  relation: yup.string().optional(),
+  holderGender: yup.string().optional(),
   comulativeBonus: yup.string().optional(),
   joiningYear: yup.string().optional(),
   basicPremiumPs: yup.string().optional(),
@@ -149,6 +151,7 @@ export const adPolicyValidationSchema = yup.object({
   courierDate: yup.string().optional(),
   courierAddress: yup.string().optional(),
   url: yup.string().optional(),
+  url2: yup.string().optional(),
 });
 
 export type AdPolicyFormValidated = yup.InferType<typeof adPolicyValidationSchema>;

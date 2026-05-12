@@ -249,6 +249,7 @@ function patchBodyToInput(
   if (rest.mobileSecondary !== undefined) policy.mobileSecondary = rest.mobileSecondary;
   if (rest.policyGrouping !== undefined) policy.policyGrouping = rest.policyGrouping;
   if (rest.policyUrl !== undefined) policy.policyUrl = rest.policyUrl;
+  if (rest.policyUrl2 !== undefined) policy.policyUrl2 = rest.policyUrl2;
   if (rest.loanStatus !== undefined) policy.loanStatus = rest.loanStatus;
   if (rest.loanAmount !== undefined) policy.loanAmount = rest.loanAmount;
   if (rest.refundChequeAmount !== undefined) policy.refundChequeAmount = rest.refundChequeAmount;

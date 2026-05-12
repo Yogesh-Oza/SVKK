@@ -48,6 +48,7 @@ export type SvkkPolicyDetailForForm = {
   personsInsuredCount: number | null;
   policyGrouping: string | null;
   policyUrl: string | null;
+  policyUrl2: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   addressLine3: string | null;
@@ -91,6 +92,7 @@ export type SvkkPolicyDetailForForm = {
     email: string | null;
     customerId: string | null;
     pan: string | null;
+    aadhaarNo: string | null;
     dateOfBirth: string | null;
   };
   category: { key: string; name: string } | null;
@@ -275,6 +277,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     svkkPublicId: row.insuredParty.svkkPublicId ?? "",
     policyHolder: row.insuredParty.name ?? "",
     panNo: row.insuredParty.pan ?? "",
+    aadhaarNo: row.insuredParty.aadhaarNo ?? "",
     company: row.insuranceCompany ?? "",
     tpa: row.tpa ?? "",
     policyStart: isoToDateInput(y.policyStart ?? ""),
@@ -360,5 +363,6 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     month: row.periodMonthText ?? "",
     policyGrouping: groupingFromApi(row.policyGrouping),
     url: row.policyUrl ?? "",
+    url2: row.policyUrl2 ?? "",
   };
 }
