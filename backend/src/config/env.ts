@@ -44,6 +44,8 @@ const schema = z.object({
   MS_TENANT_ID: z.string().optional(),
   MS_CLIENT_ID: z.string().optional(),
   MS_CLIENT_SECRET: z.string().optional(),
+  /** Delegated refresh token for personal OneDrive (obtained via scripts/onedrive-auth.ts) */
+  MS_REFRESH_TOKEN: z.string().optional(),
   MS_DRIVE_ID: z.string().optional(),
   /** Optional nested folder path in drive root, e.g. "SVKK/Policies" */
   MS_DRIVE_FOLDER_PATH: z.string().optional(),
