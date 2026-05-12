@@ -56,6 +56,7 @@ export function createReceiptRouter(env: Env) {
       const { receiptNo, pdfPath } = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const seq = await allocateCounter(CounterType.RECEIPT, period, tx);
         const no = formatReceiptNo(period, seq);
+        const pay0 = year?.payments?.[0];
         const pdfBytes = await buildReceiptPdf({
           receiptNo: no,
           referenceNo: policy.referenceNo ?? "",
@@ -65,15 +66,27 @@ export function createReceiptRouter(env: Env) {
           policyType: policy.adProductVariant?.replaceAll("_", "-") || policy.policyType?.name || "",
           customerId: policy.insuredParty?.customerId ?? "",
           panNo: policy.insuredParty?.pan ?? "",
+          aadhaarNo: policy.insuredParty?.aadhaarNo ?? "",
+          phoneNo: policy.insuredParty?.mobile ?? "",
+          emailId: policy.insuredParty?.email ?? "",
           area: policy.area ?? "",
           village: policy.village ?? "",
           personCount: policy.personsInsuredCount,
           category: policy.category?.key ?? policy.category?.name ?? "",
           sumInsured: year?.sumInsured,
           premium: body.amount,
-          bankName: year?.payments?.find((p) => p.cheque)?.cheque?.bankName ?? year?.bankName ?? "",
+          notOver: pay0?.notOver ?? "",
+          bankCharges: pay0?.returnCharges != null ? Number(pay0.returnCharges) : null,
+          nameAsPerCheque: pay0?.nameAsPerCheque ?? "",
+          otherCharges: pay0?.otherCharges != null ? Number(pay0.otherCharges) : null,
+          amountReceived: year?.amountReceived != null ? Number(year.amountReceived) : null,
+          paymentMode: pay0?.method ?? "",
+          bankName: pay0?.bankName ?? year?.bankName ?? "",
+          transactionNo: pay0?.transactionNumber ?? "",
+          transactionDate: pay0?.transactionDate ?? null,
           chequeNo: year?.payments?.find((p) => p.cheque)?.cheque?.number ?? "",
           remark: policy.remarks ?? "",
+          generalRemark: policy.remarks ?? "",
           date: policyDate,
         });
         await mkdir(env.UPLOAD_DIR, { recursive: true });
@@ -113,15 +126,27 @@ async function buildReceiptPdf(input: {
   policyType: string;
   customerId: string;
   panNo: string;
+  aadhaarNo: string;
+  phoneNo: string;
+  emailId: string;
   area: string;
   village: string;
   personCount: number | null;
   category: string;
   sumInsured: unknown;
   premium: number;
+  notOver: string;
+  bankCharges: number | null;
+  nameAsPerCheque: string;
+  otherCharges: number | null;
+  amountReceived: number | null;
+  paymentMode: string;
   bankName: string;
+  transactionNo: string;
+  transactionDate: Date | null;
   chequeNo: string;
   remark: string;
+  generalRemark: string;
   date: Date;
 }) {
   const doc = await PDFDocument.create();
@@ -149,32 +174,50 @@ async function buildReceiptPdf(input: {
   page.drawLine({ start: { x: margin, y }, end: { x: 565, y }, thickness: 0.8, color: rgb(0.4, 0.4, 0.4) });
   y -= 24;
 
+  const fmtAmt = (v: number | null) => v != null ? String(v) : "—";
+
   const rows: Array<[string, string]> = [
-    ["Receipt No:", input.referenceNo || input.receiptNo || "—"],
-    ["SVKK ID:", input.svkkId || "—"],
-    ["Policy Holder:", input.policyHolderName || "—"],
-    ["Policy Type:", input.policyType || "—"],
-    ["Customer ID:", input.customerId || "—"],
-    ["Pan No:", input.panNo || "—"],
-    ["Area:", input.area || "—"],
-    ["Village:", input.village || "—"],
-    ["Policy No:", input.policyNo || "—"],
-    ["Person:", input.personCount != null ? String(input.personCount) : "—"],
-    ["Category:", input.category || "—"],
-    ["Sum Insured:", safeToText(input.sumInsured) || "—"],
-    ["Cheque No:", input.chequeNo ? `CH- ${input.chequeNo}` : "—"],
-    ["Premium:", safeToText(input.premium) || "—"],
-    ["Bank Name:", input.bankName || "—"],
-    ["Remark:", input.remark || ""],
+    ["Receipt No.", input.receiptNo || "—"],
+    ["Date", dateStr],
+    ["SVKK ID", input.svkkId || "—"],
+    ["Customer ID", input.customerId || "—"],
+    ["Policy Holder Name", input.policyHolderName || "—"],
+    ["Area", input.area || "—"],
+    ["Phone No.", input.phoneNo || "—"],
+    ["Email ID", input.emailId || "—"],
+    ["Village", input.village || "—"],
+    ["No. of Person", input.personCount != null ? String(input.personCount) : "—"],
+    ["Category", input.category || "—"],
+    ["Policy Type", input.policyType || "—"],
+    ["Sum Insured", safeToText(input.sumInsured) || "—"],
+    ["Premium Amount", safeToText(input.premium) || "—"],
+    ["Not Over", input.notOver || "—"],
+    ["Bank Charges", fmtAmt(input.bankCharges)],
+    ["Name as per Cheque", input.nameAsPerCheque || "—"],
+    ["Other Charges", fmtAmt(input.otherCharges)],
+    ["Amount Received", fmtAmt(input.amountReceived)],
+    ["Mode of Payment", input.paymentMode || "—"],
+    ["Bank Name", input.bankName || "—"],
+    ["Transaction No.", input.transactionNo || "—"],
+    ["Transaction Date", input.transactionDate ? formatDmy(input.transactionDate) : "—"],
+    ["PAN No.", input.panNo || "—"],
+    ["Aadhaar No.", input.aadhaarNo || "—"],
+    ["Remark", input.remark || "—"],
+    ["General Remark", input.generalRemark || "—"],
   ];
 
   for (const [k, v] of rows) {
     page.drawText(k, { x: margin, y, size: 10.5, font: fontBold, color: ink });
-    page.drawText(v, { x: 130, y, size: 10.5, font, color: ink, maxWidth: 420 });
-    y -= 28;
+    page.drawText(v, { x: 150, y, size: 10.5, font, color: ink, maxWidth: 400 });
+    y -= 22;
+    if (y < 60) {
+      const newPage = doc.addPage([595, 842]);
+      y = 810;
+      void newPage;
+    }
   }
 
-  y += 10;
+  y += 6;
   page.drawLine({ start: { x: margin, y }, end: { x: 565, y }, thickness: 0.8, color: rgb(0.4, 0.4, 0.4) });
   y -= 24;
   const footer = "This is a Computer-Generated Receipt and does not require a Physical Signature or Seal.";

@@ -13,6 +13,7 @@ export type PolicyDetailForReceipt = {
   village: string | null;
   personsInsuredCount: number | null;
   remarks: string | null;
+  generalRemark?: string | null;
   periodYearText?: string | null;
   periodMonthText?: string | null;
   insuredParty: {
@@ -20,6 +21,9 @@ export type PolicyDetailForReceipt = {
     svkkPublicId: string;
     customerId: string | null;
     pan: string | null;
+    aadhaarNo?: string | null;
+    mobile?: string | null;
+    email?: string | null;
   };
   policyType: { name: string };
   category: { key: string; name: string } | null;
@@ -47,6 +51,10 @@ export type PolicyDetailForReceipt = {
       transactionMode?: string | null;
       transactionDetail?: string | null;
       transactionDate?: string | null;
+      nameAsPerCheque?: string | null;
+      notOver?: string | null;
+      returnCharges?: string | number | null;
+      otherCharges?: string | number | null;
     }>;
   }>;
 };
@@ -118,15 +126,6 @@ function payMode(pay: NonNullable<PolicyDetailForReceipt["years"][0]["payments"]
   return String(m);
 }
 
-function payStatus(pay: NonNullable<PolicyDetailForReceipt["years"][0]["payments"]>[0] | null): string {
-  const s = pay?.cheque?.status;
-  if (!s) return "—";
-  return String(s)
-    .split("_")
-    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-    .join(" ");
-}
-
 function pickPayment(y: PolicyDetailForReceipt["years"][0] | undefined) {
   if (!y?.payments?.length) return null;
   return (
@@ -161,11 +160,25 @@ function personsCount(p: PolicyDetailForReceipt, y0: PolicyDetailForReceipt["yea
   return m > 0 ? String(m + 1) : "—";
 }
 
-function remarkLine(p: PolicyDetailForReceipt, y0: PolicyDetailForReceipt["years"][0] | undefined): string {
-  const a = (p.remarks ?? "").trim();
-  if (a) return a;
-  const b = (y0?.yearRemarks ?? "").trim();
-  return b || "—";
+function parseRemarksForReceipt(raw: string | null | undefined): { remark: string; generalRemark: string } {
+  const text = (raw ?? "").trim();
+  if (!text) return { remark: "—", generalRemark: "—" };
+  const gMarker = "General Remark:";
+  const pMarker = "Policy Change Remark:";
+  const gIdx = text.indexOf(gMarker);
+  const pIdx = text.indexOf(pMarker);
+  if (gIdx === -1 && pIdx === -1) return { remark: text, generalRemark: text };
+  let generalRemark = "";
+  let policyChangeRemark = "";
+  if (gIdx !== -1) {
+    const gStart = gIdx + gMarker.length;
+    const gEnd = pIdx !== -1 && pIdx > gStart ? pIdx : text.length;
+    generalRemark = text.slice(gStart, gEnd).trim();
+  }
+  if (pIdx !== -1) {
+    policyChangeRemark = text.slice(pIdx + pMarker.length).trim();
+  }
+  return { remark: policyChangeRemark || generalRemark || "—", generalRemark: generalRemark || "—" };
 }
 
 /** Public asset; resolves in iframe srcDoc to the app origin. */
@@ -228,48 +241,60 @@ export function buildReceiptDocumentHtml(
   const y0 = p.years[0];
   const dateStr = displayDate(options?.issuedDate ?? new Date());
   const receiptNo = receiptNoFor(p, y0);
-  const ref = (p.referenceNo ?? "").trim() || "—";
   const sumInsured = y0 ? rs(y0.sumInsured) : "0";
   const vkk = y0 ? rs(y0.vkkPremium) : "0";
   const recvRaw = y0?.amountReceived != null && String(y0.amountReceived).trim() !== "" ? y0.amountReceived : y0?.vkkPremium;
   const recv = y0 ? rs(recvRaw) : "0";
   const { no: chNo } = y0 ? chequeInfo(y0) : { no: "—" };
   const pay0 = pickPayment(y0);
-  const yearLabel = y0?.yearLabel ?? p.periodYearText ?? "—";
   const paymentMode = payMode(pay0);
   const transactionDetail =
     (pay0?.transactionDetail ?? "").trim() || chNo || (y0?.utrRef ?? "").trim() || "—";
-  const payOrChqDate = pay0?.cheque?.chequeDate ?? pay0?.transactionDate ?? pay0?.createdAt;
-  const chqDateStr = displayDate(payOrChqDate);
-  const txnDateStr = displayDate(pay0?.transactionDate ?? pay0?.createdAt ?? payOrChqDate);
-  const paymentStatus = pay0?.cheque ? payStatus(pay0) : pay0 ? "—" : "—";
+  const txnDateStr = displayDate(pay0?.transactionDate ?? pay0?.createdAt);
   const cat = p.category?.key ?? p.category?.name ?? "—";
   const amountNum = Number(String(recvRaw).replace(/[^\d.-]/g, "")) || 0;
   const amountInWords = amountToWordsIndian(amountNum);
+
+  const nameAsPerCheque = (pay0?.nameAsPerCheque ?? "").trim() || "—";
+  const notOver = (pay0?.notOver ?? "").trim() || "—";
+  const bankCharges = pay0?.returnCharges != null && String(pay0.returnCharges).trim() !== "" ? `₹ ${rs(pay0.returnCharges)}` : "—";
+  const otherCharges = pay0?.otherCharges != null && String(pay0.otherCharges).trim() !== "" ? `₹ ${rs(pay0.otherCharges)}` : "—";
+  const phoneNo = (p.insuredParty.mobile ?? "").trim() || "—";
+  const emailId = (p.insuredParty.email ?? "").trim() || "—";
+  const panNo = (p.insuredParty.pan ?? "").trim() || "—";
+  const aadhaarNo = (p.insuredParty.aadhaarNo ?? "").trim() || "—";
+  const parsedRemarks = parseRemarksForReceipt(p.remarks);
+  const generalRemark = (p.generalRemark ?? "").trim() || parsedRemarks.generalRemark;
+  const remark = parsedRemarks.remark;
 
   const rows: [string, string][] = [
     ["Receipt No.", receiptNo],
     ["Date", dateStr],
     ["SVKK ID", p.insuredParty.svkkPublicId],
     ["Customer ID", p.insuredParty.customerId ?? "—"],
-    ["Reference No.", ref],
-    ["Policy No.", p.policyNo?.trim() || p.previousPolicyNo?.trim() || "—"],
     ["Policy Holder Name", p.insuredParty.name],
-    ["Policy Type", policyTypeLabel(p)],
-    ["Category", cat],
-    ["Sum Insured", `₹ ${sumInsured}`],
-    ["No. of Persons", personsCount(p, y0)],
-    ["Village", p.village ?? "—"],
     ["Area", p.area ?? "—"],
-    ["Year", yearLabel],
+    ["Phone No.", phoneNo],
+    ["Email ID", emailId],
+    ["Village", p.village ?? "—"],
+    ["No. of Person", personsCount(p, y0)],
+    ["Category", cat],
+    ["Policy Type", policyTypeLabel(p)],
+    ["Sum Insured", `₹ ${sumInsured}`],
     ["Premium Amount", `₹ ${vkk}`],
+    ["Not Over", notOver],
+    ["Bank Charges", bankCharges],
+    ["Name as per Cheque", nameAsPerCheque],
+    ["Other Charges", otherCharges],
     ["Amount Received", `₹ ${recv}`],
-    ["Date of Payment / CHQ Date", chqDateStr],
     ["Mode of Payment", paymentMode],
-    ["Transaction Detail", transactionDetail],
+    ["Bank Name", pay0 ? (pay0.cheque?.bankName ?? y0?.bankName ?? "—") : "—"],
+    ["Transaction No.", transactionDetail],
     ["Transaction Date", txnDateStr],
-    ["Status", paymentStatus],
-    ["Remark", remarkLine(p, y0)],
+    ["PAN No.", panNo],
+    ["Aadhaar No.", aadhaarNo],
+    ["Remark", remark],
+    ["General Remark", generalRemark],
   ];
 
   const half = Math.ceil(rows.length / 2);

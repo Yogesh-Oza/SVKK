@@ -958,7 +958,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         ? Math.floor(personsFromInput)
         : Math.max(values.members.length + 1, 1);
     const firstTxn = values.paymentTransactions[0];
-    const remarksCombined = [values.generalRemark, values.policyChangeRemark]
+    const remarksCombined = [values.policyChangeRemark]
       .map((v) => v.trim())
       .filter(Boolean)
       .join("\n\n");
@@ -972,6 +972,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       village: values.village.trim() || null,
       personsInsuredCount: personCount,
       remarks: remarksCombined || null,
+      generalRemark: values.generalRemark.trim() || null,
       periodYearText: values.year.trim() || null,
       periodMonthText: values.month.trim() || null,
       insuredParty: {
@@ -979,6 +980,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         svkkPublicId: values.svkkPublicId.trim() || "—",
         customerId: values.customerId.trim() || null,
         pan: values.panNo.trim() || null,
+        aadhaarNo: values.aadhaarNo.trim() || null,
+        mobile: values.mobileFirst.trim() || values.whatsappNo.trim() || null,
+        email: values.email.trim() || null,
       },
       policyType: { name: values.adProduct || "Policy" },
       category: values.cat.trim() ? { key: values.cat.trim(), name: values.cat.trim() } : null,
@@ -1012,6 +1016,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     transactionMode: firstTxn.mode || null,
                     transactionDetail: firstTxn.transactionNumber || null,
                     transactionDate: firstTxn.transactionDate || null,
+                    nameAsPerCheque: firstTxn.nameAsPerCheque?.trim() || null,
+                    notOver: firstTxn.notOver?.trim() || null,
+                    returnCharges: parseInr(firstTxn.returnCharges ?? ""),
+                    otherCharges: parseInr(firstTxn.otherCharges ?? ""),
                   },
                 ]
               : [],
