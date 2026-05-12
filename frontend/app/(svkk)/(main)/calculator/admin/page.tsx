@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Download,
-  ImageIcon,
   Loader2,
   PlusCircle,
   RotateCcw,
@@ -48,9 +47,6 @@ import {
   type PolicyKey,
   type PremiumState,
 } from "@/lib/svkk/premium";
-import { backendApi } from "@/lib/svkk/api";
-import { svkkJson } from "@/lib/svkk/api";
-import { toast } from "sonner";
 
 type AdminNew = {
   key: string;
@@ -113,7 +109,7 @@ export default function CalculatorAdminPage() {
   const [state, setState] = useState<PremiumState>({ defs: {}, charts: {} });
   /** Last server-known snapshot. Compared with `state` to derive dirty-ness. */
   const [serverState, setServerState] = useState<PremiumState>({ defs: {}, charts: {} });
-  const [tab, setTab] = useState<"charts" | "discounts" | "receipt">("charts");
+  const [tab, setTab] = useState<"charts" | "discounts">("charts");
   const [policy, setPolicy] = useState<PolicyKey>("asha_kiran");
   const [newPolicy, setNewPolicy] = useState<AdminNew>(EMPTY_NEW);
   const [saving, setSaving] = useState(false);
@@ -313,7 +309,7 @@ export default function CalculatorAdminPage() {
 
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-5 p-6">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "charts" | "discounts" | "receipt")}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "charts" | "discounts")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <TabsList className="bg-[#f3f6fa] p-1.5">
                 <TabsTrigger
@@ -327,12 +323,6 @@ export default function CalculatorAdminPage() {
                   className="data-[state=active]:bg-white data-[state=active]:shadow-[0_8px_18px_rgba(16,32,51,0.06)]"
                 >
                   Discounts
-                </TabsTrigger>
-                <TabsTrigger
-                  value="receipt"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-[0_8px_18px_rgba(16,32,51,0.06)]"
-                >
-                  Receipt Settings
                 </TabsTrigger>
               </TabsList>
               <BannerMsg msg={msg} />
@@ -421,147 +411,9 @@ export default function CalculatorAdminPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="receipt" className="mt-4 space-y-5">
-              <ReceiptImageSettings />
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function ReceiptImageSettings() {
-  const [headerUrl, setHeaderUrl] = useState("");
-  const [footerUrl, setFooterUrl] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [savingHeader, setSavingHeader] = useState(false);
-  const [savingFooter, setSavingFooter] = useState(false);
-  const [uploadingHeader, setUploadingHeader] = useState(false);
-  const [uploadingFooter, setUploadingFooter] = useState(false);
-  const headerInputRef = useRef<HTMLInputElement>(null);
-  const footerInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const settings = await svkkJson<Record<string, string>>("/settings");
-        if (cancelled) return;
-        setHeaderUrl(settings.receipt_header_image ?? "");
-        setFooterUrl(settings.receipt_footer_image ?? "");
-      } catch {
-        /* settings not set yet */
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  const uploadToOneDrive = useCallback(async (file: File): Promise<string | null> => {
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const { data } = await backendApi.post<{ webViewLink: string }>("/upload/one-drive", fd);
-      return data.webViewLink;
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Upload failed");
-      return null;
-    }
-  }, []);
-
-  const saveSetting = useCallback(async (key: string, value: string) => {
-    await backendApi.put(`/settings/${key}`, { value });
-  }, []);
-
-  async function handleHeaderUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadingHeader(true);
-    const url = await uploadToOneDrive(file);
-    if (url) {
-      setHeaderUrl(url);
-      setSavingHeader(true);
-      try {
-        await saveSetting("receipt_header_image", url);
-        toast.success("Header image saved.");
-      } catch { toast.error("Failed to save header setting."); }
-      finally { setSavingHeader(false); }
-    }
-    setUploadingHeader(false);
-  }
-
-  async function handleFooterUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadingFooter(true);
-    const url = await uploadToOneDrive(file);
-    if (url) {
-      setFooterUrl(url);
-      setSavingFooter(true);
-      try {
-        await saveSetting("receipt_footer_image", url);
-        toast.success("Footer image saved.");
-      } catch { toast.error("Failed to save footer setting."); }
-      finally { setSavingFooter(false); }
-    }
-    setUploadingFooter(false);
-  }
-
-  if (!loaded) {
-    return <p className="text-muted-foreground flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" /> Loading receipt settings…</p>;
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="rounded-[18px] border border-[#e1e9f2] bg-linear-to-b from-white to-[#f8fbff] p-4 sm:p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <ImageIcon className="size-5 text-[#174ea6]" />
-          <h3 className="text-base font-extrabold tracking-tight text-[#0b1728]">Receipt Header Image</h3>
-        </div>
-        <p className="mb-3 text-xs leading-relaxed text-[#66798f]">
-          This image appears at the top of every receipt. Upload a new image to replace the current one. The image is uploaded to OneDrive and the public link is stored.
-        </p>
-        {headerUrl ? (
-          <div className="mb-3 overflow-hidden rounded-lg border border-[#d9e3ee] bg-white p-2">
-            <img src={headerUrl} alt="Receipt header preview" className="max-h-32 w-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <p className="mt-1 truncate text-xs text-[#66798f]">{headerUrl}</p>
-          </div>
-        ) : (
-          <p className="mb-3 text-sm text-[#66798f]">No custom header set. Using default <code>/Header_Receipt.png</code>.</p>
-        )}
-        <input ref={headerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handleHeaderUpload(e)} />
-        <Button type="button" variant="outline" disabled={uploadingHeader || savingHeader} onClick={() => headerInputRef.current?.click()}>
-          {uploadingHeader ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
-          {uploadingHeader ? "Uploading…" : savingHeader ? "Saving…" : "Upload Header Image"}
-        </Button>
-      </div>
-
-      <div className="rounded-[18px] border border-[#e1e9f2] bg-linear-to-b from-white to-[#f8fbff] p-4 sm:p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <ImageIcon className="size-5 text-[#174ea6]" />
-          <h3 className="text-base font-extrabold tracking-tight text-[#0b1728]">Receipt Footer Image</h3>
-        </div>
-        <p className="mb-3 text-xs leading-relaxed text-[#66798f]">
-          This image appears at the bottom of every receipt, after the Authorized Signatory section.
-        </p>
-        {footerUrl ? (
-          <div className="mb-3 overflow-hidden rounded-lg border border-[#d9e3ee] bg-white p-2">
-            <img src={footerUrl} alt="Receipt footer preview" className="max-h-32 w-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <p className="mt-1 truncate text-xs text-[#66798f]">{footerUrl}</p>
-          </div>
-        ) : (
-          <p className="mb-3 text-sm text-[#66798f]">No custom footer set. Using default <code>/Footer_Receipt.png</code>.</p>
-        )}
-        <input ref={footerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handleFooterUpload(e)} />
-        <Button type="button" variant="outline" disabled={uploadingFooter || savingFooter} onClick={() => footerInputRef.current?.click()}>
-          {uploadingFooter ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
-          {uploadingFooter ? "Uploading…" : savingFooter ? "Saving…" : "Upload Footer Image"}
-        </Button>
-      </div>
     </div>
   );
 }

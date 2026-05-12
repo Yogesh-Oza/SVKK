@@ -4,7 +4,6 @@ const SVKK_PATH_PREFIXES = [
   "/policies",
   "/claims",
   "/mis",
-  "/upload",
   "/admin",
   "/logs",
   "/users",

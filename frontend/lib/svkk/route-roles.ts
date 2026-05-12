@@ -11,9 +11,6 @@ export function getAllowedRolesForPath(pathname: string): readonly SvkkRole[] | 
   if (pathname === "/login" || pathname.startsWith("/login")) {
     return undefined;
   }
-  if (pathname.startsWith("/upload")) {
-    return ADM;
-  }
   if (pathname.startsWith("/admin")) {
     return ADM;
   }

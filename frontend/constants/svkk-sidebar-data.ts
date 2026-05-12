@@ -14,7 +14,6 @@ import {
   IconLayoutDashboard,
   IconSettings,
   IconStethoscope,
-  IconUpload,
   IconUsers,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
@@ -27,10 +26,10 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   policyNew: IconFilePlus,
   claims: IconStethoscope,
   mis: IconChartBar,
-  csv: IconUpload,
   admin: IconSettings,
   logs: IconHistory,
   users: IconUsers,
+  settings: IconSettings,
 };
 
 /**
