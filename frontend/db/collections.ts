@@ -10,7 +10,6 @@ export const FOLLOW_UPS = "follow_ups";
 export const NOTIFICATIONS = "notifications";
 export const NOTIFICATION_PREFERENCES = "notification_preferences";
 export const NOTIFICATION_DELIVERIES = "notification_deliveries";
-export const ALERTS = "alerts";
 export const SLA_LOGS = "sla_logs";
 export const CHAT_CONVERSATIONS = "chat_conversations";
 export const CHAT_MESSAGES = "chat_messages";
@@ -66,7 +65,6 @@ export type NotificationDeliveryDoc = {
   [key: string]: unknown;
 };
 
-export type AlertDoc = { id: string; [key: string]: unknown };
 export type SlaLogDoc = { id: string; [key: string]: unknown };
 export type ChatConversationDoc = { id: string; leadId: string; [key: string]: unknown };
 export type ChatMessageDoc = { id: string; conversationId: string; [key: string]: unknown };

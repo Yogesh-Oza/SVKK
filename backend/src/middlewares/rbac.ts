@@ -26,6 +26,7 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "receipt:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
   /** User CRUD (list, create, update, delete) — super admin only per product spec. */
   "users:manage": ["SUPER_ADMIN"],
+  "admin:settings": ["SUPER_ADMIN", "ADMIN"],
 };
 
 /** @internal Exported for unit tests of the permission matrix. */

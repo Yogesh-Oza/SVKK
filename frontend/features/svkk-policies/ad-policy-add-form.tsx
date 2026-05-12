@@ -29,6 +29,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
+import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
@@ -294,6 +295,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
 
+  const receiptImageUrls = useReceiptSettings();
   const { options: ddOptions } = useDropdownOptions();
   const genderOptions = ddOptions.GENDER.length ? ddOptions.GENDER : FALLBACK_GENDERS;
   const relationOptions = ddOptions.RELATION.length ? ddOptions.RELATION : FALLBACK_RELATIONSHIP_OPTIONS;
@@ -1005,8 +1007,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         },
       ],
     };
-    setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true }));
-  }, [policyId, values]);
+    setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...receiptImageUrls }));
+  }, [policyId, values, receiptImageUrls]);
 
   useEffect(() => {
     if (missingUrl || isEdit) {

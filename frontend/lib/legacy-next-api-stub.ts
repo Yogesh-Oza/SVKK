@@ -23,12 +23,6 @@ function stubForPathname(pathname: string, search: string): object {
   if (pathname === "/api/notifications") {
     return { notifications: [] };
   }
-  if (pathname === "/api/alerts") {
-    return { alerts: [] };
-  }
-  if (pathname === "/api/analytics/sales-performance") {
-    return { rows: [] };
-  }
   if (pathname === "/api/calendar/events") {
     return { events: [] };
   }
@@ -70,9 +64,6 @@ function stubForPathname(pathname: string, search: string): object {
   }
   if (pathname.startsWith("/api/ai/")) {
     return { text: "", score: 0, suggestions: [] };
-  }
-  if (pathname.startsWith("/api/analytics/")) {
-    return { series: [], points: [] };
   }
   if (pathname.startsWith("/api/auth/password-reset")) {
     return { error: "Password reset is not enabled for the SVKK deployment." };

@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { db } from "@/db";
 import {
-  ALERTS,
   FOLLOW_UPS,
   LEADS,
   NOTIFICATION_DELIVERIES,
@@ -9,7 +8,6 @@ import {
   USER,
 } from "@/db/collections";
 import type {
-  AlertDoc,
   FollowUpDoc,
   LeadDoc,
   SlaLogDoc,
@@ -25,7 +23,6 @@ export async function runSlaCron() {
   const breachThreshold = subMinutes(now, FIRST_RESPONSE_SLA_MINUTES);
   const leadsCol = db.collection<LeadDoc>(LEADS);
   const slaCol = db.collection<SlaLogDoc>(SLA_LOGS);
-  const alertsCol = db.collection<AlertDoc>(ALERTS);
   const followUpsCol = db.collection<FollowUpDoc>(FOLLOW_UPS);
   const userCol = db.collection(USER);
 
@@ -55,15 +52,6 @@ export async function runSlaCron() {
       followUpId: null,
       type: "first_response",
       breachedAt: now,
-      createdAt: now,
-    });
-
-    await alertsCol.insertOne({
-      id: generateRandomUUID(),
-      type: "sla_breach",
-      leadId: lead.id,
-      message: `${lead.name}: No first response within 10 min`,
-      isRead: false,
       createdAt: now,
     });
 
@@ -110,18 +98,6 @@ export async function runSlaCron() {
       createdAt: now,
     });
 
-    const lead = await leadsCol.findOne({ id: fu.leadId });
-    const leadName = lead?.name ?? "Unknown";
-    const scheduledStr = fu.scheduledAt.toISOString().slice(0, 10);
-
-    await alertsCol.insertOne({
-      id: generateRandomUUID(),
-      type: "follow_up_missed",
-      leadId: fu.leadId,
-      message: `${leadName}: Follow-up missed on ${scheduledStr}`,
-      isRead: false,
-      createdAt: now,
-    });
     loggedCount++;
   }
 

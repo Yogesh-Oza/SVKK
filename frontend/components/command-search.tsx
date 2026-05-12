@@ -45,7 +45,6 @@ interface CommandSearchProps {
 }
 
 const searchItems: SearchItem[] = [
-  { title: "Alerts", url: "/alerts", group: "Apps", icon: IconNotification, adminOnly: true },
   { title: "Users", url: "/users", group: "Apps", icon: IconUsers, adminOnly: true },
   { title: "Calendar", url: "/calendar", group: "Apps", icon: IconCalendar },
   {

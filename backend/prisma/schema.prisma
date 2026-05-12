@@ -565,6 +565,12 @@ model Claim {
   @@index([policyId])
 }
 
+model AppSetting {
+  key       String   @id @db.VarChar(100)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
 model MISSnapshot {
   id            String   @id @default(cuid())
   date          DateTime @db.Date

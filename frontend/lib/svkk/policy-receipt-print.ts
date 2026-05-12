@@ -181,8 +181,8 @@ function parseRemarksForReceipt(raw: string | null | undefined): { remark: strin
   return { remark: policyChangeRemark || generalRemark || "—", generalRemark: generalRemark || "—" };
 }
 
-/** Public asset; resolves in iframe srcDoc to the app origin. */
-const RECEIPT_HEADER_IMAGE = "/reciept_full_logo.png";
+const DEFAULT_HEADER_IMAGE = "/Header_Receipt.png";
+const DEFAULT_FOOTER_IMAGE = "/Footer_Receipt.png";
 
 function amountToWordsIndian(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "Zero Rupees Only";
@@ -236,7 +236,7 @@ function amountToWordsIndian(value: number): string {
 
 export function buildReceiptDocumentHtml(
   p: PolicyDetailForReceipt,
-  options?: { issuedDate?: Date; embedded?: boolean },
+  options?: { issuedDate?: Date; embedded?: boolean; headerImageUrl?: string; footerImageUrl?: string },
 ): string {
   const y0 = p.years[0];
   const dateStr = displayDate(options?.issuedDate ?? new Date());
@@ -312,10 +312,12 @@ export function buildReceiptDocumentHtml(
   const embedded = options?.embedded === true;
   const bodyPad = embedded ? "padding:16px 24px 24px" : "padding:24px";
   const bodyClass = embedded ? "receipt-root receipt-embedded" : "receipt-root";
+  const headerImg = options?.headerImageUrl || DEFAULT_HEADER_IMAGE;
+  const footerImg = options?.footerImageUrl || DEFAULT_FOOTER_IMAGE;
 
   const inner = `
     <div class="receipt-body" style="max-width:1200px;margin:0 auto;${bodyPad}">
-      <div style="border-bottom:2px solid #e5e7eb;padding-bottom:14px"><img src="${RECEIPT_HEADER_IMAGE}" alt="Receipt Header" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
+      <div style="border-bottom:2px solid #e5e7eb;padding-bottom:14px"><img src="${headerImg}" alt="Receipt Header" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
       <div style="text-align:center;margin-top:20px"><div style="display:inline-block;border:1px solid #cbd5e1;border-radius:999px;padding:10px 22px;font-size:28px;font-weight:900;letter-spacing:.18em">RECEIPT</div></div>
       <div class="receipt-grid" style="margin-top:20px">
         <div class="rcol">${colHtml(left)}</div>
@@ -328,6 +330,7 @@ export function buildReceiptDocumentHtml(
         <div style="text-align:center"><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Authorized Signatory</div></div>
       </div>
       </div>
+      <div style="border-top:2px solid #e5e7eb;padding-top:14px;margin-top:24px"><img src="${footerImg}" alt="Receipt Footer" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
     </div>`;
 
   const shell = embedded
@@ -408,8 +411,9 @@ export function buildReceiptDocumentHtml(
 
 export async function openPolicyReceiptPrint(
   p: PolicyDetailForReceipt,
+  imageUrls?: { headerImageUrl?: string; footerImageUrl?: string },
 ): Promise<boolean> {
-  const html = buildReceiptDocumentHtml(p, { embedded: false });
+  const html = buildReceiptDocumentHtml(p, { embedded: false, ...imageUrls });
   const w = window.open("", "_blank", "noopener,noreferrer");
   if (!w) return false;
   w.document.write(html);

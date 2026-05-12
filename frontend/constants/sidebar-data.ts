@@ -2,7 +2,6 @@ import type { SidebarData } from "@/lib/types";
 import {
   IconBrowserCheck,
   IconCalendar,
-  IconChartBar,
   IconNotification,
   IconPalette,
   IconSettings,
@@ -15,20 +14,9 @@ export const sidebarData: SidebarData = {
       title: "Dashboard",
       items: [
         {
-          title: "Alerts",
-          url: "/alerts",
-          icon: IconNotification,
-          adminOnly: true,
-        },
-        {
           title: "Notifications",
           url: "/notifications",
           icon: IconNotification,
-        },
-        {
-          title: "Analytics",
-          url: "/analytics",
-          icon: IconChartBar,
         },
       ],
     },

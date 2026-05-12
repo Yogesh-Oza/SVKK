@@ -58,6 +58,7 @@ import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
+import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import {
   flexRender,
   getCoreRowModel,
@@ -208,6 +209,7 @@ export default function SvkkPoliciesPage() {
   const canDel = role ? canDeletePolicy(role) : false;
   const canEdit = role ? canUpdatePolicy(role) : false;
   const canCsvUpload = role === "ADMIN" || role === "SUPER_ADMIN";
+  const receiptImageUrls = useReceiptSettings();
 
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
@@ -527,7 +529,7 @@ export default function SvkkPoliciesPage() {
     try {
       const p = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
       const payload = prioritizeYear(p, selectedYearLabel);
-      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true }));
+      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...receiptImageUrls }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate receipt");
     } finally {
