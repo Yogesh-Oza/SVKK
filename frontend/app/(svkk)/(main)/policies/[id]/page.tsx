@@ -18,9 +18,8 @@ import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
   canDeletePolicy,
-  canUploadPolicyDrive,
 } from "@/lib/svkk/permissions";
-import { PolicyDriveUploadButton } from "@/features/svkk-policies/policy-drive-upload";
+import { parsePolicyUrls } from "@/features/svkk-policies/ad-policy-detail-to-form";
 import { useParams, useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -215,7 +214,6 @@ export default function SvkkPolicyDetailPage() {
 
   const role = user?.role;
   const canDel = role ? canDeletePolicy(role) : false;
-  const canDrive = role ? canUploadPolicyDrive(role) : false;
 
   useEffect(() => {
     if (missingUrl) {
@@ -359,32 +357,18 @@ export default function SvkkPolicyDetailPage() {
                 <tr>
                   <td className={tdClass}>{row.policyGrouping ?? ""}</td>
                   <td className={tdClass} colSpan={4}>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <span className="min-w-0 break-all">
-                        {row.policyUrl ? (
-                          <a
-                            href={row.policyUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary underline"
-                          >
-                            {row.policyUrl}
-                          </a>
-                        ) : (
-                          ""
-                        )}
-                      </span>
-                      {canDrive && !missingUrl ? (
-                        <PolicyDriveUploadButton
-                          policyId={id}
-                          expectedUpdatedAt={row.updatedAt}
-                          onUploaded={(url, meta) => {
-                            setRow((r) =>
-                              r ? { ...r, policyUrl: url, updatedAt: meta?.updatedAt ?? r.updatedAt } : r,
-                            );
-                          }}
-                        />
-                      ) : null}
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      {parsePolicyUrls(row.policyUrl).map((u, i) => (
+                        <a
+                          key={i}
+                          href={u}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary break-all underline"
+                        >
+                          {u}
+                        </a>
+                      ))}
                     </div>
                   </td>
                 </tr>

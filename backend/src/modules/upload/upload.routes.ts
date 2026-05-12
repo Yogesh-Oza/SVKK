@@ -24,6 +24,26 @@ const uploadDrive = multer({
   limits: { fileSize: 32 * 1024 * 1024 },
 });
 
+const MAX_POLICY_URLS = 5;
+
+function parsePolicyUrls(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr)) return arr.filter((u: unknown) => typeof u === "string" && u);
+    } catch { /* fall through to legacy single-URL */ }
+  }
+  return trimmed ? [trimmed] : [];
+}
+
+function appendPolicyUrl(existing: string | null | undefined, newUrl: string): string {
+  const urls = parsePolicyUrls(existing);
+  if (!urls.includes(newUrl)) urls.push(newUrl);
+  return JSON.stringify(urls.slice(0, MAX_POLICY_URLS));
+}
+
 function parseCsvLine(line: string): string[] {
   return line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
 }
@@ -217,12 +237,14 @@ export function createUploadRouter(env: Env) {
           const scope = await loadMisScope(req.userId!, req.userRole!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
-            select: { id: true, village: true, createdById: true },
+            select: { id: true, village: true, createdById: true, policyUrl: true },
           });
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
           }
           assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+
+          const mergedUrls = appendPolicyUrl(existing.policyUrl, webViewLink);
 
           const updated = await updatePolicySections({
             actorUserId: req.userId!,
@@ -231,7 +253,7 @@ export function createUploadRouter(env: Env) {
               expectedUpdatedAt && !Number.isNaN(expectedUpdatedAt.getTime())
                 ? expectedUpdatedAt
                 : undefined,
-            policy: { policyUrl: webViewLink },
+            policy: { policyUrl: mergedUrls },
           });
           updatedAt = updated.updatedAt.toISOString();
 
@@ -291,12 +313,14 @@ export function createUploadRouter(env: Env) {
           const scope = await loadMisScope(req.userId!, req.userRole!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
-            select: { id: true, village: true, createdById: true },
+            select: { id: true, village: true, createdById: true, policyUrl: true },
           });
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
           }
           assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+
+          const mergedUrls = appendPolicyUrl(existing.policyUrl, webViewLink);
 
           const updated = await updatePolicySections({
             actorUserId: req.userId!,
@@ -305,7 +329,7 @@ export function createUploadRouter(env: Env) {
               expectedUpdatedAt && !Number.isNaN(expectedUpdatedAt.getTime())
                 ? expectedUpdatedAt
                 : undefined,
-            policy: { policyUrl: webViewLink },
+            policy: { policyUrl: mergedUrls },
           });
           updatedAt = updated.updatedAt.toISOString();
 

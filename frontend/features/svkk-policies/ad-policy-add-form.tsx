@@ -29,7 +29,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
-import { FilePlus, FilePenLine, Loader2, Minus, Plus, Sparkles } from "lucide-react";
+import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
@@ -50,7 +50,6 @@ export type { AdMemberRow } from "./ad-member-types";
 
 type ChartRow = { id: string; version: number; chartKind: string };
 type PolicyTypeRow = { id: string; key: string; name: string };
-type FetchMode = "fetch" | "new";
 type AddSectionId =
   | "policy_details"
   | "policy_holder_details"
@@ -266,7 +265,7 @@ const FALLBACK_PAYMENT_MODES = [
   { value: "ONLINE", label: "Online" },
   { value: "CHEQUE", label: "Cheque" },
   { value: "CASH", label: "Cash" },
-  { value: "NEFT", label: "NEFT" },
+  { value: "UPI", label: "UPI" },
 ];
 
 const FALLBACK_TRANSACTION_STATUS = [
@@ -325,7 +324,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<SvkkPolicyDetailForForm | null>(null);
   const [detailErr, setDetailErr] = useState<string | null>(null);
-  const [fetchMode, setFetchMode] = useState<FetchMode>("fetch");
   const [fetchSvkkId, setFetchSvkkId] = useState("");
   const [fetchHolderName, setFetchHolderName] = useState("");
   const [fetchRows, setFetchRows] = useState<PolicyListRow[]>([]);
@@ -602,7 +600,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${id}`);
         const nextValues = policyDetailToAdFormValues(row);
         await formik.setValues(nextValues);
-        setFetchMode("fetch");
         setFetchNotice(modeNotice);
         // When we "fetch & load", user expects to update the same policy (not create a new one).
         setFetchedPolicyForUpdate(row);
@@ -727,22 +724,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [],
   );
 
-  const startNewPolicy = useCallback(async () => {
-    await formik.setValues({
-      ...getAdPolicyInitialValues(),
-      policyHolder: fetchHolderName.trim(),
-      year: values.year,
-      month: values.month,
-      policyGrouping: values.policyGroup,
-    });
-    lastAutoIdKeyRef.current = "";
-    svkkSeqRef.current = "";
-    refSeqRef.current = "";
-    setFetchMode("new");
-    setFetchNotice("New policy started. Fill Policy Group + Month to auto-generate SVKK ID and Reference No.");
-    setFetchedPolicyForUpdate(null);
-  }, [formik, fetchHolderName, values.year, values.month, values.policyGroup]);
-
   const carryForwardPolicy = useCallback(async () => {
     if (!selectedFetchId) {
       setFetchNotice("Select a prior-year policy first.");
@@ -797,7 +778,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       generalRemark: "",
       policyChangeRemark: "",
     });
-    setFetchMode("fetch");
     setFetchNotice("Carry Forward / Renew copied all prior fields.");
     // Carry forward creates a *new* policy/year; do not show Update button.
     setFetchedPolicyForUpdate(null);
@@ -941,7 +921,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const resetFetchedPolicyState = useCallback(async () => {
     await formik.setValues(getAdPolicyInitialValues());
-    setFetchMode("fetch");
     setFetchHolderName("");
     setFetchRows([]);
     setSelectedFetchId("");
@@ -1164,6 +1143,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       ...values.paymentTransactions,
       {
         mode: "ONLINE",
+        mobileNumber: "",
         transactionNumber: "",
         bankName: "",
         branch: "",
@@ -1175,6 +1155,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         transactionStatus: "",
         dishonourReason: "",
         returnCharges: "",
+        otherCharges: "",
         amountReceived: "",
       },
     ]);
@@ -1369,13 +1350,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         {!isEdit ? (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Add Policy</span>
-                <span className="text-muted-foreground text-xs font-medium">
-                  {fetchMode === "new" ? "New Policy" : "Fetch Mode"}
-                </span>
-              </CardTitle>
-              <CardDescription>Fetch old policy by SVKK ID, carry forward all fields, or start new.</CardDescription>
+              <CardTitle>Add Policy</CardTitle>
+              <CardDescription>Fetch old policy by SVKK ID or carry forward all fields.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1458,9 +1434,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => void startNewPolicy()}>
-                  New Policy
-                </Button>
                 <Button type="button" variant="outline" onClick={() => void carryForwardPolicy()}>
                   Carry Forward / Renew
                 </Button>
@@ -1828,23 +1801,39 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Input name="refNo" value={values.refNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2 sm:col-span-2 lg:col-span-4">
-                <Label>Policy URL</Label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    name="url"
-                    value={values.url}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    className="min-w-0 flex-1"
-                  />
-                  {canDriveUpload && !missingUrl ? (
+                <Label>Policy URL {values.urls.length > 0 && <span className="text-muted-foreground ml-1 text-xs font-normal">{values.urls.length} / 5</span>}</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {values.urls.map((u, i) => (
+                    <span key={i} className="border-input bg-muted/40 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm">
+                      <a
+                        href={u}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary inline-flex min-w-0 items-center gap-1 truncate hover:underline"
+                        title={u}
+                      >
+                        <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                        <span className="truncate">{u}</span>
+                      </a>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive -mr-1 shrink-0 rounded p-0.5 transition-colors"
+                        onClick={() => void setFieldValue("urls", values.urls.filter((_, j) => j !== i))}
+                        aria-label="Remove this URL"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                  {canDriveUpload && !missingUrl && values.urls.length < 5 ? (
                     <PolicyDriveUploadButton
                       policyId={isEdit ? policyId : undefined}
                       expectedUpdatedAt={isEdit && detail ? detail.updatedAt : undefined}
                       onUploaded={(url, meta) => {
-                        void setFieldValue("url", url);
+                        const next = [...values.urls, url].slice(0, 5);
+                        void setFieldValue("urls", next);
                         if (isEdit && detail && meta?.updatedAt) {
-                          setDetail((d) => (d ? { ...d, updatedAt: meta.updatedAt!, policyUrl: url } : d));
+                          setDetail((d) => (d ? { ...d, updatedAt: meta.updatedAt!, policyUrl: JSON.stringify(next) } : d));
                         }
                       }}
                     />
@@ -2185,62 +2174,82 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                           searchPlaceholder="Search mode"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <Label>Transaction Number</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].transactionNumber`}
-                          value={transaction.transactionNumber}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Bank Name</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].bankName`}
-                          value={transaction.bankName}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Branch</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].branch`}
-                          value={transaction.branch}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Account Number</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].accountNumber`}
-                          value={transaction.accountNumber}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Name as per Cheque</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].nameAsPerCheque`}
-                          value={transaction.nameAsPerCheque}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>IFSC Code</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].ifscCode`}
-                          value={transaction.ifscCode}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Not over</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].notOver`}
-                          value={transaction.notOver}
-                          onChange={handleChange}
-                        />
-                      </div>
+
+                      {transaction.mode === "UPI" ? (
+                        <div className="space-y-1">
+                          <Label>Mobile Number</Label>
+                          <Input
+                            name={`paymentTransactions[${index}].mobileNumber`}
+                            value={transaction.mobileNumber}
+                            onChange={handleChange}
+                          />
+                        </div>
+                      ) : null}
+
+                      {transaction.mode !== "CASH" ? (
+                        <div className="space-y-1">
+                          <Label>Transaction Number</Label>
+                          <Input
+                            name={`paymentTransactions[${index}].transactionNumber`}
+                            value={transaction.transactionNumber}
+                            onChange={handleChange}
+                          />
+                        </div>
+                      ) : null}
+
+                      {(transaction.mode === "ONLINE" || transaction.mode === "CHEQUE") ? (
+                        <>
+                          <div className="space-y-1">
+                            <Label>Bank Name</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].bankName`}
+                              value={transaction.bankName}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Branch</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].branch`}
+                              value={transaction.branch}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Account Number</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].accountNumber`}
+                              value={transaction.accountNumber}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Name as per Cheque</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].nameAsPerCheque`}
+                              value={transaction.nameAsPerCheque}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>IFSC Code</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].ifscCode`}
+                              value={transaction.ifscCode}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Not over</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].notOver`}
+                              value={transaction.notOver}
+                              onChange={handleChange}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+
                       <div className="space-y-1">
                         <Label>Transaction Date</Label>
                         <Input
@@ -2250,45 +2259,54 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                           onChange={handleChange}
                         />
                       </div>
-                      <div className="space-y-1">
-                        <Label>Transaction Status</Label>
-                        <DropdownCombobox
-                          value={transaction.transactionStatus}
-                          onChange={(v) =>
-                            void setFieldValue(
-                              `paymentTransactions[${index}].transactionStatus`,
-                              v,
-                            )
-                          }
-                          options={transactionStatusOptions}
-                          placeholder="Transaction Status"
-                          searchPlaceholder="Search status"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Dishonour Reason</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].dishonourReason`}
-                          value={transaction.dishonourReason}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Return Charges - (amount)</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].returnCharges`}
-                          value={transaction.returnCharges}
-                          onChange={handleChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Other Charges</Label>
-                        <Input
-                          name={`paymentTransactions[${index}].otherCharges`}
-                          value={transaction.otherCharges}
-                          onChange={handleChange}
-                        />
-                      </div>
+
+                      {(transaction.mode === "ONLINE" || transaction.mode === "CHEQUE") ? (
+                        <div className="space-y-1">
+                          <Label>Transaction Status</Label>
+                          <DropdownCombobox
+                            value={transaction.transactionStatus}
+                            onChange={(v) =>
+                              void setFieldValue(
+                                `paymentTransactions[${index}].transactionStatus`,
+                                v,
+                              )
+                            }
+                            options={transactionStatusOptions}
+                            placeholder="Transaction Status"
+                            searchPlaceholder="Search status"
+                          />
+                        </div>
+                      ) : null}
+
+                      {(transaction.mode === "ONLINE" || transaction.mode === "CHEQUE") ? (
+                        <>
+                          <div className="space-y-1">
+                            <Label>Dishonour Reason</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].dishonourReason`}
+                              value={transaction.dishonourReason}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Return Charges - (amount)</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].returnCharges`}
+                              value={transaction.returnCharges}
+                              onChange={handleChange}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Other Charges</Label>
+                            <Input
+                              name={`paymentTransactions[${index}].otherCharges`}
+                              value={transaction.otherCharges}
+                              onChange={handleChange}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+
                       <div className="space-y-1">
                         <Label>Amount Received</Label>
                         <Input

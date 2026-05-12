@@ -109,7 +109,7 @@ export async function submitAdPolicyRequest({
     referenceNo: values.refNo.trim(),
     mobileSecondary: values.mobileSecond.trim() || null,
     policyGrouping: values.policyGrouping || null,
-    policyUrl: values.url.trim() || null,
+    policyUrl: values.urls.length ? JSON.stringify(values.urls) : null,
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
@@ -178,13 +178,13 @@ export async function submitAdPolicyRequest({
       .map((row) => ({
         amount: parseNum(row.amountReceived)!,
         method:
-          row.mode === "CHEQUE" ? "CHQ" : row.mode === "NEFT" ? "NEFT" : row.mode === "CASH" ? "CASH" : "UPI",
+          row.mode === "CHEQUE" ? "CHQ" : row.mode === "CASH" ? "CASH" : "UPI",
         status: row.transactionStatus || null,
         transactionNumber: row.transactionNumber.trim() || null,
         transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
         bankName: row.bankName.trim() || null,
         branchName: row.branch.trim() || null,
-        accountNumber: row.accountNumber.trim() || null,
+        accountNumber: (row.mode === "UPI" ? row.mobileNumber?.trim() : row.accountNumber.trim()) || null,
         nameAsPerCheque: row.nameAsPerCheque.trim() || null,
         ifscCode: row.ifscCode.trim() || null,
         notOver: row.notOver.trim() || null,
@@ -194,7 +194,7 @@ export async function submitAdPolicyRequest({
       })),
   };
 
-  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "NEFT") {
+  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "UPI") {
     body.paymentMode = "UPI";
     body.utrRef = values.onlineTransactionRef.trim() || null;
     if (co != null) {
@@ -337,7 +337,7 @@ export async function submitAdPolicyPatchRequest({
     referenceNo: values.refNo.trim(),
     mobileSecondary: values.mobileSecond.trim() || null,
     policyGrouping: values.policyGrouping || null,
-    policyUrl: values.url.trim() || null,
+    policyUrl: values.urls.length ? JSON.stringify(values.urls) : null,
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
@@ -391,13 +391,13 @@ export async function submitAdPolicyPatchRequest({
       .map((row) => ({
         amount: parseNum(row.amountReceived)!,
         method:
-          row.mode === "CHEQUE" ? "CHQ" : row.mode === "NEFT" ? "NEFT" : row.mode === "CASH" ? "CASH" : "UPI",
+          row.mode === "CHEQUE" ? "CHQ" : row.mode === "CASH" ? "CASH" : "UPI",
         status: row.transactionStatus || null,
         transactionNumber: row.transactionNumber.trim() || null,
         transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
         bankName: row.bankName.trim() || null,
         branchName: row.branch.trim() || null,
-        accountNumber: row.accountNumber.trim() || null,
+        accountNumber: (row.mode === "UPI" ? row.mobileNumber?.trim() : row.accountNumber.trim()) || null,
         nameAsPerCheque: row.nameAsPerCheque.trim() || null,
         ifscCode: row.ifscCode.trim() || null,
         notOver: row.notOver.trim() || null,
@@ -407,7 +407,7 @@ export async function submitAdPolicyPatchRequest({
       })),
   };
 
-  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "NEFT") {
+  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "UPI") {
     body.paymentMode = "UPI";
     body.utrRef = values.onlineTransactionRef.trim() || null;
   } else if (primaryPaymentMode === "CHEQUE") {

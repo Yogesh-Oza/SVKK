@@ -224,7 +224,7 @@ async function main() {
     { type: DropdownType.PAYMENT_MODE, value: "ONLINE", label: "Online", sortOrder: 0 },
     { type: DropdownType.PAYMENT_MODE, value: "CHEQUE", label: "Cheque", sortOrder: 1 },
     { type: DropdownType.PAYMENT_MODE, value: "CASH", label: "Cash", sortOrder: 2 },
-    { type: DropdownType.PAYMENT_MODE, value: "NEFT", label: "NEFT", sortOrder: 3 },
+    { type: DropdownType.PAYMENT_MODE, value: "UPI", label: "UPI", sortOrder: 3 },
 
     { type: DropdownType.TRANSACTION_STATUS, value: "CLEARED", label: "Cleared", sortOrder: 0 },
     { type: DropdownType.TRANSACTION_STATUS, value: "DISHONOURED", label: "Dishonoured", sortOrder: 1 },

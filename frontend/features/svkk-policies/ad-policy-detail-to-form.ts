@@ -3,6 +3,18 @@ import { emptyMemberRow, type AdMemberRow } from "./ad-member-types";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 import { getAdPolicyInitialValues } from "./ad-policy-form-values";
 
+export function parsePolicyUrls(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr)) return arr.filter((u: unknown) => typeof u === "string" && u);
+    } catch { /* legacy single-URL fallback */ }
+  }
+  return trimmed ? [trimmed] : [];
+}
+
 type Decimalish = string | number | { toString(): string } | null | undefined;
 
 function decStr(v: Decimalish): string {
@@ -215,7 +227,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
   let reasonDishonoured = "";
 
   const yPm = y.paymentMode ?? pay?.method;
-  if (yPm === "UPI" || yPm === "NEFT") {
+  if (yPm === "UPI" || yPm === "NEFT" || yPm === "ONLINE") {
     paymentMode = "ONLINE";
     onlineTransactionRef = (y.utrRef ?? "").trim();
   } else {
@@ -362,7 +374,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     year: row.periodYearText ?? "",
     month: row.periodMonthText ?? "",
     policyGrouping: groupingFromApi(row.policyGrouping),
-    url: row.policyUrl ?? "",
+    urls: parsePolicyUrls(row.policyUrl),
     url2: row.policyUrl2 ?? "",
   };
 }

@@ -134,7 +134,7 @@ const adPolicyExtraSchema = z.object({
   referenceNo: z.string().max(100).optional().nullable(),
   mobileSecondary: z.string().max(20).optional().nullable(),
   policyGrouping: z.string().trim().max(64).optional().nullable(),
-  policyUrl: z.string().max(500).optional().nullable(),
+  policyUrl: z.string().max(5000).optional().nullable(),
   policyUrl2: z.string().max(500).optional().nullable(),
   loanStatus: z.string().max(10).optional().nullable(),
   loanAmount: z.number().nonnegative().nullish().optional(),

@@ -1,10 +1,11 @@
 import type { AdMemberRow } from "./ad-member-types";
 
 export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE" | "CASH";
-export type AdPolicyTransactionModeForm = "ONLINE" | "CHEQUE" | "CASH" | "NEFT";
+export type AdPolicyTransactionModeForm = "ONLINE" | "CHEQUE" | "CASH" | "UPI";
 
 export type AdPolicyPaymentTransactionForm = {
   mode: AdPolicyTransactionModeForm;
+  mobileNumber: string;
   transactionNumber: string;
   bankName: string;
   branch: string;
@@ -112,7 +113,7 @@ export type AdPolicyFormValues = {
   year: string;
   month: string;
   policyGrouping: string;
-  url: string;
+  urls: string[];
   url2: string;
 };
 
@@ -161,6 +162,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     paymentTransactions: [
       {
         mode: "ONLINE",
+        mobileNumber: "",
         transactionNumber: "",
         bankName: "",
         branch: "",
@@ -225,7 +227,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     year: "",
     month: String(new Date().getMonth() + 1),
     policyGrouping: "",
-    url: "",
+    urls: [],
     url2: "",
   };
 }
