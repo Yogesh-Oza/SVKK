@@ -838,6 +838,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       });
       // Carry forward creates a *new* policy/year; do not show Update button.
       setFetchedPolicyForUpdate(null);
+      // Seed the auto-id cache so the useEffect treats the carried state as
+      // "already auto-id'd". Subsequent edits to Month / Policy Group / Year then
+      // re-compose SVKK ID and Reference No from these seqs (the last 4 digits
+      // of each id, by the {group}{[year]}{month}{seq:4} format).
+      const carriedSvkkPublicId = carriedValues.svkkPublicId || "";
+      const seededSvkkSeq = carriedSvkkPublicId.slice(-4).padStart(4, "0");
+      const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
+      svkkSeqRef.current = seededSvkkSeq;
+      refSeqRef.current = seededRefSeq;
+      lastAutoIdKeyRef.current = `${(carriedValues.policyGroup ?? "").trim()}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
       const summary = `Copied ${previousYear} → ${shiftedYear}. Premium, payment & bank, loan, courier and remark fields cleared for the new year.${autoIdNotice}`;
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
@@ -1111,18 +1121,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [missingUrl, isEdit, policyId]);
 
   useEffect(() => {
-    if (isEdit || selectedFetchId) {
+    // Lock auto-id only when we are updating an existing policy. After Carry
+    // Forward the user is creating a NEW policy (selectedFetchId is set, but
+    // fetchedPolicyForUpdate is null), so auto-id must remain reactive to Month /
+    // Year / Policy Group changes.
+    if (isEdit || fetchedPolicyForUpdate) {
       return;
     }
     const group = values.policyGroup.trim();
     const month = values.month.trim();
     const year = values.year.trim();
     if (!group || !month) {
-      lastAutoIdKeyRef.current = "";
-      svkkSeqRef.current = "";
-      refSeqRef.current = "";
-      if (values.svkkPublicId) void setFieldValue("svkkPublicId", "");
-      if (values.refNo) void setFieldValue("refNo", "");
+      // Don't blow away IDs that were seeded by Carry Forward when Policy Group is
+      // unset on the prior policy; just stop computing until the user picks one.
       return;
     }
     const key = `${group}|${month}|${year}`;
@@ -1139,15 +1150,24 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void (async () => {
       try {
         const generated = await requestAutoIds(group, month, year);
-        svkkSeqRef.current = generated.svkkSeq || "";
-        refSeqRef.current = generated.refSeq || "";
-        void setFieldValue("svkkPublicId", (generated.svkkPublicId || "").toUpperCase());
-        void setFieldValue("refNo", (generated.referenceNo || "").toUpperCase());
+        // If the endpoint returns nothing (e.g. policy grouping unrecognized), do
+        // NOT overwrite existing IDs with empty strings.
+        if (!generated.svkkPublicId && !generated.referenceNo) {
+          return;
+        }
+        svkkSeqRef.current = generated.svkkSeq || svkkSeqRef.current;
+        refSeqRef.current = generated.refSeq || refSeqRef.current;
+        if (generated.svkkPublicId) {
+          void setFieldValue("svkkPublicId", generated.svkkPublicId.toUpperCase());
+        }
+        if (generated.referenceNo) {
+          void setFieldValue("refNo", generated.referenceNo.toUpperCase());
+        }
       } catch {
         // keep manual editing possible if generator fails
       }
     })();
-  }, [isEdit, requestAutoIds, selectedFetchId, setFieldValue, values]);
+  }, [isEdit, fetchedPolicyForUpdate, requestAutoIds, setFieldValue, values]);
 
   useEffect(() => {
     if (isEdit || missingUrl) {
