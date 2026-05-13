@@ -360,6 +360,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [suppressSuggestions, setSuppressSuggestions] = useState(false);
   const [activeSection, setActiveSection] = useState<AddSectionId>("policy_details");
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
+  // After "Save Policy + Auto Receipt", we open the receipt preview first and
+  // then navigate to this URL when the user closes the modal.
+  const [navigateAfterReceiptClose, setNavigateAfterReceiptClose] = useState<string | null>(null);
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
   const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
@@ -471,7 +474,20 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           policyChartId,
           idemKey: idemKeyRef.current,
         });
-        void router.push(`/policies/${id}`);
+        toast.success("Policy saved");
+        // Auto Receipt: fetch the freshly saved policy and open the receipt
+        // preview. The user can Print → "Save as PDF" from there. When the
+        // modal closes, navigate to the policy detail page.
+        try {
+          const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
+          setReceiptPreviewHtml(
+            buildReceiptDocumentHtml(saved, { embedded: true, ...receiptImageUrls }),
+          );
+          setNavigateAfterReceiptClose(`/policies/${id}`);
+        } catch {
+          // If fetching the receipt fails for any reason, just navigate.
+          void router.push(`/policies/${id}`);
+        }
       } catch (e) {
         if (tryApplyBackendValidationErrors(e)) {
           setApiErr("Please fix the highlighted fields and try again.");
@@ -2912,18 +2928,44 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </Button>
         </div>
       </form>
-      <Dialog open={receiptPreviewHtml != null} onOpenChange={(o) => !o && setReceiptPreviewHtml(null)}>
+      <Dialog
+        open={receiptPreviewHtml != null}
+        onOpenChange={(o) => {
+          if (o) return;
+          setReceiptPreviewHtml(null);
+          if (navigateAfterReceiptClose) {
+            const target = navigateAfterReceiptClose;
+            setNavigateAfterReceiptClose(null);
+            void router.push(target);
+          }
+        }}
+      >
         <DialogContent className="flex max-h-[90vh] w-[min(96vw,1280px)] max-w-[min(96vw,1280px)] flex-col gap-4 overflow-hidden sm:max-w-[min(96vw,1280px)]">
           <DialogHeader>
             <DialogTitle>Receipt Preview</DialogTitle>
-            <DialogDescription>Preview works with saved or unsaved policy data.</DialogDescription>
+            <DialogDescription>
+              {navigateAfterReceiptClose
+                ? "Policy saved. Click Print to save the receipt as PDF, then Close to open the policy."
+                : "Preview works with saved or unsaved policy data."}
+            </DialogDescription>
           </DialogHeader>
           <div className="h-[68vh] overflow-hidden rounded border">
             <iframe title="Receipt Preview Frame" srcDoc={receiptPreviewHtml ?? ""} className="h-full w-full" />
           </div>
           <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setReceiptPreviewHtml(null)}>
-              Close
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setReceiptPreviewHtml(null);
+                if (navigateAfterReceiptClose) {
+                  const target = navigateAfterReceiptClose;
+                  setNavigateAfterReceiptClose(null);
+                  void router.push(target);
+                }
+              }}
+            >
+              {navigateAfterReceiptClose ? "Close & Open Policy" : "Close"}
             </Button>
             <Button
               type="button"
@@ -2933,7 +2975,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 frame?.contentWindow?.print();
               }}
             >
-              Print
+              Print / Save as PDF
             </Button>
           </DialogFooter>
         </DialogContent>

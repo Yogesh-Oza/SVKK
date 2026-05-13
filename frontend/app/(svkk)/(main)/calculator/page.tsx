@@ -37,6 +37,7 @@ import {
   type PolicyKey,
   type PremiumState,
 } from "@/lib/svkk/premium";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 
 type FormState = {
   policyType: PolicyKey;
@@ -117,7 +118,49 @@ export default function SvkkCalculatorPage() {
     }
   }, [form, hydrated]);
 
-  const sis = useMemo(() => siList(state.charts, form.policyType), [state.charts, form.policyType]);
+  const { options: ddOptions } = useDropdownOptions();
+
+  // Sum Insured options: prefer admin-configured list (so values added in the
+  // admin panel show up here). Fall back to chart-derived SIs if admin has
+  // none. Each entry carries the underlying number plus the admin label.
+  const sumInsuredOpts = useMemo<Array<{ value: number; label: string }>>(() => {
+    const fromAdmin = (ddOptions.SUM_INSURED ?? [])
+      .map((o) => {
+        const n = Number((o.value ?? "").toString().replace(/[^\d.-]/g, ""));
+        return Number.isFinite(n) ? { value: n, label: o.label?.trim() || rs(n) } : null;
+      })
+      .filter((o): o is { value: number; label: string } => o != null);
+    const list = fromAdmin.length
+      ? fromAdmin
+      : siList(state.charts, form.policyType).map((n) => ({ value: n, label: rs(n) }));
+    const seen = new Set<number>();
+    return list
+      .filter((o) => (seen.has(o.value) ? false : (seen.add(o.value), true)))
+      .sort((a, b) => a.value - b.value);
+  }, [ddOptions.SUM_INSURED, state.charts, form.policyType]);
+
+  const sis = useMemo(() => sumInsuredOpts.map((o) => o.value), [sumInsuredOpts]);
+
+  // Gender options from admin; fall back to a sensible default.
+  const genderOpts = useMemo<Array<{ value: string; label: string }>>(() => {
+    const fromAdmin = (ddOptions.GENDER ?? [])
+      .map((o) => ({ value: (o.value ?? "").toLowerCase().trim(), label: o.label?.trim() || o.value }))
+      .filter((o) => o.value);
+    if (fromAdmin.length) return fromAdmin;
+    return [
+      { value: "male", label: "Male" },
+      { value: "female", label: "Female" },
+    ];
+  }, [ddOptions.GENDER]);
+
+  // Admin-configured relation list, lower-cased to match the premium engine.
+  const adminRelationValues = useMemo<string[]>(
+    () =>
+      (ddOptions.RELATION ?? [])
+        .map((o) => (o.value ?? "").toLowerCase().trim())
+        .filter(Boolean),
+    [ddOptions.RELATION],
+  );
 
   useEffect(() => {
     setForm((prev) => {
@@ -206,9 +249,9 @@ export default function SvkkCalculatorPage() {
                   <SelectValue placeholder="Select SI" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sis.map((si) => (
-                    <SelectItem key={si} value={String(si)}>
-                      ₹{rs(si)}
+                  {sumInsuredOpts.map((o) => (
+                    <SelectItem key={o.value} value={String(o.value)}>
+                      ₹{o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -229,7 +272,16 @@ export default function SvkkCalculatorPage() {
 
           <div className="space-y-4">
             {form.members.map((m, i) => {
-              const opts = relationshipOptions(form.policyType, i);
+              // Holder is locked to "self" by the premium engine. For other
+              // members, merge admin's RELATION list with the policy-specific
+              // list so admin additions show up but built-in semantics (e.g.
+              // asha_kiran daughter-only discount) still work.
+              const builtin = relationshipOptions(form.policyType, i);
+              const merged =
+                i === 0
+                  ? builtin
+                  : Array.from(new Set([...builtin, ...adminRelationValues]));
+              const opts = merged.length ? merged : builtin;
               return (
                 <div
                   key={i}
@@ -290,8 +342,11 @@ export default function SvkkCalculatorPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="_">Select</SelectItem>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
+                          {genderOpts.map((g) => (
+                            <SelectItem key={g.value} value={g.value} className="capitalize">
+                              {g.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </CellShell>
