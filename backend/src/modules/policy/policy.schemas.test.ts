@@ -4,10 +4,17 @@ import { createPolicyBodySchema, patchPolicyBodySchema, memberCreateSchema } fro
 const minimalCreateBody = {
   mobile: "9999999999",
   partyName: "Test Holder",
+  email: "test@example.com",
   policyTypeId: "ptype-1",
   policyChartId: "chart-1",
   yearLabel: "2025-26",
   sumInsured: 100000,
+  village: "test-village",
+  whatsappNo: "9999999999",
+  area: "test-area",
+  personsInsuredCount: 1,
+  periodMonthText: "January",
+  members: [],
 };
 
 const validMember = {
@@ -42,7 +49,10 @@ describe("policy schemas - create body members.min(0)", () => {
   });
 
   it("rejects create body when members is omitted (still required field)", () => {
-    const result = createPolicyBodySchema.safeParse(minimalCreateBody);
+    // Intentionally omit `members` - still required on create.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { members, ...withoutMembers } = minimalCreateBody;
+    const result = createPolicyBodySchema.safeParse(withoutMembers);
     expect(result.success).toBe(false);
   });
 
