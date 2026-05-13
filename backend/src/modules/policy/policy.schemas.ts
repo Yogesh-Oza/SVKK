@@ -177,7 +177,10 @@ export const createPolicyBodySchema = z
     aadhaarNo: z.string().max(12).optional().nullable(),
     dateOfBirth: z.coerce.date().optional().nullable(),
     policyTypeId: z.string().min(1),
-    categoryId: z.string().min(1),
+    categoryId: z.preprocess(
+      (v) => (v === null || v === "" || v === undefined ? undefined : v),
+      z.string().min(1).optional(),
+    ).optional(),
     yearLabel: z.string().min(1),
     policyChartId: z.string().min(1),
     policyStart: z.coerce.date().optional().nullable(),
