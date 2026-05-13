@@ -29,6 +29,11 @@ import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
+import {
+  buildReceiptFilename,
+  downloadReceiptPreviewAsPdf,
+  printReceiptPreview,
+} from "@/lib/svkk/receipt-pdf";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, RefreshCcw, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -2969,13 +2974,37 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </Button>
             <Button
               type="button"
-              onClick={() => {
-                const frame = document.querySelector<HTMLIFrameElement>('iframe[title="Receipt Preview Frame"]');
-                frame?.contentWindow?.focus();
-                frame?.contentWindow?.print();
+              variant="outline"
+              onClick={async () => {
+                const filename = buildReceiptFilename([
+                  "receipt",
+                  values.svkkPublicId || values.policyNo,
+                  values.year,
+                ]);
+                const tId = toast.loading("Preparing PDF…");
+                try {
+                  const ok = await downloadReceiptPreviewAsPdf(filename);
+                  if (ok) {
+                    toast.success("PDF downloaded", { id: tId });
+                  } else {
+                    toast.error("Could not generate PDF", { id: tId });
+                  }
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "PDF failed", { id: tId });
+                }
               }}
             >
-              Print / Save as PDF
+              Save as PDF
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!printReceiptPreview()) {
+                  toast.error("Receipt not ready to print");
+                }
+              }}
+            >
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>

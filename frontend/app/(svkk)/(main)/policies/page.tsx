@@ -58,6 +58,11 @@ import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
+import {
+  buildReceiptFilename,
+  downloadReceiptPreviewAsPdf,
+  printReceiptPreview,
+} from "@/lib/svkk/receipt-pdf";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import {
   flexRender,
@@ -243,6 +248,7 @@ export default function SvkkPoliciesPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
+  const [receiptFilenameHint, setReceiptFilenameHint] = useState<string>("policy-receipt");
   const [exportBusy, setExportBusy] = useState(false);
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [rowYearAction, setRowYearAction] = useState<{ policyId: string; kind: YearActionKind } | null>(
@@ -529,6 +535,13 @@ export default function SvkkPoliciesPage() {
     try {
       const p = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
       const payload = prioritizeYear(p, selectedYearLabel);
+      setReceiptFilenameHint(
+        buildReceiptFilename([
+          "receipt",
+          p.insuredParty?.svkkPublicId || p.policyNo,
+          selectedYearLabel ?? payload.years?.[0]?.yearLabel,
+        ]).replace(/\.pdf$/, ""),
+      );
       setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...receiptImageUrls }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate receipt");
@@ -1535,7 +1548,7 @@ export default function SvkkPoliciesPage() {
         <DialogContent className="flex max-h-[90vh] w-[min(96vw,1280px)] max-w-[min(96vw,1280px)] flex-col gap-4 overflow-hidden sm:max-w-[min(96vw,1280px)]">
           <DialogHeader>
             <DialogTitle>Receipt Preview</DialogTitle>
-            <DialogDescription>Print the receipt from this popup.</DialogDescription>
+            <DialogDescription>Print on paper or download as PDF.</DialogDescription>
           </DialogHeader>
           <div className="h-[68vh] overflow-hidden rounded border">
             <iframe title="Receipt Preview Frame" srcDoc={receiptPreviewHtml ?? ""} className="h-full w-full" />
@@ -1546,10 +1559,29 @@ export default function SvkkPoliciesPage() {
             </Button>
             <Button
               type="button"
+              variant="outline"
+              onClick={async () => {
+                const tId = toast.loading("Preparing PDF…");
+                try {
+                  const ok = await downloadReceiptPreviewAsPdf(`${receiptFilenameHint}.pdf`);
+                  if (ok) {
+                    toast.success("PDF downloaded", { id: tId });
+                  } else {
+                    toast.error("Could not generate PDF", { id: tId });
+                  }
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "PDF failed", { id: tId });
+                }
+              }}
+            >
+              Save as PDF
+            </Button>
+            <Button
+              type="button"
               onClick={() => {
-                const frame = document.querySelector<HTMLIFrameElement>('iframe[title="Receipt Preview Frame"]');
-                frame?.contentWindow?.focus();
-                frame?.contentWindow?.print();
+                if (!printReceiptPreview()) {
+                  toast.error("Receipt not ready to print");
+                }
               }}
             >
               Print
