@@ -311,6 +311,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const lastAutoIdKeyRef = useRef("");
   const svkkSeqRef = useRef("");
   const refSeqRef = useRef("");
+  // Fallback group prefix derived from a carried-forward SVKK ID when the form's
+  // Policy Group dropdown is empty (e.g. the prior policy never had one set).
+  const seededGroupRef = useRef("");
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
@@ -847,7 +850,25 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
       svkkSeqRef.current = seededSvkkSeq;
       refSeqRef.current = seededRefSeq;
-      lastAutoIdKeyRef.current = `${(carriedValues.policyGroup ?? "").trim()}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
+      // Seed the group prefix. Prefer the form field; if blank, extract the
+      // leading group token from the existing SVKK ID by stripping the trailing
+      // 4-digit seq and the carried month token.
+      const carriedGroupRaw = (carriedValues.policyGroup ?? "").trim();
+      let seededGroup = carriedGroupRaw ? normalizeGroupingToken(carriedGroupRaw) : "";
+      if (!seededGroup && carriedSvkkPublicId.length > 4) {
+        const svkkBody = carriedSvkkPublicId.slice(0, -4);
+        const carriedMonTok = monthToken(carriedValues.month ?? "");
+        if (carriedMonTok && svkkBody.endsWith(carriedMonTok)) {
+          seededGroup = svkkBody.slice(0, -carriedMonTok.length);
+        } else {
+          // Best-effort: leading uppercase-letter run.
+          const m = svkkBody.match(/^[A-Z]+/);
+          seededGroup = m ? m[0] : "";
+        }
+      }
+      seededGroupRef.current = seededGroup;
+      const effectiveGroupForKey = carriedGroupRaw || seededGroup;
+      lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
       const summary = `Copied ${previousYear} → ${shiftedYear}. Premium, payment & bank, loan, courier and remark fields cleared for the new year.${autoIdNotice}`;
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
@@ -1128,28 +1149,29 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (isEdit || fetchedPolicyForUpdate) {
       return;
     }
-    const group = values.policyGroup.trim();
+    const groupFromForm = values.policyGroup.trim();
+    const effectiveGroup = groupFromForm || seededGroupRef.current;
     const month = values.month.trim();
     const year = values.year.trim();
-    if (!group || !month) {
+    if (!effectiveGroup || !month) {
       // Don't blow away IDs that were seeded by Carry Forward when Policy Group is
       // unset on the prior policy; just stop computing until the user picks one.
       return;
     }
-    const key = `${group}|${month}|${year}`;
+    const key = `${effectiveGroup}|${month}|${year}`;
     if (lastAutoIdKeyRef.current === key) {
       return;
     }
     lastAutoIdKeyRef.current = key;
     if (svkkSeqRef.current && refSeqRef.current) {
-      const composed = composeIdsFromSeq(group, month, year, svkkSeqRef.current, refSeqRef.current);
+      const composed = composeIdsFromSeq(effectiveGroup, month, year, svkkSeqRef.current, refSeqRef.current);
       void setFieldValue("svkkPublicId", composed.svkkPublicId.toUpperCase());
       void setFieldValue("refNo", composed.referenceNo.toUpperCase());
       return;
     }
     void (async () => {
       try {
-        const generated = await requestAutoIds(group, month, year);
+        const generated = await requestAutoIds(effectiveGroup, month, year);
         // If the endpoint returns nothing (e.g. policy grouping unrecognized), do
         // NOT overwrite existing IDs with empty strings.
         if (!generated.svkkPublicId && !generated.referenceNo) {
