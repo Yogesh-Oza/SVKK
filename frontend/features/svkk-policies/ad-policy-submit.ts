@@ -201,8 +201,12 @@ export async function submitAdPolicyRequest({
       body.expectedNetPremium = co;
     }
   } else if (primaryPaymentMode === "CHEQUE") {
-    if (co == null) {
-      throw new Error("Net premium is required for cheque payment.");
+    // Cheque amount is taken strictly from the manually-entered "Amount Received"
+    // field in Payment & Bank Details. No fallback to premium fields, because that
+    // section is fully user-entered and is the source of truth for the cheque value.
+    const chequeAmount = parseNum(values.paymentTransactions[0]?.amountReceived ?? "");
+    if (chequeAmount == null) {
+      throw new Error("Enter Amount Received in Payment & Bank Details.");
     }
     if (!values.policyChequeNo.trim() || !values.bank.trim()) {
       throw new Error("Cheque details incomplete.");
@@ -214,7 +218,7 @@ export async function submitAdPolicyRequest({
           ? "CLEARED"
           : "PENDING";
     body.initialPayment = {
-      amount: co,
+      amount: chequeAmount,
       method: "CHQ",
       cheque: {
         number: values.policyChequeNo.trim(),

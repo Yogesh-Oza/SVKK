@@ -150,8 +150,11 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           })
         : null);
 
-    const finalPolicyNo =
-      (input.policyNo?.trim() || "") || (input.previousPolicyNo?.trim() || "") || undefined;
+    // policyNo is the *current* policy's number from the insurer; it must NOT
+    // fall back to previousPolicyNo, otherwise carry-forward would duplicate the
+    // prior policy's number and violate the @@unique([policyNo, policyTypeId])
+    // index. A blank policyNo stays NULL (allowed and distinct per row).
+    const finalPolicyNo = input.policyNo?.trim() || undefined;
 
     let policy;
     try {
@@ -207,7 +210,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         },
       });
     } catch (e) {
-      // Unique constraint (e.g. referenceNo) - return a clean error for UI.
+      // Unique constraint (e.g. referenceNo, policyNo) - return a clean error for UI.
       if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
         const target = (e as { meta?: { target?: string | string[] } }).meta?.target;
         const targetStr = Array.isArray(target) ? target.join(",") : String(target ?? "");
@@ -218,7 +221,14 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
             409,
           );
         }
-        throw new AppError("CONFLICT", "Duplicate unique field", 409);
+        if (targetStr.includes("policyNo")) {
+          throw new AppError(
+            "DUPLICATE_POLICY_NO",
+            `Policy No "${finalPolicyNo}" already exists for this policy type.`,
+            409,
+          );
+        }
+        throw new AppError("CONFLICT", `Duplicate unique field${targetStr ? `: ${targetStr}` : ""}`, 409);
       }
       throw e;
     }

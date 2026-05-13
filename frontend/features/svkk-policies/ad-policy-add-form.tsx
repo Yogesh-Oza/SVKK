@@ -30,9 +30,10 @@ import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
-import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, Sparkles, X } from "lucide-react";
+import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, RefreshCcw, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
+import { toast } from "sonner";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
@@ -177,6 +178,25 @@ function normalizeYearLabel(value: string): string {
   }
   const end2 = String((start + 1) % 100).padStart(2, "0");
   return `${start}-${end2}`;
+}
+
+/**
+ * Reference No format is `{group}{year:4-digit}{month-token}{seq:4-digit}`.
+ * When carrying a policy forward to a new year, shift the year token so the
+ * regenerated Reference No reflects the new policy year — even if the auto-id
+ * endpoint can't compose a fresh number (e.g. Policy Grouping missing).
+ * SVKK Public ID is *not* touched — it's holder-stable across years.
+ */
+function shiftReferenceNoYear(refNo: string, prevYearLabel: string, nextYearLabel: string): string {
+  const trimmed = refNo.trim();
+  if (!trimmed) return trimmed;
+  const prev4 = (prevYearLabel.match(/\d{4}/) || [])[0] ?? "";
+  const next4 = (nextYearLabel.match(/\d{4}/) || [])[0] ?? "";
+  if (!prev4 || !next4 || prev4 === next4) return trimmed;
+  if (!trimmed.includes(prev4)) return trimmed;
+  // String.prototype.replace with a string replaces only the first occurrence,
+  // which is the year token (precedes the trailing 4-digit seq).
+  return trimmed.replace(prev4, next4);
 }
 
 function nextYearLabel(value: string): string {
@@ -339,6 +359,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
   const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
+  const [carryForwardBusy, setCarryForwardBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -729,61 +750,111 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const carryForwardPolicy = useCallback(async () => {
     if (!selectedFetchId) {
       setFetchNotice("Select a prior-year policy first.");
+      toast.error("Select a prior-year policy first.");
       return;
     }
-    const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
-    const carriedValues = policyDetailToAdFormValues(row);
-    const shiftedYear = nextYearLabel(carriedValues.year);
-    let nextReferenceNo = carriedValues.refNo;
+    if (carryForwardBusy) return;
+    setCarryForwardBusy(true);
+    const loadingToastId = toast.loading("Carrying forward policy…");
     try {
-      const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
-      nextReferenceNo = generated.referenceNo || nextReferenceNo;
-    } catch {
-      // keep existing reference if generator fails
+      const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
+      const carriedValues = policyDetailToAdFormValues(row);
+      const shiftedYear = nextYearLabel(carriedValues.year);
+      const previousYear = carriedValues.year || "—";
+      // Baseline: shift the year token inside the prior Reference No so we never
+      // submit the same number for two different years. This works even when the
+      // auto-id endpoint can't run (e.g. Policy Grouping is empty on the prior
+      // policy). SVKK Public ID is untouched — it's holder-stable across years.
+      let nextReferenceNo = shiftReferenceNoYear(carriedValues.refNo, carriedValues.year, shiftedYear);
+      let autoIdNotice = "";
+      try {
+        const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
+        if (generated.referenceNo) {
+          nextReferenceNo = generated.referenceNo;
+        } else if (nextReferenceNo === carriedValues.refNo) {
+          autoIdNotice = " (reference number kept from prior policy — auto-generator unavailable)";
+        } else {
+          autoIdNotice = " (reference number year shifted; verify before submitting)";
+        }
+      } catch {
+        autoIdNotice =
+          nextReferenceNo === carriedValues.refNo
+            ? " (reference number kept from prior policy — auto-generator unavailable)"
+            : " (reference number year shifted; verify before submitting)";
+      }
+      const initialForReset = getAdPolicyInitialValues();
+      await formik.setValues({
+        ...carriedValues,
+        year: shiftedYear,
+        previousPolicyNo: carriedValues.policyNo,
+        previousEndDate: carriedValues.policyEnd,
+        policyNo: "",
+        policyStart: "",
+        policyEnd: "",
+        refNo: nextReferenceNo,
+        grossPremium: "",
+        taxAmount: "",
+        svkkPremiumCalc: "",
+        vkkPremium: "",
+        netPremiumCalc: "",
+        coPremium: "",
+        commission: "",
+        vkkCommission: "",
+        policyHolderPremium: "",
+        contribution: "",
+        gaamMahajan: "",
+        excessShort: "",
+        differenceAmountPaidByHolder: "",
+        diffAmt: "",
+        // Payment & Bank Details: fully manual, never auto-carried from prior year.
+        paymentMode: initialForReset.paymentMode,
+        onlineTransactionRef: "",
+        policyChequeNo: "",
+        bank: "",
+        accountNo: "",
+        branch: "",
+        nameAsPerCheque: "",
+        ifsc: "",
+        notOver: "",
+        chequeDate: "",
+        chequeStatus: "",
+        reasonDishonoured: "",
+        paymentTransactions: initialForReset.paymentTransactions,
+        loanStatus: "",
+        loanAmt: "",
+        loanNo: "",
+        cdAccountStatus: "",
+        cdAmount: "",
+        refundChequeAmt: "",
+        refundChequeNo: "",
+        refundChequeDate: "",
+        notCourier: "",
+        courierDate: "",
+        courierCompany: "",
+        podNumber: "",
+        courierAddress: "",
+        generalRemark: "",
+        policyChangeRemark: "",
+      });
+      // Carry forward creates a *new* policy/year; do not show Update button.
+      setFetchedPolicyForUpdate(null);
+      const summary = `Copied ${previousYear} → ${shiftedYear}. Premium, payment & bank, loan, courier and remark fields cleared for the new year.${autoIdNotice}`;
+      setFetchNotice(summary);
+      toast.success(`Carried forward to ${shiftedYear}`, {
+        id: loadingToastId,
+        description: summary,
+      });
+    } catch (e) {
+      const msg = e instanceof Error && e.message ? e.message : "Carry Forward failed.";
+      setFetchNotice(msg);
+      toast.error("Carry Forward failed", {
+        id: loadingToastId,
+        description: msg,
+      });
+    } finally {
+      setCarryForwardBusy(false);
     }
-    await formik.setValues({
-      ...carriedValues,
-      year: shiftedYear,
-      previousPolicyNo: carriedValues.policyNo,
-      previousEndDate: carriedValues.policyEnd,
-      policyNo: "",
-      policyStart: "",
-      policyEnd: "",
-      refNo: nextReferenceNo,
-      grossPremium: "",
-      taxAmount: "",
-      svkkPremiumCalc: "",
-      vkkPremium: "",
-      netPremiumCalc: "",
-      coPremium: "",
-      commission: "",
-      vkkCommission: "",
-      policyHolderPremium: "",
-      contribution: "",
-      gaamMahajan: "",
-      excessShort: "",
-      differenceAmountPaidByHolder: "",
-      diffAmt: "",
-      loanStatus: "",
-      loanAmt: "",
-      loanNo: "",
-      cdAccountStatus: "",
-      cdAmount: "",
-      refundChequeAmt: "",
-      refundChequeNo: "",
-      refundChequeDate: "",
-      notCourier: "",
-      courierDate: "",
-      courierCompany: "",
-      podNumber: "",
-      courierAddress: "",
-      generalRemark: "",
-      policyChangeRemark: "",
-    });
-    setFetchNotice("Carry Forward / Renew copied all prior fields.");
-    // Carry forward creates a *new* policy/year; do not show Update button.
-    setFetchedPolicyForUpdate(null);
-  }, [formik, requestAutoIds, selectedFetchId]);
+  }, [carryForwardBusy, formik, requestAutoIds, selectedFetchId]);
 
   const selectYearPolicy = useCallback(
     async (id: string) => {
@@ -1435,10 +1506,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => void carryForwardPolicy()}>
-                  Carry Forward / Renew
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void carryForwardPolicy()}
+                  disabled={carryForwardBusy || !selectedFetchId}
+                  aria-busy={carryForwardBusy}
+                  title={!selectedFetchId ? "Select a prior-year policy first." : "Copy fields from the selected year to a new year."}
+                >
+                  {carryForwardBusy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                  )}
+                  {carryForwardBusy ? "Carrying forward…" : "Carry Forward / Renew"}
                 </Button>
+                {!selectedFetchId ? (
+                  <span className="text-muted-foreground text-xs">
+                    Select a prior-year policy first.
+                  </span>
+                ) : null}
               </div>
               {matchedYearRows.length > 0 ? (
                 <div className="space-y-2">

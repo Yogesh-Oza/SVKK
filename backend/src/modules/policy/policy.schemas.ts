@@ -164,7 +164,7 @@ const adPolicyExtraSchema = z.object({
   // Can be negative (short/excess reconciliation adjustments).
   gaamMahajanVkk: z.number().nullish().optional(),
   excessShortAmount: z.number().nullish().optional(),
-  diffPaidByHolder: z.number().nonnegative().nullish().optional(),
+  diffPaidByHolder: z.number().nullish().optional(),
 });
 
 /** Create policy: year-level financial fields apply to the first `PolicyYear`. */
