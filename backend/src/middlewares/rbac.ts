@@ -24,8 +24,8 @@ const ALLOWED: Record<string, readonly UserRole[]> = {
   "claim:delete": ["SUPER_ADMIN", "ADMIN"],
   /** Data-entry USER: no receipts per product spec. */
   "receipt:create": ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"],
-  /** User CRUD (list, create, update, delete) — super admin only per product spec. */
-  "users:manage": ["SUPER_ADMIN"],
+  /** User CRUD (list, create, update, delete) — admin roles only. */
+  "users:manage": ["SUPER_ADMIN", "ADMIN"],
   "admin:settings": ["SUPER_ADMIN", "ADMIN"],
 };
 

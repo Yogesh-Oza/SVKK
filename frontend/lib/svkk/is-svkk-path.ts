@@ -7,6 +7,7 @@ const SVKK_PATH_PREFIXES = [
   "/admin",
   "/logs",
   "/users",
+  "/receipt-settings",
 ] as const;
 
 /**

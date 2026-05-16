@@ -451,7 +451,7 @@ export default function SvkkAdminPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Admin — Form Dropdowns</h1>
+      <h1 className="text-2xl font-semibold">Dynamic Form Dropdowns</h1>
       <p className="text-muted-foreground text-sm">
         Manage every admin-editable dropdown used by the policy form. Changes appear
         immediately for everyone.

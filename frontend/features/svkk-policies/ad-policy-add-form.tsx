@@ -1699,11 +1699,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                             <td className="p-2 capitalize">{row.gender || "—"}</td>
                             <td className="p-2">{row.band || "—"}</td>
                             <td className="p-2 text-right tabular-nums">
-                              {row.error ? (
-                                <span className="text-destructive">{row.error}</span>
-                              ) : (
-                                `₹${rs(row.basic ?? 0)}`
-                              )}
+                              {row.error ? "—" : `₹${rs(row.basic ?? 0)}`}
                             </td>
                             <td className="p-2 text-right tabular-nums">
                               {row.error ? "—" : `₹${rs(row.rider ?? 0)}`}
@@ -1722,9 +1718,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                             </td>
                             <td className="p-2">
                               {row.error ? (
-                                <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">
-                                  {row.error}
-                                </span>
+                                "—"
                               ) : (
                                 <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
                                   Ready

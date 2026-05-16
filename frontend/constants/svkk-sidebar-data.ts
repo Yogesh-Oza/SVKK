@@ -9,9 +9,11 @@ import {
   IconCalculator,
   IconChartBar,
   IconFileDescription,
+  IconFileInvoice,
   IconFilePlus,
   IconHistory,
   IconLayoutDashboard,
+  IconListDetails,
   IconSettings,
   IconStethoscope,
   IconUsers,
@@ -26,11 +28,13 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   policyNew: IconFilePlus,
   claims: IconStethoscope,
   mis: IconChartBar,
-  admin: IconSettings,
+  admin: IconListDetails,
   logs: IconHistory,
   users: IconUsers,
-  settings: IconSettings,
+  settings: IconFileInvoice,
 };
+
+const ADMIN_NAV_IDS: SvkkNavId[] = ["admin", "users", "settings"];
 
 /**
  * Sidebar nav for SVKK. "Policies" is a collapsible: All policies + Add policy (full AD form at `/policies/new`).
@@ -64,6 +68,26 @@ export function getSvkkNavGroupsForRole(role: SvkkRole): NavGroup[] {
         ],
       });
       i += 1;
+      continue;
+    }
+    if (n.id === "admin") {
+      const subItems: NavItem[] = [];
+      let j = i;
+      while (j < flat.length && ADMIN_NAV_IDS.includes(flat[j]!.id)) {
+        const entry = flat[j]!;
+        subItems.push({
+          title: entry.label,
+          url: entry.href,
+          icon: ICON_BY_ID[entry.id],
+        });
+        j += 1;
+      }
+      items.push({
+        title: "Admin",
+        icon: IconSettings,
+        items: subItems,
+      });
+      i = j - 1;
       continue;
     }
     items.push({

@@ -21,10 +21,10 @@ const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] =
   { id: "policyNew", href: "/policies/new", label: "Add policy", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "claims", href: "/claims", label: "Claims", roles: ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
   { id: "mis", href: "/mis", label: "MIS", roles: ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "admin", href: "/admin", label: "Admin", roles: ["ADMIN", "SUPER_ADMIN"] },
-  { id: "logs", href: "/logs", label: "Activity logs", roles: ["ADMIN", "SUPER_ADMIN"] },
-  { id: "users", href: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
+  { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", roles: ["ADMIN", "SUPER_ADMIN"] },
+  { id: "users", href: "/users", label: "Users", roles: ["ADMIN", "SUPER_ADMIN"] },
   { id: "settings", href: "/receipt-settings", label: "Receipt Settings", roles: ["ADMIN", "SUPER_ADMIN"] },
+  { id: "logs", href: "/logs", label: "Activity logs", roles: ["ADMIN", "SUPER_ADMIN"] },
 ];
 
 /**

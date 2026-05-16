@@ -47,9 +47,9 @@ describe("rbac matrix", () => {
     expect(isRoleAllowed("logs:read", "USER")).toBe(false);
   });
 
-  it("allows users:manage only to SUPER_ADMIN", () => {
+  it("allows users:manage only to ADMIN and SUPER_ADMIN", () => {
     expect(isRoleAllowed("users:manage", "SUPER_ADMIN")).toBe(true);
-    expect(isRoleAllowed("users:manage", "ADMIN")).toBe(false);
+    expect(isRoleAllowed("users:manage", "ADMIN")).toBe(true);
     expect(isRoleAllowed("users:manage", "SUPERVISOR")).toBe(false);
     expect(isRoleAllowed("users:manage", "USER")).toBe(false);
   });
