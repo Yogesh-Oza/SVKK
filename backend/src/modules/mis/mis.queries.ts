@@ -225,6 +225,8 @@ type PolicyMemberReportParams = {
   categoryKeys: string[];
   policyGroupings: string[];
   villages: string[];
+  areas: string[];
+  sumInsureds: string[];
   months: number[];
   years: number[];
   createdFrom: Date | null;
@@ -250,10 +252,8 @@ function groupDimExpr(
   if (groupBy === "sum_insured") {
     return Prisma.sql`(
       CASE
-        WHEN py.sumInsured IS NULL OR py.sumInsured < 300000 THEN '0–3L'
-        WHEN py.sumInsured < 500000 THEN '3–5L'
-        WHEN py.sumInsured < 1000000 THEN '5–10L'
-        ELSE '10L+'
+        WHEN py.sumInsured IS NULL THEN '—'
+        ELSE CAST(CAST(py.sumInsured AS UNSIGNED) AS CHAR)
       END
     )`;
   }
@@ -294,6 +294,26 @@ function villagesFilterSql(villages: string[]): Prisma.Sql {
     return Prisma.empty;
   }
   return Prisma.sql` AND p.village IN (${Prisma.join(villages)})`;
+}
+
+function areasFilterSql(areas: string[]): Prisma.Sql {
+  if (!areas.length) {
+    return Prisma.empty;
+  }
+  return Prisma.sql` AND p.area IN (${Prisma.join(areas)})`;
+}
+
+function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
+  if (!sumInsureds.length) {
+    return Prisma.empty;
+  }
+  const amounts = sumInsureds
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!amounts.length) {
+    return Prisma.empty;
+  }
+  return Prisma.sql` AND py.sumInsured IN (${Prisma.join(amounts)})`;
 }
 
 function monthsYearsFilterSql(months: number[], years: number[]): Prisma.Sql {
@@ -338,6 +358,8 @@ function baseFromClause(
     catF: Prisma.Sql;
     pgF: Prisma.Sql;
     villF: Prisma.Sql;
+    areaF: Prisma.Sql;
+    sumF: Prisma.Sql;
     myF: Prisma.Sql;
     createdF: Prisma.Sql;
     fiscF: Prisma.Sql;
@@ -362,6 +384,8 @@ function baseFromClause(
       ${filters.catF}
       ${filters.pgF}
       ${filters.villF}
+      ${filters.areaF}
+      ${filters.sumF}
       ${filters.myF}
       ${filters.createdF}
       ${filters.fiscF}
@@ -384,10 +408,12 @@ export async function queryPolicyMemberReport(
   const catF = categoryKeysFilterSql(args.categoryKeys);
   const pgF = policyGroupingsFilterSql(args.policyGroupings);
   const villF = villagesFilterSql(args.villages);
+  const areaF = areasFilterSql(args.areas);
+  const sumF = sumInsuredsFilterSql(args.sumInsureds);
   const myF = monthsYearsFilterSql(args.months, args.years);
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
-  const filters = { catF, pgF, villF, myF, createdF, fiscF };
+  const filters = { catF, pgF, villF, areaF, sumF, myF, createdF, fiscF };
   const fArgs = { scopeOnP: args.scopeOnP, start, end, asOf };
 
   const fromMember = baseFromClause(fArgs, filters, true, args.groupBy === "age");
@@ -456,7 +482,11 @@ export async function queryPolicyMemberReport(
         AND (${args.scopeOnP})
         ${catF}
         ${pgF}
+        ${villF}
+        ${areaF}
+        ${sumF}
         ${myF}
+        ${createdF}
         ${fiscF}
       GROUP BY ${dim}, p.id, p.adProductVariant, py.id
     ) t
@@ -505,7 +535,11 @@ export async function queryPolicyMemberReport(
         AND (${args.scopeOnP})
         ${catF}
         ${pgF}
+        ${villF}
+        ${areaF}
+        ${sumF}
         ${myF}
+        ${createdF}
         ${fiscF}
     ) t
     GROUP BY t.dim

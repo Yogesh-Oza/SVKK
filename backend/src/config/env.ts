@@ -51,6 +51,12 @@ const schema = z.object({
   MS_DRIVE_FOLDER_PATH: z.string().optional(),
   /** Comma-separated RBAC role slugs that cannot be deleted or stripped (default: super-admin) */
   PROTECTED_ROLE_SLUGS: z.string().default("super-admin"),
+  /** Per-IP rate limit window in ms (default 15 minutes) */
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().min(60_000).optional(),
+  /** Max API requests per window per IP (dev default 5000 if unset) */
+  RATE_LIMIT_API_MAX: z.coerce.number().min(1).optional(),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().min(1).optional(),
+  RATE_LIMIT_RBAC_MAX: z.coerce.number().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema>;

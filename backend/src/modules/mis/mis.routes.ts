@@ -60,6 +60,8 @@ const policyMemberReportQuerySchema = z.object({
   /** @deprecated use villages[] */
   village: z.string().optional(),
   villages: stringArrayQuery,
+  areas: stringArrayQuery,
+  sumInsureds: stringArrayQuery,
   groupBy: z
     .enum(["village", "area", "policy_type", "sum_insured", "age"])
     .default("village"),
@@ -108,6 +110,8 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
     dateFrom,
     dateTo,
     villages: [...new Set(villages)],
+    areas: [...new Set(q.areas ?? [])],
+    sumInsureds: [...new Set(q.sumInsureds ?? [])],
     groupBy: q.groupBy,
     categoryKeys: [...new Set(categoryKeys)],
     policyGroupings: [...new Set(policyGroupings)],

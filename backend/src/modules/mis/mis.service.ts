@@ -1,4 +1,4 @@
-import { PaymentStatus } from "@prisma/client";
+import { DropdownType, PaymentStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
@@ -13,6 +13,38 @@ import {
   queryPolicyMemberReport,
   type PolicyMemberReportRow,
 } from "./mis.queries.js";
+
+async function loadSumInsuredLabelMap(): Promise<Map<string, string>> {
+  const rows = await prisma.dropdownOption.findMany({
+    where: { type: DropdownType.SUM_INSURED, isActive: true },
+    orderBy: [{ sortOrder: "asc" }],
+  });
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    map.set(row.value, row.label);
+    const n = Number(row.value);
+    if (Number.isFinite(n)) {
+      map.set(String(Math.trunc(n)), row.label);
+    }
+  }
+  return map;
+}
+
+function resolveSumInsuredLabel(raw: string, map: Map<string, string>): string {
+  if (raw === "—" || raw === "") {
+    return "—";
+  }
+  const stripped = raw.replace(/\.0+$/, "");
+  return map.get(stripped) ?? map.get(raw) ?? raw;
+}
+
+function sumInsuredSortKey(label: string): number {
+  if (label === "—") {
+    return -1;
+  }
+  const n = Number(label.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
 
 function decStringToNumber(s: string | null | undefined): number {
   if (s == null || s === "") {
@@ -190,6 +222,8 @@ export async function getDashboardCharts(
     categoryKeys: [],
     policyGroupings: [],
     villages: [],
+    areas: [],
+    sumInsureds: [],
     months: [],
     years: [],
     createdFrom: null,
@@ -260,6 +294,8 @@ export async function getPolicyMemberReport(
     dateFrom: Date | null;
     dateTo: Date | null;
     villages: string[];
+    areas: string[];
+    sumInsureds: string[];
     groupBy: PolicyMemberReportGroupBy;
     categoryKeys: string[];
     policyGroupings: string[];
@@ -283,16 +319,31 @@ export async function getPolicyMemberReport(
     categoryKeys: input.categoryKeys,
     policyGroupings: input.policyGroupings,
     villages: input.villages,
+    areas: input.areas,
+    sumInsureds: input.sumInsureds,
     months: input.months,
     years: input.years,
     createdFrom,
     createdTo,
     fiscalLabels: input.fiscalLabels,
   });
+  const orderedRows =
+    input.groupBy === "sum_insured"
+      ? [...rows].sort((a, b) => sumInsuredSortKey(a.label) - sumInsuredSortKey(b.label))
+      : rows;
+  const sumInsuredLabels =
+    input.groupBy === "sum_insured" ? await loadSumInsuredLabelMap() : null;
+  const jsonRows = orderedRows.map((r) => {
+    const row = toPolicyMemberJsonRow(r);
+    if (sumInsuredLabels) {
+      row.label = resolveSumInsuredLabel(r.label, sumInsuredLabels);
+    }
+    return row;
+  });
   return {
     dateFrom: input.dateFrom?.toISOString() ?? null,
     dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
     groupBy: input.groupBy,
-    rows: rows.map(toPolicyMemberJsonRow),
+    rows: jsonRows,
   };
 }

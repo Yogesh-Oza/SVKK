@@ -26,6 +26,7 @@ import { formatInr } from "@/features/svkk-dashboard/currency";
 import { backendApi } from "@/lib/api/svkk-client";
 import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import {
   flexRender,
   getCoreRowModel,
@@ -129,6 +130,8 @@ type ReportResponse = {
 
 type FiltersMeta = {
   villages: string[];
+  areas: string[];
+  sumInsuredValues: string[];
   policyGroupings: string[];
   periodYearTexts: string[];
 };
@@ -302,6 +305,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [groupBy, setGroupBy] = useState<(typeof GROUP_BY_OPTIONS)[number]["value"]>("village");
   const [categoryKeys, setCategoryKeys] = useState<string[]>([]);
   const [villages, setVillages] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
+  const [sumInsureds, setSumInsureds] = useState<string[]>([]);
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
   const [months, setMonths] = useState<string[]>([]);
   const [fiscalYears, setFiscalYears] = useState<string[]>([]);
@@ -311,6 +316,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [activeGroup, setActiveGroup] = useState<ReportResponse["groupBy"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
+  const { options: ddOptions } = useDropdownOptions();
 
   const villageOptions = useMemo<PolicyFilterOption[]>(
     () => (filterMeta?.villages ?? []).map((v) => ({ value: v, label: v })),
@@ -328,6 +334,16 @@ export function PolicyMemberReportSection({ onError }: Props) {
     () => (filterMeta?.periodYearTexts ?? []).map((y) => ({ value: y, label: y })),
     [filterMeta?.periodYearTexts],
   );
+  const areaOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.areas ?? []).map((a) => ({ value: a, label: a })),
+    [filterMeta?.areas],
+  );
+  const sumInsuredOptions = useMemo<PolicyFilterOption[]>(() => {
+    if (ddOptions.SUM_INSURED.length) {
+      return ddOptions.SUM_INSURED;
+    }
+    return (filterMeta?.sumInsuredValues ?? []).map((v) => ({ value: v, label: v }));
+  }, [ddOptions.SUM_INSURED, filterMeta?.sumInsuredValues]);
 
   const columns = useMemo(
     () => makeColumns(activeGroup ? DIM_HEADER[activeGroup] : "—"),
@@ -357,11 +373,24 @@ export function PolicyMemberReportSection({ onError }: Props) {
     q.set("groupBy", groupBy);
     categoryKeys.forEach((c) => q.append("categoryKeys", c));
     villages.forEach((v) => q.append("villages", v));
+    areas.forEach((a) => q.append("areas", a));
+    sumInsureds.forEach((s) => q.append("sumInsureds", s));
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
     months.forEach((m) => q.append("months", m));
     fiscalYears.forEach((y) => q.append("fiscalLabels", y));
     return q;
-  }, [categoryKeys, dateFrom, dateTo, fiscalYears, groupBy, months, policyGroupings, villages]);
+  }, [
+    areas,
+    categoryKeys,
+    dateFrom,
+    dateTo,
+    fiscalYears,
+    groupBy,
+    months,
+    policyGroupings,
+    sumInsureds,
+    villages,
+  ]);
 
   const runReport = useCallback(async () => {
     onError("");
@@ -481,6 +510,22 @@ export function PolicyMemberReportSection({ onError }: Props) {
           selected={villages}
           onChange={setVillages}
           accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
+        />
+        <PolicyFilterMulti
+          label="Area"
+          placeholder="All areas"
+          options={areaOptions}
+          selected={areas}
+          onChange={setAreas}
+          accentClassName="border-teal-200/90 from-teal-50/95 to-card dark:border-teal-900/50 dark:from-teal-950/35 dark:to-card"
+        />
+        <PolicyFilterMulti
+          label="Sum insured"
+          placeholder="All sum insured"
+          options={sumInsuredOptions}
+          selected={sumInsureds}
+          onChange={setSumInsureds}
+          accentClassName="border-orange-200/90 from-orange-50/95 to-card dark:border-orange-900/50 dark:from-orange-950/35 dark:to-card"
         />
         <PolicyFilterMulti
           label="Policy grouping"
