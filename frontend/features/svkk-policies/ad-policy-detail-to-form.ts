@@ -141,6 +141,16 @@ export type SvkkPolicyDetailForForm = {
     payments?: Array<{
       method: string;
       amount: Decimalish;
+      transactionNumber?: string | null;
+      transactionDate?: string | null;
+      bankName?: string | null;
+      branchName?: string | null;
+      accountNumber?: string | null;
+      nameAsPerCheque?: string | null;
+      ifscCode?: string | null;
+      notOver?: string | null;
+      dishonourReason?: string | null;
+      status?: string | null;
       cheque: ChequeApi;
     }>;
     members: Array<{
@@ -281,6 +291,21 @@ export function policyDetailToAdFormValues(
       } else if (ch.status === "CLEARED") {
         chequeStatus = "CLEARED";
       }
+    } else if (pay) {
+      policyChequeNo = pay.transactionNumber ?? "";
+      bank = pay.bankName ?? "";
+      accountNo = pay.accountNumber ?? "";
+      branch = pay.branchName ?? "";
+      nameAsPerCheque = pay.nameAsPerCheque ?? "";
+      ifsc = pay.ifscCode ?? "";
+      notOver = pay.notOver ?? "";
+      chequeDate = isoToDateInput(pay.transactionDate ?? "");
+      if (pay.status === "FAILED" || pay.dishonourReason) {
+        chequeStatus = "DISHONOURED";
+        reasonDishonoured = pay.dishonourReason ?? "";
+      } else if (pay.status === "COMPLETED") {
+        chequeStatus = "CLEARED";
+      }
     }
     if (!bank && y.bankName) {
       bank = y.bankName;
@@ -289,6 +314,53 @@ export function policyDetailToAdFormValues(
       accountNo = y.bankAccountLast4;
     }
   }
+
+  const paymentTransactions: AdPolicyFormValues["paymentTransactions"] =
+    y.payments?.length
+      ? y.payments.map((p) => {
+          const ch = p.cheque;
+          const mode =
+            p.method === "CHQ" || p.method === "CHEQUE"
+              ? "CHEQUE"
+              : p.method === "CASH"
+                ? "CASH"
+                : p.method === "UPI" || p.method === "NEFT"
+                  ? "UPI"
+                  : "ONLINE";
+          let transactionStatus: AdPolicyFormValues["paymentTransactions"][number]["transactionStatus"] =
+            "";
+          if (ch?.status === "DISHONOURED" || p.status === "FAILED") {
+            transactionStatus = "DISHONOURED";
+          } else if (ch?.status === "CLEARED" || p.status === "COMPLETED") {
+            transactionStatus = "CLEARED";
+          } else if (ch?.status === "PENDING" || p.status === "PENDING") {
+            transactionStatus = "PENDING";
+          }
+          return {
+            mode,
+            mobileNumber: "",
+            transactionNumber: ch?.number ?? p.transactionNumber ?? "",
+            bankName: ch?.bankName ?? p.bankName ?? "",
+            branch: ch?.branch ?? p.branchName ?? "",
+            accountNumber: ch?.accountNo ?? p.accountNumber ?? "",
+            nameAsPerCheque: ch?.nameAsPerCheque ?? p.nameAsPerCheque ?? "",
+            ifscCode: ch?.ifsc ?? p.ifscCode ?? "",
+            notOver: ch?.notOver ?? p.notOver ?? "",
+            transactionDate: isoToDateInput(
+              ch?.chequeDate == null
+                ? p.transactionDate ?? ""
+                : typeof ch.chequeDate === "string"
+                  ? ch.chequeDate
+                  : ch.chequeDate.toISOString(),
+            ),
+            transactionStatus,
+            dishonourReason: ch?.reason ?? p.dishonourReason ?? "",
+            returnCharges: "",
+            otherCharges: "",
+            amountReceived: decStr(p.amount),
+          };
+        })
+      : [];
 
   const memberRows: AdMemberRow[] =
     y.members.length > 0
@@ -398,7 +470,8 @@ export function policyDetailToAdFormValues(
     courierCompany: row.courierCompany ?? "",
     podNumber: row.podNumber ?? "",
     courierAddress: row.courierAddress ?? "",
-    paymentTransactions: [],
+    paymentTransactions:
+      paymentTransactions.length > 0 ? paymentTransactions : base.paymentTransactions,
     generalRemark,
     policyChangeRemark,
     refNo: row.referenceNo ?? "",

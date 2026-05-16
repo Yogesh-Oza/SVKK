@@ -20,6 +20,7 @@ import {
   canDeletePolicy,
 } from "@/lib/svkk/permissions";
 import { parsePolicyUrls } from "@/features/svkk-policies/ad-policy-detail-to-form";
+import { resolvePolicyBankInfo } from "@/features/svkk-policies/policy-bank-display";
 import {
   fetchPolicyYearSiblings,
   singleRowYearSibling,
@@ -30,19 +31,6 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
-type ChequeDetail = {
-  number: string;
-  bankName: string;
-  ifsc?: string | null;
-  accountNo?: string | null;
-  branch?: string | null;
-  nameAsPerCheque?: string | null;
-  notOver?: string | null;
-  chequeDate?: string | null;
-  status?: string | null;
-  reason?: string | null;
-} | null;
 
 type PolicyYear = {
   id: string;
@@ -61,6 +49,7 @@ type PolicyYear = {
   policyStart: string | null;
   policyEnd: string | null;
   bankName: string | null;
+  bankAccountLast4?: string | null;
   utrRef?: string | null;
   holderCumulativeBonus: unknown;
   holderJoiningYear: string | null;
@@ -77,7 +66,28 @@ type PolicyYear = {
   }>;
   payments?: Array<{
     method?: string;
-    cheque: ChequeDetail;
+    transactionNumber?: string | null;
+    transactionDate?: string | null;
+    bankName?: string | null;
+    branchName?: string | null;
+    accountNumber?: string | null;
+    nameAsPerCheque?: string | null;
+    ifscCode?: string | null;
+    notOver?: string | null;
+    dishonourReason?: string | null;
+    status?: string | null;
+    cheque?: {
+      number: string;
+      bankName: string;
+      ifsc?: string | null;
+      accountNo?: string | null;
+      branch?: string | null;
+      nameAsPerCheque?: string | null;
+      notOver?: string | null;
+      chequeDate?: string | null;
+      status?: string | null;
+      reason?: string | null;
+    } | null;
   }>;
 };
 
@@ -187,14 +197,6 @@ function holderAge(row: PolicyDetail): string {
   const m = t.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a -= 1;
   return a >= 0 ? String(a) : "";
-}
-
-function firstCheque(y: PolicyYear | undefined): ChequeDetail {
-  if (!y?.payments?.length) return null;
-  for (const p of y.payments) {
-    if (p.cheque) return p.cheque;
-  }
-  return null;
 }
 
 function cdUsedLabel(v: boolean | null | undefined): string {
@@ -354,7 +356,7 @@ export default function SvkkPolicyDetailPage() {
     row.years.find((item) => item.id === yearId) ??
     row.years.find((item) => item.yearLabel === activeYearLabel) ??
     row.years[0];
-  const ch = firstCheque(y);
+  const bank = resolvePolicyBankInfo(y);
   const policyTypeLabel = row.adProductVariant
     ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
     : row.policyType.name;
@@ -580,11 +582,11 @@ export default function SvkkPolicyDetailPage() {
                   <th className={thClass}>Name as per cheque</th>
                 </tr>
                 <tr>
-                  <td className={tdClass}>{ch?.number ?? ""}</td>
-                  <td className={tdClass}>{ch?.bankName ?? y?.bankName ?? ""}</td>
-                  <td className={tdClass}>{ch?.accountNo ?? ""}</td>
-                  <td className={tdClass}>{ch?.branch ?? ""}</td>
-                  <td className={tdClass}>{ch?.nameAsPerCheque ?? ""}</td>
+                  <td className={tdClass}>{bank.number}</td>
+                  <td className={tdClass}>{bank.bankName}</td>
+                  <td className={tdClass}>{bank.accountNo}</td>
+                  <td className={tdClass}>{bank.branch}</td>
+                  <td className={tdClass}>{bank.nameAsPerCheque}</td>
                 </tr>
                 <tr>
                   <th className={thClass}>IFSC code</th>
@@ -594,13 +596,15 @@ export default function SvkkPolicyDetailPage() {
                   <th className={thClass}>Reason for dishonoured</th>
                 </tr>
                 <tr>
-                  <td className={tdClass}>{ch?.ifsc ?? ""}</td>
-                  <td className={tdClass}>{ch?.notOver ? formatNumIn(ch.notOver) : dStr(ch?.notOver)}</td>
+                  <td className={tdClass}>{bank.ifsc}</td>
                   <td className={tdClass}>
-                    {ch?.chequeDate ? formatDateIso(String(ch.chequeDate)) : ""}
+                    {bank.notOver ? formatNumIn(bank.notOver) : bank.notOver}
                   </td>
-                  <td className={tdClass}>{ch?.status ? `${ch.status}` : ""}</td>
-                  <td className={tdClass}>{ch?.reason ?? ""}</td>
+                  <td className={tdClass}>
+                    {bank.chequeDate ? formatDateIso(String(bank.chequeDate)) : ""}
+                  </td>
+                  <td className={tdClass}>{bank.status}</td>
+                  <td className={tdClass}>{bank.reason}</td>
                 </tr>
               </tbody>
             </table>

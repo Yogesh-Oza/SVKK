@@ -22,14 +22,30 @@ import {
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
+type PolicyDbClient = Prisma.TransactionClient | typeof prisma;
+
+const policyDetailInclude = {
+  insuredParty: true,
+  policyType: true,
+  category: true,
+  years: {
+    where: { deletedAt: null },
+    orderBy: { yearLabel: "desc" as const },
+    include: {
+      members: { where: { deletedAt: null } },
+      payments: { where: { deletedAt: null }, include: { cheque: true } },
+    },
+  },
+} satisfies Prisma.PolicyInclude;
+
 /** Keeps `Policy.listVkkPremium` aligned with list preview (latest `yearLabel` row). */
-export async function syncPolicyListVkkPremium(tx: Prisma.TransactionClient, policyId: string): Promise<void> {
-  const latest = await tx.policyYear.findFirst({
+export async function syncPolicyListVkkPremium(db: PolicyDbClient, policyId: string): Promise<void> {
+  const latest = await db.policyYear.findFirst({
     where: { policyId, deletedAt: null },
     orderBy: { yearLabel: "desc" },
     select: { vkkPremium: true },
   });
-  await tx.policy.update({
+  await db.policy.update({
     where: { id: policyId },
     data: { listVkkPremium: latest?.vkkPremium ?? null },
   });
@@ -330,12 +346,43 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
             : paymentRow.status === "CLEARED"
               ? PaymentStatus.COMPLETED
               : PaymentStatus.PENDING;
+        let chequeId: string | undefined;
+        if (
+          paymentRow.method === PayMethod.CHQ &&
+          paymentRow.bankName &&
+          paymentRow.transactionNumber
+        ) {
+          const ch = await tx.cheque.create({
+            data: {
+              number: paymentRow.transactionNumber,
+              bankName: paymentRow.bankName,
+              ifsc: paymentRow.ifscCode ?? undefined,
+              status:
+                paymentRow.status === "DISHONOURED"
+                  ? ChequeStatus.DISHONOURED
+                  : paymentRow.status === "CLEARED"
+                    ? ChequeStatus.CLEARED
+                    : ChequeStatus.PENDING,
+              reason:
+                paymentRow.status === "DISHONOURED"
+                  ? paymentRow.dishonourReason ?? "Dishonoured"
+                  : undefined,
+              accountNo: paymentRow.accountNumber ?? undefined,
+              branch: paymentRow.branchName ?? undefined,
+              nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+              notOver: paymentRow.notOver ?? undefined,
+              chequeDate: paymentRow.transactionDate ?? undefined,
+            },
+          });
+          chequeId = ch.id;
+        }
         await tx.payment.create({
           data: {
             policyYearId: year.id,
             amount: paymentRow.amount,
             method: paymentRow.method,
             status: mappedStatus,
+            chequeId: chequeId ?? null,
             transactionNumber: paymentRow.transactionNumber ?? undefined,
             transactionDate: paymentRow.transactionDate ?? undefined,
             bankName: paymentRow.bankName ?? undefined,
@@ -650,25 +697,26 @@ async function replaceYearMembers(
     where: { policyYearId: yearRow.id, deletedAt: null },
     data: { deletedAt: new Date() },
   });
-  for (const m of members) {
-    await tx.member.create({
-      data: {
-        policyYearId: yearRow.id,
-        name: m.name,
-        dob: m.dob,
-        relationship: m.relationship,
-        gender: m.gender,
-        riderAmount: m.riderAmount ?? 0,
-        sumInsured: m.sumInsured != null && m.sumInsured !== undefined ? m.sumInsured : undefined,
-        cumulativeBonus:
-          m.cumulativeBonus != null && m.cumulativeBonus !== undefined ? m.cumulativeBonus : undefined,
-        dateOfJoining: m.dateOfJoining ?? undefined,
-        memberPhone: m.memberPhone ?? undefined,
-        basicPremium: m.basicPremium != null && m.basicPremium !== undefined ? m.basicPremium : undefined,
-        ageAtEntry: m.ageAtEntry != null && m.ageAtEntry !== undefined ? m.ageAtEntry : undefined,
-      },
-    });
+  if (members.length === 0) {
+    return;
   }
+  await tx.member.createMany({
+    data: members.map((m) => ({
+      policyYearId: yearRow.id,
+      name: m.name,
+      dob: m.dob,
+      relationship: m.relationship,
+      gender: m.gender,
+      riderAmount: m.riderAmount ?? 0,
+      sumInsured: m.sumInsured != null && m.sumInsured !== undefined ? m.sumInsured : undefined,
+      cumulativeBonus:
+        m.cumulativeBonus != null && m.cumulativeBonus !== undefined ? m.cumulativeBonus : undefined,
+      dateOfJoining: m.dateOfJoining ?? undefined,
+      memberPhone: m.memberPhone ?? undefined,
+      basicPremium: m.basicPremium != null && m.basicPremium !== undefined ? m.basicPremium : undefined,
+      ageAtEntry: m.ageAtEntry != null && m.ageAtEntry !== undefined ? m.ageAtEntry : undefined,
+    })),
+  });
 }
 
 /**
@@ -760,110 +808,134 @@ export async function updatePolicySections(input: {
 
   const beforeSnapshot = { policy: existing, yearLabel: input.year?.yearLabel };
 
-  const updated = await prisma.$transaction(
+  const yearFieldsUpdated =
+    Boolean(input.year) &&
+    [
+      input.year!.policyStart,
+      input.year!.policyEnd,
+      input.year!.sumInsured,
+      input.year!.expectedNetPremium,
+      input.year!.paymentMode,
+      input.year!.paymentType,
+      input.year!.amountReceived,
+      input.year!.bankName,
+      input.year!.bankAccountLast4,
+      input.year!.utrRef,
+      input.year!.yearRemarks,
+      input.year!.taxPercent,
+      input.year!.taxAmount,
+      input.year!.svkkPremium,
+      input.year!.netPremium,
+      input.year!.vkkCommission,
+      input.year!.policyHolderContribution,
+      input.year!.premiumOneOrTwoLakh,
+      input.year!.gaamMahajanContribution,
+      input.year!.differenceAmountPaidByHolder,
+      input.year!.vkkPremium,
+      input.year!.grossPremium,
+      input.year!.commissionAmount,
+      input.year!.twoLacFloater,
+      input.year!.yearPolicyHolderPremium,
+      input.year!.gaamMahajanVkk,
+      input.year!.excessShortAmount,
+      input.year!.diffPaidByHolder,
+      input.year!.holderCumulativeBonus,
+      input.year!.holderJoiningYear,
+      input.year!.holderBasicPremium,
+    ].some((v) => v !== undefined);
+
+  await prisma.$transaction(
     async (tx: Prisma.TransactionClient) => {
-    let bumpVersionWithoutPolicyRow = false;
+      let bumpVersionWithoutPolicyRow = false;
 
-    if (hasInsuredParty && input.insuredParty) {
-      const did = await applyInsuredPartyPatch(tx, existing.insuredPartyId, input.insuredParty);
-      if (did) {
-        bumpVersionWithoutPolicyRow = true;
+      if (hasInsuredParty && input.insuredParty) {
+        const did = await applyInsuredPartyPatch(tx, existing.insuredPartyId, input.insuredParty);
+        if (did) {
+          bumpVersionWithoutPolicyRow = true;
+        }
       }
-    }
 
-    if (hasPolicyFields) {
-      await tx.policy.update({
-        where: { id: input.policyId },
-        data: { ...pData, version: { increment: 1 } },
-      });
-    }
-
-    if (input.year) {
-      const yv = input.year;
-      const yearData: Prisma.PolicyYearUpdateInput = {
-        ...(yv.policyStart !== undefined ? { policyStart: yv.policyStart } : {}),
-        ...(yv.policyEnd !== undefined ? { policyEnd: yv.policyEnd } : {}),
-        ...(yv.sumInsured !== undefined ? { sumInsured: yv.sumInsured } : {}),
-        ...(yv.expectedNetPremium !== undefined ? { expectedNetPremium: yv.expectedNetPremium } : {}),
-        ...(yv.paymentMode !== undefined ? { paymentMode: yv.paymentMode } : {}),
-        ...(yv.paymentType !== undefined ? { paymentType: yv.paymentType } : {}),
-        ...(yv.amountReceived !== undefined ? { amountReceived: yv.amountReceived } : {}),
-        ...(yv.bankName !== undefined ? { bankName: yv.bankName } : {}),
-        ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4: yv.bankAccountLast4 } : {}),
-        ...(yv.utrRef !== undefined ? { utrRef: yv.utrRef } : {}),
-        ...(yv.yearRemarks !== undefined ? { yearRemarks: yv.yearRemarks } : {}),
-        ...(yv.vkkPremium !== undefined ? { vkkPremium: yv.vkkPremium } : {}),
-        ...(yv.grossPremium !== undefined ? { grossPremium: yv.grossPremium } : {}),
-        ...(yv.commissionAmount !== undefined ? { commissionAmount: yv.commissionAmount } : {}),
-        ...(yv.twoLacFloater !== undefined ? { twoLacFloater: yv.twoLacFloater } : {}),
-        ...(yv.yearPolicyHolderPremium !== undefined
-          ? { yearPolicyHolderPremium: yv.yearPolicyHolderPremium }
-          : {}),
-        ...(yv.gaamMahajanVkk !== undefined ? { gaamMahajanVkk: yv.gaamMahajanVkk } : {}),
-        ...(yv.excessShortAmount !== undefined ? { excessShortAmount: yv.excessShortAmount } : {}),
-        ...(yv.diffPaidByHolder !== undefined ? { diffPaidByHolder: yv.diffPaidByHolder } : {}),
-        ...(yv.holderCumulativeBonus !== undefined
-          ? { holderCumulativeBonus: yv.holderCumulativeBonus }
-          : {}),
-        ...(yv.holderJoiningYear !== undefined ? { holderJoiningYear: yv.holderJoiningYear } : {}),
-        ...(yv.holderBasicPremium !== undefined ? { holderBasicPremium: yv.holderBasicPremium } : {}),
-      };
-      if (Object.keys(yearData).length > 0) {
-        await tx.policyYear.update({
-          where: {
-            policyId_yearLabel: { policyId: input.policyId, yearLabel: yv.yearLabel },
-          },
-          data: yearData,
+      if (hasPolicyFields) {
+        await tx.policy.update({
+          where: { id: input.policyId },
+          data: { ...pData, version: { increment: 1 } },
         });
+      }
+
+      if (input.year) {
+        const yv = input.year;
+        const yearData: Prisma.PolicyYearUpdateInput = {
+          ...(yv.policyStart !== undefined ? { policyStart: yv.policyStart } : {}),
+          ...(yv.policyEnd !== undefined ? { policyEnd: yv.policyEnd } : {}),
+          ...(yv.sumInsured !== undefined ? { sumInsured: yv.sumInsured } : {}),
+          ...(yv.expectedNetPremium !== undefined ? { expectedNetPremium: yv.expectedNetPremium } : {}),
+          ...(yv.paymentMode !== undefined ? { paymentMode: yv.paymentMode } : {}),
+          ...(yv.paymentType !== undefined ? { paymentType: yv.paymentType } : {}),
+          ...(yv.amountReceived !== undefined ? { amountReceived: yv.amountReceived } : {}),
+          ...(yv.bankName !== undefined ? { bankName: yv.bankName } : {}),
+          ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4: yv.bankAccountLast4 } : {}),
+          ...(yv.utrRef !== undefined ? { utrRef: yv.utrRef } : {}),
+          ...(yv.yearRemarks !== undefined ? { yearRemarks: yv.yearRemarks } : {}),
+          ...(yv.vkkPremium !== undefined ? { vkkPremium: yv.vkkPremium } : {}),
+          ...(yv.grossPremium !== undefined ? { grossPremium: yv.grossPremium } : {}),
+          ...(yv.commissionAmount !== undefined ? { commissionAmount: yv.commissionAmount } : {}),
+          ...(yv.twoLacFloater !== undefined ? { twoLacFloater: yv.twoLacFloater } : {}),
+          ...(yv.yearPolicyHolderPremium !== undefined
+            ? { yearPolicyHolderPremium: yv.yearPolicyHolderPremium }
+            : {}),
+          ...(yv.gaamMahajanVkk !== undefined ? { gaamMahajanVkk: yv.gaamMahajanVkk } : {}),
+          ...(yv.excessShortAmount !== undefined ? { excessShortAmount: yv.excessShortAmount } : {}),
+          ...(yv.diffPaidByHolder !== undefined ? { diffPaidByHolder: yv.diffPaidByHolder } : {}),
+          ...(yv.holderCumulativeBonus !== undefined
+            ? { holderCumulativeBonus: yv.holderCumulativeBonus }
+            : {}),
+          ...(yv.holderJoiningYear !== undefined ? { holderJoiningYear: yv.holderJoiningYear } : {}),
+          ...(yv.holderBasicPremium !== undefined ? { holderBasicPremium: yv.holderBasicPremium } : {}),
+        };
+        if (Object.keys(yearData).length > 0) {
+          await tx.policyYear.update({
+            where: {
+              policyId_yearLabel: { policyId: input.policyId, yearLabel: yv.yearLabel },
+            },
+            data: yearData,
+          });
+          if (!hasPolicyFields) {
+            bumpVersionWithoutPolicyRow = true;
+          }
+        }
+      }
+
+      if (input.replaceMembers) {
+        await replaceYearMembers(
+          tx,
+          input.policyId,
+          input.replaceMembers.yearLabel,
+          input.replaceMembers.members,
+        );
         if (!hasPolicyFields) {
           bumpVersionWithoutPolicyRow = true;
         }
       }
-    }
 
-    if (input.replaceMembers) {
-      await replaceYearMembers(
-        tx,
-        input.policyId,
-        input.replaceMembers.yearLabel,
-        input.replaceMembers.members,
-      );
-      if (!hasPolicyFields) {
-        bumpVersionWithoutPolicyRow = true;
+      if (bumpVersionWithoutPolicyRow && !hasPolicyFields) {
+        await tx.policy.update({
+          where: { id: input.policyId },
+          data: { version: { increment: 1 } },
+        });
       }
-    }
-
-    if (bumpVersionWithoutPolicyRow && !hasPolicyFields) {
-      await tx.policy.update({
-        where: { id: input.policyId },
-        data: { version: { increment: 1 } },
-      });
-    }
-
-    if (input.year) {
-      await syncPolicyListVkkPremium(tx, input.policyId);
-    }
-
-      return tx.policy.findUniqueOrThrow({
-      where: { id: input.policyId },
-      include: {
-        insuredParty: true,
-        policyType: true,
-        category: true,
-        years: {
-          where: { deletedAt: null },
-          orderBy: { yearLabel: "desc" },
-          include: {
-            members: { where: { deletedAt: null } },
-            payments: { where: { deletedAt: null }, include: { cheque: true } },
-          },
-        },
-      },
-      });
     },
-    // Updates can also be multi-write + include refresh sync; avoid expiring the tx.
-    { timeout: 20_000, maxWait: 20_000 },
+    // Remote MySQL (Railway proxy): keep the interactive tx short — reads/sync run after commit.
+    { timeout: 60_000, maxWait: 30_000 },
   );
+
+  if (yearFieldsUpdated) {
+    await syncPolicyListVkkPremium(prisma, input.policyId);
+  }
+
+  const updated = await prisma.policy.findUniqueOrThrow({
+    where: { id: input.policyId },
+    include: policyDetailInclude,
+  });
 
   await writeActivityLog({
     userId: input.actorUserId,

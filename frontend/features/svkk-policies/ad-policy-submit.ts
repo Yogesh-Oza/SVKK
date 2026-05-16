@@ -1,7 +1,36 @@
 import { apiPatch, apiPost } from "@/lib/svkk/api";
 import { AxiosError } from "axios";
 import { toAdProductVariant } from "./ad-product-variant";
-import type { AdPolicyFormValues } from "./ad-policy-form-values";
+import type { AdPolicyFormValues, AdPolicyPaymentTransactionForm } from "./ad-policy-form-values";
+
+type ChequeStatusApi = "PENDING" | "CLEARED" | "DISHONOURED";
+
+function resolveChequeStatus(
+  txnStatus: AdPolicyPaymentTransactionForm["transactionStatus"],
+  legacyStatus: string,
+): ChequeStatusApi {
+  const s = txnStatus || legacyStatus;
+  if (s === "DISHONOURED") return "DISHONOURED";
+  if (s === "CLEARED") return "CLEARED";
+  return "PENDING";
+}
+
+/** Bank/cheque fields from Payment & Bank Details (primary) with legacy form keys as fallback. */
+function resolveChequeFieldsFromForm(values: AdPolicyFormValues) {
+  const txn = values.paymentTransactions[0];
+  return {
+    number: values.policyChequeNo.trim() || txn?.transactionNumber?.trim() || "",
+    bankName: values.bank.trim() || txn?.bankName?.trim() || "",
+    accountNo: values.accountNo.trim() || txn?.accountNumber?.trim() || null,
+    branch: values.branch.trim() || txn?.branch?.trim() || null,
+    nameAsPerCheque: values.nameAsPerCheque.trim() || txn?.nameAsPerCheque?.trim() || null,
+    ifsc: values.ifsc.trim() || txn?.ifscCode?.trim() || null,
+    notOver: values.notOver.trim() || txn?.notOver?.trim() || null,
+    chequeDate: values.chequeDate || txn?.transactionDate || "",
+    status: resolveChequeStatus(txn?.transactionStatus ?? "", values.chequeStatus),
+    dishonourReason: txn?.dishonourReason?.trim() || values.reasonDishonoured.trim() || "Dishonoured",
+  };
+}
 
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
@@ -201,41 +230,40 @@ export async function submitAdPolicyRequest({
       body.expectedNetPremium = co;
     }
   } else if (primaryPaymentMode === "CHEQUE") {
-    // Cheque amount is taken strictly from the manually-entered "Amount Received"
-    // field in Payment & Bank Details. No fallback to premium fields, because that
-    // section is fully user-entered and is the source of truth for the cheque value.
     const chequeAmount = parseNum(values.paymentTransactions[0]?.amountReceived ?? "");
     if (chequeAmount == null) {
       throw new Error("Enter Amount Received in Payment & Bank Details.");
     }
-    if (!values.policyChequeNo.trim() || !values.bank.trim()) {
-      throw new Error("Cheque details incomplete.");
+    const cq = resolveChequeFieldsFromForm(values);
+    if (!cq.number || !cq.bankName) {
+      throw new Error(
+        "Cheque details incomplete. Enter transaction/cheque number and bank name in Payment & Bank Details.",
+      );
     }
-    const st =
-      values.chequeStatus === "DISHONOURED"
-        ? "DISHONOURED"
-        : values.chequeStatus === "CLEARED"
-          ? "CLEARED"
-          : "PENDING";
     body.initialPayment = {
       amount: chequeAmount,
       method: "CHQ",
       cheque: {
-        number: values.policyChequeNo.trim(),
-        bankName: values.bank.trim(),
-        ifsc: values.ifsc.trim() || null,
-        status: st,
-        reason: st === "DISHONOURED" ? values.reasonDishonoured.trim() || "Dishonoured" : null,
-        accountNo: values.accountNo.trim() || null,
-        branch: values.branch.trim() || null,
-        nameAsPerCheque: values.nameAsPerCheque.trim() || null,
-        notOver: values.notOver.trim() || null,
-        chequeDate: values.chequeDate ? new Date(values.chequeDate).toISOString() : null,
+        number: cq.number,
+        bankName: cq.bankName,
+        ifsc: cq.ifsc,
+        status: cq.status,
+        reason: cq.status === "DISHONOURED" ? cq.dishonourReason : null,
+        accountNo: cq.accountNo,
+        branch: cq.branch,
+        nameAsPerCheque: cq.nameAsPerCheque,
+        notOver: cq.notOver,
+        chequeDate: cq.chequeDate ? new Date(cq.chequeDate).toISOString() : null,
       },
     };
     body.paymentMode = "CHQ";
-    body.bankName = values.bank.trim() || null;
-    body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
+    body.bankName = cq.bankName;
+    body.bankAccountLast4 = cq.accountNo ? cq.accountNo.replace(/\D/g, "").slice(-4) : null;
+    // First transaction is represented by initialPayment; avoid duplicate Payment row.
+    const rows = body.payments as Array<Record<string, unknown>> | undefined;
+    if (rows?.length && parseNum(values.paymentTransactions[0]?.amountReceived ?? "") != null) {
+      body.payments = rows.slice(1);
+    }
   } else if (primaryPaymentMode === "CASH") {
     body.paymentMode = "CASH";
   }
