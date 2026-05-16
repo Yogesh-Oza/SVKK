@@ -20,9 +20,14 @@ import {
   canDeletePolicy,
 } from "@/lib/svkk/permissions";
 import { parsePolicyUrls } from "@/features/svkk-policies/ad-policy-detail-to-form";
+import {
+  fetchPolicyYearSiblings,
+  singleRowYearSibling,
+  type PolicyListYearSibling,
+} from "@/features/svkk-policies/policy-year-siblings";
 import { useParams, useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type ChequeDetail = {
@@ -206,6 +211,7 @@ export default function SvkkPolicyDetailPage() {
   const selectedYearLabel = searchParams.get("year")?.trim() ?? "";
 
   const [row, setRow] = useState<PolicyDetail | null>(null);
+  const [yearSiblings, setYearSiblings] = useState<PolicyListYearSibling[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [yearId, setYearId] = useState<string | "">("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -239,6 +245,59 @@ export default function SvkkPolicyDetailPage() {
       setYearId(matched.id);
     }
   }, [row, selectedYearLabel]);
+
+  useEffect(() => {
+    if (!selectedYearLabel || yearSiblings.length === 0) return;
+    const tab = yearSiblings.find((t) => t.yearLabel === selectedYearLabel);
+    if (tab && tab.policyId !== id) {
+      router.replace(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`);
+    }
+  }, [selectedYearLabel, yearSiblings, id, router]);
+
+  useEffect(() => {
+    if (!row) {
+      setYearSiblings([]);
+      return;
+    }
+    const svkkId = row.insuredParty.svkkPublicId.trim();
+    if (!svkkId) {
+      const y0 = row.years[0];
+      setYearSiblings(
+        y0
+          ? [{ policyId: id, yearLabel: y0.yearLabel, vkkPremium: y0.vkkPremium, sumInsured: y0.sumInsured }]
+          : [],
+      );
+      return;
+    }
+    let cancelled = false;
+    void fetchPolicyYearSiblings(svkkId).then((items) => {
+      if (cancelled) return;
+      setYearSiblings(items.length > 0 ? items : singleRowYearSibling({
+        id,
+        periodYearText: row.periodYearText,
+        insuredParty: row.insuredParty,
+        years: row.years.map((yy) => ({
+          yearLabel: yy.yearLabel,
+          vkkPremium: yy.vkkPremium,
+          sumInsured: yy.sumInsured,
+        })),
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [row, id]);
+
+  const yearTabs = useMemo(() => {
+    if (yearSiblings.length > 0) return yearSiblings;
+    if (!row) return [];
+    return row.years.map((yy) => ({
+      policyId: id,
+      yearLabel: yy.yearLabel,
+      vkkPremium: yy.vkkPremium,
+      sumInsured: yy.sumInsured,
+    }));
+  }, [yearSiblings, row, id]);
 
   async function deletePolicy() {
     setDeleteBusy(true);
@@ -279,21 +338,36 @@ export default function SvkkPolicyDetailPage() {
         <h1 className="text-2xl font-semibold">View policy</h1>
       </div>
 
-      {row.years.length > 0 ? (
+      {yearTabs.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-muted-foreground text-sm">Select year</p>
+          <p className="text-muted-foreground text-sm">
+            Select year
+            {yearTabs.length > 1 ? ` (${yearTabs.length} policies for this SVKK ID)` : null}
+          </p>
           <div className="flex flex-wrap gap-2">
-            {row.years.map((yy) => (
-              <Button
-                key={yy.id}
-                type="button"
-                variant={yy.id === y?.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => setYearId(yy.id)}
-              >
-                {yy.yearLabel}
-              </Button>
-            ))}
+            {yearTabs.map((tab) => {
+              const active =
+                tab.policyId === id &&
+                (y?.yearLabel === tab.yearLabel || (!y && row.years[0]?.yearLabel === tab.yearLabel));
+              return (
+                <Button
+                  key={`${tab.policyId}-${tab.yearLabel}`}
+                  type="button"
+                  variant={active ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (tab.policyId !== id) {
+                      router.push(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`);
+                      return;
+                    }
+                    const matched = row.years.find((yy) => yy.yearLabel === tab.yearLabel);
+                    if (matched) setYearId(matched.id);
+                  }}
+                >
+                  {tab.yearLabel}
+                </Button>
+              );
+            })}
           </div>
         </div>
       ) : null}

@@ -72,7 +72,9 @@ const SORTS: Record<string, Prisma.PolicyOrderByWithRelationInput | Prisma.Polic
   premium_desc: { listVkkPremium: "desc" },
 };
 
-function parseOrderBy(s: string | undefined): Prisma.PolicyOrderByWithRelationInput | Prisma.PolicyOrderByWithRelationInput[] {
+export function parsePolicyListOrderBy(
+  s: string | undefined,
+): Prisma.PolicyOrderByWithRelationInput | Prisma.PolicyOrderByWithRelationInput[] {
   if (!s || !SORTS[s]) {
     return { createdAt: "desc" };
   }
@@ -328,7 +330,7 @@ export async function queryPolicyListAll(args: {
     include: typeof listInclude;
   }>[]
 > {
-  const orderBy = parseOrderBy(args.sort);
+  const orderBy = parsePolicyListOrderBy(args.sort);
   return prisma.policy.findMany({
     where: args.where,
     orderBy,
@@ -338,7 +340,7 @@ export async function queryPolicyListAll(args: {
 }
 
 export async function queryPolicyList(args: PolicyListArgs) {
-  const orderBy = parseOrderBy(args.sort);
+  const orderBy = parsePolicyListOrderBy(args.sort);
   if (args.usePage) {
     const skip = (args.page! - 1) * args.pageSize;
     const [total, rows] = await prisma.$transaction([

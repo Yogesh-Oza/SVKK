@@ -101,8 +101,18 @@ import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+type ListPolicyYear = {
+  policyId: string;
+  yearLabel: string;
+  referenceNo: string | null;
+  policyNo: string | null;
+  vkkPremium: unknown;
+  sumInsured: unknown;
+};
+
 type ListPolicy = {
-  id: string;
+  svkkPublicId: string;
+  primaryPolicyId: string;
   policyNo: string | null;
   referenceNo: string | null;
   village: string | null;
@@ -110,7 +120,6 @@ type ListPolicy = {
   area: string | null;
   remarks: string | null;
   adProductVariant?: string | null;
-  periodYearText?: string | null;
   periodMonthText?: string | null;
   insuredParty: {
     svkkPublicId: string;
@@ -121,12 +130,7 @@ type ListPolicy = {
   };
   policyType: { id: string; name: string };
   category: { id: string; key: string; name: string } | null;
-  years: Array<{
-    yearLabel: string;
-    sumInsured: unknown;
-    vkkPremium: unknown;
-    expectedNetPremium: unknown;
-  }>;
+  years: ListPolicyYear[];
 };
 
 type PageListRes = {
@@ -179,10 +183,6 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "referenceNo_desc", label: "Reference no. Z–A" },
   { value: "svkkId", label: "SVKK ID A–Z" },
   { value: "svkkId_desc", label: "SVKK ID Z–A" },
-  { value: "periodYearText", label: "Year A–Z" },
-  { value: "periodYearText_desc", label: "Year Z–A" },
-  { value: "premium", label: "Premium low → high" },
-  { value: "premium_desc", label: "Premium high → low" },
 ];
 
 function parseInrAmount(v: unknown): number | null {
@@ -250,10 +250,11 @@ export default function SvkkPoliciesPage() {
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [receiptFilenameHint, setReceiptFilenameHint] = useState<string>("policy-receipt");
   const [exportBusy, setExportBusy] = useState(false);
-  const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
-  const [rowYearAction, setRowYearAction] = useState<{ policyId: string; kind: YearActionKind } | null>(
-    null,
-  );
+  const [expandedSvkkId, setExpandedSvkkId] = useState<string | null>(null);
+  const [rowYearAction, setRowYearAction] = useState<{
+    svkkPublicId: string;
+    kind: YearActionKind;
+  } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
 
   const missingUrl = !getSvkkApiBase();
@@ -481,9 +482,13 @@ export default function SvkkPoliciesPage() {
   );
 
   async function bulkDelete() {
-    const ids = Object.entries(rowSelection)
-      .filter(([, v]) => v)
-      .map(([id]) => id);
+    const ids = [
+      ...new Set(
+        Object.entries(rowSelection)
+          .filter(([, v]) => v)
+          .flatMap(([svkkId]) => rows.find((r) => r.svkkPublicId === svkkId)?.years.map((y) => y.policyId) ?? []),
+      ),
+    ];
     if (ids.length === 0) return;
     setActionBusy(true);
     try {
@@ -606,7 +611,7 @@ export default function SvkkPoliciesPage() {
         ),
         cell: ({ row }) => (
           <Link
-            href={`/policies/${row.original.id}`}
+            href={`/policies/${row.original.primaryPolicyId}`}
             className="font-sans text-sm font-bold text-foreground hover:text-primary inline-flex max-w-[min(100%,220px)] items-center rounded-sm px-0.5 py-0.5 transition-colors hover:underline"
             title={row.original.policyNo ?? undefined}
           >
@@ -735,54 +740,11 @@ export default function SvkkPoliciesPage() {
         ),
       },
       {
-        id: "policyYear",
-        accessorFn: (r) => r.periodYearText ?? r.years[0]?.yearLabel ?? "",
-        header: ({ column }) => (
-          <PoliciesColumnHeader
-            column={column}
-            title="Year"
-            sortAsc="periodYearText"
-            sortDesc="periodYearText_desc"
-            activeSort={sort}
-            onSortChange={applySort}
-          />
-        ),
-        cell: ({ row }) => {
-          const p = row.original;
-          const y = p.periodYearText?.trim() || p.years[0]?.yearLabel || "";
-          return <span className={policyTableMuted}>{y || "—"}</span>;
-        },
-      },
-      {
-        id: "premium",
-        accessorFn: (r) => formatInrRupee(r.years[0]?.vkkPremium) ?? "",
-        header: ({ column }) => (
-          <PoliciesColumnHeader
-            column={column}
-            title="Premium"
-            sortAsc="premium"
-            sortDesc="premium_desc"
-            activeSort={sort}
-            onSortChange={applySort}
-          />
-        ),
-        cell: ({ row }) => {
-          const y0 = row.original.years[0];
-          const formatted = y0 ? formatInrRupee(y0.vkkPremium) : null;
-          if (!formatted) return <span className={policyTableMuted}>—</span>;
-          return (
-            <span className="font-sans text-sm font-bold text-foreground tabular-nums antialiased">
-              {formatted}
-            </span>
-          );
-        },
-      },
-      {
         id: "actions",
         header: "Action",
         cell: ({ row }) => {
           const p = row.original;
-          const expanded = expandedPolicyId === p.id;
+          const expanded = expandedSvkkId === p.svkkPublicId;
           return (
             <div className="flex items-center justify-end">
               <DropdownMenu>
@@ -802,7 +764,7 @@ export default function SvkkPoliciesPage() {
                   <DropdownMenuItem
                     onClick={() => {
                       setRowYearAction(null);
-                      setExpandedPolicyId((curr) => (curr === p.id ? null : p.id));
+                      setExpandedSvkkId((curr) => (curr === p.svkkPublicId ? null : p.svkkPublicId));
                     }}
                   >
                     <Eye />
@@ -811,11 +773,11 @@ export default function SvkkPoliciesPage() {
                   {canEdit ? (
                     <DropdownMenuItem
                       onClick={() => {
-                        setExpandedPolicyId(p.id);
+                        setExpandedSvkkId(p.svkkPublicId);
                         setRowYearAction((curr) =>
-                          curr?.policyId === p.id && curr.kind === "edit"
+                          curr?.svkkPublicId === p.svkkPublicId && curr.kind === "edit"
                             ? null
-                            : { policyId: p.id, kind: "edit" },
+                            : { svkkPublicId: p.svkkPublicId, kind: "edit" },
                         );
                       }}
                     >
@@ -824,13 +786,13 @@ export default function SvkkPoliciesPage() {
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem
-                    disabled={receiptBusyId === p.id}
+                    disabled={receiptBusyId === p.primaryPolicyId}
                     onClick={() => {
-                      setExpandedPolicyId(p.id);
+                      setExpandedSvkkId(p.svkkPublicId);
                       setRowYearAction((curr) =>
-                        curr?.policyId === p.id && curr.kind === "receipt"
+                        curr?.svkkPublicId === p.svkkPublicId && curr.kind === "receipt"
                           ? null
-                          : { policyId: p.id, kind: "receipt" },
+                          : { svkkPublicId: p.svkkPublicId, kind: "receipt" },
                       );
                     }}
                   >
@@ -840,9 +802,12 @@ export default function SvkkPoliciesPage() {
                   {canDel ? (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onClick={() => setRowDeleteId(p.id)}>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setRowDeleteId(p.primaryPolicyId)}
+                      >
                         <Trash2 />
-                        Delete
+                        Delete latest year
                       </DropdownMenuItem>
                     </>
                   ) : null}
@@ -856,12 +821,12 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [applySort, canDel, canEdit, expandedPolicyId, receiptBusyId, sort]);
+  }, [applySort, canDel, canEdit, expandedSvkkId, receiptBusyId, sort]);
 
   const table = useReactTable({
     data: rows,
     columns,
-    getRowId: (r) => r.id,
+    getRowId: (r) => r.svkkPublicId,
     manualPagination: true,
     pageCount: Math.max(1, totalPages),
     state: {
@@ -897,8 +862,8 @@ export default function SvkkPoliciesPage() {
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">Policies</h1>
           <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            Search, filter, and manage MediClaim policy records. Open a row to see year-wise premiums and
-            actions.
+            One row per SVKK ID. Expand a row to choose a fiscal year, view premiums, and open or edit that
+            year&apos;s policy record.
           </p>
         </div>
         {canCsvUpload ? (
@@ -916,7 +881,7 @@ export default function SvkkPoliciesPage() {
               <Shield className="text-primary size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Total policies</p>
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">SVKK IDs (grouped)</p>
               <p className="text-2xl font-bold tabular-nums tracking-tight">
                 {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
               </p>
@@ -1168,7 +1133,9 @@ export default function SvkkPoliciesPage() {
                 <LayoutList className="size-5 opacity-80" />
                 Policy register
               </CardTitle>
-              <CardDescription>Grouped records — expand a row for year-wise premiums and detail.</CardDescription>
+              <CardDescription>
+                One row per SVKK ID — expand for year-wise premiums, references, and actions.
+              </CardDescription>
             </div>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
               <Label htmlFor="policies-sort" className="text-muted-foreground text-xs font-medium">
@@ -1242,7 +1209,7 @@ export default function SvkkPoliciesPage() {
                         </TableCell>
                       ))}
                     </TableRow>
-                    {expandedPolicyId === original.id ? (
+                    {expandedSvkkId === original.svkkPublicId ? (
                       <TableRow key={`${row.id}-years`}>
                         <TableCell colSpan={colCount} className="bg-muted/25 p-0">
                           <motion.div
@@ -1252,51 +1219,54 @@ export default function SvkkPoliciesPage() {
                             className="border-primary/10 bg-linear-to-b from-muted/20 to-transparent space-y-4 border-t p-4 sm:p-5"
                           >
                             <p className="text-foreground text-sm font-semibold tracking-tight">
-                              {rowYearAction?.policyId === original.id
+                              {rowYearAction?.svkkPublicId === original.svkkPublicId
                                 ? rowYearAction.kind === "edit"
                                   ? "Select a year to edit"
                                   : "Select a year to generate receipt"
-                                : "Year-wise quick actions"}
+                                : `Year-wise quick actions (${original.years.length} year${original.years.length === 1 ? "" : "s"})`}
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {original.years.map((y) => (
                                 <Button
-                                  key={`${original.id}-chip-${y.yearLabel}`}
+                                  key={`${y.policyId}-chip-${y.yearLabel}`}
                                   type="button"
                                   size="sm"
                                   variant="secondary"
                                   className="border-primary/15 bg-primary/8 hover:bg-primary/12 shadow-sm"
                                   onClick={() => {
-                                    if (rowYearAction?.policyId === original.id && rowYearAction.kind === "edit") {
+                                    if (
+                                      rowYearAction?.svkkPublicId === original.svkkPublicId &&
+                                      rowYearAction.kind === "edit"
+                                    ) {
                                       router.push(
-                                        `/policies/${original.id}/edit?year=${encodeURIComponent(y.yearLabel)}`,
+                                        `/policies/${y.policyId}/edit?year=${encodeURIComponent(y.yearLabel)}`,
                                       );
                                       setRowYearAction(null);
                                       return;
                                     }
                                     if (
-                                      rowYearAction?.policyId === original.id &&
+                                      rowYearAction?.svkkPublicId === original.svkkPublicId &&
                                       rowYearAction.kind === "receipt"
                                     ) {
-                                      void openReceiptPreviewForRow(original.id, y.yearLabel).finally(() => {
+                                      void openReceiptPreviewForRow(y.policyId, y.yearLabel).finally(() => {
                                         setRowYearAction(null);
                                       });
                                       return;
                                     }
-                                    router.push(`/policies/${original.id}?year=${encodeURIComponent(y.yearLabel)}`);
+                                    router.push(`/policies/${y.policyId}?year=${encodeURIComponent(y.yearLabel)}`);
                                   }}
                                 >
                                   {y.yearLabel} · {formatInrRupee(y.vkkPremium) ?? "—"}
                                 </Button>
                               ))}
                             </div>
-                            {rowYearAction?.policyId === original.id ? null : (
+                            {rowYearAction?.svkkPublicId === original.svkkPublicId ? null : (
                               <div className="max-w-full space-y-4">
                                 <div className="ring-primary/15 rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
                                   <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">
                                     Policy snapshot
                                     <span className="text-blue-700/70 dark:text-blue-300/70 ml-2 font-normal normal-case">
-                                      (same for every year below)
+                                      (latest year; details vary by year below)
                                     </span>
                                   </p>
                                   <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -1363,7 +1333,7 @@ export default function SvkkPoliciesPage() {
                                   <ul className="flex max-w-full flex-col gap-2">
                                     {original.years.map((y, yi) => (
                                       <li
-                                        key={`${original.id}-${y.yearLabel}`}
+                                        key={`${y.policyId}-${y.yearLabel}`}
                                         className={cn(
                                           "flex max-w-full flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
                                           "border-l-primary/55 border-l-4 transition-colors",

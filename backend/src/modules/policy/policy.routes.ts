@@ -25,9 +25,13 @@ import {
   distinctFilterOptions,
   POLICY_LIST_EXPORT_MAX_ROWS,
   queryPolicyList,
-  queryPolicyListAll,
   type PolicyListQuery,
 } from "./policy.list.js";
+import {
+  buildPoliciesExportCsv,
+  queryPolicyListForExport,
+} from "./policy.export-csv.js";
+import { queryPolicyListGrouped } from "./policy.list-grouped.js";
 import { AdProductVariant, ChequeStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
@@ -94,6 +98,11 @@ const policyListPagedQuerySchema = policyListFiltersSchema.extend({
   limit: z.coerce.number().min(1).max(100).default(20),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  /** Default true: one row per SVKK ID with years[]. Set false for flat policy rows (search / carry-forward). */
+  groupBySvkk: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v !== "false"),
 });
 
 function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): PolicyListQuery {
@@ -125,84 +134,15 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
   };
 }
 
-function csvCell(value: unknown): string {
-  if (value == null) return "";
-  const s =
-    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-      ? String(value)
-      : value instanceof Date
-        ? value.toISOString()
-        : typeof value === "object" && value !== null && "toString" in value
-          ? String((value as { toString: () => string }).toString())
-          : String(value);
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
-
-function policiesExportCsv(
-  rows: Awaited<ReturnType<typeof queryPolicyListAll>>,
-  permissions: Set<string>,
-): string {
-  const headers = [
-    "Policy ID",
-    "Name",
-    "Customer ID",
-    "PAN",
-    "Category",
-    "Policy type",
-    "Policy no",
-    "Reference no",
-    "Village",
-    "Mobile",
-    "Area",
-    "Persons insured",
-    "Product (AD)",
-    "Period year",
-    "Period month",
-    "Policy grouping",
-    "Latest year label",
-    "Sum insured",
-    "VKK premium",
-    "Expected net premium",
-    "Remarks",
-    "Created at",
-  ];
-  const lines: string[] = [headers.map(csvCell).join(",")];
-  for (const r of rows) {
-    const party = maskInsuredParty(permissions, r.insuredParty);
-    const y0 = r.years[0];
-    lines.push(
-      [
-        r.id,
-        party?.name ?? "",
-        party?.customerId ?? "",
-        party?.pan ?? "",
-        r.category ? `${r.category.key} — ${r.category.name}` : "",
-        r.policyType?.name ?? "",
-        r.policyNo ?? "",
-        r.referenceNo ?? "",
-        r.village ?? "",
-        party?.mobile ?? "",
-        r.area ?? "",
-        r.personsInsuredCount ?? "",
-        r.adProductVariant ?? "",
-        r.periodYearText ?? "",
-        r.periodMonthText ?? "",
-        r.policyGrouping ?? "",
-        y0?.yearLabel ?? "",
-        y0?.sumInsured != null ? y0.sumInsured.toString() : "",
-        y0?.vkkPremium != null ? y0.vkkPremium.toString() : "",
-        y0?.expectedNetPremium != null ? y0.expectedNetPremium.toString() : "",
-        r.remarks ?? "",
-        r.createdAt.toISOString(),
-      ]
-        .map(csvCell)
-        .join(","),
-    );
-  }
-  return `\uFEFF${lines.join("\r\n")}`;
+function preferredYearLabelsFromFilter(q: PolicyListQuery): string[] {
+  const periodYearList =
+    q.periodYearTexts != null && q.periodYearTexts.length > 0
+      ? q.periodYearTexts
+      : q.periodYearText?.trim()
+        ? [q.periodYearText.trim()]
+        : [];
+  const yearLabelExtra = q.yearLabel?.trim() ? [q.yearLabel.trim()] : [];
+  return [...new Set([...periodYearList, ...yearLabelExtra])];
 }
 
 function patchBodyToInput(
@@ -409,7 +349,7 @@ export function createPolicyRouter(env: Env) {
 
       const scope = await loadMisScope(req.userId!, req.permissions!);
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
-      const out = await queryPolicyList({
+      const listArgs = {
         where,
         sort: listFilter.sort,
         page: usePage ? q.page : undefined,
@@ -417,21 +357,22 @@ export function createPolicyRouter(env: Env) {
         usePage,
         cursor: q.cursor,
         limit: q.limit,
+      };
+      const out = q.groupBySvkk
+        ? await queryPolicyListGrouped(listArgs)
+        : await queryPolicyList(listArgs);
+      const mapItem = (r: (typeof out.items)[number]) => ({
+        ...r,
+        insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
       });
       if ("nextCursor" in out) {
         res.json({
-          items: out.items.map((r) => ({
-            ...r,
-            insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
-          })),
+          items: out.items.map(mapItem),
           nextCursor: out.nextCursor,
         });
       } else {
         res.json({
-          items: out.items.map((r) => ({
-            ...r,
-            insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
-          })),
+          items: out.items.map(mapItem),
           total: out.total,
           page: out.page,
           pageSize: out.pageSize,
@@ -449,14 +390,18 @@ export function createPolicyRouter(env: Env) {
       const listFilter = listFilterFromQuery(q);
       const scope = await loadMisScope(req.userId!, req.permissions!);
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
-      const rows = await queryPolicyListAll({ where, sort: listFilter.sort });
+      const rows = await queryPolicyListForExport({ where, sort: listFilter.sort });
       if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
         const totalMatching = await prisma.policy.count({ where });
         if (totalMatching > POLICY_LIST_EXPORT_MAX_ROWS) {
           res.setHeader("X-Export-Truncated", "true");
         }
       }
-      const csv = policiesExportCsv(rows, req.permissions!);
+      const csv = buildPoliciesExportCsv(
+        rows,
+        req.permissions!,
+        preferredYearLabelsFromFilter(listFilter),
+      );
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');
       res.send(csv);

@@ -674,7 +674,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     setSuggestBusy(true);
     try {
-      const search = new URLSearchParams({ search: query.trim(), page: "1", pageSize: "25", sort: "createdAt" });
+      const search = new URLSearchParams({
+        search: query.trim(),
+        page: "1",
+        pageSize: "25",
+        sort: "createdAt",
+        groupBySvkk: "false",
+      });
       const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${search.toString()}`);
       const dedup = new Map<string, FetchSuggestion>();
       for (const row of res.items ?? []) {
@@ -700,7 +706,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, []);
 
   const loadYearRowsBySvkkId = useCallback(async (svkkId: string) => {
-    const query = new URLSearchParams({ search: svkkId, page: "1", pageSize: "50", sort: "createdAt" });
+    const query = new URLSearchParams({
+      search: svkkId,
+      page: "1",
+      pageSize: "50",
+      sort: "createdAt",
+      groupBySvkk: "false",
+    });
     const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${query.toString()}`);
     const exactRows = (res.items ?? []).filter((item) => item.insuredParty.svkkPublicId === svkkId);
     setFetchRows(exactRows);
