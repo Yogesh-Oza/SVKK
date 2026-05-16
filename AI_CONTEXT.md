@@ -1,4 +1,4 @@
-# AI_CONTEXT — SVKK Software
+# AI_CONTEXT — SVKK Software  
 
 ## Purpose
 
