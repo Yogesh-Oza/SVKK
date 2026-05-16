@@ -31,4 +31,18 @@ describe("buildActivityLogWhere", () => {
       ],
     });
   });
+
+  it("filters by actor user id and role slug", () => {
+    expect(
+      buildActivityLogWhere(
+        { userId: "u1", roleSlug: LEGACY_ROLE_SLUGS.USER },
+        LEGACY_ROLE_SLUGS.SUPER_ADMIN,
+      ),
+    ).toEqual({
+      AND: [
+        { userId: "u1" },
+        { user: { rbacRole: { slug: LEGACY_ROLE_SLUGS.USER } } },
+      ],
+    });
+  });
 });

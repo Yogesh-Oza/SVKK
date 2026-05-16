@@ -366,7 +366,16 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     action: "POLICY_CREATED",
     entityType: "Policy",
     entityId: result.policy.id,
-    afterData: { policyId: result.policy.id, yearId: result.year.id } as unknown as Prisma.InputJsonValue,
+    afterData: {
+      policyId: result.policy.id,
+      yearId: result.year.id,
+      policyNo: result.policy.policyNo,
+      referenceNo: result.policy.referenceNo,
+      svkkPublicId: result.party.svkkPublicId,
+      village: result.policy.village,
+      holderName: result.party.name,
+      yearLabel: result.year.yearLabel,
+    } as unknown as Prisma.InputJsonValue,
   });
 
   return prisma.policy.findFirstOrThrow({
@@ -875,6 +884,7 @@ export async function updatePolicySections(input: {
 export async function softDeletePolicy(input: { actorUserId: string; policyId: string }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: null },
+    include: { insuredParty: { select: { name: true } } },
   });
   if (!existing) {
     throw new AppError("NOT_FOUND", "Policy not found", 404);
@@ -891,7 +901,12 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
     action: "POLICY_SOFT_DELETED",
     entityType: "Policy",
     entityId: input.policyId,
-    beforeData: { id: input.policyId } as unknown as Prisma.InputJsonValue,
+    beforeData: {
+      policyNo: existing.policyNo,
+      referenceNo: existing.referenceNo,
+      village: existing.village,
+      holderName: existing.insuredParty.name,
+    } as unknown as Prisma.InputJsonValue,
     afterData: { deleted: true } as unknown as Prisma.InputJsonValue,
   });
 }

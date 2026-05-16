@@ -237,7 +237,15 @@ export function createUploadRouter(env: Env) {
           const scope = await loadMisScope(req.userId!, req.permissions!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
-            select: { id: true, village: true, createdById: true, policyUrl: true },
+            select: {
+              id: true,
+              village: true,
+              createdById: true,
+              policyUrl: true,
+              referenceNo: true,
+              policyNo: true,
+              insuredParty: { select: { name: true, svkkPublicId: true } },
+            },
           });
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
@@ -263,7 +271,15 @@ export function createUploadRouter(env: Env) {
             action: "POLICY_ONEDRIVE_DOC_ATTACHED",
             entityType: "Policy",
             entityId: policyId,
-            afterData: { oneDriveFileId: fileId, policyUrl: webViewLink },
+            afterData: {
+              referenceNo: existing.referenceNo,
+              policyNo: existing.policyNo,
+              holderName: existing.insuredParty.name,
+              svkkPublicId: existing.insuredParty.svkkPublicId,
+              village: existing.village,
+              oneDriveFileId: fileId,
+              policyUrl: webViewLink,
+            },
           });
         }
 
@@ -313,7 +329,15 @@ export function createUploadRouter(env: Env) {
           const scope = await loadMisScope(req.userId!, req.permissions!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
-            select: { id: true, village: true, createdById: true, policyUrl: true },
+            select: {
+              id: true,
+              village: true,
+              createdById: true,
+              policyUrl: true,
+              referenceNo: true,
+              policyNo: true,
+              insuredParty: { select: { name: true, svkkPublicId: true } },
+            },
           });
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
@@ -339,7 +363,15 @@ export function createUploadRouter(env: Env) {
             action: "POLICY_DRIVE_DOC_ATTACHED",
             entityType: "Policy",
             entityId: policyId,
-            afterData: { driveFileId: fileId, policyUrl: webViewLink },
+            afterData: {
+              referenceNo: existing.referenceNo,
+              policyNo: existing.policyNo,
+              holderName: existing.insuredParty.name,
+              svkkPublicId: existing.insuredParty.svkkPublicId,
+              village: existing.village,
+              driveFileId: fileId,
+              policyUrl: webViewLink,
+            },
           });
         }
 

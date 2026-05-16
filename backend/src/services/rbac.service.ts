@@ -141,6 +141,20 @@ export function assertValidScopeSet(keys: Iterable<string>): void {
   assertAtMostOne(list, POLICY_SCOPE_KEYS, "policy");
   assertAtMostOne(list, MIS_SCOPE_KEYS, "MIS");
   assertAtMostOne(list, CLAIM_SCOPE_KEYS, "claim");
+
+  const set = new Set(list);
+  const hasWildcard = set.has(WILDCARD_PERMISSION);
+  const hasPolicyAccess = ["policy:read", "policy:create", "policy:update", "policy:delete"].some(
+    (k) => set.has(k),
+  );
+  const hasPolicyScope = POLICY_SCOPE_KEYS.some((k) => set.has(k));
+  if (!hasWildcard && hasPolicyAccess && !hasPolicyScope) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "Policy access requires a scope: policy:scope_own, policy:scope_village, or policy:scope_all",
+      400,
+    );
+  }
 }
 
 export async function bumpRtvForUsersWithRole(

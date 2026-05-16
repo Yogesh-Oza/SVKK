@@ -17,11 +17,11 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
         <SidebarConfigProvider>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset className="min-w-0 overflow-x-hidden">
               <Suspense>
                 <DashboardHeader />
               </Suspense>
-              <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+              <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
             </SidebarInset>
           </SidebarProvider>
         </SidebarConfigProvider>

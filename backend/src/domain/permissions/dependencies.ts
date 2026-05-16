@@ -4,7 +4,8 @@
 export const PERMISSION_DEPENDENCIES: Record<string, readonly string[]> = {
   "policy:update": ["policy:read"],
   "policy:delete": ["policy:read"],
-  "policy:create": ["policy:read"],
+  /** Add-policy form loads premium charts via /calculation/reference/* */
+  "policy:create": ["policy:read", "calculation:live"],
   "claim:update": ["claim:read"],
   "claim:delete": ["claim:read"],
   "claim:create": ["claim:read"],
