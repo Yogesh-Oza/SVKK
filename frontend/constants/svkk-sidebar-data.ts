@@ -1,4 +1,4 @@
-import type { NavGroup, NavItem } from "@/lib/types";
+import type { NavCollapsible, NavGroup, NavItem } from "@/lib/types";
 import {
   getSvkkNavForRole,
   type SvkkNavId,
@@ -71,7 +71,7 @@ export function getSvkkNavGroupsForRole(role: SvkkRole): NavGroup[] {
       continue;
     }
     if (n.id === "admin") {
-      const subItems: NavItem[] = [];
+      const subItems: NavCollapsible["items"] = [];
       let j = i;
       while (j < flat.length && ADMIN_NAV_IDS.includes(flat[j]!.id)) {
         const entry = flat[j]!;
