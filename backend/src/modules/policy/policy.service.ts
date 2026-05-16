@@ -13,7 +13,11 @@ import { normalizeMobile } from "../../domain/phone.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
-import { createPolicyBodySchema, type PolicyMemberReplaceRow } from "./policy.schemas.js";
+import {
+  createPolicyBodySchema,
+  type PolicyMemberReplaceRow,
+  type PaymentReplaceRow,
+} from "./policy.schemas.js";
 import {
   ageOnDate,
   generatePolicyPublicId,
@@ -339,64 +343,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     }
 
     if (input.payments?.length) {
-      for (const paymentRow of input.payments) {
-        const mappedStatus =
-          paymentRow.status === "DISHONOURED"
-            ? PaymentStatus.FAILED
-            : paymentRow.status === "CLEARED"
-              ? PaymentStatus.COMPLETED
-              : PaymentStatus.PENDING;
-        let chequeId: string | undefined;
-        if (
-          paymentRow.method === PayMethod.CHQ &&
-          paymentRow.bankName &&
-          paymentRow.transactionNumber
-        ) {
-          const ch = await tx.cheque.create({
-            data: {
-              number: paymentRow.transactionNumber,
-              bankName: paymentRow.bankName,
-              ifsc: paymentRow.ifscCode ?? undefined,
-              status:
-                paymentRow.status === "DISHONOURED"
-                  ? ChequeStatus.DISHONOURED
-                  : paymentRow.status === "CLEARED"
-                    ? ChequeStatus.CLEARED
-                    : ChequeStatus.PENDING,
-              reason:
-                paymentRow.status === "DISHONOURED"
-                  ? paymentRow.dishonourReason ?? "Dishonoured"
-                  : undefined,
-              accountNo: paymentRow.accountNumber ?? undefined,
-              branch: paymentRow.branchName ?? undefined,
-              nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
-              notOver: paymentRow.notOver ?? undefined,
-              chequeDate: paymentRow.transactionDate ?? undefined,
-            },
-          });
-          chequeId = ch.id;
-        }
-        await tx.payment.create({
-          data: {
-            policyYearId: year.id,
-            amount: paymentRow.amount,
-            method: paymentRow.method,
-            status: mappedStatus,
-            chequeId: chequeId ?? null,
-            transactionNumber: paymentRow.transactionNumber ?? undefined,
-            transactionDate: paymentRow.transactionDate ?? undefined,
-            bankName: paymentRow.bankName ?? undefined,
-            branchName: paymentRow.branchName ?? undefined,
-            accountNumber: paymentRow.accountNumber ?? undefined,
-            nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
-            ifscCode: paymentRow.ifscCode ?? undefined,
-            notOver: paymentRow.notOver ?? undefined,
-            dishonourReason: paymentRow.dishonourReason ?? undefined,
-            returnCharges: paymentRow.returnCharges ?? undefined,
-            otherCharges: paymentRow.otherCharges ?? undefined,
-          },
-        });
-      }
+      await insertPaymentsForYear(tx, year.id, input.payments);
     }
 
     await syncPolicyListVkkPremium(tx, policy.id);
@@ -681,6 +628,92 @@ async function applyInsuredPartyPatch(
   return true;
 }
 
+async function insertPaymentsForYear(
+  tx: Prisma.TransactionClient,
+  policyYearId: string,
+  payments: PaymentReplaceRow[],
+) {
+  for (const paymentRow of payments) {
+    const mappedStatus =
+      paymentRow.status === "DISHONOURED"
+        ? PaymentStatus.FAILED
+        : paymentRow.status === "CLEARED"
+          ? PaymentStatus.COMPLETED
+          : PaymentStatus.PENDING;
+    let chequeId: string | undefined;
+    if (
+      paymentRow.method === PayMethod.CHQ &&
+      paymentRow.bankName &&
+      paymentRow.transactionNumber
+    ) {
+      const ch = await tx.cheque.create({
+        data: {
+          number: paymentRow.transactionNumber,
+          bankName: paymentRow.bankName,
+          ifsc: paymentRow.ifscCode ?? undefined,
+          status:
+            paymentRow.status === "DISHONOURED"
+              ? ChequeStatus.DISHONOURED
+              : paymentRow.status === "CLEARED"
+                ? ChequeStatus.CLEARED
+                : ChequeStatus.PENDING,
+          reason:
+            paymentRow.status === "DISHONOURED"
+              ? paymentRow.dishonourReason ?? "Dishonoured"
+              : undefined,
+          accountNo: paymentRow.accountNumber ?? undefined,
+          branch: paymentRow.branchName ?? undefined,
+          nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+          notOver: paymentRow.notOver ?? undefined,
+          chequeDate: paymentRow.transactionDate ?? undefined,
+        },
+      });
+      chequeId = ch.id;
+    }
+    await tx.payment.create({
+      data: {
+        policyYearId,
+        amount: paymentRow.amount,
+        method: paymentRow.method,
+        status: mappedStatus,
+        chequeId: chequeId ?? null,
+        transactionNumber: paymentRow.transactionNumber ?? undefined,
+        transactionDate: paymentRow.transactionDate ?? undefined,
+        bankName: paymentRow.bankName ?? undefined,
+        branchName: paymentRow.branchName ?? undefined,
+        accountNumber: paymentRow.accountNumber ?? undefined,
+        nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+        ifscCode: paymentRow.ifscCode ?? undefined,
+        notOver: paymentRow.notOver ?? undefined,
+        dishonourReason: paymentRow.dishonourReason ?? undefined,
+        returnCharges: paymentRow.returnCharges ?? undefined,
+        otherCharges: paymentRow.otherCharges ?? undefined,
+      },
+    });
+  }
+}
+
+async function replaceYearPayments(
+  tx: Prisma.TransactionClient,
+  policyId: string,
+  yearLabel: string,
+  payments: PaymentReplaceRow[],
+) {
+  const yearRow = await tx.policyYear.findUnique({
+    where: { policyId_yearLabel: { policyId, yearLabel } },
+  });
+  if (!yearRow || yearRow.deletedAt) {
+    throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
+  }
+  await tx.payment.updateMany({
+    where: { policyYearId: yearRow.id, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  if (payments.length > 0) {
+    await insertPaymentsForYear(tx, yearRow.id, payments);
+  }
+}
+
 async function replaceYearMembers(
   tx: Prisma.TransactionClient,
   policyId: string,
@@ -730,6 +763,7 @@ export async function updatePolicySections(input: {
   year?: PolicyYearSectionPatch;
   insuredParty?: InsuredPartySectionPatch;
   replaceMembers?: { yearLabel: string; members: PolicyMemberReplaceRow[] };
+  replacePayments?: { yearLabel: string; payments: PaymentReplaceRow[] };
 }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: null },
@@ -754,6 +788,13 @@ export async function updatePolicySections(input: {
 
   if (input.replaceMembers) {
     const y = existing.years.find((x) => x.yearLabel === input.replaceMembers!.yearLabel);
+    if (!y) {
+      throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
+    }
+  }
+
+  if (input.replacePayments) {
+    const y = existing.years.find((x) => x.yearLabel === input.replacePayments!.yearLabel);
     if (!y) {
       throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
     }
@@ -802,7 +843,14 @@ export async function updatePolicySections(input: {
   const hasInsuredParty =
     input.insuredParty != null && Object.keys(slimInsuredPartyPatch(input.insuredParty)).length > 0;
   const hasReplaceMembers = Boolean(input.replaceMembers?.members.length);
-  if (!hasPolicyFields && (!y || !hasYearValueFields) && !hasInsuredParty && !hasReplaceMembers) {
+  const hasReplacePayments = input.replacePayments !== undefined;
+  if (
+    !hasPolicyFields &&
+    (!y || !hasYearValueFields) &&
+    !hasInsuredParty &&
+    !hasReplaceMembers &&
+    !hasReplacePayments
+  ) {
     throw new AppError("NO_CHANGES", "No fields to update", 400);
   }
 
@@ -911,6 +959,18 @@ export async function updatePolicySections(input: {
           input.policyId,
           input.replaceMembers.yearLabel,
           input.replaceMembers.members,
+        );
+        if (!hasPolicyFields) {
+          bumpVersionWithoutPolicyRow = true;
+        }
+      }
+
+      if (input.replacePayments) {
+        await replaceYearPayments(
+          tx,
+          input.policyId,
+          input.replacePayments.yearLabel,
+          input.replacePayments.payments,
         );
         if (!hasPolicyFields) {
           bumpVersionWithoutPolicyRow = true;

@@ -20,7 +20,7 @@ import {
   canDeletePolicy,
 } from "@/lib/svkk/permissions";
 import { parsePolicyUrls } from "@/features/svkk-policies/ad-policy-detail-to-form";
-import { resolvePolicyBankInfo } from "@/features/svkk-policies/policy-bank-display";
+import { resolvePolicyPaymentDisplays } from "@/features/svkk-policies/policy-bank-display";
 import {
   fetchPolicyYearSiblings,
   singleRowYearSibling,
@@ -66,6 +66,7 @@ type PolicyYear = {
   }>;
   payments?: Array<{
     method?: string;
+    amount?: unknown;
     transactionNumber?: string | null;
     transactionDate?: string | null;
     bankName?: string | null;
@@ -356,7 +357,7 @@ export default function SvkkPolicyDetailPage() {
     row.years.find((item) => item.id === yearId) ??
     row.years.find((item) => item.yearLabel === activeYearLabel) ??
     row.years[0];
-  const bank = resolvePolicyBankInfo(y);
+  const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
   const policyTypeLabel = row.adProductVariant
     ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
     : row.policyType.name;
@@ -570,45 +571,52 @@ export default function SvkkPolicyDetailPage() {
             </table>
           </div>
 
-          <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">Bank information</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
-              <tbody>
-                <tr>
-                  <th className={thClass}>Policy cheque no</th>
-                  <th className={thClass}>Bank name</th>
-                  <th className={thClass}>Account no</th>
-                  <th className={thClass}>Branch</th>
-                  <th className={thClass}>Name as per cheque</th>
-                </tr>
-                <tr>
-                  <td className={tdClass}>{bank.number}</td>
-                  <td className={tdClass}>{bank.bankName}</td>
-                  <td className={tdClass}>{bank.accountNo}</td>
-                  <td className={tdClass}>{bank.branch}</td>
-                  <td className={tdClass}>{bank.nameAsPerCheque}</td>
-                </tr>
-                <tr>
-                  <th className={thClass}>IFSC code</th>
-                  <th className={thClass}>Not over</th>
-                  <th className={thClass}>Cheque date</th>
-                  <th className={thClass}>Cheque status</th>
-                  <th className={thClass}>Reason for dishonoured</th>
-                </tr>
-                <tr>
-                  <td className={tdClass}>{bank.ifsc}</td>
-                  <td className={tdClass}>
-                    {bank.notOver ? formatNumIn(bank.notOver) : bank.notOver}
-                  </td>
-                  <td className={tdClass}>
-                    {bank.chequeDate ? formatDateIso(String(bank.chequeDate)) : ""}
-                  </td>
-                  <td className={tdClass}>{bank.status}</td>
-                  <td className={tdClass}>{bank.reason}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">
+            Payment &amp; bank details
+          </h4>
+          {paymentDisplays.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No payment records for this year.</p>
+          ) : (
+            <div className="space-y-6">
+              {paymentDisplays.map((payment) => (
+                <div key={payment.index} className="overflow-x-auto rounded-md border border-border p-3">
+                  <p className="mb-2 text-sm font-semibold">
+                    Payment {payment.index}
+                    <span className="text-muted-foreground font-normal"> · {payment.modeLabel}</span>
+                    {payment.amount ? (
+                      <span className="text-muted-foreground font-normal"> · ₹ {payment.amount}</span>
+                    ) : null}
+                  </p>
+                  <table className="w-full min-w-[640px] border-collapse text-sm">
+                    <tbody>
+                      {Array.from({ length: Math.ceil(payment.fields.length / 2) }).map((_, rowIdx) => {
+                        const left = payment.fields[rowIdx * 2];
+                        const right = payment.fields[rowIdx * 2 + 1];
+                        return (
+                          <tr key={`${payment.index}-${rowIdx}`}>
+                            <th className={thClass}>{left?.label ?? ""}</th>
+                            <td className={tdClass}>
+                              {left?.label.toLowerCase().includes("date")
+                                ? formatDateIso(left.value) || left.value
+                                : (left?.value ?? "")}
+                            </td>
+                            <th className={thClass}>{right?.label ?? ""}</th>
+                            <td className={tdClass}>
+                              {right
+                                ? right.label.toLowerCase().includes("date")
+                                  ? formatDateIso(right.value) || right.value
+                                  : right.value
+                                : ""}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
 
           <h4 className="mt-8 mb-3 text-base font-semibold tracking-wide">VKK details</h4>
           <div className="overflow-x-auto">

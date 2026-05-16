@@ -1,36 +1,12 @@
 import { apiPatch, apiPost } from "@/lib/svkk/api";
 import { AxiosError } from "axios";
+import {
+  applyPrimaryPaymentModeToBody,
+  mapPaymentTransactionsToApi,
+  validatePaymentTransactions,
+} from "./ad-policy-payments";
 import { toAdProductVariant } from "./ad-product-variant";
-import type { AdPolicyFormValues, AdPolicyPaymentTransactionForm } from "./ad-policy-form-values";
-
-type ChequeStatusApi = "PENDING" | "CLEARED" | "DISHONOURED";
-
-function resolveChequeStatus(
-  txnStatus: AdPolicyPaymentTransactionForm["transactionStatus"],
-  legacyStatus: string,
-): ChequeStatusApi {
-  const s = txnStatus || legacyStatus;
-  if (s === "DISHONOURED") return "DISHONOURED";
-  if (s === "CLEARED") return "CLEARED";
-  return "PENDING";
-}
-
-/** Bank/cheque fields from Payment & Bank Details (primary) with legacy form keys as fallback. */
-function resolveChequeFieldsFromForm(values: AdPolicyFormValues) {
-  const txn = values.paymentTransactions[0];
-  return {
-    number: values.policyChequeNo.trim() || txn?.transactionNumber?.trim() || "",
-    bankName: values.bank.trim() || txn?.bankName?.trim() || "",
-    accountNo: values.accountNo.trim() || txn?.accountNumber?.trim() || null,
-    branch: values.branch.trim() || txn?.branch?.trim() || null,
-    nameAsPerCheque: values.nameAsPerCheque.trim() || txn?.nameAsPerCheque?.trim() || null,
-    ifsc: values.ifsc.trim() || txn?.ifscCode?.trim() || null,
-    notOver: values.notOver.trim() || txn?.notOver?.trim() || null,
-    chequeDate: values.chequeDate || txn?.transactionDate || "",
-    status: resolveChequeStatus(txn?.transactionStatus ?? "", values.chequeStatus),
-    dishonourReason: txn?.dishonourReason?.trim() || values.reasonDishonoured.trim() || "Dishonoured",
-  };
-}
+import type { AdPolicyFormValues } from "./ad-policy-form-values";
 
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
@@ -97,9 +73,9 @@ export async function submitAdPolicyRequest({
   }
   const co = parseNum(values.coPremium);
   const ageAnchor = values.previousEndDate || values.policyEnd;
-  const primaryPaymentMode = values.paymentTransactions[0]?.mode ?? values.paymentMode;
   const yearLabel = values.year.trim() || String(new Date().getFullYear());
   const combinedRemarks = buildCombinedRemarks(values);
+  validatePaymentTransactions(values);
 
   const mobileRaw = values.mobileFirst.replace(/\D/g, "").slice(0, 12)
     || values.whatsappNo.replace(/\D/g, "").slice(0, 12);
@@ -202,70 +178,12 @@ export async function submitAdPolicyRequest({
       ageAtEntry:
         parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : ageAtDate(m.dob, ageAnchor) ?? null,
     })),
-    payments: values.paymentTransactions
-      .filter((row) => parseNum(row.amountReceived) != null)
-      .map((row) => ({
-        amount: parseNum(row.amountReceived)!,
-        method:
-          row.mode === "CHEQUE" ? "CHQ" : row.mode === "CASH" ? "CASH" : "UPI",
-        status: row.transactionStatus || null,
-        transactionNumber: row.transactionNumber.trim() || null,
-        transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
-        bankName: row.bankName.trim() || null,
-        branchName: row.branch.trim() || null,
-        accountNumber: (row.mode === "UPI" ? row.mobileNumber?.trim() : row.accountNumber.trim()) || null,
-        nameAsPerCheque: row.nameAsPerCheque.trim() || null,
-        ifscCode: row.ifscCode.trim() || null,
-        notOver: row.notOver.trim() || null,
-        dishonourReason: row.dishonourReason.trim() || null,
-        returnCharges: parseNum(row.returnCharges) ?? null,
-        otherCharges: parseNum(row.otherCharges) ?? null,
-      })),
+    payments: mapPaymentTransactionsToApi(values),
   };
 
-  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "UPI") {
-    body.paymentMode = "UPI";
-    body.utrRef = values.onlineTransactionRef.trim() || null;
-    if (co != null) {
-      body.expectedNetPremium = co;
-    }
-  } else if (primaryPaymentMode === "CHEQUE") {
-    const chequeAmount = parseNum(values.paymentTransactions[0]?.amountReceived ?? "");
-    if (chequeAmount == null) {
-      throw new Error("Enter Amount Received in Payment & Bank Details.");
-    }
-    const cq = resolveChequeFieldsFromForm(values);
-    if (!cq.number || !cq.bankName) {
-      throw new Error(
-        "Cheque details incomplete. Enter transaction/cheque number and bank name in Payment & Bank Details.",
-      );
-    }
-    body.initialPayment = {
-      amount: chequeAmount,
-      method: "CHQ",
-      cheque: {
-        number: cq.number,
-        bankName: cq.bankName,
-        ifsc: cq.ifsc,
-        status: cq.status,
-        reason: cq.status === "DISHONOURED" ? cq.dishonourReason : null,
-        accountNo: cq.accountNo,
-        branch: cq.branch,
-        nameAsPerCheque: cq.nameAsPerCheque,
-        notOver: cq.notOver,
-        chequeDate: cq.chequeDate ? new Date(cq.chequeDate).toISOString() : null,
-      },
-    };
-    body.paymentMode = "CHQ";
-    body.bankName = cq.bankName;
-    body.bankAccountLast4 = cq.accountNo ? cq.accountNo.replace(/\D/g, "").slice(-4) : null;
-    // First transaction is represented by initialPayment; avoid duplicate Payment row.
-    const rows = body.payments as Array<Record<string, unknown>> | undefined;
-    if (rows?.length && parseNum(values.paymentTransactions[0]?.amountReceived ?? "") != null) {
-      body.payments = rows.slice(1);
-    }
-  } else if (primaryPaymentMode === "CASH") {
-    body.paymentMode = "CASH";
+  applyPrimaryPaymentModeToBody(body, values);
+  if (co != null) {
+    body.expectedNetPremium = co;
   }
 
   let res: Record<string, unknown>;
@@ -317,8 +235,8 @@ export async function submitAdPolicyPatchRequest({
   }
   const co = parseNum(values.coPremium);
   const ageAnchor = values.previousEndDate || values.policyEnd;
-  const primaryPaymentMode = values.paymentTransactions[0]?.mode ?? values.paymentMode;
   const combinedRemarks = buildCombinedRemarks(values);
+  validatePaymentTransactions(values);
 
   const body: Record<string, unknown> = {
     expectedUpdatedAt,
@@ -418,37 +336,10 @@ export async function submitAdPolicyPatchRequest({
     gaamMahajanVkk: parseNum(values.gaamMahajan) ?? null,
     excessShortAmount: parseNum(values.excessShort) ?? null,
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
-    payments: values.paymentTransactions
-      .filter((row) => parseNum(row.amountReceived) != null)
-      .map((row) => ({
-        amount: parseNum(row.amountReceived)!,
-        method:
-          row.mode === "CHEQUE" ? "CHQ" : row.mode === "CASH" ? "CASH" : "UPI",
-        status: row.transactionStatus || null,
-        transactionNumber: row.transactionNumber.trim() || null,
-        transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
-        bankName: row.bankName.trim() || null,
-        branchName: row.branch.trim() || null,
-        accountNumber: (row.mode === "UPI" ? row.mobileNumber?.trim() : row.accountNumber.trim()) || null,
-        nameAsPerCheque: row.nameAsPerCheque.trim() || null,
-        ifscCode: row.ifscCode.trim() || null,
-        notOver: row.notOver.trim() || null,
-        dishonourReason: row.dishonourReason.trim() || null,
-        returnCharges: parseNum(row.returnCharges) ?? null,
-        otherCharges: parseNum(row.otherCharges) ?? null,
-      })),
+    payments: mapPaymentTransactionsToApi(values),
   };
 
-  if (primaryPaymentMode === "ONLINE" || primaryPaymentMode === "UPI") {
-    body.paymentMode = "UPI";
-    body.utrRef = values.onlineTransactionRef.trim() || null;
-  } else if (primaryPaymentMode === "CHEQUE") {
-    body.paymentMode = "CHQ";
-    body.bankName = values.bank.trim() || null;
-    body.bankAccountLast4 = values.accountNo.trim() ? values.accountNo.replace(/\D/g, "").slice(-4) : null;
-  } else if (primaryPaymentMode === "CASH") {
-    body.paymentMode = "CASH";
-  }
+  applyPrimaryPaymentModeToBody(body, values);
 
   try {
     await apiPatch(`/policies/${policyId}`, body);

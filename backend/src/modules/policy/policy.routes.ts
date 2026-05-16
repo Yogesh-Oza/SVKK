@@ -19,6 +19,7 @@ import {
   patchPolicyBodySchema,
   yearValueKeys,
   type PolicyMemberReplaceRow,
+  type PaymentReplaceRow,
 } from "./policy.schemas.js";
 import {
   buildPolicyListWhere,
@@ -153,8 +154,15 @@ function patchBodyToInput(
   year?: PolicyYearSectionPatch;
   insuredParty?: InsuredPartySectionPatch;
   replaceMembers?: { yearLabel: string; members: PolicyMemberReplaceRow[] };
+  replacePayments?: { yearLabel: string; payments: PaymentReplaceRow[] };
 } {
-  const { expectedUpdatedAt, insuredParty: partyBody, members: membersBody, ...rest } = body;
+  const {
+    expectedUpdatedAt,
+    insuredParty: partyBody,
+    members: membersBody,
+    payments: paymentsBody,
+    ...rest
+  } = body;
   const policy: PolicySectionPatch = {};
   if (rest.policyNo !== undefined) policy.policyNo = rest.policyNo;
   if (rest.categoryId !== undefined) policy.categoryId = rest.categoryId;
@@ -221,6 +229,11 @@ function patchBodyToInput(
       ? { yearLabel: rest.yearLabel, members: membersBody }
       : undefined;
 
+  const replacePayments =
+    paymentsBody !== undefined && rest.yearLabel
+      ? { yearLabel: rest.yearLabel, payments: paymentsBody }
+      : undefined;
+
   const raw = rest as Record<string, unknown>;
   const hasYear =
     Boolean(rest.yearLabel) && yearValueKeys.some((k) => raw[k] !== undefined);
@@ -229,6 +242,7 @@ function patchBodyToInput(
       policy,
       ...(insuredParty ? { insuredParty } : {}),
       ...(replaceMembers ? { replaceMembers } : {}),
+      ...(replacePayments ? { replacePayments } : {}),
       ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}),
     };
   }
@@ -244,6 +258,7 @@ function patchBodyToInput(
     year,
     ...(insuredParty ? { insuredParty } : {}),
     ...(replaceMembers ? { replaceMembers } : {}),
+    ...(replacePayments ? { replacePayments } : {}),
     ...(expectedUpdatedAt != null ? { expectedUpdatedAt } : {}),
   };
 }
@@ -491,7 +506,8 @@ export function createPolicyRouter(env: Env) {
       assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
       const parsed = patchPolicyBodySchema.parse(req.body);
-      const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers } = patchBodyToInput(parsed);
+      const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers, replacePayments } =
+        patchBodyToInput(parsed);
       const row = await updatePolicySections({
         actorUserId: req.userId!,
         policyId: String(req.params.id),
@@ -500,6 +516,7 @@ export function createPolicyRouter(env: Env) {
         year,
         insuredParty,
         replaceMembers,
+        replacePayments,
       });
       res.json({
         ...row,

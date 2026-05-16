@@ -82,7 +82,7 @@ const initialPaymentSchema = z
     }
   });
 
-const paymentEntrySchema = z.object({
+export const paymentEntrySchema = z.object({
   amount: z.number().nonnegative(),
   method: z.nativeEnum(PayMethod),
   status: z.nativeEnum(ChequeStatus).optional().nullable(),
@@ -115,6 +115,7 @@ export const memberCreateSchema = z.object({
 });
 
 export type PolicyMemberReplaceRow = z.infer<typeof memberCreateSchema>;
+export type PaymentReplaceRow = z.infer<typeof paymentEntrySchema>;
 
 const adPolicyExtraSchema = z.object({
   customerId: z.string().max(64).optional().nullable(),
@@ -284,5 +285,8 @@ export const patchPolicyBodySchema = z
     }
     if (data.members != null && !data.yearLabel) {
       ctx.addIssue({ code: "custom", message: "yearLabel is required when replacing members" });
+    }
+    if (data.payments != null && !data.yearLabel) {
+      ctx.addIssue({ code: "custom", message: "yearLabel is required when replacing payments" });
     }
   });
