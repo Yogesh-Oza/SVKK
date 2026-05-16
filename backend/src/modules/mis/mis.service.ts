@@ -5,6 +5,7 @@ import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { buildPolicyScopeSqlP } from "./mis.scope-sql.js";
 import {
   asOfDayBoundsUTC,
+  reportPeriodBoundsUTC,
   queryDashboardMonthlyPremium,
   queryVillageAggregates,
   queryVillagePaymentTotals,
@@ -178,15 +179,22 @@ export async function getDashboardCharts(
     monthly.push({ year: y, month: m, monthLabel, premium });
   }
 
+  const { start, end, ageAsOf } = reportPeriodBoundsUTC(null, asOfDate);
   const mixRows = await queryPolicyMemberReport(prisma, {
     scopeOnP,
-    asOfDate,
+    periodStart: start,
+    periodEnd: end,
+    asOf: ageAsOf,
+    ageAsOf,
     groupBy: "policy_type",
-    categoryKey: null,
-    policyGrouping: null,
-    month: null,
-    year: null,
-    fiscalLabel: null,
+    categoryKeys: [],
+    policyGroupings: [],
+    villages: [],
+    months: [],
+    years: [],
+    createdFrom: null,
+    createdTo: null,
+    fiscalLabels: [],
   });
   const mixParsed = mixRows.map((r) => ({
     label: friendlyProductLabel(r.label),
@@ -248,30 +256,42 @@ export async function getPolicyMemberReport(
   userId: string,
   permissions: Set<string>,
   scope: MisScope,
-  asOfDate: Date,
-  filterVillage: string | undefined,
   input: {
+    dateFrom: Date | null;
+    dateTo: Date | null;
+    villages: string[];
     groupBy: PolicyMemberReportGroupBy;
-    categoryKey: string | null;
-    policyGrouping: string | null;
-    month: number | null;
-    year: number | null;
-    fiscalLabel: string | null;
+    categoryKeys: string[];
+    policyGroupings: string[];
+    months: number[];
+    years: number[];
+    fiscalLabels: string[];
   },
 ) {
-  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, filterVillage);
+  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, undefined);
+  const { start, end, ageAsOf } = reportPeriodBoundsUTC(input.dateFrom, input.dateTo);
+  const createdFrom = input.dateFrom ? asOfDayBoundsUTC(input.dateFrom).start : null;
+  const createdTo =
+    input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
   const rows = await queryPolicyMemberReport(prisma, {
     scopeOnP,
-    asOfDate,
+    periodStart: start,
+    periodEnd: end,
+    asOf: ageAsOf,
+    ageAsOf,
     groupBy: input.groupBy,
-    categoryKey: input.categoryKey,
-    policyGrouping: input.policyGrouping,
-    month: input.month,
-    year: input.year,
-    fiscalLabel: input.fiscalLabel,
+    categoryKeys: input.categoryKeys,
+    policyGroupings: input.policyGroupings,
+    villages: input.villages,
+    months: input.months,
+    years: input.years,
+    createdFrom,
+    createdTo,
+    fiscalLabels: input.fiscalLabels,
   });
   return {
-    asOfDate: asOfDate.toISOString(),
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
     groupBy: input.groupBy,
     rows: rows.map(toPolicyMemberJsonRow),
   };

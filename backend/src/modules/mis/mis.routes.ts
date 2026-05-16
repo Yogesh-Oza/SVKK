@@ -27,6 +27,96 @@ function parseAsOf(q: { asOfDate?: string }): Date {
   return new Date();
 }
 
+function queryToStringArray(v: unknown): string[] | undefined {
+  if (v == null) return undefined;
+  const raw = Array.isArray(v) ? v : [v];
+  const out = raw
+    .flatMap((x) => String(x).split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return out.length ? [...new Set(out)] : undefined;
+}
+
+const stringArrayQuery = z.preprocess(queryToStringArray, z.array(z.string()).optional());
+
+const intArrayQuery = z.preprocess((v) => {
+  const arr = queryToStringArray(v);
+  if (!arr?.length) return undefined;
+  const nums = arr.map((s) => Number.parseInt(s, 10)).filter((n) => Number.isFinite(n));
+  return nums.length ? [...new Set(nums)] : undefined;
+}, z.array(z.number().int()).optional());
+
+function parseOptionalDate(s: string | undefined): Date | null {
+  if (!s?.trim()) return null;
+  const d = new Date(s.trim());
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const policyMemberReportQuerySchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  /** @deprecated use dateTo */
+  asOfDate: z.string().optional(),
+  /** @deprecated use villages[] */
+  village: z.string().optional(),
+  villages: stringArrayQuery,
+  groupBy: z
+    .enum(["village", "area", "policy_type", "sum_insured", "age"])
+    .default("village"),
+  categoryKeys: stringArrayQuery,
+  /** @deprecated use categoryKeys[] */
+  categoryKey: z.string().optional(),
+  policyGroupings: stringArrayQuery,
+  /** @deprecated use policyGroupings[] */
+  policyGrouping: z.string().optional(),
+  months: intArrayQuery,
+  /** @deprecated use months[] */
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  years: intArrayQuery,
+  /** @deprecated use years[] */
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  fiscalLabels: stringArrayQuery,
+  /** @deprecated use fiscalLabels[] */
+  fiscalLabel: z.string().optional(),
+});
+
+function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQuerySchema>) {
+  const dateFrom = parseOptionalDate(q.dateFrom);
+  const dateTo =
+    parseOptionalDate(q.dateTo) ??
+    parseOptionalDate(q.asOfDate) ??
+    (dateFrom ? null : new Date());
+  const villages = [
+    ...(q.villages ?? []),
+    ...(q.village?.trim() ? [q.village.trim()] : []),
+  ];
+  const categoryKeys = [
+    ...(q.categoryKeys ?? []),
+    ...(q.categoryKey?.trim() ? [q.categoryKey.trim()] : []),
+  ];
+  const policyGroupings = [
+    ...(q.policyGroupings ?? []),
+    ...(q.policyGrouping?.trim() ? [q.policyGrouping.trim()] : []),
+  ];
+  const months = [...(q.months ?? []), ...(q.month != null ? [q.month] : [])];
+  const years = [...(q.years ?? []), ...(q.year != null ? [q.year] : [])];
+  const fiscalLabels = [
+    ...(q.fiscalLabels ?? []),
+    ...(q.fiscalLabel?.trim() ? [q.fiscalLabel.trim()] : []),
+  ];
+  return {
+    dateFrom,
+    dateTo,
+    villages: [...new Set(villages)],
+    groupBy: q.groupBy,
+    categoryKeys: [...new Set(categoryKeys)],
+    policyGroupings: [...new Set(policyGroupings)],
+    months: [...new Set(months)],
+    years: [...new Set(years)],
+    fiscalLabels: [...new Set(fiscalLabels)],
+  };
+}
+
 export function createMisRouter(_env: Env) {
   const r = Router();
   r.use(requireAuth(_env));
@@ -156,36 +246,13 @@ export function createMisRouter(_env: Env) {
     requirePermission("mis:read"),
     async (req, res, next) => {
       try {
-        const q = z
-          .object({
-            asOfDate: z.string().optional(),
-            village: z.string().optional(),
-            groupBy: z
-              .enum(["village", "area", "policy_type", "sum_insured", "age"])
-              .default("village"),
-            categoryKey: z.string().optional(),
-            policyGrouping: z.string().optional(),
-            month: z.coerce.number().int().min(1).max(12).optional(),
-            year: z.coerce.number().int().min(2000).max(2100).optional(),
-            fiscalLabel: z.string().optional(),
-          })
-          .parse(req.query);
+        const q = policyMemberReportQuerySchema.parse(req.query);
         const scope = await loadMisScope(req.userId!, req.permissions!);
-        const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getPolicyMemberReport(
           req.userId!,
           req.permissions!,
           scope,
-          asOf,
-          q.village,
-          {
-            groupBy: q.groupBy,
-            categoryKey: q.categoryKey?.trim() || null,
-            policyGrouping: q.policyGrouping?.trim() || null,
-            month: q.month ?? null,
-            year: q.year ?? null,
-            fiscalLabel: q.fiscalLabel?.trim() || null,
-          },
+          normalizePolicyMemberReportQuery(q),
         );
         res.json(rep);
       } catch (e) {
@@ -199,36 +266,13 @@ export function createMisRouter(_env: Env) {
     requirePermission("mis:read"),
     async (req, res, next) => {
       try {
-        const q = z
-          .object({
-            asOfDate: z.string().optional(),
-            village: z.string().optional(),
-            groupBy: z
-              .enum(["village", "area", "policy_type", "sum_insured", "age"])
-              .default("village"),
-            categoryKey: z.string().optional(),
-            policyGrouping: z.string().optional(),
-            month: z.coerce.number().int().min(1).max(12).optional(),
-            year: z.coerce.number().int().min(2000).max(2100).optional(),
-            fiscalLabel: z.string().optional(),
-          })
-          .parse(req.query);
+        const q = policyMemberReportQuerySchema.parse(req.query);
         const scope = await loadMisScope(req.userId!, req.permissions!);
-        const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getPolicyMemberReport(
           req.userId!,
           req.permissions!,
           scope,
-          asOf,
-          q.village,
-          {
-            groupBy: q.groupBy,
-            categoryKey: q.categoryKey?.trim() || null,
-            policyGrouping: q.policyGrouping?.trim() || null,
-            month: q.month ?? null,
-            year: q.year ?? null,
-            fiscalLabel: q.fiscalLabel?.trim() || null,
-          },
+          normalizePolicyMemberReportQuery(q),
         );
         const cols = [
           "label",

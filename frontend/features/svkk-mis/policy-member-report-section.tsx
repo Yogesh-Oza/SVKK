@@ -18,8 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { svkkJson } from "@/lib/svkk/api";
+import {
+  PolicyFilterMulti,
+  type PolicyFilterOption,
+} from "@/features/svkk-policies/policy-filter-multi";
+import { formatInr } from "@/features/svkk-dashboard/currency";
 import { backendApi } from "@/lib/api/svkk-client";
+import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import {
   flexRender,
@@ -27,14 +32,13 @@ import {
   getFilteredRowModel,
   getSortedRowModel,
   useReactTable,
-  type ColumnDef,
   type Column,
+  type ColumnDef,
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatInr } from "@/features/svkk-dashboard/currency";
 
 const GROUP_BY_OPTIONS = [
   { value: "village" as const, label: "Village wise" },
@@ -44,8 +48,25 @@ const GROUP_BY_OPTIONS = [
   { value: "age" as const, label: "Age wise" },
 ];
 
-const CATEGORY_OPTIONS = ["A", "B", "C", "D", "STAFF"] as const;
-const POLICY_GROUP_OPTIONS = ["OTHER", "RTY"] as const;
+const CATEGORY_OPTIONS: PolicyFilterOption[] = ["A", "B", "C", "D", "STAFF"].map((c) => ({
+  value: c,
+  label: c,
+}));
+
+const CREATED_MONTH_OPTIONS: PolicyFilterOption[] = [
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
 
 const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "label",
@@ -71,22 +92,6 @@ const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "age56_60",
   "age61_65",
   "age65p",
-];
-const YEAR_OPTIONS = ["", "2023", "2024", "2025", "2026", "2027"] as const;
-const MONTHS: { v: string; m: string }[] = [
-  { v: "", m: "All" },
-  { v: "1", m: "January" },
-  { v: "2", m: "February" },
-  { v: "3", m: "March" },
-  { v: "4", m: "April" },
-  { v: "5", m: "May" },
-  { v: "6", m: "June" },
-  { v: "7", m: "July" },
-  { v: "8", m: "August" },
-  { v: "9", m: "September" },
-  { v: "10", m: "October" },
-  { v: "11", m: "November" },
-  { v: "12", m: "December" },
 ];
 
 export type PolicyMemberRow = {
@@ -116,9 +121,16 @@ export type PolicyMemberRow = {
 };
 
 type ReportResponse = {
-  asOfDate: string;
+  dateFrom: string | null;
+  dateTo: string;
   groupBy: (typeof GROUP_BY_OPTIONS)[number]["value"];
   rows: PolicyMemberRow[];
+};
+
+type FiltersMeta = {
+  villages: string[];
+  policyGroupings: string[];
+  periodYearTexts: string[];
 };
 
 const DIM_HEADER: Record<ReportResponse["groupBy"], string> = {
@@ -281,23 +293,41 @@ function globalFilterFn(
 }
 
 type Props = {
-  asOf: string;
-  village: string;
   onError: (m: string) => void;
 };
 
-export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
+export function PolicyMemberReportSection({ onError }: Props) {
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [groupBy, setGroupBy] = useState<(typeof GROUP_BY_OPTIONS)[number]["value"]>("village");
-  const [category, setCategory] = useState<string>("");
-  const [policyGroup, setPolicyGroup] = useState<string>("");
-  const [month, setMonth] = useState<string>("");
-  const [year, setYear] = useState<string>("");
+  const [categoryKeys, setCategoryKeys] = useState<string[]>([]);
+  const [villages, setVillages] = useState<string[]>([]);
+  const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
+  const [months, setMonths] = useState<string[]>([]);
+  const [fiscalYears, setFiscalYears] = useState<string[]>([]);
   const [filterText, setFilterText] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<PolicyMemberRow[]>([]);
-  const [asOfLabel, setAsOfLabel] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<ReportResponse["groupBy"] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
+
+  const villageOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.villages ?? []).map((v) => ({ value: v, label: v })),
+    [filterMeta?.villages],
+  );
+  const groupingOptions = useMemo<PolicyFilterOption[]>(
+    () =>
+      (filterMeta?.policyGroupings.length
+        ? filterMeta.policyGroupings
+        : ["OTHER", "RTY"]
+      ).map((g) => ({ value: g, label: g })),
+    [filterMeta?.policyGroupings],
+  );
+  const yearOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.periodYearTexts ?? []).map((y) => ({ value: y, label: y })),
+    [filterMeta?.periodYearTexts],
+  );
 
   const columns = useMemo(
     () => makeColumns(activeGroup ? DIM_HEADER[activeGroup] : "—"),
@@ -318,25 +348,20 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
 
   const buildQuery = useCallback(() => {
     const q = new URLSearchParams();
-    q.set("asOfDate", asOf);
-    if (village.trim()) {
-      q.set("village", village.trim());
+    if (dateFrom) {
+      q.set("dateFrom", dateFrom);
+    }
+    if (dateTo) {
+      q.set("dateTo", dateTo);
     }
     q.set("groupBy", groupBy);
-    if (category) {
-      q.set("categoryKey", category);
-    }
-    if (policyGroup) {
-      q.set("policyGrouping", policyGroup);
-    }
-    if (month) {
-      q.set("month", month);
-    }
-    if (year) {
-      q.set("year", year);
-    }
+    categoryKeys.forEach((c) => q.append("categoryKeys", c));
+    villages.forEach((v) => q.append("villages", v));
+    policyGroupings.forEach((g) => q.append("policyGroupings", g));
+    months.forEach((m) => q.append("months", m));
+    fiscalYears.forEach((y) => q.append("fiscalLabels", y));
     return q;
-  }, [asOf, category, groupBy, month, policyGroup, village, year]);
+  }, [categoryKeys, dateFrom, dateTo, fiscalYears, groupBy, months, policyGroupings, villages]);
 
   const runReport = useCallback(async () => {
     onError("");
@@ -350,7 +375,6 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
         `/mis/policy-member-report?${buildQuery().toString()}`,
       );
       setData(res.rows);
-      setAsOfLabel(res.asOfDate);
       setActiveGroup(res.groupBy);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Report failed");
@@ -358,6 +382,18 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
       setLoading(false);
     }
   }, [buildQuery, onError]);
+
+  useEffect(() => {
+    if (!getSvkkApiBase()) return;
+    void (async () => {
+      try {
+        const f = await svkkJson<FiltersMeta>("/policies/filters");
+        setFilterMeta(f);
+      } catch {
+        /* non-fatal */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void runReport();
@@ -387,41 +423,46 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
 
   return (
     <div className="space-y-4 rounded-lg border border-border/80 bg-card p-4 shadow-sm">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Policy &amp; member report</h2>
-        <p className="text-muted-foreground mt-0.5 text-sm">
-            Uses the as-of date and optional village from above. Sort columns and
-            use the search box to narrow rows (totals follow the filtered set).
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Category</Label>
-          <Select
-            value={category || "__all__"}
-            onValueChange={(v) => setCategory(v === "__all__" ? "" : v)}
-          >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All</SelectItem>
-              {CATEGORY_OPTIONS.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+          <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+            From date
+          </Label>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-10 bg-background/90"
+          />
         </div>
-        <div className="min-w-[160px]">
-          <Label className="text-xs text-muted-foreground">Select option</Label>
+        <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+          <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+            To date
+          </Label>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-10 bg-background/90"
+          />
+        </div>
+        <PolicyFilterMulti
+          label="Category"
+          placeholder="All categories"
+          options={CATEGORY_OPTIONS}
+          selected={categoryKeys}
+          onChange={setCategoryKeys}
+          accentClassName="border-violet-200/90 from-violet-50/95 to-card dark:border-violet-900/50 dark:from-violet-950/35 dark:to-card"
+        />
+        <div className="rounded-xl border-2 border-cyan-200/90 bg-gradient-to-br from-cyan-50/95 to-card p-3 shadow-sm dark:border-cyan-900/50 dark:from-cyan-950/35 dark:to-card">
+          <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+            Group rows by
+          </Label>
           <Select
             value={groupBy}
             onValueChange={(v) => setGroupBy(v as (typeof groupBy))}
           >
-            <SelectTrigger className="mt-1 h-9">
+            <SelectTrigger className="mt-0 h-10 bg-background/90">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -433,64 +474,50 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
             </SelectContent>
           </Select>
         </div>
-        <div className="min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Policy grouping</Label>
-          <Select
-            value={policyGroup || "__pall__"}
-            onValueChange={(v) => setPolicyGroup(v === "__pall__" ? "" : v)}
-          >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__pall__">All</SelectItem>
-              {POLICY_GROUP_OPTIONS.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Month (policy created)</Label>
-          <Select
-            value={month || "__mall__"}
-            onValueChange={(v) => setMonth(v === "__mall__" ? "" : v)}
-          >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTHS.map((m) => (
-                <SelectItem key={m.v || "mall"} value={m.v || "__mall__"}>
-                  {m.m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="min-w-[120px]">
-          <Label className="text-xs text-muted-foreground">Year (created)</Label>
-          <Select
-            value={year || "__yall__"}
-            onValueChange={(v) => setYear(v === "__yall__" ? "" : v)}
-          >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {YEAR_OPTIONS.map((y) => (
-                <SelectItem key={y || "yall"} value={y || "__yall__"}>
-                  {y || "All"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2">
+        <PolicyFilterMulti
+          label="Village"
+          placeholder="All villages"
+          options={villageOptions}
+          selected={villages}
+          onChange={setVillages}
+          accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
+        />
+        <PolicyFilterMulti
+          label="Policy grouping"
+          placeholder="All groupings"
+          options={groupingOptions}
+          selected={policyGroupings}
+          onChange={setPolicyGroupings}
+          accentClassName="border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card"
+        />
+        <PolicyFilterMulti
+          label="Month (policy created)"
+          placeholder="All months"
+          options={CREATED_MONTH_OPTIONS}
+          selected={months}
+          onChange={setMonths}
+          accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
+        />
+        <PolicyFilterMulti
+          label="Year"
+          placeholder="All years"
+          options={yearOptions}
+          selected={fiscalYears}
+          onChange={setFiscalYears}
+          accentClassName="border-amber-200/90 from-amber-50/95 to-card dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card"
+        />
+        <div className="flex flex-wrap items-end gap-2">
           <Button type="button" size="sm" variant="outline" onClick={downloadCsv}>
             Download CSV
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void runReport()}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
           </Button>
         </div>
       </div>
@@ -504,10 +531,6 @@ export function PolicyMemberReportSection({ asOf, village, onError }: Props) {
           placeholder="Filter any column…"
         />
       </div>
-
-      {asOfLabel ? (
-        <p className="text-muted-foreground text-xs">As of {new Date(asOfLabel).toLocaleString()}</p>
-      ) : null}
 
       <div className="max-w-full overflow-x-auto rounded-md border">
         <Table>

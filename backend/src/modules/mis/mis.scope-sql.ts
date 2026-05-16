@@ -11,9 +11,24 @@ export function buildPolicyScopeSqlP(
   scope: MisScope,
   filterVillage: string | undefined,
 ): Prisma.Sql {
+  // Match buildPolicyReadWhere: broadest scope wins (scope_all before scope_own).
+  if (
+    hasPermissionInSet(permissions, "policy:scope_all") ||
+    hasPermissionInSet(permissions, "mis:scope_all")
+  ) {
+    if (filterVillage) {
+      return Prisma.sql`p.deletedAt IS NULL AND p.village = ${filterVillage}`;
+    }
+    return Prisma.sql`p.deletedAt IS NULL`;
+  }
+
   if (hasPermissionInSet(permissions, "policy:scope_own")) {
+    if (filterVillage) {
+      return Prisma.sql`p.deletedAt IS NULL AND p.createdById = ${userId} AND p.village = ${filterVillage}`;
+    }
     return Prisma.sql`p.deletedAt IS NULL AND p.createdById = ${userId}`;
   }
+
   if (scope.kind === "full") {
     if (filterVillage) {
       return Prisma.sql`p.deletedAt IS NULL AND p.village = ${filterVillage}`;

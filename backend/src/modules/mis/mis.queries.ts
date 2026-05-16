@@ -14,6 +14,51 @@ export function asOfDayBoundsUTC(asOfDate: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
+/** Policy-year overlap window and age-as-of date from optional created-date range. */
+export function reportPeriodBoundsUTC(
+  dateFrom: Date | null,
+  dateTo: Date | null,
+): { start: Date; end: Date; ageAsOf: Date } {
+  const endAnchor = dateTo ?? dateFrom ?? new Date();
+  const { end } = asOfDayBoundsUTC(endAnchor);
+  if (dateFrom) {
+    const { start } = asOfDayBoundsUTC(dateFrom);
+    return { start, end, ageAsOf: endAnchor };
+  }
+  const single = asOfDayBoundsUTC(endAnchor);
+  return { start: single.start, end: single.end, ageAsOf: endAnchor };
+}
+
+/**
+ * Policy year is in the MIS as-of window when:
+ * - start/end dates overlap the report day, OR
+ * - both dates are unset (common on AD data entry), OR
+ * - `yearLabel` is a fiscal label (e.g. 2026-27) whose Apr–Mar window contains as-of.
+ */
+export function policyYearActiveOnAsOfSql(
+  periodStart: Date,
+  periodEnd: Date,
+  asOf: Date,
+  yearAlias = "py",
+): Prisma.Sql {
+  const y = Prisma.raw(yearAlias);
+  return Prisma.sql`(
+    (${y}.policyStart IS NULL AND ${y}.policyEnd IS NULL)
+    OR (
+      (${y}.policyStart IS NULL OR ${y}.policyStart <= ${periodEnd})
+      AND (${y}.policyEnd IS NULL OR ${y}.policyEnd >= ${periodStart})
+    )
+    OR (
+      ${y}.yearLabel REGEXP '^[0-9]{4}-[0-9]{2}$'
+      AND ${asOf} >= STR_TO_DATE(CONCAT(SUBSTRING(${y}.yearLabel, 1, 4), '-04-01'), '%Y-%m-%d')
+      AND ${asOf} <= STR_TO_DATE(
+        CONCAT(CAST(SUBSTRING(${y}.yearLabel, 1, 4) AS UNSIGNED) + 1, '-03-31'),
+        '%Y-%m-%d'
+      )
+    )
+  )`;
+}
+
 export type VillageAggregateRow = {
   village: string | null;
   totalPolicies: bigint;
@@ -30,6 +75,7 @@ export async function queryVillageAggregates(
   args: { scopeOnP: Prisma.Sql; asOfDate: Date },
 ): Promise<VillageAggregateRow[]> {
   const { start, end } = asOfDayBoundsUTC(args.asOfDate);
+  const yearActive = policyYearActiveOnAsOfSql(start, end, args.asOfDate);
   return prisma.$queryRaw<VillageAggregateRow[]>`
     SELECT
       p.village AS village,
@@ -38,8 +84,7 @@ export async function queryVillageAggregates(
       COALESCE(SUM(py.expectedNetPremium), 0) AS sumExpectedPremium
     FROM Policy p
     INNER JOIN PolicyYear py ON py.policyId = p.id AND py.deletedAt IS NULL
-      AND (py.policyStart IS NULL OR py.policyStart <= ${end})
-      AND (py.policyEnd IS NULL OR py.policyEnd >= ${start})
+      AND ${yearActive}
     LEFT JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL
     WHERE p.deletedAt IS NULL
       AND (${args.scopeOnP})
@@ -172,13 +217,19 @@ export type PolicyMemberReportRow = {
 
 type PolicyMemberReportParams = {
   scopeOnP: Prisma.Sql;
-  asOfDate: Date;
+  periodStart: Date;
+  periodEnd: Date;
+  asOf: Date;
+  ageAsOf: Date;
   groupBy: "village" | "area" | "policy_type" | "sum_insured" | "age";
-  categoryKey: string | null;
-  policyGrouping: string | null;
-  month: number | null;
-  year: number | null;
-  fiscalLabel: string | null;
+  categoryKeys: string[];
+  policyGroupings: string[];
+  villages: string[];
+  months: number[];
+  years: number[];
+  createdFrom: Date | null;
+  createdTo: Date | null;
+  fiscalLabels: string[];
 };
 
 function groupDimExpr(
@@ -222,41 +273,75 @@ function groupDimExpr(
   )`;
 }
 
-function categoryFilterSql(categoryKey: string | null): Prisma.Sql {
-  if (!categoryKey) {
+function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
+  if (!categoryKeys.length) {
     return Prisma.empty;
   }
-  // `key` is reserved in MySQL; qualify with alias
-  return Prisma.sql` AND LOWER(${Prisma.raw("`cat`.`key`")}) = LOWER(${categoryKey})`;
+  return Prisma.sql` AND LOWER(${Prisma.raw("`cat`.`key`")}) IN (${Prisma.join(
+    categoryKeys.map((k) => Prisma.sql`LOWER(${k})`),
+  )})`;
 }
 
-function policyGroupingFilterSql(pg: string | null): Prisma.Sql {
-  if (!pg) {
+function policyGroupingsFilterSql(groupings: string[]): Prisma.Sql {
+  if (!groupings.length) {
     return Prisma.empty;
   }
-  return Prisma.sql` AND p.policyGrouping = ${pg}`;
+  return Prisma.sql` AND p.policyGrouping IN (${Prisma.join(groupings)})`;
 }
 
-function monthYearFilterSql(month: number | null, year: number | null): Prisma.Sql {
-  if (month != null && year != null) {
-    return Prisma.sql` AND MONTH(p.createdAt) = ${month} AND YEAR(p.createdAt) = ${year}`;
+function villagesFilterSql(villages: string[]): Prisma.Sql {
+  if (!villages.length) {
+    return Prisma.empty;
   }
-  if (year != null) {
-    return Prisma.sql` AND YEAR(p.createdAt) = ${year}`;
+  return Prisma.sql` AND p.village IN (${Prisma.join(villages)})`;
+}
+
+function monthsYearsFilterSql(months: number[], years: number[]): Prisma.Sql {
+  if (months.length && years.length) {
+    return Prisma.sql` AND MONTH(p.createdAt) IN (${Prisma.join(months)}) AND YEAR(p.createdAt) IN (${Prisma.join(years)})`;
+  }
+  if (months.length) {
+    return Prisma.sql` AND MONTH(p.createdAt) IN (${Prisma.join(months)})`;
+  }
+  if (years.length) {
+    return Prisma.sql` AND YEAR(p.createdAt) IN (${Prisma.join(years)})`;
   }
   return Prisma.empty;
 }
 
-function fiscalFilterSql(fiscalLabel: string | null): Prisma.Sql {
-  if (!fiscalLabel) {
+function createdAtRangeFilterSql(createdFrom: Date | null, createdTo: Date | null): Prisma.Sql {
+  if (createdFrom && createdTo) {
+    return Prisma.sql` AND p.createdAt >= ${createdFrom} AND p.createdAt <= ${createdTo}`;
+  }
+  if (createdFrom) {
+    return Prisma.sql` AND p.createdAt >= ${createdFrom}`;
+  }
+  if (createdTo) {
+    return Prisma.sql` AND p.createdAt <= ${createdTo}`;
+  }
+  return Prisma.empty;
+}
+
+function fiscalLabelsFilterSql(fiscalLabels: string[]): Prisma.Sql {
+  if (!fiscalLabels.length) {
     return Prisma.empty;
   }
-  return Prisma.sql` AND (p.periodYearText = ${fiscalLabel} OR py.yearLabel = ${fiscalLabel})`;
+  return Prisma.sql` AND (
+    p.periodYearText IN (${Prisma.join(fiscalLabels)})
+    OR py.yearLabel IN (${Prisma.join(fiscalLabels)})
+  )`;
 }
 
 function baseFromClause(
-  args: { scopeOnP: Prisma.Sql; start: Date; end: Date },
-  filters: { catF: Prisma.Sql; pgF: Prisma.Sql; myF: Prisma.Sql; fiscF: Prisma.Sql },
+  args: { scopeOnP: Prisma.Sql; start: Date; end: Date; asOf: Date },
+  filters: {
+    catF: Prisma.Sql;
+    pgF: Prisma.Sql;
+    villF: Prisma.Sql;
+    myF: Prisma.Sql;
+    createdF: Prisma.Sql;
+    fiscF: Prisma.Sql;
+  },
   includeMember: boolean,
   requireMember: boolean,
 ): Prisma.Sql {
@@ -264,19 +349,21 @@ function baseFromClause(
     ? Prisma.sql`LEFT JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL`
     : Prisma.empty;
   const mReq = requireMember ? Prisma.sql` AND m.id IS NOT NULL` : Prisma.empty;
+  const yearActive = policyYearActiveOnAsOfSql(args.start, args.end, args.asOf);
   return Prisma.sql`
     FROM Policy p
     LEFT JOIN Category cat ON p.categoryId = cat.id
     INNER JOIN PolicyYear py ON py.policyId = p.id
       AND py.deletedAt IS NULL
-      AND (py.policyStart IS NULL OR py.policyStart <= ${args.end})
-      AND (py.policyEnd IS NULL OR py.policyEnd >= ${args.start})
+      AND ${yearActive}
     ${mJoin}
     WHERE p.deletedAt IS NULL
       AND (${args.scopeOnP})
       ${filters.catF}
       ${filters.pgF}
+      ${filters.villF}
       ${filters.myF}
+      ${filters.createdF}
       ${filters.fiscF}
       ${mReq}
   `;
@@ -287,15 +374,21 @@ export async function queryPolicyMemberReport(
   prisma: PrismaClient,
   args: PolicyMemberReportParams,
 ): Promise<PolicyMemberReportRow[]> {
-  const { start, end } = asOfDayBoundsUTC(args.asOfDate);
-  const d = args.asOfDate;
+  const start = args.periodStart;
+  const end = args.periodEnd;
+  const d = args.ageAsOf;
+  const asOf = args.asOf;
+  const yearActive = policyYearActiveOnAsOfSql(start, end, asOf, "py");
+  const yearActiveX = policyYearActiveOnAsOfSql(start, end, asOf, "x");
   const dim = groupDimExpr(args.groupBy, d, start, end);
-  const catF = categoryFilterSql(args.categoryKey);
-  const pgF = policyGroupingFilterSql(args.policyGrouping);
-  const myF = monthYearFilterSql(args.month, args.year);
-  const fiscF = fiscalFilterSql(args.fiscalLabel);
-  const filters = { catF, pgF, myF, fiscF };
-  const fArgs = { scopeOnP: args.scopeOnP, start, end };
+  const catF = categoryKeysFilterSql(args.categoryKeys);
+  const pgF = policyGroupingsFilterSql(args.policyGroupings);
+  const villF = villagesFilterSql(args.villages);
+  const myF = monthsYearsFilterSql(args.months, args.years);
+  const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
+  const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
+  const filters = { catF, pgF, villF, myF, createdF, fiscF };
+  const fArgs = { scopeOnP: args.scopeOnP, start, end, asOf };
 
   const fromMember = baseFromClause(fArgs, filters, true, args.groupBy === "age");
 
@@ -349,18 +442,15 @@ export async function queryPolicyMemberReport(
         MAX(COALESCE(py.gaamMahajanVkk, 0)) AS sGaam,
         MAX(COALESCE(p.refundChequeAmount, 0) / NULLIF(
           (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
-            AND (x.policyStart IS NULL OR x.policyStart <= ${end})
-            AND (x.policyEnd IS NULL OR x.policyEnd >= ${start})), 0)) AS refundOnce,
+            AND ${yearActiveX}), 0)) AS refundOnce,
         MAX(COALESCE(p.cdAmount, 0) / NULLIF(
           (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
-            AND (x.policyStart IS NULL OR x.policyStart <= ${end})
-            AND (x.policyEnd IS NULL OR x.policyEnd >= ${start})), 0)) AS cdOnce
+            AND ${yearActiveX}), 0)) AS cdOnce
       FROM Policy p
       LEFT JOIN Category cat ON p.categoryId = cat.id
       INNER JOIN PolicyYear py ON py.policyId = p.id
         AND py.deletedAt IS NULL
-        AND (py.policyStart IS NULL OR py.policyStart <= ${end})
-        AND (py.policyEnd IS NULL OR py.policyEnd >= ${start})
+        AND ${yearActive}
       INNER JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL
       WHERE p.deletedAt IS NULL
         AND (${args.scopeOnP})
@@ -402,18 +492,15 @@ export async function queryPolicyMemberReport(
         COALESCE(py.gaamMahajanVkk, 0) AS sGaam,
         COALESCE(p.refundChequeAmount, 0) / NULLIF(
           (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
-            AND (x.policyStart IS NULL OR x.policyStart <= ${end})
-            AND (x.policyEnd IS NULL OR x.policyEnd >= ${start})), 0) AS refundOnce,
+            AND ${yearActiveX}), 0) AS refundOnce,
         COALESCE(p.cdAmount, 0) / NULLIF(
           (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
-            AND (x.policyStart IS NULL OR x.policyStart <= ${end})
-            AND (x.policyEnd IS NULL OR x.policyEnd >= ${start})), 0) AS cdOnce
+            AND ${yearActiveX}), 0) AS cdOnce
       FROM Policy p
       LEFT JOIN Category cat ON p.categoryId = cat.id
       INNER JOIN PolicyYear py ON py.policyId = p.id
         AND py.deletedAt IS NULL
-        AND (py.policyStart IS NULL OR py.policyStart <= ${end})
-        AND (py.policyEnd IS NULL OR py.policyEnd >= ${start})
+        AND ${yearActive}
       WHERE p.deletedAt IS NULL
         AND (${args.scopeOnP})
         ${catF}
