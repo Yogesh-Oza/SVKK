@@ -137,11 +137,21 @@ export function RoleFormDialog({
     try {
       const permissionKeys = [...selected];
       if (isEdit && role) {
-        await apiPatch(`/rbac/roles/${role.id}`, {
-          name: name.trim(),
-          description: description.trim() || undefined,
+        const body: {
+          name?: string;
+          description?: string;
+          permissionKeys: string[];
+        } = {
           permissionKeys,
-        });
+        };
+        if (!(isEdit && role.isSystem)) {
+          body.name = name.trim();
+        }
+        const desc = description.trim();
+        if (desc) {
+          body.description = desc;
+        }
+        await apiPatch(`/rbac/roles/${role.id}`, body);
         toast.success("Role updated");
       } else if (cloneFrom) {
         await apiPost(`/rbac/roles/${cloneFrom.id}/clone`, { name: name.trim() });

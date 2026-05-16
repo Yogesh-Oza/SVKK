@@ -52,4 +52,15 @@ describe("buildPolicyReadWhere", () => {
       AND: [{ deletedAt: null }, { village: { in: ["V1", "V2"] } }],
     });
   });
+
+  it("SUPER_ADMIN wildcard sees all policies, not scope_own only", () => {
+    const w = buildPolicyReadWhere(
+      { kind: "full" },
+      undefined,
+      "u1",
+      perms("SUPER_ADMIN"),
+    );
+    expect(w).toEqual({ deletedAt: null });
+    expect(w).not.toHaveProperty("createdById");
+  });
 });

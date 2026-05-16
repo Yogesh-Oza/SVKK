@@ -88,6 +88,11 @@ export function buildPolicyReadWhere(
     vs = undefined;
   }
 
+  // Broadest scope wins: Super Admin / Admin carry scope_own via closure but must not be limited to own rows.
+  if (hasPermissionInSet(permissions, "policy:scope_all")) {
+    return buildMisVillageWhere(scope, vs).policy;
+  }
+
   if (hasPermissionInSet(permissions, "policy:scope_own")) {
     return {
       deletedAt: null,
@@ -105,16 +110,16 @@ export function assertPolicyReadable(
   permissions: Set<string>,
   scope: MisScope,
 ): void {
-  if (hasPermissionInSet(permissions, "policy:scope_own")) {
-    if (policy.createdById !== userId) {
-      throw new AppError("NOT_FOUND", "Policy not found", 404);
-    }
-    return;
-  }
   if (hasPermissionInSet(permissions, "policy:scope_all")) {
     return;
   }
   if (scope.kind === "full") {
+    return;
+  }
+  if (hasPermissionInSet(permissions, "policy:scope_own")) {
+    if (policy.createdById !== userId) {
+      throw new AppError("NOT_FOUND", "Policy not found", 404);
+    }
     return;
   }
   if (scope.villages.length === 0) {

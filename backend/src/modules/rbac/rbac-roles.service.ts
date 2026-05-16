@@ -12,6 +12,9 @@ import {
 } from "../../services/rbac.service.js";
 import { logRbacAudit } from "../../services/rbac-audit.service.js";
 
+/** Remote DB + large permission sets can exceed Prisma's default 5s interactive tx limit. */
+const RBAC_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -147,7 +150,7 @@ export async function createRole(
       tx,
     );
     return created;
-  });
+  }, RBAC_TX_OPTIONS);
 
   invalidateRolePermissionCache(role.id, role.permVersion);
   return getRoleById(role.id);
@@ -172,13 +175,38 @@ export async function updateRole(
     throw new AppError("FORBIDDEN", "Cannot disable protected system role", 403);
   }
 
-  const oldEffective = [...(await getEffectivePermissions(roleId))];
+  if (
+    input.name !== undefined &&
+    input.name !== role.name &&
+    isProtectedRoleSlug(role.slug)
+  ) {
+    throw new AppError("FORBIDDEN", "Cannot rename protected system role", 403);
+  }
+
+  let permissionAssignments: { permissionId: string; effect: PermissionEffect }[] | undefined;
+  let oldPermissionKeys: string[] | undefined;
+  let newPermissionKeys: string[] | undefined;
+
+  if (input.permissionKeys) {
+    const resolved = resolvePermissionClosure(input.permissionKeys);
+    if (isProtectedRoleSlug(role.slug)) {
+      if (!resolved.has(WILDCARD_PERMISSION) && !resolved.has("roles:manage")) {
+        throw new AppError("FORBIDDEN", "Cannot strip critical permissions from super-admin", 403);
+      }
+    }
+    const keyMap = await permissionIdsFromKeys(input.permissionKeys);
+    newPermissionKeys = [...resolved].sort();
+    permissionAssignments = newPermissionKeys.map((key) => ({
+      permissionId: keyMap.get(key)!,
+      effect: "ALLOW" as PermissionEffect,
+    }));
+    oldPermissionKeys = [...(await getEffectivePermissions(roleId))].sort();
+  }
+
+  let permVersion: number | undefined;
 
   await prisma.$transaction(async (tx) => {
-    if (input.name !== undefined || input.description !== undefined) {
-      if (input.name !== undefined && isProtectedRoleSlug(role.slug)) {
-        throw new AppError("FORBIDDEN", "Cannot rename protected system role", 403);
-      }
+    if (input.name !== undefined || input.description !== undefined || input.isActive !== undefined) {
       await tx.rbacRole.update({
         where: { id: roleId },
         data: {
@@ -187,28 +215,10 @@ export async function updateRole(
           ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         },
       });
-    } else if (input.isActive !== undefined) {
-      await tx.rbacRole.update({
-        where: { id: roleId },
-        data: { isActive: input.isActive },
-      });
     }
 
-    if (input.permissionKeys) {
-      if (isProtectedRoleSlug(role.slug)) {
-        const resolved = resolvePermissionClosure(input.permissionKeys);
-        if (!resolved.has(WILDCARD_PERMISSION) && !resolved.has("roles:manage")) {
-          throw new AppError("FORBIDDEN", "Cannot strip critical permissions from super-admin", 403);
-        }
-      }
-      const keyMap = await permissionIdsFromKeys(input.permissionKeys);
-      const resolved = resolvePermissionClosure(input.permissionKeys);
-      const assignments = [...resolved].map((key) => ({
-        permissionId: keyMap.get(key)!,
-        effect: "ALLOW" as PermissionEffect,
-      }));
-      const pv = await replaceRolePermissions(tx, roleId, assignments);
-      invalidateRolePermissionCache(roleId, pv);
+    if (permissionAssignments) {
+      permVersion = await replaceRolePermissions(tx, roleId, permissionAssignments);
     }
 
     if (input.isActive !== undefined) {
@@ -224,21 +234,21 @@ export async function updateRole(
         tx,
       );
     }
+  }, RBAC_TX_OPTIONS);
 
-    if (input.permissionKeys) {
-      const newEffective = [...(await getEffectivePermissions(roleId))];
-      await logRbacAudit(
-        {
-          action: "ROLE_UPDATED",
-          actorId,
-          targetRoleId: roleId,
-          oldSnapshot: { permissions: oldEffective },
-          newSnapshot: { permissions: newEffective },
-        },
-        tx,
-      );
-    }
-  });
+  if (permVersion !== undefined) {
+    invalidateRolePermissionCache(roleId, permVersion);
+  }
+
+  if (oldPermissionKeys && newPermissionKeys) {
+    await logRbacAudit({
+      action: "ROLE_UPDATED",
+      actorId,
+      targetRoleId: roleId,
+      oldSnapshot: { permissions: oldPermissionKeys },
+      newSnapshot: { permissions: newPermissionKeys },
+    });
+  }
 
   return getRoleById(roleId);
 }
@@ -286,7 +296,7 @@ export async function softDeleteRole(actorId: string, roleId: string) {
       { action: "ROLE_SOFT_DELETED", actorId, targetRoleId: roleId, oldSnapshot: { slug: role.slug } },
       tx,
     );
-  });
+  }, RBAC_TX_OPTIONS);
 }
 
 export async function getEffectivePermissionsForUser(userId: string): Promise<string[]> {
