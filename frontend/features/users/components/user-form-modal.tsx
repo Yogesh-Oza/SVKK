@@ -31,12 +31,10 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { apiPatch, apiPost } from "@/lib/api/svkk-client";
+import { apiGet, apiPatch, apiPost } from "@/lib/api/svkk-client";
 import {
-  SVKK_ROLE_LABELS,
   createUserFormSchema,
   editUserFormSchema,
-  svkkUserRoles,
   type CreateUserFormValues,
   type EditUserFormValues,
   type User,
@@ -60,10 +58,22 @@ export function UserFormDialog({
 }: UserFormDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [assignableRoles, setAssignableRoles] = useState<
+    { id: string; name: string; slug: string }[]
+  >([]);
 
   const isEdit = !!user;
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
+
+  useEffect(() => {
+    if (!open) return;
+    void apiGet<{ roles: { id: string; name: string; slug: string }[] }>(
+      "/rbac/roles/assignable",
+    )
+      .then((json) => setAssignableRoles(json.roles ?? []))
+      .catch(() => setAssignableRoles([]));
+  }, [open]);
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserFormSchema),
@@ -71,7 +81,7 @@ export function UserFormDialog({
       name: "",
       email: "",
       password: "",
-      role: "USER",
+      roleId: "",
     },
   });
 
@@ -80,7 +90,7 @@ export function UserFormDialog({
     defaultValues: {
       name: "",
       email: "",
-      role: "USER",
+      roleId: "",
       password: "",
     },
   });
@@ -90,7 +100,7 @@ export function UserFormDialog({
       editForm.reset({
         name: user.name,
         email: user.email,
-        role: user.role,
+        roleId: user.roleId,
         password: "",
       });
     }
@@ -103,7 +113,7 @@ export function UserFormDialog({
         name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role,
+        roleId: data.roleId,
       });
       toast.success("User created successfully");
       createForm.reset();
@@ -123,7 +133,7 @@ export function UserFormDialog({
       await apiPatch(`/users/${encodeURIComponent(user.id)}`, {
         name: data.name,
         email: data.email,
-        role: data.role,
+        roleId: data.roleId,
         ...(data.password && data.password.length >= 8
           ? { password: data.password }
           : {}),
@@ -176,7 +186,7 @@ export function UserFormDialog({
         />
         <FormField
           control={editForm.control}
-          name="role"
+          name="roleId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Role</FormLabel>
@@ -190,9 +200,9 @@ export function UserFormDialog({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {svkkUserRoles.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {SVKK_ROLE_LABELS[r]}
+                  {assignableRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -285,7 +295,7 @@ export function UserFormDialog({
         />
         <FormField
           control={createForm.control}
-          name="role"
+          name="roleId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Role</FormLabel>
@@ -299,9 +309,9 @@ export function UserFormDialog({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {svkkUserRoles.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {SVKK_ROLE_LABELS[r]}
+                  {assignableRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

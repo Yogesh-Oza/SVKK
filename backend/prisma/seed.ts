@@ -1,12 +1,16 @@
 import {
   PrismaClient,
-  UserRole,
   ChartMode,
   PolicyChartKind,
   CategoryType,
   DropdownType,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import {
+  upsertPermissionCatalog,
+  upsertSystemRoles,
+  LEGACY_ROLE_SLUGS,
+} from "../src/lib/permission-seed.js";
 
 const prisma = new PrismaClient();
 
@@ -79,28 +83,33 @@ async function upsertPolicyChart(
 }
 
 async function main() {
+  const keyToId = await upsertPermissionCatalog(prisma);
+  const slugToId = await upsertSystemRoles(prisma, keyToId);
+  const superAdminRoleId = slugToId.get(LEGACY_ROLE_SLUGS.SUPER_ADMIN)!;
+  const supervisorRoleId = slugToId.get(LEGACY_ROLE_SLUGS.SUPERVISOR)!;
+
   const passwordHash = await bcrypt.hash("admin123!", 12);
 
   await prisma.user.upsert({
     where: { email: "admin@svkk.local" },
-    update: {},
+    update: { roleId: superAdminRoleId },
     create: {
       email: "admin@svkk.local",
       passwordHash,
       name: "Super Admin",
-      role: UserRole.SUPER_ADMIN,
+      roleId: superAdminRoleId,
     },
   });
 
   const supervisorHash = await bcrypt.hash("supervisor123!", 12);
   const supervisor = await prisma.user.upsert({
     where: { email: "supervisor@svkk.local" },
-    update: { name: "Supervisor One" },
+    update: { name: "Supervisor One", roleId: supervisorRoleId },
     create: {
       email: "supervisor@svkk.local",
       passwordHash: supervisorHash,
       name: "Supervisor One",
-      role: UserRole.SUPERVISOR,
+      roleId: supervisorRoleId,
     },
   });
 
@@ -165,17 +174,6 @@ async function main() {
   });
   await upsertPolicyChart(ad.id, 1, PolicyChartKind.HOLDER, holderMatrix);
   await upsertPolicyChart(ad.id, 1, PolicyChartKind.MEMBER, memberMatrix);
-
-  const perms = [
-    { role: UserRole.SUPER_ADMIN, module: "*", action: "*" },
-    { role: UserRole.ADMIN, module: "policy", action: "manage" },
-  ];
-  for (const p of perms) {
-    const exists = await prisma.rolePermission.findFirst({
-      where: { role: p.role, module: p.module, action: p.action },
-    });
-    if (!exists) await prisma.rolePermission.create({ data: p });
-  }
 
   const catSeed: { key: string; name: string; type: CategoryType }[] = [
     { key: "a", name: "Category A", type: CategoryType.GOV },
@@ -301,15 +299,16 @@ async function main() {
     });
   }
 
+  const userRoleId = slugToId.get(LEGACY_ROLE_SLUGS.USER)!;
   const userHash = await bcrypt.hash("user123!", 12);
   await prisma.user.upsert({
     where: { email: "user@svkk.local" },
-    update: {},
+    update: { roleId: userRoleId },
     create: {
       email: "user@svkk.local",
       passwordHash: userHash,
       name: "Data Entry",
-      role: UserRole.USER,
+      roleId: userRoleId,
     },
   });
 

@@ -171,7 +171,7 @@ export default function SvkkAdminPage() {
 
   useEffect(() => {
     if (missingUrl) return;
-    if (user && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") return;
+    if (user && !user.permissions?.includes("admin:policyTypes") && !user.permissions?.includes("*:*")) return;
     void (async () => {
       try {
         await loadAll();
@@ -424,7 +424,11 @@ export default function SvkkAdminPage() {
     );
   }
 
-  if (user && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+  if (
+    user &&
+    !user.permissions?.includes("admin:policyTypes") &&
+    !user.permissions?.includes("*:*")
+  ) {
     return <p className="text-muted-foreground text-sm">You do not have access to admin.</p>;
   }
   if (missingUrl) {

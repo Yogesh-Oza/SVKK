@@ -1,19 +1,24 @@
-import type { Prisma, UserRole } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../errors/app-error.js";
+import { hasPermissionInSet } from "./rbac.service.js";
 
 export type MisScope = { kind: "full" } | { kind: "villages"; villages: string[] };
 
 /**
- * Resolves how MIS and policy list queries filter by `village`.
- * ADMIN and SUPER_ADMIN see all data, optionally narrowed by a query `village` param.
- * SUPERVISOR is limited to `UserVillage` rows; empty list yields no visible rows.
+ * Resolves MIS/policy scope from effective permissions.
  */
-export async function loadMisScope(userId: string, role: UserRole): Promise<MisScope> {
-  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+export async function loadMisScope(
+  userId: string,
+  permissions: Set<string>,
+): Promise<MisScope> {
+  if (hasPermissionInSet(permissions, "mis:scope_all") || hasPermissionInSet(permissions, "policy:scope_all")) {
     return { kind: "full" };
   }
-  if (role === "SUPERVISOR") {
+  if (
+    hasPermissionInSet(permissions, "mis:scope_village") ||
+    hasPermissionInSet(permissions, "policy:scope_village")
+  ) {
     const rows = await prisma.userVillage.findMany({
       where: { userId },
       select: { village: true },
@@ -23,10 +28,6 @@ export async function loadMisScope(userId: string, role: UserRole): Promise<MisS
   return { kind: "villages", villages: [] };
 }
 
-/**
- * Builds Prisma `where` fragments for `Policy` and `Claim` from scope + optional filter village.
- * @throws AppError 403 if a scoped user requests a village outside their list
- */
 const activePolicy: Prisma.PolicyWhereInput = { deletedAt: null };
 
 function normalizeVillageFilter(v: string | string[] | undefined): string[] | undefined {
@@ -71,14 +72,11 @@ export function buildMisVillageWhere(
   };
 }
 
-/**
- * Policy list/detail filter: USER sees only policies they created; others use village scope.
- */
 export function buildPolicyReadWhere(
   scope: MisScope,
   filterVillage: string | undefined,
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   filterVillages?: string[],
 ): Prisma.PolicyWhereInput {
   let vs: string[] | undefined;
@@ -89,33 +87,31 @@ export function buildPolicyReadWhere(
   } else {
     vs = undefined;
   }
-  if (role === "USER") {
+
+  if (hasPermissionInSet(permissions, "policy:scope_own")) {
     return {
       deletedAt: null,
       createdById: userId,
       ...(vs?.length === 1 ? { village: vs[0] } : vs?.length ? { village: { in: vs } } : {}),
     };
   }
+
   return buildMisVillageWhere(scope, vs).policy;
 }
 
-/**
- * Single-policy read: same rules as list (404 if out of scope).
- * @throws AppError 404
- */
 export function assertPolicyReadable(
   policy: { village: string | null; createdById: string | null },
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
 ): void {
-  if (role === "USER") {
+  if (hasPermissionInSet(permissions, "policy:scope_own")) {
     if (policy.createdById !== userId) {
       throw new AppError("NOT_FOUND", "Policy not found", 404);
     }
     return;
   }
-  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+  if (hasPermissionInSet(permissions, "policy:scope_all")) {
     return;
   }
   if (scope.kind === "full") {
@@ -129,19 +125,15 @@ export function assertPolicyReadable(
   }
 }
 
-/**
- * Claim read/update/delete: enforce village scope for SUPERVISOR (403/404 as appropriate).
- * @throws AppError 404
- */
 export function assertClaimVillageInScope(
   claim: { village: string | null },
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
 ): void {
-  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+  if (hasPermissionInSet(permissions, "claim:scope_all")) {
     return;
   }
-  if (role === "USER") {
+  if (!hasPermissionInSet(permissions, "claim:read")) {
     throw new AppError("FORBIDDEN", "Insufficient permissions", 403);
   }
   if (scope.kind === "full") {
@@ -155,9 +147,6 @@ export function assertClaimVillageInScope(
   }
 }
 
-/**
- * Merges optional `createdAt` range (policy / claim `createdAt`) with village filters.
- */
 export function mergeDateRange(
   where: { policy: Prisma.PolicyWhereInput; claim: Prisma.ClaimWhereInput },
   from?: Date,

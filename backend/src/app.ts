@@ -18,6 +18,7 @@ import { createFilesRouter } from "./modules/files/files.routes.js";
 import { createCategoryRouter } from "./modules/category/category.routes.js";
 import { createDropdownsRouter } from "./modules/dropdowns/dropdowns.routes.js";
 import { createSettingsRouter } from "./modules/settings/settings.routes.js";
+import { createRbacRouter } from "./modules/rbac/rbac.routes.js";
 import { globalApiRateLimit } from "./middlewares/rate-limit.js";
 
 export function createApp(env: Env, rootLog: AppLogger) {
@@ -52,6 +53,7 @@ export function createApp(env: Env, rootLog: AppLogger) {
   v1.use("/claims", createClaimRouter(env));
   v1.use("/receipts", createReceiptRouter(env));
   v1.use("/users", createUsersRouter(env));
+  v1.use("/rbac", createRbacRouter(env));
   v1.use("/settings", createSettingsRouter(env));
 
   v1.use(errorHandler);

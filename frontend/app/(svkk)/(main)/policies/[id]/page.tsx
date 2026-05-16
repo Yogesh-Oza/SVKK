@@ -212,8 +212,8 @@ export default function SvkkPolicyDetailPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
-  const role = user?.role;
-  const canDel = role ? canDeletePolicy(role) : false;
+  const perms = user?.permissions ?? [];
+  const canDel = canDeletePolicy(perms);
 
   useEffect(() => {
     if (missingUrl) {

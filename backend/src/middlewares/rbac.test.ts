@@ -1,64 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { UserRole } from "@prisma/client";
+import { describe, it, expect } from "vitest";
 import { isRoleAllowed } from "./rbac.js";
+import { computeEffectivePermissions } from "../services/rbac.service.js";
+import { DEFAULT_ROLE_PERMISSIONS } from "../lib/permission-seed.js";
+import { resolvePermissionClosure } from "../domain/permissions/dependencies.js";
+import { WILDCARD_PERMISSION } from "../domain/permissions/catalog.js";
 
-const ALL_ROLES: UserRole[] = ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "USER"];
+function permsForLegacyRole(legacy: keyof typeof DEFAULT_ROLE_PERMISSIONS): Set<string> {
+  const cfg = DEFAULT_ROLE_PERMISSIONS[legacy];
+  const allow = resolvePermissionClosure(cfg.allow);
+  for (const d of cfg.deny ?? []) allow.delete(d);
+  return allow;
+}
 
-describe("rbac matrix", () => {
-  it("denies upload:csv to SUPERVISOR and USER", () => {
-    expect(isRoleAllowed("upload:csv", "SUPERVISOR")).toBe(false);
-    expect(isRoleAllowed("upload:csv", "USER")).toBe(false);
+describe("rbac effective permissions", () => {
+  it("SUPER_ADMIN wildcard grants policy:delete", () => {
+    const p = permsForLegacyRole("SUPER_ADMIN");
+    expect(isRoleAllowed("policy:delete", p)).toBe(true);
   });
 
-  it("allows upload:csv to ADMIN and SUPER_ADMIN", () => {
-    expect(isRoleAllowed("upload:csv", "ADMIN")).toBe(true);
-    expect(isRoleAllowed("upload:csv", "SUPER_ADMIN")).toBe(true);
+  it("USER cannot upload:csv", () => {
+    const p = permsForLegacyRole("USER");
+    expect(isRoleAllowed("upload:csv", p)).toBe(false);
   });
 
-  it("denies mis:read to USER", () => {
-    expect(isRoleAllowed("mis:read", "USER")).toBe(false);
+  it("ADMIN can upload:csv", () => {
+    const p = permsForLegacyRole("ADMIN");
+    expect(isRoleAllowed("upload:csv", p)).toBe(true);
   });
 
-  it("allows mis:read to SUPERVISOR, ADMIN, SUPER_ADMIN", () => {
-    for (const role of ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] as const) {
-      expect(isRoleAllowed("mis:read", role)).toBe(true);
-    }
+  it("USER cannot mis:read", () => {
+    const p = permsForLegacyRole("USER");
+    expect(isRoleAllowed("mis:read", p)).toBe(false);
   });
 
-  it("denies policy:update to USER", () => {
-    expect(isRoleAllowed("policy:update", "USER")).toBe(false);
+  it("SUPERVISOR can mis:read", () => {
+    const p = permsForLegacyRole("SUPERVISOR");
+    expect(isRoleAllowed("mis:read", p)).toBe(true);
   });
 
-  it("denies policy:delete to SUPERVISOR and USER", () => {
-    expect(isRoleAllowed("policy:delete", "SUPERVISOR")).toBe(false);
-    expect(isRoleAllowed("policy:delete", "USER")).toBe(false);
+  it("USER cannot policy:update", () => {
+    const p = permsForLegacyRole("USER");
+    expect(isRoleAllowed("policy:update", p)).toBe(false);
   });
 
-  it("denies all claim and receipt actions to USER", () => {
-    expect(isRoleAllowed("claim:create", "USER")).toBe(false);
-    expect(isRoleAllowed("claim:read", "USER")).toBe(false);
-    expect(isRoleAllowed("claim:update", "USER")).toBe(false);
-    expect(isRoleAllowed("claim:delete", "USER")).toBe(false);
-    expect(isRoleAllowed("receipt:create", "USER")).toBe(false);
+  it("DENY removes allowed key", () => {
+    const effective = computeEffectivePermissions([
+      { key: "policy:read", effect: "ALLOW" },
+      { key: "policy:delete", effect: "ALLOW" },
+      { key: "policy:delete", effect: "DENY" },
+    ]);
+    expect(effective.has("policy:read")).toBe(true);
+    expect(effective.has("policy:delete")).toBe(false);
   });
 
-  it("denies logs:read to SUPERVISOR and USER", () => {
-    expect(isRoleAllowed("logs:read", "SUPERVISOR")).toBe(false);
-    expect(isRoleAllowed("logs:read", "USER")).toBe(false);
-  });
-
-  it("allows users:manage only to ADMIN and SUPER_ADMIN", () => {
-    expect(isRoleAllowed("users:manage", "SUPER_ADMIN")).toBe(true);
-    expect(isRoleAllowed("users:manage", "ADMIN")).toBe(true);
-    expect(isRoleAllowed("users:manage", "SUPERVISOR")).toBe(false);
-    expect(isRoleAllowed("users:manage", "USER")).toBe(false);
-  });
-
-  it("every role can policy:create, policy:read, calculation:live", () => {
-    for (const role of ALL_ROLES) {
-      expect(isRoleAllowed("policy:create", role)).toBe(true);
-      expect(isRoleAllowed("policy:read", role)).toBe(true);
-      expect(isRoleAllowed("calculation:live", role)).toBe(true);
-    }
+  it("wildcard includes all catalog keys", () => {
+    const effective = computeEffectivePermissions([
+      { key: WILDCARD_PERMISSION, effect: "ALLOW" },
+    ]);
+    expect(effective.has(WILDCARD_PERMISSION)).toBe(true);
+    expect(effective.has("roles:manage")).toBe(true);
   });
 });

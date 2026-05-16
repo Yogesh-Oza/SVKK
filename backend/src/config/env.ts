@@ -49,6 +49,8 @@ const schema = z.object({
   MS_DRIVE_ID: z.string().optional(),
   /** Optional nested folder path in drive root, e.g. "SVKK/Policies" */
   MS_DRIVE_FOLDER_PATH: z.string().optional(),
+  /** Comma-separated RBAC role slugs that cannot be deleted or stripped (default: super-admin) */
+  PROTECTED_ROLE_SLUGS: z.string().default("super-admin"),
 });
 
 export type Env = z.infer<typeof schema>;

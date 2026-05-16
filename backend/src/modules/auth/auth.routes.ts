@@ -22,6 +22,28 @@ import {
 } from "./auth.cookies.js";
 import { authRateLimit } from "../../middlewares/rate-limit.js";
 
+function serializeUser(
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleId: string | null;
+    rbacRole: { id: string; name: string; slug: string; isActive: boolean } | null;
+  },
+  permissions: string[],
+) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    roleId: user.roleId,
+    roleName: user.rbacRole?.name ?? "",
+    roleSlug: user.rbacRole?.slug ?? "",
+    roleIsActive: user.rbacRole?.isActive ?? false,
+    permissions,
+  };
+}
+
 export function createAuthRouter(env: Env) {
   const r = Router();
 
@@ -29,12 +51,18 @@ export function createAuthRouter(env: Env) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.userId },
-        select: { id: true, email: true, name: true, role: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          roleId: true,
+          rbacRole: { select: { id: true, name: true, slug: true, isActive: true } },
+        },
       });
       if (!user) {
         return next(new AppError("NOT_FOUND", "User not found", 404));
       }
-      res.json(user);
+      res.json(serializeUser(user, [...(req.permissions ?? [])]));
     } catch (e) {
       next(e);
     }
@@ -57,13 +85,18 @@ export function createAuthRouter(env: Env) {
         email: body.email,
         password,
       });
-      res.json({
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
+      const full = await prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          roleId: true,
+          rbacRole: { select: { id: true, name: true, slug: true, isActive: true } },
         },
+      });
+      res.json({
+        user: serializeUser(full, [...(req.permissions ?? [])]),
       });
     } catch (e) {
       next(e);
@@ -80,8 +113,8 @@ export function createAuthRouter(env: Env) {
         .parse(req.body);
 
       const user = await verifyCredentials(body.email, body.password);
-      const accessToken = signAccessToken(user, env);
-      const refreshToken = signRefreshToken(user, env);
+      const accessToken = await signAccessToken(user, env);
+      const refreshToken = await signRefreshToken(user, env);
 
       setAccessCookie(res, env, accessToken);
       setRefreshCookie(res, env, refreshToken);
@@ -94,14 +127,23 @@ export function createAuthRouter(env: Env) {
         },
       });
 
+      const full = await prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          roleId: true,
+          rbacRole: { select: { id: true, name: true, slug: true, isActive: true } },
+        },
+      });
+
+      const { getEffectivePermissions } = await import("../../services/rbac.service.js");
+      const permissions = [...(await getEffectivePermissions(user.roleId))];
+
       req.log.info({ userId: user.id }, "login ok");
       res.json({
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
+        user: serializeUser(full, permissions),
         accessToken,
         refreshToken,
       });
@@ -123,8 +165,8 @@ export function createAuthRouter(env: Env) {
       }
       const payload = verifyRefreshToken(token, env);
       const user = await assertRefreshVersion(payload.sub, payload.rtv);
-      const accessToken = signAccessToken(user, env);
-      const newRefresh = signRefreshToken(user, env);
+      const accessToken = await signAccessToken(user, env);
+      const newRefresh = await signRefreshToken(user, env);
       setAccessCookie(res, env, accessToken);
       setRefreshCookie(res, env, newRefresh);
       req.log.info({ userId: user.id }, "token refreshed");

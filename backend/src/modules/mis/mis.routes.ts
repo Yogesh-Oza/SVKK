@@ -46,7 +46,7 @@ export function createMisRouter(_env: Env) {
           })
           .parse(req.query);
 
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const villageWheres = buildMisVillageWhere(scope, q.village);
         const { policy: pWhere, claim: cWhere } = mergeDateRange(villageWheres, q.from, q.to);
 
@@ -84,11 +84,11 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const m = await getDashboardMetrics(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -111,11 +111,11 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const charts = await getDashboardCharts(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -135,11 +135,11 @@ export function createMisRouter(_env: Env) {
         const q = z
           .object({ village: z.string().optional(), asOfDate: z.string().optional() })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getVillageReport(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -170,11 +170,11 @@ export function createMisRouter(_env: Env) {
             fiscalLabel: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getPolicyMemberReport(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -213,11 +213,11 @@ export function createMisRouter(_env: Env) {
             fiscalLabel: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getPolicyMemberReport(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -283,11 +283,11 @@ export function createMisRouter(_env: Env) {
         const q = z
           .object({ village: z.string().optional(), asOfDate: z.string().optional() })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getVillageReport(
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           scope,
           asOf,
           q.village,
@@ -322,7 +322,7 @@ export function createMisRouter(_env: Env) {
         })
         .parse(req.query);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const { policy: villageWhere } = buildMisVillageWhere(scope, q.village);
 
       const rows = await prisma.policy.findMany({

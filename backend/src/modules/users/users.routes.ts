@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { z } from "zod";
-import { UserRole } from "@prisma/client";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
@@ -33,7 +32,7 @@ export function createUsersRouter(_env: Env) {
           email: z.string().email(),
           name: z.string().min(2).max(100),
           password: z.string().min(8),
-          role: z.nativeEnum(UserRole),
+          roleId: z.string().min(1),
         })
         .parse(req.body);
 
@@ -52,25 +51,25 @@ export function createUsersRouter(_env: Env) {
           name: z.string().min(2).max(100).optional(),
           email: z.string().email().optional(),
           password: z.string().min(8).optional().or(z.literal("")),
-          role: z.nativeEnum(UserRole).optional(),
+          roleId: z.string().min(1).optional(),
         })
         .refine(
           (b) =>
             b.name != null ||
             b.email != null ||
             (b.password != null && b.password.length > 0) ||
-            b.role != null,
+            b.roleId != null,
           { message: "At least one field is required" },
         )
         .parse(req.body);
 
       const password =
         body.password && body.password.length > 0 ? body.password : undefined;
-      const user = await updateUser(id, {
+      const user = await updateUser(req.userId!, id, {
         name: body.name,
         email: body.email,
         password,
-        role: body.role,
+        roleId: body.roleId,
       });
       res.json({ user });
     } catch (e) {

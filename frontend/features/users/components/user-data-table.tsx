@@ -62,7 +62,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { apiDelete } from "@/lib/api/svkk-client";
-import { SVKK_ROLE_LABELS, type User } from "../utils/schema";
+import type { User } from "../utils/schema";
 import { getSvkkErrorMessage } from "../utils/api-error";
 import { UserFormDialog } from "./user-form-modal";
 
@@ -159,13 +159,14 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
       },
     },
     {
-      accessorKey: "role",
+      accessorKey: "roleName",
       header: "Role",
       cell: ({ row }) => {
-        const role = row.getValue("role") as User["role"];
+        const slug = row.original.roleSlug ?? "";
+        const label = row.original.roleName ?? slug;
         return (
-          <Badge variant="secondary" className={getRoleColor(role)}>
-            {SVKK_ROLE_LABELS[role]}
+          <Badge variant="secondary" className={getRoleColor(slug.toUpperCase().replace("-", "_"))}>
+            {label}
           </Badge>
         );
       },
@@ -248,7 +249,8 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
     },
   });
 
-  const roleFilter = table.getColumn("role")?.getFilterValue() as string;
+  const roleFilter = table.getColumn("roleName")?.getFilterValue() as string;
+  const uniqueRoleNames = [...new Set(users.map((u) => u.roleName).filter(Boolean))] as string[];
 
   return (
     <div className="w-full space-y-4">
@@ -287,7 +289,7 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
             value={roleFilter || ""}
             onValueChange={(value) =>
               table
-                .getColumn("role")
+                .getColumn("roleName")
                 ?.setFilterValue(value === "all" ? "" : value)
             }
           >
@@ -296,13 +298,11 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All roles</SelectItem>
-              {(["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] as const).map(
-                (r) => (
-                  <SelectItem key={r} value={r}>
-                    {SVKK_ROLE_LABELS[r]}
-                  </SelectItem>
-                ),
-              )}
+              {uniqueRoleNames.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

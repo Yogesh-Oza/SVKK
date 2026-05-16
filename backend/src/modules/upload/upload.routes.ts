@@ -234,7 +234,7 @@ export function createUploadRouter(env: Env) {
         let updatedAt: string | undefined;
 
         if (policyId) {
-          const scope = await loadMisScope(req.userId!, req.userRole!);
+          const scope = await loadMisScope(req.userId!, req.permissions!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
             select: { id: true, village: true, createdById: true, policyUrl: true },
@@ -242,7 +242,7 @@ export function createUploadRouter(env: Env) {
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
           }
-          assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+          assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
           const mergedUrls = appendPolicyUrl(existing.policyUrl, webViewLink);
 
@@ -310,7 +310,7 @@ export function createUploadRouter(env: Env) {
         let updatedAt: string | undefined;
 
         if (policyId) {
-          const scope = await loadMisScope(req.userId!, req.userRole!);
+          const scope = await loadMisScope(req.userId!, req.permissions!);
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
             select: { id: true, village: true, createdById: true, policyUrl: true },
@@ -318,7 +318,7 @@ export function createUploadRouter(env: Env) {
           if (!existing) {
             throw new AppError("NOT_FOUND", "Policy not found", 404);
           }
-          assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+          assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
           const mergedUrls = appendPolicyUrl(existing.policyUrl, webViewLink);
 

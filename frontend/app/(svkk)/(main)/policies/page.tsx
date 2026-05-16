@@ -54,7 +54,7 @@ import {
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
-import { canDeletePolicy, canUpdatePolicy } from "@/lib/svkk/permissions";
+import { canDeletePolicy, canUpdatePolicy, hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
@@ -210,10 +210,10 @@ function formatInrRupee(v: unknown): string | null {
 export default function SvkkPoliciesPage() {
   const router = useRouter();
   const { user } = useSvkkAuth();
-  const role = user?.role;
-  const canDel = role ? canDeletePolicy(role) : false;
-  const canEdit = role ? canUpdatePolicy(role) : false;
-  const canCsvUpload = role === "ADMIN" || role === "SUPER_ADMIN";
+  const perms = user?.permissions ?? [];
+  const canDel = canDeletePolicy(perms);
+  const canEdit = canUpdatePolicy(perms);
+  const canCsvUpload = hasPermission(perms, "upload:csv");
   const receiptImageUrls = useReceiptSettings();
 
   const [searchDraft, setSearchDraft] = useState("");

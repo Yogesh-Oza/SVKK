@@ -79,6 +79,7 @@ export type SvkkPolicyDetailForForm = {
   holderRelationship: string | null;
   holderGender: string | null;
   holderJoiningDate: string | null;
+  holderAge: number | null;
   holderAddOns: Decimalish;
   categoryText: string | null;
   mobileSecondary: string | null;
@@ -114,6 +115,13 @@ export type SvkkPolicyDetailForForm = {
     policyEnd: string | null;
     sumInsured: Decimalish;
     expectedNetPremium: Decimalish;
+    taxPercent?: Decimalish;
+    taxAmount?: Decimalish;
+    svkkPremium?: Decimalish;
+    netPremium?: Decimalish;
+    vkkCommission?: Decimalish;
+    gaamMahajanContribution?: Decimalish;
+    differenceAmountPaidByHolder?: Decimalish;
     vkkPremium: Decimalish;
     grossPremium: Decimalish;
     commissionAmount: Decimalish;
@@ -201,12 +209,34 @@ function parseRemarks(raw: string | null | undefined): { generalRemark: string; 
   return { generalRemark: text, policyChangeRemark: "" };
 }
 
+export type PolicyDetailToFormOptions = {
+  /** When editing/viewing a specific year row (matches `?year=` on edit URL). */
+  yearLabel?: string;
+};
+
+function pickPolicyYear(
+  years: SvkkPolicyDetailForForm["years"],
+  yearLabel?: string,
+): SvkkPolicyDetailForForm["years"][number] | undefined {
+  if (!years.length) {
+    return undefined;
+  }
+  if (yearLabel?.trim()) {
+    return years.find((yy) => yy.yearLabel === yearLabel.trim()) ?? years[0];
+  }
+  return years[0];
+}
+
 /**
- * Maps the latest policy year (`years[0]` from API desc sort) into the same shape as Add policy.
+ * Maps a policy year from `GET /policies/:id` into the same shape as Add policy.
+ * Defaults to `years[0]` (API returns years desc by label).
  */
-export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPolicyFormValues {
+export function policyDetailToAdFormValues(
+  row: SvkkPolicyDetailForForm,
+  options?: PolicyDetailToFormOptions,
+): AdPolicyFormValues {
   const base = getAdPolicyInitialValues();
-  const y = row.years[0];
+  const y = pickPolicyYear(row.years, options?.yearLabel);
   const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
   if (!y) {
     return base;
@@ -297,7 +327,7 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     village: row.village ?? "",
     cat: row.category?.key ?? row.categoryText ?? "",
     dob: holderDob,
-    age: ageFromDob(row.insuredParty.dateOfBirth ?? ""),
+    age: row.holderAge != null ? String(row.holderAge) : ageFromDob(row.insuredParty.dateOfBirth ?? ""),
     relation: row.holderRelationship ?? "",
     holderGender: row.holderGender ?? "",
     holderJoiningDate: isoToDateInput(row.holderJoiningDate ?? ""),
@@ -321,14 +351,21 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     chequeStatus,
     reasonDishonoured,
     vkkPremium: decStr(y.vkkPremium),
-    coPremium: decStr(y.expectedNetPremium),
+    coPremium: decStr(y.expectedNetPremium ?? y.netPremium),
     grossPremium: decStr(y.grossPremium),
+    taxPercent: decStr(y.taxPercent),
+    taxAmount: decStr(y.taxAmount),
+    svkkPremiumCalc: decStr(y.svkkPremium ?? y.vkkPremium),
+    netPremiumCalc: decStr(y.netPremium ?? y.expectedNetPremium),
     commission: decStr(y.commissionAmount),
+    vkkCommission: decStr(y.vkkCommission),
     twoLakhF: decStr(y.twoLacFloater),
     policyHolderPremium: decStr(y.yearPolicyHolderPremium),
+    contribution: decStr(y.gaamMahajanContribution ?? y.gaamMahajanVkk),
     gaamMahajan: decStr(y.gaamMahajanVkk),
     excessShort: decStr(y.excessShortAmount),
-    diffAmt: decStr(y.diffPaidByHolder),
+    differenceAmountPaidByHolder: decStr(y.differenceAmountPaidByHolder ?? y.diffPaidByHolder),
+    diffAmt: decStr(y.diffPaidByHolder ?? y.differenceAmountPaidByHolder),
     loanStatus: row.loanStatus ?? "",
     loanNo: "",
     loanAmt: decStr(row.loanAmount),
@@ -361,13 +398,6 @@ export function policyDetailToAdFormValues(row: SvkkPolicyDetailForForm): AdPoli
     podNumber: row.podNumber ?? "",
     courierAddress: row.courierAddress ?? "",
     paymentTransactions: [],
-    taxPercent: "",
-    taxAmount: "",
-    svkkPremiumCalc: "",
-    netPremiumCalc: "",
-    vkkCommission: "",
-    contribution: "",
-    differenceAmountPaidByHolder: "",
     generalRemark,
     policyChangeRemark,
     refNo: row.referenceNo ?? "",

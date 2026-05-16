@@ -103,7 +103,7 @@ export default function SvkkMisPage() {
     [village, cursor],
   );
 
-  if (user && !canAccessMis(user.role)) {
+  if (user && !canAccessMis(user.permissions)) {
     return <p className="text-muted-foreground text-sm">You do not have access to MIS.</p>;
   }
 

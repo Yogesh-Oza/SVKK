@@ -110,7 +110,8 @@ model User {
   email               String   @unique
   passwordHash        String
   name                String
-  role                UserRole @default(USER)
+  roleId              String
+  rbacRole            RbacRole @relation(fields: [roleId], references: [id])
   refreshTokenVersion Int      @default(0)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -123,6 +124,8 @@ model User {
   userVillages       UserVillage[]
   policiesCreated    Policy[]            @relation("PolicyCreatedBy")
   idempotencyRecords IdempotencyRecord[]
+
+  @@index([roleId])
 }
 
 /// Villages (or zones) a SUPERVISOR may see in MIS and scoped policy lists. ADMIN/SUPER_ADMIN use full data (no rows required).
@@ -450,13 +453,74 @@ model Counter {
   @@unique([type, period])
 }
 
-model RolePermission {
-  id     String   @id @default(cuid())
-  role   UserRole
-  module String
-  action String
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
 
-  @@unique([role, module, action])
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  group       String
+  groupOrder  Int      @default(0)
+  description String?
+  isScope     Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  rolePermissions RolePermission[]
+
+  @@index([key])
+  @@index([group, groupOrder])
+}
+
+model RbacRole {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+  permVersion Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  permissions RolePermission[]
+  users       User[]
+
+  @@index([slug])
+  @@index([isActive, isDeleted])
+}
+
+model RolePermission {
+  id           String           @id @default(cuid())
+  roleId       String
+  permissionId String
+  effect       PermissionEffect @default(ALLOW)
+  role         RbacRole         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model RbacAuditLog {
+  id           String   @id @default(cuid())
+  action       String
+  actorId      String
+  targetRoleId String?
+  targetUserId String?
+  oldSnapshot  Json?
+  newSnapshot  Json?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetRoleId])
+  @@index([targetUserId])
+  @@index([createdAt])
 }
 
 model PolicyGroupingOption {

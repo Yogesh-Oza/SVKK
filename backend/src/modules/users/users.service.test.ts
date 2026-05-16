@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { assertCanDeleteUser } from "./users.service.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../errors/app-error.js";
+import { LEGACY_ROLE_SLUGS } from "../../lib/permission-seed.js";
 
 vi.mock("../../lib/prisma.js", () => ({
   prisma: {
@@ -9,11 +10,15 @@ vi.mock("../../lib/prisma.js", () => ({
       findUnique: vi.fn(),
       count: vi.fn(),
     },
+    rbacRole: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
 const findUnique = prisma.user.findUnique as ReturnType<typeof vi.fn>;
 const count = prisma.user.count as ReturnType<typeof vi.fn>;
+const findRole = prisma.rbacRole.findUnique as ReturnType<typeof vi.fn>;
 
 describe("assertCanDeleteUser", () => {
   beforeEach(() => {
@@ -39,8 +44,9 @@ describe("assertCanDeleteUser", () => {
   it("rejects deleting last super admin", async () => {
     findUnique.mockResolvedValueOnce({
       id: "sa1",
-      role: "SUPER_ADMIN",
+      rbacRole: { slug: LEGACY_ROLE_SLUGS.SUPER_ADMIN },
     });
+    findRole.mockResolvedValueOnce({ id: "role-sa" });
     count.mockResolvedValueOnce(1);
     await expect(assertCanDeleteUser("actor", "sa1")).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -51,8 +57,9 @@ describe("assertCanDeleteUser", () => {
   it("allows deleting a super admin when another exists", async () => {
     findUnique.mockResolvedValueOnce({
       id: "sa1",
-      role: "SUPER_ADMIN",
+      rbacRole: { slug: LEGACY_ROLE_SLUGS.SUPER_ADMIN },
     });
+    findRole.mockResolvedValueOnce({ id: "role-sa" });
     count.mockResolvedValueOnce(2);
     await expect(assertCanDeleteUser("actor", "sa1")).resolves.toBeUndefined();
   });
@@ -60,7 +67,7 @@ describe("assertCanDeleteUser", () => {
   it("allows deleting non-super-admin when only one super admin in system", async () => {
     findUnique.mockResolvedValueOnce({
       id: "u1",
-      role: "USER",
+      rbacRole: { slug: LEGACY_ROLE_SLUGS.USER },
     });
     await expect(assertCanDeleteUser("actor", "u1")).resolves.toBeUndefined();
     expect(count).not.toHaveBeenCalled();

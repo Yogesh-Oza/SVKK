@@ -2,7 +2,6 @@ import {
   Prisma,
   type ChequeStatus,
   type AdProductVariant,
-  type UserRole,
 } from "@prisma/client";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
@@ -101,10 +100,10 @@ function expandPeriodMonthTextVariants(months: string[]): string[] {
 export function buildPolicyListWhere(
   scope: MisScope,
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   q: PolicyListQuery,
 ): Prisma.PolicyWhereInput {
-  const scopeWhere = buildPolicyReadWhere(scope, q.village, userId, role, q.villages);
+  const scopeWhere = buildPolicyReadWhere(scope, q.village, userId, permissions, q.villages);
   const s = q.search?.trim();
   const searchWhere: Prisma.PolicyWhereInput | undefined = s
     ? {

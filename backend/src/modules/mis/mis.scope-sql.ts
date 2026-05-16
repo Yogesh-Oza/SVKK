@@ -1,17 +1,17 @@
 import { Prisma } from "@prisma/client";
-import type { UserRole } from "@prisma/client";
 import type { MisScope } from "../../services/mis-scope.service.js";
+import { hasPermissionInSet } from "../../services/rbac.service.js";
 
 /**
  * SQL fragment for `Policy` table alias `p` matching list/MIS read scope. Parameterized to avoid injection.
  */
 export function buildPolicyScopeSqlP(
-  role: UserRole,
+  permissions: Set<string>,
   userId: string,
   scope: MisScope,
   filterVillage: string | undefined,
 ): Prisma.Sql {
-  if (role === "USER") {
+  if (hasPermissionInSet(permissions, "policy:scope_own")) {
     return Prisma.sql`p.deletedAt IS NULL AND p.createdById = ${userId}`;
   }
   if (scope.kind === "full") {

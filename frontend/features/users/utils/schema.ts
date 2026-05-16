@@ -1,19 +1,13 @@
 import { z } from "zod";
-import type { SvkkRole } from "@/lib/svkk/permissions";
-import { SVKK_ROLE_LABELS } from "@/lib/svkk/role-labels";
-
-export { SVKK_ROLE_LABELS };
-
-/** Matches Prisma `UserRole` on the SVKK API. */
-export const svkkUserRoles = ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] as const;
-export type SvkkUserRole = SvkkRole;
 
 export const userSchema = z.object({
   id: z.string().min(1, "Id is required"),
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address"),
   image: z.string().nullable().optional(),
-  role: z.enum(svkkUserRoles),
+  roleId: z.string().min(1),
+  roleName: z.string().optional(),
+  roleSlug: z.string().optional(),
   createdAt: z.coerce.date(),
 });
 
@@ -21,13 +15,13 @@ export const createUserFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  role: z.enum(svkkUserRoles),
+  roleId: z.string().min(1, "Select a role"),
 });
 
 export const editUserFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  role: z.enum(svkkUserRoles),
+  roleId: z.string().min(1, "Select a role"),
   password: z
     .string()
     .optional()

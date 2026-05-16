@@ -7,12 +7,10 @@ import {
   SidebarRail,
   Sidebar as UISidebar,
 } from "@/components/ui/sidebar";
-import { getSvkkNavGroupsForRole } from "@/constants/svkk-sidebar-data";
+import { getSvkkNavGroupsForPermissions } from "@/constants/svkk-sidebar-data";
 import { sidebarData } from "@/constants/sidebar-data";
 import { useAuth } from "@/contexts/auth-context";
 import { useSidebarConfig } from "@/contexts/sidebar-context";
-import type { SvkkRole } from "@/lib/svkk/permissions";
-import { SVKK_ROLE_LABELS } from "@/lib/svkk/role-labels";
 import type { NavGroup as NavGroupType, NavItem } from "@/lib/types";
 import { useAppSelector } from "@/lib/store/hooks";
 import React, { useMemo } from "react";
@@ -56,13 +54,13 @@ export default function AppSidebar({
     if (!sessionUser) {
       return crm;
     }
-    const svkk = getSvkkNavGroupsForRole(sessionUser.role as SvkkRole);
+    const svkk = getSvkkNavGroupsForPermissions(sessionUser.permissions ?? []);
     return [...svkk, ...crm];
   }, [sessionUser, isAdmin]);
 
   const navUserRole = useMemo(() => {
-    if (sessionUser) {
-      return SVKK_ROLE_LABELS[sessionUser.role as SvkkRole] ?? sessionUser.role;
+    if (sessionUser?.roleName) {
+      return sessionUser.roleName;
     }
     return user?.role;
   }, [sessionUser, user?.role]);

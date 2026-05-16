@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { UserRole } from "@prisma/client";
+import { hasPermissionInSet } from "../../services/rbac.service.js";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
@@ -17,13 +17,13 @@ import {
 
 function assertVillageOnClaimCreate(
   village: string | null | undefined,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
 ) {
-  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+  if (hasPermissionInSet(permissions, "claim:scope_all")) {
     return;
   }
-  if (role === "SUPERVISOR") {
+  if (hasPermissionInSet(permissions, "claim:scope_village")) {
     if (!village?.trim()) {
       throw new AppError("VALIDATION", "village is required for your role", 400);
     }
@@ -53,8 +53,8 @@ export function createClaimRouter(env: Env) {
         })
         .parse(req.body);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
-      assertVillageOnClaimCreate(body.village, req.userRole!, scope);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
+      assertVillageOnClaimCreate(body.village, req.permissions!, scope);
 
       const party = await prisma.insuredParty.findFirst({
         where: { svkkPublicId: body.svkkPublicId },
@@ -93,7 +93,7 @@ export function createClaimRouter(env: Env) {
         })
         .parse(req.query);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const { claim: scopeClaim } = buildMisVillageWhere(scope, q.village);
       const filters: Prisma.ClaimWhereInput[] = [scopeClaim];
       if (q.svkkPublicId) {
@@ -129,7 +129,7 @@ export function createClaimRouter(env: Env) {
         })
         .parse(req.query);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const { claim: claimWhere } = buildMisVillageWhere(scope, q.village);
 
       const grouped = await prisma.claim.groupBy({
@@ -156,7 +156,7 @@ export function createClaimRouter(env: Env) {
         })
         .parse(req.body);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const found = await prisma.claim.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true },
@@ -164,7 +164,7 @@ export function createClaimRouter(env: Env) {
       if (!found) {
         throw new AppError("NOT_FOUND", "Claim not found", 404);
       }
-      assertClaimVillageInScope(found, req.userRole!, scope);
+      assertClaimVillageInScope(found, req.permissions!, scope);
 
       const update: Record<string, unknown> = { ...body };
       if (body.status === ClaimStatus.APPROVED) {
@@ -183,7 +183,7 @@ export function createClaimRouter(env: Env) {
 
   r.delete("/:id", requirePermission("claim:delete"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const found = await prisma.claim.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true },
@@ -191,7 +191,7 @@ export function createClaimRouter(env: Env) {
       if (!found) {
         throw new AppError("NOT_FOUND", "Claim not found", 404);
       }
-      assertClaimVillageInScope(found, req.userRole!, scope);
+      assertClaimVillageInScope(found, req.permissions!, scope);
 
       await prisma.claim.delete({ where: { id: String(req.params.id) } });
       res.status(204).end();

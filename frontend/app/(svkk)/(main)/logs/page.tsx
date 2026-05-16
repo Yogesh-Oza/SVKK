@@ -37,7 +37,7 @@ export default function SvkkLogsPage() {
     if (missingUrl) {
       return;
     }
-    if (user && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (user && !user.permissions?.includes("logs:read") && !user.permissions?.includes("*:*")) {
       return;
     }
     void (async () => {
@@ -50,7 +50,11 @@ export default function SvkkLogsPage() {
     })();
   }, [missingUrl, user, load]);
 
-  if (user && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+  if (
+    user &&
+    !user.permissions?.includes("logs:read") &&
+    !user.permissions?.includes("*:*")
+  ) {
     return <p className="text-muted-foreground text-sm">You do not have access to activity logs.</p>;
   }
 

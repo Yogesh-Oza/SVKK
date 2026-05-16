@@ -1,21 +1,24 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { SVKK_ROLE_LABELS, type SvkkUserRole, type User } from "../utils/schema";
+import type { SvkkRole } from "@/lib/svkk/permissions";
+import { SVKK_ROLE_LABELS } from "@/lib/svkk/role-labels";
 import { Shield, UserCircle, Users } from "lucide-react";
+import type { User } from "../utils/schema";
 
 interface UserStateCardsProps {
   users: User[];
 }
 
-const ROLE_ICONS: Record<SvkkUserRole, typeof Users> = {
+const ROLE_ICONS: Record<SvkkRole, typeof Users> = {
   USER: UserCircle,
   SUPERVISOR: Users,
   ADMIN: Shield,
   SUPER_ADMIN: Shield,
 };
 
+const LEGACY_ROLES: SvkkRole[] = ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"];
+
 export function UserStateCards({ users }: UserStateCardsProps) {
   const totalUsers = users.length;
-  const roles: SvkkUserRole[] = ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"];
 
   const metrics = [
     {
@@ -23,9 +26,9 @@ export function UserStateCards({ users }: UserStateCardsProps) {
       value: totalUsers,
       icon: Users,
     },
-    ...roles.map((role) => ({
+    ...LEGACY_ROLES.map((role) => ({
       title: SVKK_ROLE_LABELS[role],
-      value: users.filter((u) => u.role === role).length,
+      value: users.filter((u) => u.roleSlug === role).length,
       icon: ROLE_ICONS[role],
     })),
   ];
@@ -39,9 +42,7 @@ export function UserStateCards({ users }: UserStateCardsProps) {
               <metric.icon className="text-muted-foreground size-6" />
             </div>
             <div className="space-y-2">
-              <p className="text-muted-foreground text-sm font-medium">
-                {metric.title}
-              </p>
+              <p className="text-muted-foreground text-sm font-medium">{metric.title}</p>
               <div className="text-2xl font-bold">{metric.value}</div>
             </div>
           </CardContent>

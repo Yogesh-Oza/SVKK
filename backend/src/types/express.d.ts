@@ -6,7 +6,10 @@ declare global {
       traceId: string;
       log: Logger;
       userId?: string;
-      userRole?: import("@prisma/client").UserRole;
+      roleId?: string;
+      roleSlug?: string;
+      roleName?: string;
+      permissions?: Set<string>;
     }
   }
 }

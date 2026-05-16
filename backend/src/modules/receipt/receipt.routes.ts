@@ -26,7 +26,7 @@ export function createReceiptRouter(env: Env) {
         })
         .parse(req.body);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const policy = await prisma.policy.findUnique({
         where: { id: String(req.params.policyId) },
         include: {
@@ -47,7 +47,7 @@ export function createReceiptRouter(env: Env) {
         },
       });
       if (!policy) throw new AppError("NOT_FOUND", "Policy not found", 404);
-      assertPolicyReadable(policy, req.userId!, req.userRole!, scope);
+      assertPolicyReadable(policy, req.userId!, req.permissions!, scope);
 
       const year = policy.years[0];
       const policyDate = year?.policyEnd ?? year?.policyStart ?? new Date();

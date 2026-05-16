@@ -1,7 +1,7 @@
 import AppSidebar from "@/components/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { SvkkAuthGate } from "@/components/svkk/svkk-auth-gate";
-import { SvkkRoleGate } from "@/components/svkk/svkk-role-gate";
+import { SvkkPermissionGate } from "@/components/svkk/svkk-permission-gate";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarConfigProvider } from "@/contexts/sidebar-context";
 import { Suspense, type ReactNode } from "react";
@@ -13,7 +13,7 @@ import { Suspense, type ReactNode } from "react";
 export default function SvkkMainLayout({ children }: { children: ReactNode }) {
   return (
     <SvkkAuthGate>
-      <SvkkRoleGate>
+      <SvkkPermissionGate>
         <SidebarConfigProvider>
           <SidebarProvider>
             <AppSidebar />
@@ -25,7 +25,7 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
             </SidebarInset>
           </SidebarProvider>
         </SidebarConfigProvider>
-      </SvkkRoleGate>
+      </SvkkPermissionGate>
     </SvkkAuthGate>
   );
 }

@@ -1,12 +1,12 @@
 import type { Prisma } from "@prisma/client";
-import { UserRole } from "@prisma/client";
+import { LEGACY_ROLE_SLUGS } from "../lib/permission-seed.js";
 
 /**
- * Builds ActivityLog query filters. ADMIN is limited to USER and SUPERVISOR actors; SUPER_ADMIN is not restricted.
+ * Builds ActivityLog query filters. Non–super-admin readers with logs:read see only user/supervisor actors.
  */
 export function buildActivityLogWhere(
   q: { module?: string; entityId?: string },
-  readerRole: UserRole,
+  readerRoleSlug: string,
 ): Prisma.ActivityLogWhereInput {
   const parts: Prisma.ActivityLogWhereInput[] = [];
   if (q.module) {
@@ -15,8 +15,14 @@ export function buildActivityLogWhere(
   if (q.entityId) {
     parts.push({ entityId: q.entityId });
   }
-  if (readerRole === UserRole.ADMIN) {
-    parts.push({ user: { role: { in: [UserRole.USER, UserRole.SUPERVISOR] } } });
+  if (readerRoleSlug === LEGACY_ROLE_SLUGS.ADMIN) {
+    parts.push({
+      user: {
+        rbacRole: {
+          slug: { in: [LEGACY_ROLE_SLUGS.USER, LEGACY_ROLE_SLUGS.SUPERVISOR] },
+        },
+      },
+    });
   }
   if (parts.length === 0) {
     return {};

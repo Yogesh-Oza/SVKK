@@ -28,7 +28,7 @@ import {
   queryPolicyListAll,
   type PolicyListQuery,
 } from "./policy.list.js";
-import { AdProductVariant, ChequeStatus, type UserRole } from "@prisma/client";
+import { AdProductVariant, ChequeStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
@@ -143,7 +143,7 @@ function csvCell(value: unknown): string {
 
 function policiesExportCsv(
   rows: Awaited<ReturnType<typeof queryPolicyListAll>>,
-  role: UserRole,
+  permissions: Set<string>,
 ): string {
   const headers = [
     "Policy ID",
@@ -171,7 +171,7 @@ function policiesExportCsv(
   ];
   const lines: string[] = [headers.map(csvCell).join(",")];
   for (const r of rows) {
-    const party = maskInsuredParty(role, r.insuredParty);
+    const party = maskInsuredParty(permissions, r.insuredParty);
     const y0 = r.years[0];
     lines.push(
       [
@@ -349,7 +349,7 @@ export function createPolicyRouter(env: Env) {
     requirePermission("policy:read"),
     async (req, res, next) => {
       try {
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         const fq = z
           .object({
             village: z.string().optional(),
@@ -360,7 +360,7 @@ export function createPolicyRouter(env: Env) {
           scope,
           fq.village,
           req.userId!,
-          req.userRole!,
+          req.permissions!,
           fq.villages,
         );
         const options = await distinctFilterOptions(scopeWhere);
@@ -379,7 +379,7 @@ export function createPolicyRouter(env: Env) {
         const body = z
           .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
           .parse(req.body);
-        const scope = await loadMisScope(req.userId!, req.userRole!);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
         for (const id of body.ids) {
           const existing = await prisma.policy.findUnique({
             where: { id, deletedAt: null },
@@ -388,7 +388,7 @@ export function createPolicyRouter(env: Env) {
           if (!existing) {
             throw new AppError("NOT_FOUND", `Policy not found: ${id}`, 404);
           }
-          assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+          assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
         }
         for (const id of body.ids) {
           await softDeletePolicy({ actorUserId: req.userId!, policyId: id });
@@ -407,8 +407,8 @@ export function createPolicyRouter(env: Env) {
       const usePage = q.page != null;
       const listFilter = listFilterFromQuery(q);
 
-      const scope = await loadMisScope(req.userId!, req.userRole!);
-      const where = buildPolicyListWhere(scope, req.userId!, req.userRole!, listFilter);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const out = await queryPolicyList({
         where,
         sort: listFilter.sort,
@@ -422,7 +422,7 @@ export function createPolicyRouter(env: Env) {
         res.json({
           items: out.items.map((r) => ({
             ...r,
-            insuredParty: maskInsuredParty(req.userRole!, r.insuredParty),
+            insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
           })),
           nextCursor: out.nextCursor,
         });
@@ -430,7 +430,7 @@ export function createPolicyRouter(env: Env) {
         res.json({
           items: out.items.map((r) => ({
             ...r,
-            insuredParty: maskInsuredParty(req.userRole!, r.insuredParty),
+            insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
           })),
           total: out.total,
           page: out.page,
@@ -447,8 +447,8 @@ export function createPolicyRouter(env: Env) {
     try {
       const q = policyListFiltersSchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
-      const scope = await loadMisScope(req.userId!, req.userRole!);
-      const where = buildPolicyListWhere(scope, req.userId!, req.userRole!, listFilter);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const rows = await queryPolicyListAll({ where, sort: listFilter.sort });
       if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
         const totalMatching = await prisma.policy.count({ where });
@@ -456,7 +456,7 @@ export function createPolicyRouter(env: Env) {
           res.setHeader("X-Export-Truncated", "true");
         }
       }
-      const csv = policiesExportCsv(rows, req.userRole!);
+      const csv = policiesExportCsv(rows, req.permissions!);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');
       res.send(csv);
@@ -505,7 +505,7 @@ export function createPolicyRouter(env: Env) {
 
   r.get("/:id", requirePermission("policy:read"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const row = await prisma.policy.findFirst({
         where: { id: String(req.params.id), deletedAt: null },
         include: {
@@ -525,10 +525,10 @@ export function createPolicyRouter(env: Env) {
         },
       });
       if (!row) throw new AppError("NOT_FOUND", "Policy not found", 404);
-      assertPolicyReadable(row, req.userId!, req.userRole!, scope);
+      assertPolicyReadable(row, req.userId!, req.permissions!, scope);
       res.json({
         ...row,
-        insuredParty: maskInsuredParty(req.userRole!, row.insuredParty),
+        insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
       });
     } catch (e) {
       next(e);
@@ -537,13 +537,13 @@ export function createPolicyRouter(env: Env) {
 
   r.patch("/:id", requirePermission("policy:update"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true, createdById: true },
       });
       if (!existing) throw new AppError("NOT_FOUND", "Policy not found", 404);
-      assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+      assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
       const parsed = patchPolicyBodySchema.parse(req.body);
       const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers } = patchBodyToInput(parsed);
@@ -558,7 +558,7 @@ export function createPolicyRouter(env: Env) {
       });
       res.json({
         ...row,
-        insuredParty: maskInsuredParty(req.userRole!, row.insuredParty),
+        insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
       });
     } catch (e) {
       next(e);
@@ -567,13 +567,13 @@ export function createPolicyRouter(env: Env) {
 
   r.delete("/:id", requirePermission("policy:delete"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.userRole!);
+      const scope = await loadMisScope(req.userId!, req.permissions!);
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true, createdById: true },
       });
       if (!existing) throw new AppError("NOT_FOUND", "Policy not found", 404);
-      assertPolicyReadable(existing, req.userId!, req.userRole!, scope);
+      assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
       await softDeletePolicy({
         actorUserId: req.userId!,

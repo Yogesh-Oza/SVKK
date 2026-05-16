@@ -1,4 +1,4 @@
-export type SvkkRole = "USER" | "SUPERVISOR" | "ADMIN" | "SUPER_ADMIN";
+export const WILDCARD_PERMISSION = "*:*";
 
 export type SvkkNavId =
   | "dashboard"
@@ -9,60 +9,89 @@ export type SvkkNavId =
   | "claims"
   | "mis"
   | "admin"
+  | "roles"
   | "logs"
   | "users"
   | "settings";
 
-const NAV: { id: SvkkNavId; href: string; label: string; roles: SvkkRole[] }[] = [
-  { id: "dashboard", href: "/dashboard", label: "Dashboard", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "calculator", href: "/calculator", label: "Premium calculator", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "calculatorAdmin", href: "/calculator/admin", label: "Calc charts & discounts", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "policies", href: "/policies", label: "Policies", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "policyNew", href: "/policies/new", label: "Add policy", roles: ["USER", "SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "claims", href: "/claims", label: "Claims", roles: ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "mis", href: "/mis", label: "MIS", roles: ["SUPERVISOR", "ADMIN", "SUPER_ADMIN"] },
-  { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", roles: ["ADMIN", "SUPER_ADMIN"] },
-  { id: "users", href: "/users", label: "Users", roles: ["ADMIN", "SUPER_ADMIN"] },
-  { id: "settings", href: "/receipt-settings", label: "Receipt Settings", roles: ["ADMIN", "SUPER_ADMIN"] },
-  { id: "logs", href: "/logs", label: "Activity logs", roles: ["ADMIN", "SUPER_ADMIN"] },
+type NavEntry = {
+  id: SvkkNavId;
+  href: string;
+  label: string;
+  permission: string;
+};
+
+const NAV: NavEntry[] = [
+  { id: "dashboard", href: "/dashboard", label: "Dashboard", permission: "dashboard:read" },
+  { id: "calculator", href: "/calculator", label: "Premium calculator", permission: "calculation:live" },
+  {
+    id: "calculatorAdmin",
+    href: "/calculator/admin",
+    label: "Calc charts & discounts",
+    permission: "admin:charts",
+  },
+  { id: "policies", href: "/policies", label: "Policies", permission: "policy:read" },
+  { id: "policyNew", href: "/policies/new", label: "Add policy", permission: "policy:create" },
+  { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
+  { id: "mis", href: "/mis", label: "MIS", permission: "mis:read" },
+  { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:policyTypes" },
+  { id: "roles", href: "/roles", label: "Roles & permissions", permission: "roles:manage" },
+  { id: "users", href: "/users", label: "Users", permission: "users:manage" },
+  { id: "settings", href: "/receipt-settings", label: "Receipt Settings", permission: "admin:settings" },
+  { id: "logs", href: "/logs", label: "Activity logs", permission: "logs:read" },
 ];
 
-/**
- * Returns nav items visible for the given backend role.
- */
-export function getSvkkNavForRole(role: SvkkRole) {
-  return NAV.filter((n) => n.roles.includes(role));
+/** @deprecated Use roleSlug from API; kept for display fallbacks */
+export type SvkkRole = "USER" | "SUPERVISOR" | "ADMIN" | "SUPER_ADMIN";
+
+export function hasPermission(permissions: string[] | undefined, key: string): boolean {
+  if (!permissions?.length) return false;
+  return permissions.includes(WILDCARD_PERMISSION) || permissions.includes(key);
 }
 
-export function canAccessMis(role: SvkkRole) {
-  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function getSvkkNavForPermissions(permissions: string[]) {
+  return NAV.filter((n) => hasPermission(permissions, n.permission));
 }
 
-export function canUpdatePolicy(role: SvkkRole) {
-  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function canAccessMis(permissions: string[]) {
+  return hasPermission(permissions, "mis:read");
 }
 
-/** Matches backend upload permissions for policy document link upload. */
-export function canUploadPolicyDrive(role: SvkkRole) {
-  return role === "USER" || role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function canUpdatePolicy(permissions: string[]) {
+  return hasPermission(permissions, "policy:update");
 }
 
-export function canDeletePolicy(role: SvkkRole) {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+export function canUploadPolicyDrive(permissions: string[]) {
+  return (
+    hasPermission(permissions, "upload:google-drive") ||
+    hasPermission(permissions, "upload:one-drive")
+  );
 }
 
-export function canCreateReceipt(role: SvkkRole) {
-  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function canDeletePolicy(permissions: string[]) {
+  return hasPermission(permissions, "policy:delete");
 }
 
-export function canUpdateClaim(role: SvkkRole) {
-  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function canCreateReceipt(permissions: string[]) {
+  return hasPermission(permissions, "receipt:create");
 }
 
-export function canCreateClaim(role: SvkkRole) {
-  return role === "SUPERVISOR" || role === "ADMIN" || role === "SUPER_ADMIN";
+export function canUpdateClaim(permissions: string[]) {
+  return hasPermission(permissions, "claim:update");
 }
 
-export function canDeleteClaim(role: SvkkRole) {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+export function canCreateClaim(permissions: string[]) {
+  return hasPermission(permissions, "claim:create");
+}
+
+export function canDeleteClaim(permissions: string[]) {
+  return hasPermission(permissions, "claim:delete");
+}
+
+export function canManageUsers(permissions: string[]) {
+  return hasPermission(permissions, "users:manage");
+}
+
+export function canManageRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:manage");
 }

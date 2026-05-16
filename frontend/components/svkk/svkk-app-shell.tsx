@@ -1,7 +1,7 @@
 "use client";
 
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { getSvkkNavForRole } from "@/lib/svkk/permissions";
+import { getSvkkNavForPermissions } from "@/lib/svkk/permissions";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 export function SvkkAppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSvkkAuth();
   const pathname = usePathname();
-  const nav = user ? getSvkkNavForRole(user.role) : [];
+  const nav = user ? getSvkkNavForPermissions(user.permissions ?? []) : [];
 
   return (
     <div className="bg-background min-h-screen">

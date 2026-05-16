@@ -23,7 +23,7 @@ export function createLogsRouter(env: Env) {
 
       const where = buildActivityLogWhere(
         { module: q.module, entityId: q.entityId },
-        req.userRole!,
+        req.roleSlug!,
       );
 
       const rows = await prisma.activityLog.findMany({

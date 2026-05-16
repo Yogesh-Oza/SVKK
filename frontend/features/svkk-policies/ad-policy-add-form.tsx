@@ -321,7 +321,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const seededGroupRef = useRef("");
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
-  const canDriveUpload = user?.role ? canUploadPolicyDrive(user.role) : false;
+  const canDriveUpload = user?.permissions ? canUploadPolicyDrive(user.permissions) : false;
 
   const receiptImageUrls = useReceiptSettings();
   const { options: ddOptions } = useDropdownOptions();
@@ -389,10 +389,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const initialValues = useMemo(() => {
     if (isEdit && detail) {
-      return policyDetailToAdFormValues(detail);
+      return policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
     }
     return getAdPolicyInitialValues();
-  }, [isEdit, detail]);
+  }, [isEdit, detail, editYearLabel]);
 
   const formik = useFormik<AdPolicyFormValues>({
     initialValues,
@@ -516,9 +516,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   } = formik;
   const isBusy = isSubmitting;
   const [premiumManual, setPremiumManual] = useState<Record<string, boolean>>({});
+  const [ageManual, setAgeManual] = useState<Record<string, boolean>>({});
+  /** Edit or fetch-for-update: keep loaded DB values; no premium/age/member auto-sync. */
+  const freezeAutoCalculations = isEdit || Boolean(fetchedPolicyForUpdate);
 
   const markPremiumManual = useCallback((field: string) => {
     setPremiumManual((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }, []);
+
+  const markAgeManual = useCallback((field: string) => {
+    setAgeManual((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
   }, []);
 
   const handlePremiumInput = useCallback(
@@ -590,6 +597,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   );
 
   useEffect(() => {
+    if (freezeAutoCalculations) return;
     if (!quote.rows.length) return;
     const holderRow = quote.rows[0];
     if (
@@ -610,7 +618,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       if (parseInr(member.basicPremium) > 0) return;
       void setFieldValue(`members[${index}].basicPremium`, String(row.basic));
     });
-  }, [quote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
+  }, [freezeAutoCalculations, quote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
 
   const selectedFetch = useMemo(
     () => fetchRows.find((row) => row.id === selectedFetchId) ?? null,
@@ -646,10 +654,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       try {
         const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${id}`);
         const nextValues = policyDetailToAdFormValues(row);
+        // Lock auto-calc before setValues so premium fields are not overwritten mid-load.
+        setFetchedPolicyForUpdate(row);
+        setPremiumManual({});
+        setAgeManual({});
         await formik.setValues(nextValues);
         setFetchNotice(modeNotice);
-        // When we "fetch & load", user expects to update the same policy (not create a new one).
-        setFetchedPolicyForUpdate(row);
       } catch (e) {
         setFetchNotice(e instanceof Error ? e.message : "Failed to load policy details");
       }
@@ -807,6 +817,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             : " (reference number year shifted; verify before submitting)";
       }
       const initialForReset = getAdPolicyInitialValues();
+      setPremiumManual({});
+      setAgeManual({});
       await formik.setValues({
         ...carriedValues,
         year: shiftedYear,
@@ -1234,27 +1246,37 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const ageAnchorDate = values.previousEndDate || values.policyEnd;
 
   useEffect(() => {
-    void setFieldValue("age", ageFromDobOnAnchor(values.dob, ageAnchorDate));
-  }, [values.dob, ageAnchorDate, setFieldValue]);
+    if (freezeAutoCalculations || ageManual.age) return;
+    const next = ageFromDobOnAnchor(values.dob, ageAnchorDate);
+    if (values.age !== next) {
+      void setFieldValue("age", next);
+    }
+  }, [freezeAutoCalculations, ageManual.age, values.age, values.dob, ageAnchorDate, setFieldValue]);
 
   useEffect(() => {
+    if (freezeAutoCalculations) return;
     if (!values.members.length) {
       return;
     }
-    const next = values.members.map((member) => ({
-      ...member,
-      age: ageFromDobOnAnchor(member.dob, ageAnchorDate),
-    }));
+    const next = values.members.map((member, index) => {
+      if (ageManual[`members[${index}].age`]) {
+        return member;
+      }
+      return {
+        ...member,
+        age: ageFromDobOnAnchor(member.dob, ageAnchorDate),
+      };
+    });
     const changed = next.some((member, index) => member.age !== values.members[index]?.age);
     if (changed) {
       void setFieldValue("members", next);
     }
-  }, [ageAnchorDate, setFieldValue, values.members]);
+  }, [freezeAutoCalculations, ageAnchorDate, ageManual, setFieldValue, values.members]);
 
   const updateMember = (i: number, patch: Partial<AdMemberRow>) => {
     const next = [...values.members];
     next[i] = { ...next[i]!, ...patch };
-    if (patch.dob !== undefined) {
+    if (!freezeAutoCalculations && patch.dob !== undefined && !ageManual[`members[${i}].age`]) {
       next[i]!.age = ageFromDobOnAnchor(next[i]!.dob, ageAnchorDate);
     }
     void setFieldValue("members", next);
@@ -1308,6 +1330,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   };
 
   useEffect(() => {
+    if (freezeAutoCalculations) return;
     const parsed = Number(values.person);
     if (!Number.isFinite(parsed) || parsed < 1) {
       return;
@@ -1329,9 +1352,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     // Intentionally not depending on values.members to avoid feedback loop
     // with addMember/removeMember (which set both fields atomically).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.person, setFieldValue]);
+  }, [freezeAutoCalculations, values.person, setFieldValue]);
 
   useEffect(() => {
+    if (freezeAutoCalculations) return;
     const setAutoField = (
       field: keyof AdPolicyFormValues,
       value: number,
@@ -1432,7 +1456,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("excessShort", excessShort, false, true);
     setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
     setAutoField("diffAmt", differenceAmountPaidByHolder);
-  }, [premiumManual, setFieldValue, values]);
+  }, [freezeAutoCalculations, premiumManual, setFieldValue, values]);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -2007,7 +2031,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardHeader>
               <CardTitle>Policy Holder Details</CardTitle>
               <CardDescription>
-                Holder Name, PAN, Village, DOB, Age (auto from policy expiry), Relationship, Joining Date, Gender, Add-ons.
+                Holder Name, PAN, Village, DOB, Age (auto from policy end date; editable), Relationship, Joining Date, Gender, Add-ons.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -2124,7 +2148,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Age</Label>
-                <Input name="age" value={values.age} readOnly className="bg-muted" />
+                <Input
+                  name="age"
+                  value={values.age}
+                  onChange={(e) => {
+                    markAgeManual("age");
+                    handleChange(e);
+                  }}
+                  onBlur={handleBlur}
+                  inputMode="numeric"
+                />
               </div>
             </CardContent>
           </Card>
@@ -2174,14 +2207,25 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       onChange={(e) => {
                         const d = e.target.value;
                         void setFieldValue(`members[${i}].dob`, d);
-                        void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
+                        if (!freezeAutoCalculations && !ageManual[`members[${i}].age`]) {
+                          void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
+                        }
                       }}
                       onBlur={handleBlur}
                     />
                   </div>
                   <div className="space-y-1">
                     <Label>Age</Label>
-                    <Input name={`members[${i}].age`} value={m.age} readOnly className="bg-muted" />
+                    <Input
+                      name={`members[${i}].age`}
+                      value={m.age}
+                      onChange={(e) => {
+                        markAgeManual(`members[${i}].age`);
+                        handleChange(e);
+                      }}
+                      onBlur={handleBlur}
+                      inputMode="numeric"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label>Joining Date</Label>

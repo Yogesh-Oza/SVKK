@@ -1,4 +1,4 @@
-import { PaymentStatus, type UserRole } from "@prisma/client";
+import { PaymentStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
@@ -54,12 +54,12 @@ function toPolicyMemberJsonRow(r: PolicyMemberReportRow) {
  */
 export async function getDashboardMetrics(
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
   asOfDate: Date,
   filterVillage: string | undefined,
 ) {
-  const pWhere = buildPolicyReadWhere(scope, filterVillage, userId, role);
+  const pWhere = buildPolicyReadWhere(scope, filterVillage, userId, permissions);
   const { start, end } = asOfDayBoundsUTC(asOfDate);
 
   const [totalPolicies, completedPayments, expectedAgg, yearWindowCount] = await Promise.all([
@@ -155,12 +155,12 @@ export type DashboardChartsJson = {
  */
 export async function getDashboardCharts(
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
   asOfDate: Date,
   filterVillage: string | undefined,
 ): Promise<DashboardChartsJson> {
-  const scopeOnP = buildPolicyScopeSqlP(role, userId, scope, filterVillage);
+  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, filterVillage);
   const buckets = await queryDashboardMonthlyPremium(prisma, { scopeOnP, asOfDate });
   const map = new Map<string, number>();
   for (const b of buckets) {
@@ -206,12 +206,12 @@ export async function getDashboardCharts(
 
 export async function getVillageReport(
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
   asOfDate: Date,
   filterVillage: string | undefined,
 ) {
-  const scopeOnP = buildPolicyScopeSqlP(role, userId, scope, filterVillage);
+  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, filterVillage);
   const [villages, payByV, ages] = await Promise.all([
     queryVillageAggregates(prisma, { scopeOnP, asOfDate }),
     queryVillagePaymentTotals(prisma, { scopeOnP }),
@@ -246,7 +246,7 @@ export type PolicyMemberReportGroupBy =
  */
 export async function getPolicyMemberReport(
   userId: string,
-  role: UserRole,
+  permissions: Set<string>,
   scope: MisScope,
   asOfDate: Date,
   filterVillage: string | undefined,
@@ -259,7 +259,7 @@ export async function getPolicyMemberReport(
     fiscalLabel: string | null;
   },
 ) {
-  const scopeOnP = buildPolicyScopeSqlP(role, userId, scope, filterVillage);
+  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, filterVillage);
   const rows = await queryPolicyMemberReport(prisma, {
     scopeOnP,
     asOfDate,

@@ -1,19 +1,16 @@
-import type { UserRole } from "@prisma/client";
-
-const ROLES_PII: UserRole[] = ["ADMIN", "SUPER_ADMIN", "SUPERVISOR"];
+import { hasPermissionInSet } from "../services/rbac.service.js";
 
 /**
- * Strips PII for operators (USER) when reading insured party in API JSON.
+ * Masks PAN on insured party for users without full policy scope.
  */
-export function maskInsuredParty<T extends { pan?: string | null } | null | undefined>(
-  role: UserRole,
-  row: T,
-): T {
-  if (!row || ROLES_PII.includes(role)) {
-    return row;
+export function maskInsuredParty(
+  permissions: Set<string>,
+  insuredParty: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!insuredParty) return null;
+  if (hasPermissionInSet(permissions, "policy:scope_all") || hasPermissionInSet(permissions, "*:*")) {
+    return insuredParty;
   }
-  if (!("pan" in row) || row.pan == null) {
-    return row;
-  }
-  return { ...row, pan: null } as T;
+  const { pan: _pan, ...rest } = insuredParty;
+  return rest;
 }

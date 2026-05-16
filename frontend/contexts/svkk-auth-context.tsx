@@ -18,6 +18,8 @@ export type { SvkkUser } from "@/lib/svkk/types";
 type SvkkAuthState = {
   user: SvkkUser | null;
   loading: boolean;
+  /** True once `/auth/me` has resolved and `user.permissions` is available. */
+  permissionsHydrated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -54,10 +56,12 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
   }, [d]);
 
   const loading = status === "loading";
+  const permissionsHydrated =
+    status === "authenticated" && user != null && Array.isArray(user.permissions);
 
   const value = useMemo(
-    () => ({ user, loading, login, logout }),
-    [user, loading, login, logout],
+    () => ({ user, loading, permissionsHydrated, login, logout }),
+    [user, loading, permissionsHydrated, login, logout],
   );
 
   return <SvkkAuthContext.Provider value={value}>{children}</SvkkAuthContext.Provider>;

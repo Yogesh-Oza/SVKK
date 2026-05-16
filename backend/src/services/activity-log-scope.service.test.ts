@@ -1,21 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { UserRole } from "@prisma/client";
+import { LEGACY_ROLE_SLUGS } from "../lib/permission-seed.js";
 import { buildActivityLogWhere } from "./activity-log-scope.service.js";
 
 describe("buildActivityLogWhere", () => {
-  it("SUPER_ADMIN has no actor filter", () => {
-    expect(buildActivityLogWhere({}, UserRole.SUPER_ADMIN)).toEqual({});
+  it("super-admin has no actor filter", () => {
+    expect(buildActivityLogWhere({}, LEGACY_ROLE_SLUGS.SUPER_ADMIN)).toEqual({});
   });
 
-  it("ADMIN restricts to USER and SUPERVISOR actors", () => {
-    expect(buildActivityLogWhere({}, UserRole.ADMIN)).toEqual({
-      user: { role: { in: [UserRole.USER, UserRole.SUPERVISOR] } },
+  it("admin restricts to user and supervisor actors", () => {
+    expect(buildActivityLogWhere({}, LEGACY_ROLE_SLUGS.ADMIN)).toEqual({
+      user: {
+        rbacRole: {
+          slug: { in: [LEGACY_ROLE_SLUGS.USER, LEGACY_ROLE_SLUGS.SUPERVISOR] },
+        },
+      },
     });
   });
 
-  it("merges module filter with ADMIN actor filter", () => {
-    expect(buildActivityLogWhere({ module: "policy" }, UserRole.ADMIN)).toEqual({
-      AND: [{ module: "policy" }, { user: { role: { in: [UserRole.USER, UserRole.SUPERVISOR] } } }],
+  it("merges module filter with admin actor filter", () => {
+    expect(buildActivityLogWhere({ module: "policy" }, LEGACY_ROLE_SLUGS.ADMIN)).toEqual({
+      AND: [
+        { module: "policy" },
+        {
+          user: {
+            rbacRole: {
+              slug: { in: [LEGACY_ROLE_SLUGS.USER, LEGACY_ROLE_SLUGS.SUPERVISOR] },
+            },
+          },
+        },
+      ],
     });
   });
 });

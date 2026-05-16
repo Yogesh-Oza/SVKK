@@ -7,6 +7,7 @@ import {
   type DashboardMetrics,
 } from "@/features/svkk-dashboard/dashboard-metric-cards";
 import { PremiumTrendAndBreakdown } from "@/features/svkk-dashboard/premium-trend-and-breakdown";
+import { canAccessMis } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
 import { useCallback, useEffect, useState } from "react";
@@ -27,9 +28,7 @@ export default function SvkkDashboardPage() {
   const [misLoading, setMisLoading] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
-  const canSeeMis = user
-    ? user.role === "SUPERVISOR" || user.role === "ADMIN" || user.role === "SUPER_ADMIN"
-    : false;
+  const canSeeMis = user ? canAccessMis(user.permissions) : false;
 
   const load = useCallback(async () => {
     if (!canSeeMis) {

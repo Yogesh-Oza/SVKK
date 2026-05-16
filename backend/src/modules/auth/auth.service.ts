@@ -1,18 +1,23 @@
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
-import type { User, UserRole } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../errors/app-error.js";
 import type { Env } from "../../config/env.js";
+import { getRoleWithVersion } from "../../services/rbac.service.js";
 
 export interface TokenPayload {
   sub: string;
-  role: UserRole;
+  roleId: string;
   rtv: number;
+  pv: number;
 }
 
 export async function verifyCredentials(email: string, password: string): Promise<User> {
-  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    include: { rbacRole: { select: { isActive: true, isDeleted: true } } },
+  });
   if (!user) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
   }
@@ -20,30 +25,44 @@ export async function verifyCredentials(email: string, password: string): Promis
   if (!ok) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
   }
+  if (!user.rbacRole || user.rbacRole.isDeleted || !user.rbacRole.isActive) {
+    throw new AppError("FORBIDDEN", "Account role is disabled", 403);
+  }
   return user;
 }
 
-export function signAccessToken(user: User, env: Env): string {
-  const opts: SignOptions = { expiresIn: env.ACCESS_TOKEN_EXPIRES as SignOptions["expiresIn"] };
-  return jwt.sign(
-    { sub: user.id, role: user.role, rtv: user.refreshTokenVersion },
-    env.ACCESS_TOKEN_SECRET,
-    opts,
-  );
+async function tokenPayloadForUser(user: User): Promise<TokenPayload> {
+  const role = await getRoleWithVersion(user.roleId);
+  if (!role || !role.isActive) {
+    throw new AppError("FORBIDDEN", "Role is disabled", 403);
+  }
+  return {
+    sub: user.id,
+    roleId: user.roleId,
+    rtv: user.refreshTokenVersion,
+    pv: role.permVersion,
+  };
 }
 
-export function signRefreshToken(user: User, env: Env): string {
+export async function signAccessToken(user: User, env: Env): Promise<string> {
+  const payload = await tokenPayloadForUser(user);
+  const opts: SignOptions = { expiresIn: env.ACCESS_TOKEN_EXPIRES as SignOptions["expiresIn"] };
+  return jwt.sign(payload, env.ACCESS_TOKEN_SECRET, opts);
+}
+
+export async function signRefreshToken(user: User, env: Env): Promise<string> {
+  const payload = await tokenPayloadForUser(user);
   const opts: SignOptions = { expiresIn: env.REFRESH_TOKEN_EXPIRES as SignOptions["expiresIn"] };
-  return jwt.sign(
-    { sub: user.id, role: user.role, rtv: user.refreshTokenVersion },
-    env.REFRESH_TOKEN_SECRET,
-    opts,
-  );
+  return jwt.sign(payload, env.REFRESH_TOKEN_SECRET, opts);
 }
 
 export function verifyAccessToken(token: string, env: Env): TokenPayload {
   try {
-    return jwt.verify(token, env.ACCESS_TOKEN_SECRET) as TokenPayload;
+    const payload = jwt.verify(token, env.ACCESS_TOKEN_SECRET) as TokenPayload;
+    if (!payload.sub || !payload.roleId) {
+      throw new Error("invalid payload");
+    }
+    return payload;
   } catch {
     throw new AppError("INVALID_TOKEN", "Access token invalid or expired", 401);
   }
@@ -58,55 +77,35 @@ export function verifyRefreshToken(token: string, env: Env): TokenPayload {
 }
 
 export async function assertRefreshVersion(userId: string, rtv: number): Promise<User> {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  if (user.refreshTokenVersion !== rtv) {
-    throw new AppError("TOKEN_REVOKED", "Session revoked", 401);
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.refreshTokenVersion !== rtv) {
+    throw new AppError("INVALID_TOKEN", "Session revoked", 401);
+  }
+  const role = await getRoleWithVersion(user.roleId);
+  if (!role || role.isDeleted || !role.isActive) {
+    throw new AppError("FORBIDDEN", "Role is disabled", 403);
   }
   return user;
 }
 
-export async function revokeAllRefreshTokens(userId: string) {
+export async function revokeAllRefreshTokens(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
     data: { refreshTokenVersion: { increment: 1 } },
   });
 }
 
-type ProfilePatch = { name?: string; email?: string; password?: string | undefined };
-
 export async function updateMyProfile(
   userId: string,
-  data: ProfilePatch,
+  input: { name?: string; email?: string; password?: string },
 ): Promise<User> {
-  const u = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  if (data.email && data.email.toLowerCase() !== u.email) {
-    const ex = await prisma.user.findFirst({
-      where: { email: data.email.toLowerCase() },
-    });
-    if (ex) {
-      throw new AppError("CONFLICT", "Email is already in use", 409);
-    }
+  const data: { name?: string; email?: string; passwordHash?: string; refreshTokenVersion?: { increment: number } } =
+    {};
+  if (input.name !== undefined) data.name = input.name;
+  if (input.email !== undefined) data.email = input.email.toLowerCase();
+  if (input.password) {
+    data.passwordHash = await bcrypt.hash(input.password, 10);
+    data.refreshTokenVersion = { increment: 1 };
   }
-
-  const next: {
-    name?: string;
-    email?: string;
-    passwordHash?: string;
-    refreshTokenVersion?: { increment: number };
-  } = {};
-  if (data.name !== undefined) {
-    next.name = data.name;
-  }
-  if (data.email) {
-    next.email = data.email.toLowerCase();
-  }
-  if (data.password && data.password.length >= 8) {
-    next.passwordHash = await bcrypt.hash(data.password, 10);
-    next.refreshTokenVersion = { increment: 1 };
-  }
-
-  return prisma.user.update({
-    where: { id: userId },
-    data: next,
-  });
+  return prisma.user.update({ where: { id: userId }, data });
 }

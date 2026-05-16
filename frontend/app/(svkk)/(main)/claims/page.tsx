@@ -88,11 +88,12 @@ export default function SvkkClaimsPage() {
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
 
   const missingUrl = !getSvkkApiBase();
-  const role = user?.role;
-  const canC = role ? canCreateClaim(role) : false;
-  const canU = role ? canUpdateClaim(role) : false;
-  const canD = role ? canDeleteClaim(role) : false;
-  const supervisorVillageRequired = role === "SUPERVISOR";
+  const perms = user?.permissions ?? [];
+  const canC = canCreateClaim(perms);
+  const canU = canUpdateClaim(perms);
+  const canD = canDeleteClaim(perms);
+  const supervisorVillageRequired =
+    perms.includes("claim:scope_village") && !perms.includes("claim:scope_all");
 
   const fetchPage = useCallback(
     async (opts: { reset: boolean; cursor?: string }) => {
@@ -127,10 +128,7 @@ export default function SvkkClaimsPage() {
     if (missingUrl) {
       return;
     }
-    if (
-      !user ||
-      (user.role !== "SUPERVISOR" && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")
-    ) {
+    if (!user?.permissions?.includes("claim:read") && !user?.permissions?.includes("*:*")) {
       return;
     }
     void runInitialLoad();
@@ -257,9 +255,8 @@ export default function SvkkClaimsPage() {
 
   if (
     user &&
-    user.role !== "SUPERVISOR" &&
-    user.role !== "ADMIN" &&
-    user.role !== "SUPER_ADMIN"
+    !user.permissions?.includes("claim:read") &&
+    !user.permissions?.includes("*:*")
   ) {
     return <p className="text-muted-foreground text-sm">You do not have access to claims.</p>;
   }

@@ -16,3 +16,12 @@ export const authRateLimit = rateLimit({
   legacyHeaders: false,
   message: { success: false, code: "TOO_MANY_REQUESTS", message: "Too many login attempts" },
 });
+
+/** Stricter limit for RBAC role/permission mutations */
+export const rbacRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { success: false, code: "TOO_MANY_REQUESTS", message: "Rate limit exceeded" },
+});
