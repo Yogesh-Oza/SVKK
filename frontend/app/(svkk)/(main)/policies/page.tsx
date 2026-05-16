@@ -632,8 +632,33 @@ export default function SvkkPoliciesPage() {
         ),
       },
       {
+        id: "referenceNo",
+        accessorFn: (r) => r.referenceNo ?? "",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Reference No"
+            sortAsc="referenceNo"
+            sortDesc="referenceNo_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
+        cell: ({ row }) => {
+          const ref = row.original.referenceNo?.trim() || "—";
+          return (
+            <span
+              className={cn(policyTableMuted, "max-w-[200px] truncate font-mono text-xs")}
+              title={ref !== "—" ? ref : undefined}
+            >
+              {ref}
+            </span>
+          );
+        },
+      },
+      {
         id: "svkkId",
-        accessorFn: (r) => (r.referenceNo ?? r.insuredParty.svkkPublicId ?? "").trim(),
+        accessorFn: (r) => r.insuredParty.svkkPublicId.trim(),
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
@@ -645,8 +670,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => {
-          const p = row.original;
-          const id = (p.referenceNo ?? p.insuredParty.svkkPublicId ?? "").trim() || "—";
+          const id = row.original.insuredParty.svkkPublicId.trim() || "—";
           return (
             <span className={cn(policyTableMuted, "max-w-[200px] truncate font-mono text-xs")} title={id !== "—" ? id : undefined}>
               {id}

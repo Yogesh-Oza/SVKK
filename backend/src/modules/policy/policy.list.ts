@@ -62,9 +62,9 @@ const SORTS: Record<string, Prisma.PolicyOrderByWithRelationInput | Prisma.Polic
   policyTypeName_desc: { policyType: { name: "desc" } },
   mobile: { insuredParty: { mobile: "asc" } },
   mobile_desc: { insuredParty: { mobile: "desc" } },
-  /** SVKK ID column: policy reference, then insured public id */
-  svkkId: [{ referenceNo: "asc" }, { insuredParty: { svkkPublicId: "asc" } }],
-  svkkId_desc: [{ referenceNo: "desc" }, { insuredParty: { svkkPublicId: "desc" } }],
+  /** SVKK ID column: insured party public id */
+  svkkId: { insuredParty: { svkkPublicId: "asc" } },
+  svkkId_desc: { insuredParty: { svkkPublicId: "desc" } },
   periodYearText: { periodYearText: "asc" },
   periodYearText_desc: { periodYearText: "desc" },
   /** List premium column: denormalized on Policy, synced when years change */
