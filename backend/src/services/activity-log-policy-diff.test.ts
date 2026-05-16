@@ -38,4 +38,32 @@ describe("computePolicyFieldChanges", () => {
     );
     expect(changes).toHaveLength(0);
   });
+
+  it("detects payment rows added on policy year", () => {
+    const changes = computePolicyFieldChanges(
+      {
+        policy: {
+          referenceNo: "OTHER2026NOV0001",
+          years: [{ yearLabel: "2026-27", diffPaidByHolder: 3000 }],
+        },
+        yearLabel: "2026-27",
+      },
+      {
+        policy: {
+          referenceNo: "OTHER2026NOV0001",
+          years: [
+            {
+              yearLabel: "2026-27",
+              diffPaidByHolder: 3000,
+              payments: [{ method: "CASH", amount: 3000, status: "PENDING" }],
+              members: [],
+            },
+          ],
+        },
+        yearLabel: "2026-27",
+      },
+    );
+    expect(changes.some((c) => c.label === "Payments")).toBe(true);
+    expect(changes.find((c) => c.label === "Payments")?.after).toContain("CASH");
+  });
 });

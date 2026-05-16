@@ -122,6 +122,24 @@ function valuesEqual(a: unknown, b: unknown): boolean {
   return formatValue(a) === formatValue(b);
 }
 
+function summarizePayments(payments: unknown): string {
+  if (!Array.isArray(payments) || payments.length === 0) return "—";
+  const parts = payments.map((p) => {
+    const row = asRecord(p);
+    if (!row) return "payment";
+    const method = typeof row.method === "string" ? row.method : "—";
+    const amount = row.amount != null ? String(row.amount) : "—";
+    const status = typeof row.status === "string" ? row.status : "";
+    return status ? `${method} ${amount} (${status})` : `${method} ${amount}`;
+  });
+  return `${payments.length} payment(s): ${parts.join("; ")}`;
+}
+
+function summarizeMembers(members: unknown): string {
+  if (!Array.isArray(members) || members.length === 0) return "—";
+  return `${members.length} member(s)`;
+}
+
 function pickYear(
   policy: Record<string, unknown> | null,
   yearLabel?: string,
@@ -210,6 +228,33 @@ export function computePolicyFieldChanges(
       label,
       before: formatValue(beforeVal),
       after: formatValue(afterVal),
+    });
+  }
+
+  const beforePolicy = asRecord(asRecord(beforeData)?.policy) ?? asRecord(beforeData);
+  const afterPolicy = asRecord(asRecord(afterData)?.policy) ?? asRecord(afterData);
+  const beforeYear = pickYear(beforePolicy, yearLabel ?? undefined);
+  const afterYear = pickYear(afterPolicy, yearLabel ?? undefined);
+
+  const beforePayments = summarizePayments(beforeYear?.payments);
+  const afterPayments = summarizePayments(afterYear?.payments);
+  if (beforePayments !== afterPayments) {
+    changes.push({
+      field: "year.payments",
+      label: "Payments",
+      before: beforePayments,
+      after: afterPayments,
+    });
+  }
+
+  const beforeMembers = summarizeMembers(beforeYear?.members);
+  const afterMembers = summarizeMembers(afterYear?.members);
+  if (beforeMembers !== afterMembers) {
+    changes.push({
+      field: "year.members",
+      label: "Insured members",
+      before: beforeMembers,
+      after: afterMembers,
     });
   }
 
