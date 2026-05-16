@@ -122,7 +122,7 @@ function PolicyRefCard({
             <div key={f.label} className="min-w-0">
               <dt className="text-muted-foreground text-xs">{f.label}</dt>
               <dd className="font-medium break-words">{f.value}</dd>
-            </motion.div>
+            </div>
           ))}
         </dl>
       ) : null}
