@@ -48,6 +48,7 @@ import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-f
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
 import {
+  pickPolicyYear,
   policyDetailToAdFormValues,
   type SvkkPolicyDetailForForm,
 } from "./ad-policy-detail-to-form";
@@ -1166,15 +1167,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [policyId, values, receiptImageUrls]);
 
   useEffect(() => {
-    if (missingUrl || isEdit) {
+    if (missingUrl) {
       return;
     }
     void (async () => {
-      setLoadErr(null);
+      if (!isEdit) {
+        setLoadErr(null);
+      }
       try {
         await loadAdPolicyType();
       } catch (e) {
-        setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
+        if (!isEdit) {
+          setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
+        }
       }
     })();
   }, [missingUrl, loadAdPolicyType, isEdit]);
@@ -1193,6 +1198,35 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
     })();
   }, [missingUrl, isEdit, policyId]);
+
+  useEffect(() => {
+    if (!isEdit || !detail) {
+      return;
+    }
+    if (detail.policyType?.id) {
+      setPolicyTypeId(detail.policyType.id);
+    }
+    const yearRow = pickPolicyYear(detail.years, editYearLabel);
+    if (yearRow?.policyChart?.id) {
+      setPolicyChartId(yearRow.policyChart.id);
+    }
+  }, [isEdit, detail, editYearLabel]);
+
+  const detailHydrationKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isEdit || !detail) {
+      return;
+    }
+    const hydrationKey = `${detail.id}|${detail.updatedAt}|${editYearLabel}`;
+    if (detailHydrationKeyRef.current === hydrationKey) {
+      return;
+    }
+    detailHydrationKeyRef.current = hydrationKey;
+    const nextValues = policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
+    void formik.setValues(nextValues);
+    setPremiumManual({});
+    setAgeManual({});
+  }, [isEdit, detail, editYearLabel, formik.setValues]);
 
   useEffect(() => {
     // Lock auto-id only when we are updating an existing policy. After Carry

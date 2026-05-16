@@ -1,7 +1,14 @@
-import { adProductFormValueFromApi } from "./ad-product-variant";
+import { resolveAdProductFormValue } from "./ad-product-variant";
 import { emptyMemberRow, type AdMemberRow } from "./ad-member-types";
-import type { AdPolicyFormValues } from "./ad-policy-form-values";
+import type {
+  AdPolicyFormValues,
+  AdPolicyPaymentTransactionForm,
+} from "./ad-policy-form-values";
 import { getAdPolicyInitialValues } from "./ad-policy-form-values";
+import {
+  canonicalMonthName,
+  POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER,
+} from "@/lib/svkk/policy-period-months";
 
 export function parsePolicyUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -108,11 +115,14 @@ export type SvkkPolicyDetailForForm = {
     aadhaarNo: string | null;
     dateOfBirth: string | null;
   };
+  policyType?: { id: string; name: string; key?: string | null } | null;
   category: { key: string; name: string } | null;
   years: Array<{
     yearLabel: string;
     policyStart: string | null;
     policyEnd: string | null;
+    amountReceived?: Decimalish;
+    policyChart?: { id: string } | null;
     sumInsured: Decimalish;
     expectedNetPremium: Decimalish;
     taxPercent?: Decimalish;
@@ -150,6 +160,8 @@ export type SvkkPolicyDetailForForm = {
       ifscCode?: string | null;
       notOver?: string | null;
       dishonourReason?: string | null;
+      returnCharges?: Decimalish;
+      otherCharges?: Decimalish;
       status?: string | null;
       cheque: ChequeApi;
     }>;
@@ -225,7 +237,157 @@ export type PolicyDetailToFormOptions = {
   yearLabel?: string;
 };
 
-function pickPolicyYear(
+function monthFromIsoDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER[d.getMonth()] ?? "";
+}
+
+const REF_MONTH_ABBR_TO_LABEL: Record<string, string> = {
+  JAN: "January",
+  FEB: "February",
+  MAR: "March",
+  APR: "April",
+  MAY: "May",
+  JUN: "June",
+  JUL: "July",
+  AUG: "August",
+  SEP: "September",
+  OCT: "October",
+  NOV: "November",
+  DEC: "December",
+};
+
+/** Parses month token from reference numbers like `NVKK2026JAN0003`. */
+export function monthFromReferenceNo(referenceNo: string | null | undefined): string {
+  const ref = referenceNo?.trim();
+  if (!ref) return "";
+  const m = ref.match(/(?:19|20)\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d*/i);
+  if (!m) return "";
+  return REF_MONTH_ABBR_TO_LABEL[m[1].toUpperCase()] ?? "";
+}
+
+function resolveMonthFormValue(
+  row: SvkkPolicyDetailForForm,
+  y: SvkkPolicyDetailForForm["years"][number],
+): string {
+  const fromText = canonicalMonthName(row.periodMonthText ?? "") ?? "";
+  if (fromText) return fromText;
+  const fromRef = monthFromReferenceNo(row.referenceNo);
+  if (fromRef) return fromRef;
+  return monthFromIsoDate(y.policyStart) || monthFromIsoDate(y.policyEnd);
+}
+
+function mapPaymentMethodToForm(method: string | null | undefined): AdPolicyPaymentTransactionForm["mode"] {
+  const m = (method ?? "").toUpperCase();
+  if (m === "CHQ" || m === "CHEQUE") return "CHEQUE";
+  if (m === "CASH") return "CASH";
+  if (m === "UPI") return "UPI";
+  return "ONLINE";
+}
+
+function mapPaymentStatusToForm(
+  p: NonNullable<SvkkPolicyDetailForForm["years"][number]["payments"]>[number],
+  ch: ChequeApi,
+): AdPolicyPaymentTransactionForm["transactionStatus"] {
+  if (ch?.status === "DISHONOURED" || p.status === "FAILED") return "DISHONOURED";
+  if (ch?.status === "CLEARED" || p.status === "COMPLETED") return "CLEARED";
+  if (ch?.status === "PENDING" || p.status === "PENDING") return "PENDING";
+  return "";
+}
+
+function paymentRowFromApi(
+  p: NonNullable<SvkkPolicyDetailForForm["years"][number]["payments"]>[number],
+): AdPolicyPaymentTransactionForm {
+  const ch = p.cheque;
+  const mode = mapPaymentMethodToForm(p.method ?? (ch ? "CHQ" : null));
+  const accountOrMobile = ch?.accountNo ?? p.accountNumber ?? "";
+  return {
+    mode,
+    mobileNumber: mode === "UPI" ? accountOrMobile : "",
+    transactionNumber: ch?.number ?? p.transactionNumber ?? "",
+    bankName: ch?.bankName ?? p.bankName ?? "",
+    branch: ch?.branch ?? p.branchName ?? "",
+    accountNumber: mode === "UPI" ? "" : accountOrMobile,
+    nameAsPerCheque: ch?.nameAsPerCheque ?? p.nameAsPerCheque ?? "",
+    ifscCode: ch?.ifsc ?? p.ifscCode ?? "",
+    notOver: ch?.notOver ?? p.notOver ?? "",
+    transactionDate: isoToDateInput(
+      ch?.chequeDate == null
+        ? p.transactionDate ?? ""
+        : typeof ch.chequeDate === "string"
+          ? ch.chequeDate
+          : ch.chequeDate.toISOString(),
+    ),
+    transactionStatus: mapPaymentStatusToForm(p, ch),
+    dishonourReason: ch?.reason ?? p.dishonourReason ?? "",
+    returnCharges: decStr(p.returnCharges),
+    otherCharges: decStr(p.otherCharges),
+    amountReceived: decStr(p.amount),
+  };
+}
+
+function legacyPaymentTransactionsFromYear(
+  y: SvkkPolicyDetailForForm["years"][number],
+  legacy: {
+    paymentMode: AdPolicyFormValues["paymentMode"];
+    onlineTransactionRef: string;
+    policyChequeNo: string;
+    bank: string;
+    accountNo: string;
+    branch: string;
+    nameAsPerCheque: string;
+    ifsc: string;
+    notOver: string;
+    chequeDate: string;
+    chequeStatus: string;
+    reasonDishonoured: string;
+  },
+): AdPolicyPaymentTransactionForm[] {
+  const hasLegacy =
+    legacy.policyChequeNo ||
+    legacy.bank ||
+    legacy.onlineTransactionRef ||
+    y.amountReceived != null;
+  if (!hasLegacy) return [];
+
+  const mode =
+    legacy.paymentMode === "CHEQUE"
+      ? "CHEQUE"
+      : legacy.paymentMode === "CASH"
+        ? "CASH"
+        : legacy.onlineTransactionRef
+          ? "ONLINE"
+          : "CHEQUE";
+
+  let transactionStatus: AdPolicyPaymentTransactionForm["transactionStatus"] = "";
+  if (legacy.chequeStatus === "DISHONOURED") transactionStatus = "DISHONOURED";
+  else if (legacy.chequeStatus === "CLEARED") transactionStatus = "CLEARED";
+  else if (legacy.chequeStatus) transactionStatus = "PENDING";
+
+  return [
+    {
+      mode,
+      mobileNumber: "",
+      transactionNumber: legacy.policyChequeNo || legacy.onlineTransactionRef,
+      bankName: legacy.bank,
+      branch: legacy.branch,
+      accountNumber: legacy.accountNo,
+      nameAsPerCheque: legacy.nameAsPerCheque,
+      ifscCode: legacy.ifsc,
+      notOver: legacy.notOver,
+      transactionDate: legacy.chequeDate,
+      transactionStatus,
+      dishonourReason: legacy.reasonDishonoured,
+      returnCharges: "",
+      otherCharges: "",
+      amountReceived: decStr(y.amountReceived),
+    },
+  ];
+}
+
+export function pickPolicyYear(
   years: SvkkPolicyDetailForForm["years"],
   yearLabel?: string,
 ): SvkkPolicyDetailForForm["years"][number] | undefined {
@@ -315,52 +477,22 @@ export function policyDetailToAdFormValues(
     }
   }
 
-  const paymentTransactions: AdPolicyFormValues["paymentTransactions"] =
-    y.payments?.length
-      ? y.payments.map((p) => {
-          const ch = p.cheque;
-          const mode =
-            p.method === "CHQ" || p.method === "CHEQUE"
-              ? "CHEQUE"
-              : p.method === "CASH"
-                ? "CASH"
-                : p.method === "UPI" || p.method === "NEFT"
-                  ? "UPI"
-                  : "ONLINE";
-          let transactionStatus: AdPolicyFormValues["paymentTransactions"][number]["transactionStatus"] =
-            "";
-          if (ch?.status === "DISHONOURED" || p.status === "FAILED") {
-            transactionStatus = "DISHONOURED";
-          } else if (ch?.status === "CLEARED" || p.status === "COMPLETED") {
-            transactionStatus = "CLEARED";
-          } else if (ch?.status === "PENDING" || p.status === "PENDING") {
-            transactionStatus = "PENDING";
-          }
-          return {
-            mode,
-            mobileNumber: "",
-            transactionNumber: ch?.number ?? p.transactionNumber ?? "",
-            bankName: ch?.bankName ?? p.bankName ?? "",
-            branch: ch?.branch ?? p.branchName ?? "",
-            accountNumber: ch?.accountNo ?? p.accountNumber ?? "",
-            nameAsPerCheque: ch?.nameAsPerCheque ?? p.nameAsPerCheque ?? "",
-            ifscCode: ch?.ifsc ?? p.ifscCode ?? "",
-            notOver: ch?.notOver ?? p.notOver ?? "",
-            transactionDate: isoToDateInput(
-              ch?.chequeDate == null
-                ? p.transactionDate ?? ""
-                : typeof ch.chequeDate === "string"
-                  ? ch.chequeDate
-                  : ch.chequeDate.toISOString(),
-            ),
-            transactionStatus,
-            dishonourReason: ch?.reason ?? p.dishonourReason ?? "",
-            returnCharges: "",
-            otherCharges: "",
-            amountReceived: decStr(p.amount),
-          };
-        })
-      : [];
+  const paymentTransactions: AdPolicyFormValues["paymentTransactions"] = y.payments?.length
+    ? y.payments.map((p) => paymentRowFromApi(p))
+    : legacyPaymentTransactionsFromYear(y, {
+        paymentMode,
+        onlineTransactionRef,
+        policyChequeNo,
+        bank,
+        accountNo,
+        branch,
+        nameAsPerCheque,
+        ifsc,
+        notOver,
+        chequeDate,
+        chequeStatus,
+        reasonDishonoured,
+      });
 
   const memberRows: AdMemberRow[] =
     y.members.length > 0
@@ -387,7 +519,11 @@ export function policyDetailToAdFormValues(
   return {
     ...base,
     policyNo: row.policyNo ?? "",
-    adProduct: adProductFormValueFromApi(row.adProductVariant),
+    adProduct: resolveAdProductFormValue(
+      row.adProductVariant,
+      row.policyType?.name,
+      row.policyType?.key,
+    ),
     customerId: row.insuredParty.customerId ?? "",
     svkkPublicId: row.insuredParty.svkkPublicId ?? "",
     policyHolder: row.insuredParty.name ?? "",
@@ -476,7 +612,7 @@ export function policyDetailToAdFormValues(
     policyChangeRemark,
     refNo: row.referenceNo ?? "",
     year: row.periodYearText ?? "",
-    month: row.periodMonthText ?? "",
+    month: resolveMonthFormValue(row, y),
     policyGrouping: groupingFromApi(row.policyGrouping),
     urls: parsePolicyUrls(row.policyUrl),
     url2: row.policyUrl2 ?? "",
