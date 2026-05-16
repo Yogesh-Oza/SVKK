@@ -126,6 +126,7 @@ export type SvkkPolicyDetailForForm = {
     grossPremium: Decimalish;
     commissionAmount: Decimalish;
     twoLacFloater: Decimalish;
+    premiumOneOrTwoLakh?: Decimalish;
     yearPolicyHolderPremium: Decimalish;
     gaamMahajanVkk: Decimalish;
     excessShortAmount: Decimalish;
@@ -359,7 +360,7 @@ export function policyDetailToAdFormValues(
     netPremiumCalc: decStr(y.netPremium ?? y.expectedNetPremium),
     commission: decStr(y.commissionAmount),
     vkkCommission: decStr(y.vkkCommission),
-    twoLakhF: decStr(y.twoLacFloater),
+    twoLakhF: decStr(y.twoLacFloater ?? y.premiumOneOrTwoLakh),
     policyHolderPremium: decStr(y.yearPolicyHolderPremium),
     contribution: decStr(y.gaamMahajanContribution ?? y.gaamMahajanVkk),
     gaamMahajan: decStr(y.gaamMahajanVkk),

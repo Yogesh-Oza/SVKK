@@ -27,8 +27,9 @@ import {
 } from "@/features/svkk-policies/policy-year-siblings";
 import { useParams, useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type ChequeDetail = {
   number: string;
@@ -202,6 +203,16 @@ function cdUsedLabel(v: boolean | null | undefined): string {
   return "";
 }
 
+function formatInrRupee(v: unknown): string | null {
+  const formatted = formatNumIn(v);
+  if (!formatted) return null;
+  return `₹ ${formatted}`;
+}
+
+async function loadPolicyById(policyId: string): Promise<PolicyDetail> {
+  return svkkJson<PolicyDetail>(`/policies/${policyId}`);
+}
+
 export default function SvkkPolicyDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -211,9 +222,11 @@ export default function SvkkPolicyDetailPage() {
   const selectedYearLabel = searchParams.get("year")?.trim() ?? "";
 
   const [row, setRow] = useState<PolicyDetail | null>(null);
-  const [yearSiblings, setYearSiblings] = useState<PolicyListYearSibling[]>([]);
+  const [yearTabs, setYearTabs] = useState<PolicyListYearSibling[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [yearId, setYearId] = useState<string | "">("");
+  const [loadingDetail, setLoadingDetail] = useState(true);
+  const [switchingYear, setSwitchingYear] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const missingUrl = !getSvkkApiBase();
@@ -221,83 +234,95 @@ export default function SvkkPolicyDetailPage() {
   const perms = user?.permissions ?? [];
   const canDel = canDeletePolicy(perms);
 
+  const applyYearToDetail = useCallback((detail: PolicyDetail, yearLabel: string) => {
+    const matched =
+      detail.years.find((yy) => yy.yearLabel === yearLabel) ??
+      (detail.periodYearText?.trim() === yearLabel ? detail.years[0] : undefined);
+    setYearId(matched?.id ?? detail.years[0]?.id ?? "");
+  }, []);
+
   useEffect(() => {
-    if (missingUrl) {
-      return;
-    }
+    if (missingUrl) return;
+    let cancelled = false;
     void (async () => {
+      if (!row) setLoadingDetail(true);
+      else setSwitchingYear(true);
+      setErr(null);
       try {
-        const p = await svkkJson<PolicyDetail>(`/policies/${id}`);
-        setRow(p);
-        if (p.years[0]) {
-          setYearId(p.years[0].id);
+        const initial = await loadPolicyById(id);
+        if (cancelled) return;
+
+        const svkkId = initial.insuredParty.svkkPublicId.trim();
+        let tabs: PolicyListYearSibling[] = [];
+        if (svkkId) {
+          tabs = await fetchPolicyYearSiblings(svkkId);
+        }
+        if (tabs.length === 0) {
+          tabs = singleRowYearSibling({
+            id: initial.id,
+            policyNo: initial.policyNo,
+            referenceNo: initial.referenceNo,
+            periodYearText: initial.periodYearText,
+            insuredParty: initial.insuredParty,
+            years: initial.years.map((yy) => ({
+              yearLabel: yy.yearLabel,
+              vkkPremium: yy.vkkPremium,
+              sumInsured: yy.sumInsured,
+            })),
+          });
+        }
+        if (cancelled) return;
+        setYearTabs(tabs);
+
+        let targetTab =
+          (selectedYearLabel ? tabs.find((t) => t.yearLabel === selectedYearLabel) : undefined) ??
+          tabs[0];
+        if (!targetTab) {
+          setRow(initial);
+          applyYearToDetail(initial, initial.periodYearText ?? initial.years[0]?.yearLabel ?? "");
+          return;
+        }
+
+        const detail =
+          targetTab.policyId === initial.id ? initial : await loadPolicyById(targetTab.policyId);
+        if (cancelled) return;
+
+        setRow(detail);
+        applyYearToDetail(detail, targetTab.yearLabel);
+
+        const urlYear = selectedYearLabel || targetTab.yearLabel;
+        if (targetTab.policyId !== id || urlYear !== selectedYearLabel) {
+          router.replace(
+            `/policies/${targetTab.policyId}?year=${encodeURIComponent(urlYear)}`,
+            { scroll: false },
+          );
         }
       } catch (e) {
-        setErr(e instanceof Error ? e.message : "Not found");
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : "Not found");
+          setRow(null);
+          setYearTabs([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDetail(false);
+          setSwitchingYear(false);
+        }
       }
     })();
-  }, [id, missingUrl]);
-
-  useEffect(() => {
-    if (!row || !selectedYearLabel) return;
-    const matched = row.years.find((yy) => yy.yearLabel === selectedYearLabel);
-    if (matched) {
-      setYearId(matched.id);
-    }
-  }, [row, selectedYearLabel]);
-
-  useEffect(() => {
-    if (!selectedYearLabel || yearSiblings.length === 0) return;
-    const tab = yearSiblings.find((t) => t.yearLabel === selectedYearLabel);
-    if (tab && tab.policyId !== id) {
-      router.replace(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`);
-    }
-  }, [selectedYearLabel, yearSiblings, id, router]);
-
-  useEffect(() => {
-    if (!row) {
-      setYearSiblings([]);
-      return;
-    }
-    const svkkId = row.insuredParty.svkkPublicId.trim();
-    if (!svkkId) {
-      const y0 = row.years[0];
-      setYearSiblings(
-        y0
-          ? [{ policyId: id, yearLabel: y0.yearLabel, vkkPremium: y0.vkkPremium, sumInsured: y0.sumInsured }]
-          : [],
-      );
-      return;
-    }
-    let cancelled = false;
-    void fetchPolicyYearSiblings(svkkId).then((items) => {
-      if (cancelled) return;
-      setYearSiblings(items.length > 0 ? items : singleRowYearSibling({
-        id,
-        periodYearText: row.periodYearText,
-        insuredParty: row.insuredParty,
-        years: row.years.map((yy) => ({
-          yearLabel: yy.yearLabel,
-          vkkPremium: yy.vkkPremium,
-          sumInsured: yy.sumInsured,
-        })),
-      }));
-    });
     return () => {
       cancelled = true;
     };
-  }, [row, id]);
+  }, [id, selectedYearLabel, missingUrl, router, applyYearToDetail]);
 
-  const yearTabs = useMemo(() => {
-    if (yearSiblings.length > 0) return yearSiblings;
-    if (!row) return [];
-    return row.years.map((yy) => ({
-      policyId: id,
-      yearLabel: yy.yearLabel,
-      vkkPremium: yy.vkkPremium,
-      sumInsured: yy.sumInsured,
-    }));
-  }, [yearSiblings, row, id]);
+  const selectYear = useCallback(
+    (tab: PolicyListYearSibling) => {
+      router.replace(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`, {
+        scroll: false,
+      });
+    },
+    [router],
+  );
 
   async function deletePolicy() {
     setDeleteBusy(true);
@@ -319,11 +344,16 @@ export default function SvkkPolicyDetailPage() {
   if (err) {
     return <p className="text-destructive text-sm">{err}</p>;
   }
-  if (!row) {
+  if (loadingDetail || !row) {
     return <p className="text-muted-foreground text-sm">Loading…</p>;
   }
 
-  const y = row.years.find((item) => item.id === yearId) ?? row.years[0];
+  const activeYearLabel =
+    selectedYearLabel || row.periodYearText?.trim() || row.years[0]?.yearLabel || "";
+  const y =
+    row.years.find((item) => item.id === yearId) ??
+    row.years.find((item) => item.yearLabel === activeYearLabel) ??
+    row.years[0];
   const ch = firstCheque(y);
   const policyTypeLabel = row.adProductVariant
     ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
@@ -340,39 +370,44 @@ export default function SvkkPolicyDetailPage() {
 
       {yearTabs.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-muted-foreground text-sm">
-            Select year
-            {yearTabs.length > 1 ? ` (${yearTabs.length} policies for this SVKK ID)` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
+          <p className="text-muted-foreground text-sm font-medium">Select year</p>
+          <div className="flex max-w-md flex-col gap-2">
             {yearTabs.map((tab) => {
-              const active =
-                tab.policyId === id &&
-                (y?.yearLabel === tab.yearLabel || (!y && row.years[0]?.yearLabel === tab.yearLabel));
+              const active = tab.yearLabel === activeYearLabel;
+              const premium = formatInrRupee(tab.vkkPremium);
               return (
                 <Button
                   key={`${tab.policyId}-${tab.yearLabel}`}
                   type="button"
                   variant={active ? "default" : "outline"}
                   size="sm"
-                  onClick={() => {
-                    if (tab.policyId !== id) {
-                      router.push(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`);
-                      return;
-                    }
-                    const matched = row.years.find((yy) => yy.yearLabel === tab.yearLabel);
-                    if (matched) setYearId(matched.id);
-                  }}
+                  className={cn(
+                    "h-auto w-full flex-col items-stretch gap-1 px-4 py-3 text-left",
+                    active && "ring-primary/30 ring-2",
+                  )}
+                  onClick={() => selectYear(tab)}
                 >
-                  {tab.yearLabel}
+                  <span className="text-base font-bold tabular-nums">{tab.yearLabel}</span>
+                  <span
+                    className={cn(
+                      "text-xs font-normal",
+                      active ? "text-primary-foreground/90" : "text-muted-foreground",
+                    )}
+                  >
+                    {[tab.referenceNo, premium].filter(Boolean).join(" · ") || "Open year record"}
+                  </span>
                 </Button>
               );
             })}
           </div>
+          <p className="text-muted-foreground text-xs">
+            Each year is a separate policy record for this SVKK ID. Choosing a year loads that
+            year&apos;s policy number, reference, premium, and members below.
+          </p>
         </div>
       ) : null}
 
-      <Card className="overflow-hidden">
+      <Card className={cn("overflow-hidden", switchingYear && "pointer-events-none opacity-60")}>
         <CardContent className="p-4 sm:p-6">
           <h4 className="mt-2 mb-3 text-base font-semibold tracking-wide">POLICY DETAILS</h4>
           <div className="overflow-x-auto">
@@ -419,7 +454,7 @@ export default function SvkkPolicyDetailPage() {
                   <td className={tdClass}>{y ? formatNumIn(y.sumInsured) : ""}</td>
                   <td className={tdClass}>{y ? formatNumIn(y.holderCumulativeBonus) : ""}</td>
                   <td className={tdClass}>{y?.holderJoiningYear ?? ""}</td>
-                  <td className={tdClass}>{row.periodYearText ?? ""}</td>
+                  <td className={tdClass}>{activeYearLabel || row.periodYearText || ""}</td>
                   <td className={tdClass}>{row.periodMonthText ?? ""}</td>
                 </tr>
                 <tr>
@@ -691,12 +726,6 @@ export default function SvkkPolicyDetailPage() {
 
         </CardContent>
       </Card>
-
-      {row.years.length > 1 ? (
-        <p className="text-muted-foreground text-xs">
-          This policy has {row.years.length} year rows. Click a year above to change all details below.
-        </p>
-      ) : null}
 
       {canDel ? (
         <>

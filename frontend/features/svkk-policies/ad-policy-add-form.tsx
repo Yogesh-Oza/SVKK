@@ -804,7 +804,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const loadingToastId = toast.loading("Carrying forward policy…");
     try {
       const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
-      const carriedValues = policyDetailToAdFormValues(row);
+      const yearForPick =
+        selectedFetch?.periodYearText?.trim() ||
+        matchedYearRows.find((r) => r.id === selectedFetchId)?.year ||
+        formik.values.year?.trim() ||
+        undefined;
+      const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
+      const preservedTwoLakhF =
+        carriedValues.twoLakhF?.trim() || formik.values.twoLakhF?.trim() || "";
       const shiftedYear = nextYearLabel(carriedValues.year);
       const previousYear = carriedValues.year || "—";
       // Baseline: shift the year token inside the prior Reference No so we never
@@ -829,7 +836,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             : " (reference number year shifted; verify before submitting)";
       }
       const initialForReset = getAdPolicyInitialValues();
-      setPremiumManual({});
+      setPremiumManual(preservedTwoLakhF ? { twoLakhF: true } : {});
       setAgeManual({});
       await formik.setValues({
         ...carriedValues,
@@ -840,6 +847,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         policyStart: "",
         policyEnd: "",
         refNo: nextReferenceNo,
+        twoLakhF: preservedTwoLakhF,
         grossPremium: "",
         taxAmount: "",
         svkkPremiumCalc: "",
@@ -914,7 +922,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       seededGroupRef.current = seededGroup;
       const effectiveGroupForKey = carriedGroupRaw || seededGroup;
       lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
-      const summary = `Copied ${previousYear} → ${shiftedYear}. Premium, payment & bank, loan, courier and remark fields cleared for the new year.${autoIdNotice}`;
+      const summary = `Copied ${previousYear} → ${shiftedYear}. Premium (1L/2L) and basic premiums kept; payment, bank, year totals, loan, courier and remarks cleared for the new year.${autoIdNotice}`;
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
         id: loadingToastId,
@@ -930,7 +938,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     } finally {
       setCarryForwardBusy(false);
     }
-  }, [carryForwardBusy, formik, requestAutoIds, selectedFetchId]);
+  }, [carryForwardBusy, formik, matchedYearRows, requestAutoIds, selectedFetch, selectedFetchId]);
 
   const selectYearPolicy = useCallback(
     async (id: string) => {
@@ -2594,7 +2602,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>Premium (1 Lakh Individual / 2 Lakh Floater)</Label>
-              <Input name="twoLakhF" value={values.twoLakhF} onChange={handleChange} onBlur={handleBlur} />
+              <Input
+                name="twoLakhF"
+                value={values.twoLakhF}
+                onChange={handlePremiumInput("twoLakhF")}
+                onBlur={handleBlur}
+              />
             </div>
             <div className="space-y-2">
               <Label>Contribution (Gaam Mahajan / VKK)</Label>

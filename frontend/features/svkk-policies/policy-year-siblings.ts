@@ -4,12 +4,16 @@ import { svkkJson } from "@/lib/svkk/api";
 export type PolicyListYearSibling = {
   policyId: string;
   yearLabel: string;
+  referenceNo: string | null;
+  policyNo: string | null;
   vkkPremium: unknown;
   sumInsured: unknown;
 };
 
 export type PolicyListRowMinimal = {
   id: string;
+  policyNo?: string | null;
+  referenceNo?: string | null;
   periodYearText?: string | null;
   insuredParty: { svkkPublicId: string };
   years: Array<{ yearLabel: string; vkkPremium: unknown; sumInsured: unknown }>;
@@ -33,6 +37,8 @@ export function toYearSiblingsFromListItems(
       return {
         policyId: p.id,
         yearLabel,
+        referenceNo: p.referenceNo ?? null,
+        policyNo: p.policyNo ?? null,
         vkkPremium: y0?.vkkPremium ?? null,
         sumInsured: y0?.sumInsured ?? null,
       };
@@ -49,6 +55,8 @@ export function singleRowYearSibling(row: PolicyListRowMinimal): PolicyListYearS
     {
       policyId: row.id,
       yearLabel,
+      referenceNo: row.referenceNo ?? null,
+      policyNo: row.policyNo ?? null,
       vkkPremium: y0?.vkkPremium ?? null,
       sumInsured: y0?.sumInsured ?? null,
     },
