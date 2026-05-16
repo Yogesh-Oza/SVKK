@@ -3,28 +3,24 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
-import {
-  ArrowRight,
-  ChevronDown,
-  ExternalLink,
-  FileText,
-  Shield,
-  User,
-} from "lucide-react";
+import { ExternalLink, FileText, Shield, User } from "lucide-react";
 import Link from "next/link";
 import type { ActivityLogItem, PolicyDisplayRef } from "./activity-logs-view";
 
@@ -38,11 +34,17 @@ const ACTION_LABELS: Record<string, string> = {
   CSV_VALIDATED: "CSV validated",
 };
 
+export type PolicyFieldChange = {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+};
+
 export type LogDetailPayload = {
-  displayBeforeData: unknown;
-  displayAfterData: unknown;
   policyRef: PolicyDisplayRef | null;
   details: string[];
+  fieldChanges: PolicyFieldChange[];
 };
 
 function humanAction(action: string): string {
@@ -62,17 +64,6 @@ function formatWhen(iso: string): string {
 
 function policyPrimaryLabel(ref: PolicyDisplayRef): string | null {
   return ref.referenceNo ?? ref.policyNo ?? ref.svkkPublicId;
-}
-
-function isStaleDetailLine(line: string): boolean {
-  return /^Policy ID:\s*/i.test(line) || /^Record ID/i.test(line);
-}
-
-function partitionDetails(details: string[]) {
-  const clean = details.filter((l) => !isStaleDetailLine(l));
-  const changes = clean.filter((l) => l.includes("→"));
-  const meta = clean.filter((l) => !l.includes("→"));
-  return { meta, changes };
 }
 
 function moduleBadgeClass(module: string): string {
@@ -99,16 +90,16 @@ function PolicyRefCard({
   ].filter((f) => f.value);
 
   return (
-    <div className="bg-primary/5 border-primary/15 space-y-4 rounded-xl border p-4">
-      <motion.div
-        className="flex items-start justify-between gap-3"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <motion.div className="flex min-w-0 items-start gap-3">
-          <div className="bg-primary/12 flex size-10 shrink-0 items-center justify-center rounded-lg">
+    <motion.div
+      className="bg-primary/5 border-primary/15 space-y-4 rounded-xl border p-4"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <motion.div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <motion.div className="bg-primary/12 flex size-10 shrink-0 items-center justify-center rounded-lg">
             <Shield className="text-primary size-5" />
-          </div>
+          </motion.div>
           <div className="min-w-0 space-y-0.5">
             <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               Policy
@@ -117,7 +108,7 @@ function PolicyRefCard({
               {primary ?? "Policy record"}
             </p>
           </div>
-        </motion.div>
+        </div>
         <Button variant="outline" size="sm" className="shrink-0" asChild>
           <Link href={`/policies/${policyId}`}>
             View
@@ -131,25 +122,54 @@ function PolicyRefCard({
             <div key={f.label} className="min-w-0">
               <dt className="text-muted-foreground text-xs">{f.label}</dt>
               <dd className="font-medium break-words">{f.value}</dd>
-            </div>
+            </motion.div>
           ))}
         </dl>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 
-function JsonSnapshot({ label, data }: { label: string; data: unknown }) {
-  if (data == null || (typeof data === "object" && Object.keys(data as object).length === 0)) {
-    return null;
+function ChangesTable({ rows }: { rows: PolicyFieldChange[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-xs">
+        No field-level differences were recorded for this update.
+      </p>
+    );
   }
+
   return (
-    <div>
-      <p className="text-muted-foreground mb-1.5 text-xs font-medium">{label}</p>
-      <pre className="bg-muted/80 max-h-40 overflow-auto rounded-lg border p-3 font-mono text-[11px] leading-relaxed">
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </div>
+    <motion.div
+      className="overflow-hidden rounded-lg border"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="h-9 w-[34%] text-xs">Field</TableHead>
+            <TableHead className="h-9 w-[33%] text-xs">Before</TableHead>
+            <TableHead className="h-9 w-[33%] text-xs">After</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.field}>
+              <TableCell className="text-muted-foreground py-2 align-top text-xs font-medium">
+                {row.label}
+              </TableCell>
+              <TableCell className="max-w-[8rem] py-2 align-top text-xs break-words whitespace-normal">
+                {row.before}
+              </TableCell>
+              <TableCell className="max-w-[8rem] py-2 align-top text-xs font-medium break-words whitespace-normal">
+                {row.after}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </motion.div>
   );
 }
 
@@ -169,10 +189,12 @@ export function ActivityLogDetailSheet({
   if (!item) return null;
 
   const policyRef = detail?.policyRef ?? item.policyRef;
-  const { meta, changes } = partitionDetails(detail?.details ?? item.details);
-  const hasSnapshot =
-    detail != null &&
-    (detail.displayBeforeData != null || detail.displayAfterData != null);
+  const fieldChanges = detail?.fieldChanges ?? [];
+  const isPolicyUpdate = item.action === "POLICY_UPDATED";
+  const isPolicyCreateOrDelete =
+    item.action === "POLICY_CREATED" || item.action === "POLICY_SOFT_DELETED";
+  const showChangesTable = isPolicyUpdate;
+  const extraDetails = detail?.details ?? item.details;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -199,10 +221,10 @@ export function ActivityLogDetailSheet({
           </div>
 
           {loading ? (
-            <div className="space-y-3">
+            <motion.div className="space-y-3">
               <Skeleton className="h-28 w-full rounded-xl" />
               <Skeleton className="h-16 w-full" />
-            </div>
+            </motion.div>
           ) : item.entityType === "Policy" && policyRef ? (
             <PolicyRefCard ref={policyRef} policyId={item.entityId} />
           ) : null}
@@ -214,7 +236,7 @@ export function ActivityLogDetailSheet({
             <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
               <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-full">
                 <User className="text-muted-foreground size-4" />
-              </div>
+              </motion.div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">
                   {item.user?.name ?? item.user?.email ?? "System"}
@@ -226,65 +248,28 @@ export function ActivityLogDetailSheet({
             </div>
           </div>
 
-          {changes.length > 0 ? (
+          {showChangesTable ? (
             <div className="space-y-2">
               <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                Changes
+                What changed
               </p>
-              <ul className="space-y-2">
-                {changes.map((line) => {
-                  const arrowIdx = line.indexOf("→");
-                  const left = arrowIdx >= 0 ? line.slice(0, arrowIdx).trim() : line;
-                  const right = arrowIdx >= 0 ? line.slice(arrowIdx + 1).trim() : "";
-                  const colonIdx = left.indexOf(":");
-                  const label = colonIdx >= 0 ? left.slice(0, colonIdx).trim() : left;
-                  const fromVal = colonIdx >= 0 ? left.slice(colonIdx + 1).trim() : "";
-                  return (
-                    <li
-                      key={line}
-                      className="bg-muted/30 flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs sm:flex-row sm:items-center sm:gap-2"
-                    >
-                      <span className="text-muted-foreground shrink-0 font-medium">{label}</span>
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                        <span className="truncate">{fromVal || "—"}</span>
-                        <ArrowRight className="text-muted-foreground size-3 shrink-0" />
-                        <span className="truncate font-medium">{right || "—"}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              {loading ? <Skeleton className="h-32 w-full rounded-lg" /> : <ChangesTable rows={fieldChanges} />}
             </div>
           ) : null}
 
-          {meta.length > 0 ? (
+          {!isPolicyCreateOrDelete && !isPolicyUpdate && extraDetails.length > 0 ? (
             <div className="space-y-2">
               <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                Additional details
+                Details
               </p>
               <ul className="text-muted-foreground space-y-1 text-xs">
-                {meta.map((line) => (
+                {extraDetails.map((line) => (
                   <li key={line} className="leading-relaxed">
                     {line}
                   </li>
                 ))}
               </ul>
             </div>
-          ) : null}
-
-          {hasSnapshot ? (
-            <Collapsible>
-              <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium transition-colors">
-                Technical snapshot
-                <ChevronDown className="size-4" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-3 space-y-3">
-                <JsonSnapshot label="Before" data={detail!.displayBeforeData} />
-                <JsonSnapshot label="After" data={detail!.displayAfterData} />
-              </CollapsibleContent>
-            </Collapsible>
-          ) : loading ? (
-            <Skeleton className="h-20 w-full rounded-lg" />
           ) : null}
         </div>
       </SheetContent>

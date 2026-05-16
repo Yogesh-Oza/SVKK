@@ -286,15 +286,13 @@ export function ActivityLogsView() {
     try {
       const full = await svkkJson<
         ActivityLogItem & {
-          displayBeforeData: unknown;
-          displayAfterData: unknown;
+          fieldChanges: LogDetailPayload["fieldChanges"];
         }
       >(`/logs/${item.id}`);
       setDetailPayload({
-        displayBeforeData: full.displayBeforeData,
-        displayAfterData: full.displayAfterData,
         policyRef: full.policyRef ?? null,
         details: full.details,
+        fieldChanges: full.fieldChanges ?? [],
       });
       setSelected((prev) =>
         prev?.id === item.id

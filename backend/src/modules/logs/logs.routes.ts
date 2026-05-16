@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
@@ -9,9 +10,10 @@ import {
   formatActivityLogDetails,
   formatActivityLogSummary,
   formatEntityLabel,
+  type ActivityLogRow,
 } from "../../services/activity-log-format.js";
+import { computePolicyFieldChanges } from "../../services/activity-log-policy-diff.js";
 import {
-  buildPolicyLogDisplayPayload,
   policyDisplayRefFromPayload,
   policyPrimaryLabel,
   resolvePolicyDisplayRef,
@@ -43,17 +45,26 @@ function parseDateBound(raw: string | undefined, endOfDay: boolean): Date | unde
   return d;
 }
 
-function toListItem(row: {
-  id: string;
-  module: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  beforeData: unknown;
-  afterData: unknown;
-  createdAt: Date;
-  user: { id: string; name: string | null; email: string } | null;
-}) {
+type ActivityLogListSource = Prisma.ActivityLogGetPayload<{
+  include: { user: { select: { id: true; name: true; email: true } } };
+}>;
+
+function toActivityLogRow(row: ActivityLogListSource): ActivityLogRow {
+  return {
+    id: row.id,
+    module: row.module,
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    beforeData: row.beforeData,
+    afterData: row.afterData,
+    createdAt: row.createdAt,
+    user: row.user,
+  };
+}
+
+function toListItem(row: ActivityLogListSource) {
+  const activityRow = toActivityLogRow(row);
   const base = {
     id: row.id,
     module: row.module,
@@ -65,18 +76,18 @@ function toListItem(row: {
       ? { id: row.user.id, name: row.user.name, email: row.user.email }
       : null,
   };
-  const formatted = { ...base, beforeData: row.beforeData, afterData: row.afterData };
   const policyRef =
     row.entityType === "Policy"
       ? policyDisplayRefFromPayload(row.beforeData, row.afterData)
       : null;
   return {
     ...base,
-    summary: formatActivityLogSummary(formatted),
-    details: formatActivityLogDetails(formatted, policyRef),
-    entityLabel: formatEntityLabel(formatted, policyRef),
+    summary: formatActivityLogSummary(activityRow),
+    details: formatActivityLogDetails(activityRow, policyRef),
+    entityLabel: formatEntityLabel(activityRow, policyRef),
     policyRef,
-    entityKey: row.entityType === "Policy" ? policyPrimaryLabel(policyRef ?? {}) : null,
+    entityKey:
+      row.entityType === "Policy" && policyRef ? policyPrimaryLabel(policyRef) : null,
   };
 }
 
@@ -162,9 +173,10 @@ export function createLogsRouter(env: Env) {
 
   r.get("/:id", requirePermission("logs:read"), async (req, res, next) => {
     try {
+      const logId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
       const where = buildActivityLogWhere({}, req.roleSlug!);
       const row = await prisma.activityLog.findFirst({
-        where: { id: req.params.id, ...where },
+        where: { id: logId, ...where },
         include: {
           user: { select: { id: true, name: true, email: true } },
         },
@@ -175,24 +187,21 @@ export function createLogsRouter(env: Env) {
       }
       const item = toListItem(row);
       let policyRef = item.policyRef ?? null;
-      let displayBeforeData: unknown = row.beforeData;
-      let displayAfterData: unknown = row.afterData;
       let details = item.details;
       let entityLabel = item.entityLabel;
       let entityKey = item.entityKey ?? null;
+      let fieldChanges: ReturnType<typeof computePolicyFieldChanges> = [];
 
       if (row.entityType === "Policy") {
         policyRef = await resolvePolicyDisplayRef(row.entityId, row.beforeData, row.afterData);
-        const formatted = {
-          ...item,
-          beforeData: row.beforeData,
-          afterData: row.afterData,
-        };
-        details = formatActivityLogDetails(formatted, policyRef);
-        entityLabel = formatEntityLabel(formatted, policyRef);
+        const activityRow = toActivityLogRow(row);
+        details = formatActivityLogDetails(activityRow, policyRef);
+        entityLabel = formatEntityLabel(activityRow, policyRef);
         entityKey = policyPrimaryLabel(policyRef);
-        displayBeforeData = buildPolicyLogDisplayPayload(row.beforeData, policyRef);
-        displayAfterData = buildPolicyLogDisplayPayload(row.afterData, policyRef);
+
+        if (row.action === "POLICY_UPDATED") {
+          fieldChanges = computePolicyFieldChanges(row.beforeData, row.afterData);
+        }
       }
 
       res.json({
@@ -201,10 +210,7 @@ export function createLogsRouter(env: Env) {
         entityKey,
         entityLabel,
         details,
-        beforeData: row.beforeData,
-        afterData: row.afterData,
-        displayBeforeData,
-        displayAfterData,
+        fieldChanges,
       });
     } catch (e) {
       next(e);

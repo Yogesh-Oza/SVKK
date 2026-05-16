@@ -173,17 +173,7 @@ export function formatActivityLogDetails(
     lines.push(`${row.entityType}: ${row.entityId}`);
   }
 
-  if (row.action === "POLICY_UPDATED") {
-    const beforePolicy = asRecord(before?.policy) ?? before;
-    const afterPolicy = asRecord(after?.policy) ?? after;
-    for (const { key, label } of POLICY_SCALAR_KEYS) {
-      const bv = beforePolicy?.[key];
-      const av = afterPolicy?.[key];
-      if (bv !== av && (bv !== undefined || av !== undefined)) {
-        lines.push(`${label}: ${String(bv ?? "—")} → ${String(av ?? "—")}`);
-      }
-    }
-  }
+  // POLICY_UPDATED field-level diffs are returned as `fieldChanges` on the detail API.
 
   if (
     row.action === "POLICY_ONEDRIVE_DOC_ATTACHED" ||
