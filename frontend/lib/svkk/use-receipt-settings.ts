@@ -1,33 +1,39 @@
 import { useEffect, useState } from "react";
 import { svkkJson } from "./api";
+import type { ReceiptImageSettings } from "./receipt-image-resolve";
 
-export type ReceiptImageUrls = {
-  headerImageUrl?: string;
-  footerImageUrl?: string;
-};
+export type ReceiptImageUrls = ReceiptImageSettings;
 
-let cache: ReceiptImageUrls | null = null;
+let cache: ReceiptImageSettings | null = null;
 
-export function useReceiptSettings(): ReceiptImageUrls {
-  const [urls, setUrls] = useState<ReceiptImageUrls>(cache ?? {});
+export function invalidateReceiptSettingsCache(): void {
+  cache = null;
+}
+
+export function useReceiptSettings(): ReceiptImageSettings {
+  const [settings, setSettings] = useState<ReceiptImageSettings>(cache ?? {});
 
   useEffect(() => {
     if (cache) return;
     let cancelled = false;
     (async () => {
       try {
-        const settings = await svkkJson<Record<string, string>>("/settings");
-        const result: ReceiptImageUrls = {};
-        if (settings.receipt_header_image) result.headerImageUrl = settings.receipt_header_image;
-        if (settings.receipt_footer_image) result.footerImageUrl = settings.receipt_footer_image;
+        const rows = await svkkJson<Record<string, string>>("/settings");
+        const result: ReceiptImageSettings = {};
+        if (rows.receipt_header_image) result.headerImageUrl = rows.receipt_header_image;
+        if (rows.receipt_footer_image) result.footerImageUrl = rows.receipt_footer_image;
+        if (rows.receipt_header_file_id) result.headerFileId = rows.receipt_header_file_id;
+        if (rows.receipt_footer_file_id) result.footerFileId = rows.receipt_footer_file_id;
         cache = result;
-        if (!cancelled) setUrls(result);
+        if (!cancelled) setSettings(result);
       } catch {
         /* settings not configured yet, use defaults */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  return urls;
+  return settings;
 }

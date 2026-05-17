@@ -14,7 +14,12 @@ import { AppError } from "../../errors/app-error.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { uploadBufferToGoogleDrive } from "../../services/google-drive.service.js";
-import { uploadBufferToOneDrive } from "../../services/one-drive.service.js";
+import {
+  downloadOneDriveFileById,
+  downloadOneDriveFileBySharingUrl,
+  isOneDriveSharingPageUrl,
+  uploadBufferToOneDrive,
+} from "../../services/one-drive.service.js";
 import { updatePolicySections } from "../policy/policy.service.js";
 import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
 
@@ -194,6 +199,42 @@ export function createUploadRouter(env: Env) {
           failCount: fail,
           errors: errors.slice(0, 50),
         });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  /** Stream OneDrive file bytes for receipt header/footer (embed in print HTML). */
+  r.get(
+    "/one-drive/by-share/content",
+    requirePermission("policy:read"),
+    async (req, res, next) => {
+      try {
+        const url = z.string().url().parse(req.query.url);
+        if (!isOneDriveSharingPageUrl(url)) {
+          throw new AppError("VALIDATION", "Not a OneDrive sharing URL", 400);
+        }
+        const { buffer, mimeType } = await downloadOneDriveFileBySharingUrl(env, url);
+        res.setHeader("Content-Type", mimeType);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.send(buffer);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/one-drive/:fileId/content",
+    requirePermission("policy:read"),
+    async (req, res, next) => {
+      try {
+        const fileId = z.string().min(1).parse(req.params.fileId);
+        const { buffer, mimeType } = await downloadOneDriveFileById(env, fileId);
+        res.setHeader("Content-Type", mimeType);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.send(buffer);
       } catch (e) {
         next(e);
       }

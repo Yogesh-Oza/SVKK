@@ -29,6 +29,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
+import { resolveReceiptImagesForPrint } from "@/lib/svkk/receipt-image-resolve";
 import {
   buildReceiptFilename,
   downloadReceiptPreviewAsPdf,
@@ -498,9 +499,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         // modal closes, navigate to the policy detail page.
         try {
           const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
-          setReceiptPreviewHtml(
-            buildReceiptDocumentHtml(saved, { embedded: true, ...receiptImageUrls }),
-          );
+          const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+          setReceiptPreviewHtml(buildReceiptDocumentHtml(saved, { embedded: true, ...resolved }));
           setNavigateAfterReceiptClose(`/policies/${id}`);
         } catch {
           // If fetching the receipt fails for any reason, just navigate.
@@ -1176,7 +1176,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         },
       ],
     };
-    setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...receiptImageUrls }));
+    void (async () => {
+      const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...resolved }));
+    })();
   }, [policyId, values, receiptImageUrls]);
 
   useEffect(() => {

@@ -205,3 +205,81 @@ export async function uploadBufferToOneDrive(
 
   return { fileId, webViewLink };
 }
+
+/** Encodes a OneDrive/SharePoint sharing URL for Graph `/shares/{shareId}/driveItem`. */
+export function encodeSharingUrlForGraph(sharingUrl: string): string {
+  const base64 = Buffer.from(sharingUrl, "utf8").toString("base64");
+  const encoded = base64.replace(/=+$/g, "").replace(/\//g, "_").replace(/\+/g, "-");
+  return `u!${encoded}`;
+}
+
+function driveBaseForToken(env: Env): string {
+  const hasRefreshToken = !!(currentRefreshToken || env.MS_REFRESH_TOKEN);
+  if (hasRefreshToken) {
+    return "https://graph.microsoft.com/v1.0/me/drive";
+  }
+  if (env.MS_DRIVE_ID) {
+    return `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(env.MS_DRIVE_ID)}`;
+  }
+  throw new AppError(
+    "ONEDRIVE_NOT_CONFIGURED",
+    "Set MS_REFRESH_TOKEN (personal OneDrive) or MS_DRIVE_ID (business OneDrive).",
+    503,
+  );
+}
+
+export async function downloadOneDriveFileById(
+  env: Env,
+  fileId: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const accessToken = await getGraphAccessToken(env);
+  const driveBase = driveBaseForToken(env);
+  const url = `${driveBase}/items/${encodeURIComponent(fileId)}/content`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new AppError(
+      "ONEDRIVE_DOWNLOAD_FAILED",
+      `Could not download file from OneDrive (${res.status})`,
+      502,
+    );
+  }
+  const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { buffer, mimeType };
+}
+
+/** Resolve a sharing page URL (1drv.ms, onedrive.live.com) to file bytes via Graph. */
+export async function downloadOneDriveFileBySharingUrl(
+  env: Env,
+  sharingUrl: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const accessToken = await getGraphAccessToken(env);
+  const shareId = encodeSharingUrlForGraph(sharingUrl.trim());
+  const url = `https://graph.microsoft.com/v1.0/shares/${encodeURIComponent(shareId)}/driveItem/content`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new AppError(
+      "ONEDRIVE_DOWNLOAD_FAILED",
+      `Could not resolve OneDrive sharing link (${res.status}). Re-upload the image from Receipt Settings.`,
+      502,
+    );
+  }
+  const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { buffer, mimeType };
+}
+
+export function isOneDriveSharingPageUrl(url: string): boolean {
+  const u = url.trim().toLowerCase();
+  return (
+    u.includes("1drv.ms") ||
+    u.includes("onedrive.live.com") ||
+    u.includes("sharepoint.com") ||
+    u.includes("/personal/") ||
+    u.startsWith("https://d.docs.live.net")
+  );
+}

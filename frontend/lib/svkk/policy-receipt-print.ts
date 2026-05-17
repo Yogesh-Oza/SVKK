@@ -3,6 +3,11 @@
  * Accepts the JSON shape returned by `GET /policies/:id` (or a compatible subset).
  */
 
+import {
+  resolveReceiptImagesForPrint,
+  type ReceiptImageSettings,
+} from "./receipt-image-resolve";
+
 export type PolicyDetailForReceipt = {
   id?: string;
   /** Policy record creation time — used as receipt date when issued at create. */
@@ -568,9 +573,10 @@ export function buildReceiptDocumentHtml(
 
 export async function openPolicyReceiptPrint(
   p: PolicyDetailForReceipt,
-  imageUrls?: { headerImageUrl?: string; footerImageUrl?: string },
+  imageSettings?: ReceiptImageSettings,
 ): Promise<boolean> {
-  const html = buildReceiptDocumentHtml(p, { embedded: false, ...imageUrls });
+  const resolved = await resolveReceiptImagesForPrint(imageSettings ?? {});
+  const html = buildReceiptDocumentHtml(p, { embedded: false, ...resolved });
   const w = window.open("", "_blank", "noopener,noreferrer");
   if (!w) return false;
   w.document.write(html);

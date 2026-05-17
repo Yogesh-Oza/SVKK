@@ -59,6 +59,7 @@ import { canDeletePolicy, canUpdatePolicy, hasPermission } from "@/lib/svkk/perm
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
+import { resolveReceiptImagesForPrint } from "@/lib/svkk/receipt-image-resolve";
 import {
   buildReceiptFilename,
   downloadReceiptPreviewAsPdf,
@@ -581,7 +582,8 @@ export default function SvkkPoliciesPage() {
           selectedYearLabel ?? payload.years?.[0]?.yearLabel,
         ]).replace(/\.pdf$/, ""),
       );
-      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...receiptImageUrls }));
+      const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+      setReceiptPreviewHtml(buildReceiptDocumentHtml(payload, { embedded: true, ...resolved }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate receipt");
     } finally {
