@@ -5,6 +5,12 @@ import { ImageIcon, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
+import {
+  formatDimensionHint,
+  readImageDimensions,
+  RECEIPT_A4,
+  type ImageDimensions,
+} from "@/lib/svkk/receipt-a4";
 import { toast } from "sonner";
 
 export default function ReceiptSettingsPage() {
@@ -17,6 +23,10 @@ export default function ReceiptSettingsPage() {
   const [uploadingFooter, setUploadingFooter] = useState(false);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const footerInputRef = useRef<HTMLInputElement>(null);
+  const [headerDims, setHeaderDims] = useState<ImageDimensions | null>(null);
+  const [footerDims, setFooterDims] = useState<ImageDimensions | null>(null);
+  const [headerPickHint, setHeaderPickHint] = useState<string | null>(null);
+  const [footerPickHint, setFooterPickHint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +65,13 @@ export default function ReceiptSettingsPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    try {
+      const d = await readImageDimensions(file);
+      setHeaderDims(d);
+      setHeaderPickHint(formatDimensionHint(d, "header"));
+    } catch {
+      setHeaderPickHint("Could not read image size");
+    }
     setUploadingHeader(true);
     const url = await uploadToOneDrive(file);
     if (url) {
@@ -73,6 +90,13 @@ export default function ReceiptSettingsPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    try {
+      const d = await readImageDimensions(file);
+      setFooterDims(d);
+      setFooterPickHint(formatDimensionHint(d, "footer"));
+    } catch {
+      setFooterPickHint("Could not read image size");
+    }
     setUploadingFooter(true);
     const url = await uploadToOneDrive(file);
     if (url) {
@@ -100,9 +124,25 @@ export default function ReceiptSettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Receipt Settings</h1>
         <p className="text-muted-foreground mt-0.5 text-sm">
-          Manage receipt header and footer images. Changes reflect on all receipts immediately.
+          Manage receipt header and footer images. Receipts print on one A4 page with your header and footer.
         </p>
       </div>
+
+      <Card className="rounded-3xl border border-[#d9e3ee]/90 bg-[#f8fbff]/95">
+        <CardContent className="space-y-2 p-5 text-sm text-[#334155]">
+          <p className="font-semibold text-[#0b1728]">A4 print size</p>
+          <p>
+            Page: {RECEIPT_A4.widthMm} × {RECEIPT_A4.heightMm} mm (
+            {RECEIPT_A4.widthPx} × {RECEIPT_A4.heightPx} px at 96 dpi). Printable area with margins: about{" "}
+            {RECEIPT_A4.printableWidthMm} × {RECEIPT_A4.printableHeightMm} mm.
+          </p>
+          <p className="text-xs text-[#66798f]">
+            Header and footer use fixed print slots ({RECEIPT_A4.headerSlotMm}mm and{" "}
+            {RECEIPT_A4.footerSlotMm}mm tall); uploaded images are stretched to fill those areas. Policy
+            details fill the space between them on one A4 page.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-6 p-6">
@@ -114,8 +154,15 @@ export default function ReceiptSettingsPage() {
               <h3 className="text-base font-extrabold tracking-tight text-[#0b1728]">Receipt Header Image</h3>
             </div>
             <p className="mb-3 text-xs leading-relaxed text-[#66798f]">
-              This image appears at the top of every receipt. Upload a new image to replace the current one. The image is uploaded to OneDrive and the public link is stored.
+              This image appears at the top of every receipt. It is scaled to a fixed{" "}
+              {RECEIPT_A4.headerSlotMm}mm-tall header band (full width).
             </p>
+            {headerPickHint ? (
+              <p className="mb-2 text-xs font-medium text-[#174ea6]">Selected file: {headerPickHint}</p>
+            ) : null}
+            {headerDims && !headerPickHint ? (
+              <p className="mb-2 text-xs text-[#66798f]">Last saved: {formatDimensionHint(headerDims, "header")}</p>
+            ) : null}
             {headerUrl ? (
               <div className="mb-3 overflow-hidden rounded-lg border border-[#d9e3ee] bg-white p-2">
                 <img src={headerUrl} alt="Receipt header preview" className="max-h-32 w-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
@@ -137,8 +184,15 @@ export default function ReceiptSettingsPage() {
               <h3 className="text-base font-extrabold tracking-tight text-[#0b1728]">Receipt Footer Image</h3>
             </div>
             <p className="mb-3 text-xs leading-relaxed text-[#66798f]">
-              This image appears at the bottom of every receipt, after the Authorized Signatory section.
+              This image appears at the bottom of every receipt. It is scaled to a fixed{" "}
+              {RECEIPT_A4.footerSlotMm}mm-tall footer band (full width).
             </p>
+            {footerPickHint ? (
+              <p className="mb-2 text-xs font-medium text-[#174ea6]">Selected file: {footerPickHint}</p>
+            ) : null}
+            {footerDims && !footerPickHint ? (
+              <p className="mb-2 text-xs text-[#66798f]">Last saved: {formatDimensionHint(footerDims, "footer")}</p>
+            ) : null}
             {footerUrl ? (
               <div className="mb-3 overflow-hidden rounded-lg border border-[#d9e3ee] bg-white p-2">
                 <img src={footerUrl} alt="Receipt footer preview" className="max-h-32 w-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />

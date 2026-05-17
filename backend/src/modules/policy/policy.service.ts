@@ -11,6 +11,7 @@ import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
+import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import {
@@ -348,6 +349,18 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
 
     await syncPolicyListVkkPremium(tx, policy.id);
 
+      const receiptAmount = resolveReceiptAmount({
+        vkkPremium: input.vkkPremium ?? null,
+        amountReceived: input.amountReceived ?? null,
+        expectedNetPremium: expected != null ? expected : null,
+      });
+      await createReceiptOnPolicyCreate(tx, {
+        policyId: policy.id,
+        policyYearId: year.id,
+        amount: receiptAmount,
+        paymentMode: input.paymentMode ?? input.initialPayment?.method ?? null,
+      });
+
       return { party, policy, year };
     },
     // Policy creation can involve many sequential writes; allow more than the 5s default.
@@ -384,6 +397,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         include: {
           members: { where: { deletedAt: null } },
           payments: { where: { deletedAt: null }, include: { cheque: true } },
+          receipts: { orderBy: { createdAt: "asc" }, take: 1 },
         },
       },
     },

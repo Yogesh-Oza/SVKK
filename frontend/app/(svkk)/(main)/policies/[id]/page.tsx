@@ -23,6 +23,10 @@ import {
   type PolicyDetailViewRow,
 } from "@/features/svkk-policies/policy-detail-view-body";
 import {
+  displayVal,
+  formatViewDateDmy,
+} from "@/features/svkk-policies/policy-detail-view-helpers";
+import {
   fetchPolicyYearSiblings,
   singleRowYearSibling,
   type PolicyListYearSibling,
@@ -35,7 +39,11 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-type PolicyDetail = PolicyDetailViewRow & { id: string; updatedAt: string };
+type PolicyDetail = PolicyDetailViewRow & {
+  id: string;
+  updatedAt: string;
+  createdAt?: string | null;
+};
 
 function formatInrRupee(v: unknown): string | null {
   const s =
@@ -253,6 +261,53 @@ export default function SvkkPolicyDetailPage() {
             Each year is a separate policy record for this SVKK ID. Choosing a year loads that
             year&apos;s policy number, reference, premium, and members below.
           </p>
+          <div className="border-primary/25 bg-primary/5 ring-primary/15 mt-3 max-w-3xl rounded-lg border p-4 shadow-sm ring-1">
+            <p className="text-foreground mb-3 text-sm font-semibold">This year&apos;s record</p>
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                  Policy generated date
+                </dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
+                  {displayVal(row.createdAt ? formatViewDateDmy(row.createdAt) : "")}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">SVKK ID</dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold">
+                  {displayVal(row.insuredParty.svkkPublicId)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                  Reference no.
+                </dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
+                  {displayVal(row.referenceNo)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Month</dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold">
+                  {displayVal(row.periodMonthText)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Year</dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
+                  {displayVal(row.periodYearText ?? activeYearLabel)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                  Policy no.
+                </dt>
+                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
+                  {displayVal(row.policyNo)}
+                </dd>
+              </div>
+            </dl>
+          </div>
         </div>
       ) : null}
 

@@ -7,8 +7,8 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
-import { CounterType, type Prisma } from "@prisma/client";
-import { allocateCounter, formatReceiptNo } from "../../services/counter.service.js";
+import type { Prisma } from "@prisma/client";
+import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
 
@@ -50,13 +50,42 @@ export function createReceiptRouter(env: Env) {
       assertPolicyReadable(policy, req.userId!, req.permissions!, scope);
 
       const year = policy.years[0];
-      const policyDate = year?.policyEnd ?? year?.policyStart ?? new Date();
-      const period = String(policyDate.getFullYear());
+      if (!year) {
+        throw new AppError("BAD_REQUEST", "Policy has no year row for receipt", 400);
+      }
+
+      const existingReceipt = await prisma.receipt.findFirst({
+        where: { policyId: policy.id },
+        orderBy: { createdAt: "asc" },
+      });
+      if (existingReceipt) {
+        throw new AppError(
+          "CONFLICT",
+          "Receipt was already issued when this policy was created",
+          409,
+        );
+      }
+
+      const issuedAt = policy.createdAt;
 
       const { receiptNo, pdfPath } = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const seq = await allocateCounter(CounterType.RECEIPT, period, tx);
-        const no = formatReceiptNo(period, seq);
         const pay0 = year?.payments?.[0];
+        const amount =
+          body.amount ||
+          resolveReceiptAmount({
+            vkkPremium: year.vkkPremium != null ? Number(year.vkkPremium) : null,
+            amountReceived: year.amountReceived != null ? Number(year.amountReceived) : null,
+            expectedNetPremium:
+              year.expectedNetPremium != null ? Number(year.expectedNetPremium) : null,
+          });
+        const rec = await createReceiptOnPolicyCreate(tx, {
+          policyId: policy.id,
+          policyYearId: year.id,
+          amount,
+          paymentMode: body.paymentMode ?? pay0?.method ?? null,
+          issuedAt,
+        });
+        const no = rec.receiptNo;
         const pdfBytes = await buildReceiptPdf({
           receiptNo: no,
           referenceNo: policy.referenceNo ?? "",
@@ -87,23 +116,16 @@ export function createReceiptRouter(env: Env) {
           chequeNo: year?.payments?.find((p) => p.cheque)?.cheque?.number ?? "",
           remark: policy.remarks ?? "",
           generalRemark: policy.remarks ?? "",
-          date: policyDate,
+          date: rec.policyDate ?? issuedAt,
         });
         await mkdir(env.UPLOAD_DIR, { recursive: true });
         const filename = `receipt-${no}.pdf`;
         const path = join(env.UPLOAD_DIR, filename);
         await writeFile(path, pdfBytes);
 
-        const rec = await tx.receipt.create({
-          data: {
-            policyId: policy.id,
-            policyYearId: year?.id,
-            receiptNo: no,
-            amount: body.amount,
-            paymentMode: body.paymentMode ?? undefined,
-            s3Key: path,
-            policyDate,
-          },
+        await tx.receipt.update({
+          where: { id: rec.id },
+          data: { s3Key: path },
         });
         return { receiptNo: rec.receiptNo, pdfPath: path };
       });

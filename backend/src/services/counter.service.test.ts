@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatPolicyPublicId,
   formatPolicyReferenceNo,
+  formatReceiptNo,
   POLICY_SEQUENCE_MIN,
 } from "./counter.service.js";
 
@@ -17,5 +18,10 @@ describe("counter.service policy sequence", () => {
 
   it("formats reference no suffix from sequence", () => {
     expect(formatPolicyReferenceNo("RTY", "2026", "May", 3001)).toBe("rty2026may3001");
+  });
+
+  it("formats receipt no in legacy MIS style", () => {
+    expect(formatReceiptNo("2025", 94100)).toBe("RCP/2025/94100");
+    expect(formatReceiptNo("2026", 1)).toBe("RCP/2026/00001");
   });
 });

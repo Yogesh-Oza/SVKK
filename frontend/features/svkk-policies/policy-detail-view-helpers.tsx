@@ -26,6 +26,17 @@ export const VIEW_TD_CLASS = "border border-border px-2 py-2 align-top text-sm";
 
 const EMPTY = "—";
 
+/** Policy / receipt style: DD-MM-YYYY */
+export function formatViewDateDmy(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const y = d.getFullYear();
+  return `${day}-${m}-${y}`;
+}
+
 export function displayVal(v: unknown): string {
   if (v == null || v === "") return EMPTY;
   if (typeof v === "string" || typeof v === "number") {

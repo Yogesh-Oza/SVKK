@@ -5,6 +5,8 @@
 
 export type PolicyDetailForReceipt = {
   id?: string;
+  /** Policy record creation time — used as receipt date when issued at create. */
+  createdAt?: string | null;
   policyNo: string | null;
   previousPolicyNo?: string | null;
   referenceNo: string | null;
@@ -36,7 +38,7 @@ export type PolicyDetailForReceipt = {
     utrRef?: string | null;
     yearRemarks?: string | null;
     members?: unknown[];
-    receipts?: Array<{ receiptNo: string }>;
+    receipts?: Array<{ receiptNo: string; policyDate?: string | null; createdAt?: string | null }>;
     payments?: Array<{
       method?: string | null;
       amount?: string | number | { toString(): string } | null;
@@ -152,6 +154,20 @@ function receiptNoFor(p: PolicyDetailForReceipt, y0: PolicyDetailForReceipt["yea
   return syntheticReceiptNo(p.id, yl);
 }
 
+/** Frozen at policy creation — not transaction date or print time. */
+function receiptIssuedDateRaw(
+  p: PolicyDetailForReceipt,
+  y0: PolicyDetailForReceipt["years"][0] | undefined,
+  override?: Date,
+): string | Date | null {
+  if (override) return override;
+  const rec = y0?.receipts?.[0];
+  if (rec?.policyDate) return rec.policyDate;
+  if (rec?.createdAt) return rec.createdAt;
+  if (p.createdAt) return p.createdAt;
+  return null;
+}
+
 function personsCount(p: PolicyDetailForReceipt, y0: PolicyDetailForReceipt["years"][0] | undefined): string {
   if (p.personsInsuredCount != null && p.personsInsuredCount >= 0) {
     return String(p.personsInsuredCount);
@@ -239,7 +255,8 @@ export function buildReceiptDocumentHtml(
   options?: { issuedDate?: Date; embedded?: boolean; headerImageUrl?: string; footerImageUrl?: string },
 ): string {
   const y0 = p.years[0];
-  const dateStr = displayDate(options?.issuedDate ?? new Date());
+  const issuedRaw = receiptIssuedDateRaw(p, y0, options?.issuedDate);
+  const dateStr = issuedRaw ? displayDate(issuedRaw) : "—";
   const receiptNo = receiptNoFor(p, y0);
   const sumInsured = y0 ? rs(y0.sumInsured) : "0";
   const vkk = y0 ? rs(y0.vkkPremium) : "0";
@@ -310,27 +327,32 @@ export function buildReceiptDocumentHtml(
       .join("");
 
   const embedded = options?.embedded === true;
-  const bodyPad = embedded ? "padding:16px 24px 24px" : "padding:24px";
   const bodyClass = embedded ? "receipt-root receipt-embedded" : "receipt-root";
   const headerImg = options?.headerImageUrl || DEFAULT_HEADER_IMAGE;
   const footerImg = options?.footerImageUrl || DEFAULT_FOOTER_IMAGE;
 
   const inner = `
-    <div class="receipt-body" style="max-width:1200px;margin:0 auto;${bodyPad}">
-      <div style="border-bottom:2px solid #e5e7eb;padding-bottom:14px"><img src="${headerImg}" alt="Receipt Header" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
-      <div style="text-align:center;margin-top:20px"><div style="display:inline-block;border:1px solid #cbd5e1;border-radius:999px;padding:10px 22px;font-size:28px;font-weight:900;letter-spacing:.18em">RECEIPT</div></div>
-      <div class="receipt-grid" style="margin-top:20px">
-        <div class="rcol">${colHtml(left)}</div>
-        <div class="rcol">${colHtml(right)}</div>
-      </div>
-      <div class="receipt-tail">
-      <div class="member-card" style="margin-top:14px"><div style="font-weight:800;color:#334155">Amount in Words</div><div style="margin-top:8px;font-weight:700">${escapeHtml(amountInWords)}</div></div>
-      <div class="member-card" style="margin-top:14px">Received with thanks the above amount towards mediclaim premium.</div>
-      <div class="receipt-signatures" style="display:flex;justify-content:flex-end;margin-top:40px">
-        <div style="text-align:center"><div style="border-top:2px solid #cbd5e1;padding-top:10px;font-weight:800;color:#475569">Authorized Signatory</div></div>
-      </div>
-      </div>
-      <div style="border-top:2px solid #e5e7eb;padding-top:14px;margin-top:24px"><img src="${footerImg}" alt="Receipt Footer" style="width:100%;height:auto;display:block" onerror="this.style.display='none'"></div>
+    <div class="receipt-body receipt-a4-sheet">
+      <header class="receipt-a4-header">
+        <img src="${headerImg}" alt="Receipt Header" onerror="this.style.display='none'">
+      </header>
+      <main class="receipt-a4-main">
+        <div class="receipt-title-wrap"><div class="receipt-title">RECEIPT</div></div>
+        <div class="receipt-grid">
+          <div class="rcol">${colHtml(left)}</div>
+          <div class="rcol">${colHtml(right)}</div>
+        </div>
+        <div class="receipt-tail">
+          <div class="member-card receipt-words"><div class="words-label">Amount in Words</div><div class="words-value">${escapeHtml(amountInWords)}</div></div>
+          <div class="member-card receipt-thanks">Received with thanks the above amount towards mediclaim premium.</div>
+          <div class="receipt-signatures">
+            <div class="sig-block"><div class="sig-line">Authorized Signatory</div></div>
+          </div>
+        </div>
+      </main>
+      <footer class="receipt-a4-footer">
+        <img src="${footerImg}" alt="Receipt Footer" onerror="this.style.display='none'">
+      </footer>
     </div>`;
 
   const shell = embedded
@@ -352,53 +374,188 @@ export function buildReceiptDocumentHtml(
   <meta charset="utf-8" />
   <title>Receipt ${escapeHtml(receiptNo)}</title>
   <style>
-    :root { --line: #d1d5db; --text: #0f172a; --muted: #475569; --dark: #0f172a; --soft: #f8fafc; }
+    :root {
+      --line: #d1d5db;
+      --text: #0f172a;
+      --muted: #475569;
+      --dark: #0f172a;
+      --soft: #f8fafc;
+      --a4-h: 277mm;
+      --a4-w: 190mm;
+      --header-h: 32mm;
+      --footer-h: 26mm;
+    }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: ${embedded ? "#fff" : "#f3f4f6"}; color: var(--text); }
+    .receipt-root {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      width: 100%;
+    }
     .receipt-embedded { background: #fff; }
-    .modal { width: min(100%, 1000px); margin: 0 auto; background: #fff; border-radius: 28px; box-shadow: 0 20px 40px rgba(0,0,0,.12); overflow: hidden; border: 1px solid #e5e7eb; }
+    .modal {
+      width: min(100%, 210mm);
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 28px;
+      box-shadow: 0 20px 40px rgba(0,0,0,.12);
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
     .modal-h { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     .btns { display: flex; flex-wrap: wrap; gap: 10px; }
     .btn { border: 1px solid var(--line); border-radius: 16px; padding: 11px 16px; background: #fff; font-size: 14px; font-weight: 800; cursor: pointer; }
     .btn.primary { background: var(--dark); color: #fff; border-color: var(--dark); }
-    .member-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 22px; background: var(--soft); }
-    .receipt-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
-    .rrow { display: grid; grid-template-columns: minmax(120px, 38%) minmax(0, 1fr); padding: 11px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; align-items: start; column-gap: 10px; }
-    .rrow > div:first-child { font-weight: 800; color: #334155; }
-    .rrow > div:last-child {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      hyphens: auto;
+
+    .receipt-a4-sheet,
+    .receipt-body {
+      width: var(--a4-w);
+      max-width: var(--a4-w);
+      margin-left: auto;
+      margin-right: auto;
     }
+    .receipt-a4-sheet {
+      display: flex;
+      flex-direction: column;
+      height: var(--a4-h);
+      min-height: var(--a4-h);
+      max-height: var(--a4-h);
+      overflow: hidden;
+    }
+    .receipt-a4-header {
+      flex: 0 0 var(--header-h);
+      height: var(--header-h);
+      width: 100%;
+      overflow: hidden;
+    }
+    .receipt-a4-footer {
+      flex: 0 0 var(--footer-h);
+      height: var(--footer-h);
+      width: 100%;
+      overflow: hidden;
+    }
+    .receipt-a4-header img,
+    .receipt-a4-footer img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      object-position: center center;
+    }
+    .receipt-a4-main {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      padding: 4px 10px 2px;
+      overflow: hidden;
+    }
+    .receipt-a4-main > * {
+      width: 100%;
+      max-width: 100%;
+    }
+    .receipt-title-wrap { flex: 0 0 auto; text-align: center; margin: 4px 0 6px; }
+    .receipt-title {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 6px 18px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: .18em;
+    }
+
+    .member-card { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 14px; background: var(--soft); }
+    .receipt-words { margin-top: 8px; }
+    .words-label { font-weight: 800; color: #334155; font-size: 12px; }
+    .words-value { margin-top: 4px; font-weight: 700; font-size: 12px; line-height: 1.35; }
+    .receipt-thanks { margin-top: 8px; font-size: 12px; }
+    .receipt-grid {
+      flex: 1 1 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .rcol { display: flex; flex-direction: column; min-height: 0; }
+    .rrow {
+      flex: 1 1 0;
+      display: grid;
+      grid-template-columns: minmax(96px, 38%) minmax(0, 1fr);
+      padding: 7px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 12px;
+      align-items: center;
+      column-gap: 8px;
+    }
+    .rrow > div:first-child { font-weight: 800; color: #334155; }
+    .rrow > div:last-child { min-width: 0; overflow-wrap: anywhere; word-break: break-word; hyphens: auto; }
     .rcol:first-child { border-right: 1px solid #e5e7eb; }
-    .receipt-tail { break-inside: avoid; page-break-inside: avoid; }
-    .receipt-signatures { break-inside: avoid; page-break-inside: avoid; }
+    .receipt-tail {
+      flex: 0 0 auto;
+      margin-top: auto;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .receipt-signatures { display: flex; justify-content: flex-end; margin-top: 8px; break-inside: avoid; page-break-inside: avoid; }
+    .sig-line { border-top: 2px solid #cbd5e1; padding-top: 8px; font-weight: 800; color: #475569; font-size: 12px; text-align: center; min-width: 180px; }
+
     @media (max-width: 700px) {
       .receipt-grid { grid-template-columns: 1fr; }
       .rcol:first-child { border-right: none; }
-      .rrow { grid-template-columns: minmax(100px, 42%) minmax(0, 1fr); }
     }
     @media print {
-      @page { size: A4; margin: 12mm; }
-      body { background: #fff !important; margin: 0; }
+      @page { size: A4 portrait; margin: 10mm; }
+      html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; background: #fff !important; overflow: hidden; }
       .no-print { display: none !important; }
-      .modal { box-shadow: none; border-radius: 0; width: 100%; max-width: none; border: 0; overflow: visible; }
-      .receipt-body { max-width: none !important; width: 100%; padding: 0 !important; margin: 0; }
-      .receipt-grid {
-        overflow: visible;
-        border-radius: 12px;
-        page-break-inside: auto;
+      .modal {
+        box-shadow: none;
+        border-radius: 0;
+        width: 210mm;
+        max-width: 210mm;
+        border: 0;
+        overflow: hidden;
+        align-items: center;
       }
-      .rcol { min-width: 0; }
-      .rrow {
-        grid-template-columns: minmax(100px, 36%) minmax(0, 1fr);
-        font-size: 12px;
-        padding: 8px 10px;
+      .receipt-root {
+        display: flex;
+        justify-content: center;
+        width: 210mm;
+        margin: 0 auto;
+        padding: 0 !important;
       }
-      .member-card { break-inside: avoid; page-break-inside: avoid; border-radius: 12px; }
-      .receipt-tail { break-inside: avoid; page-break-inside: avoid; }
-      .receipt-signatures { break-inside: avoid; page-break-inside: avoid; margin-top: 28px !important; }
+      .receipt-body,
+      .receipt-a4-sheet {
+        width: var(--a4-w);
+        max-width: var(--a4-w);
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding: 0 !important;
+      }
+      .receipt-a4-sheet {
+        height: var(--a4-h);
+        min-height: var(--a4-h);
+        max-height: var(--a4-h);
+        overflow: hidden;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+      .receipt-a4-header { flex: 0 0 var(--header-h); height: var(--header-h); }
+      .receipt-a4-footer { flex: 0 0 var(--footer-h); height: var(--footer-h); }
+      .receipt-a4-header img,
+      .receipt-a4-footer img { width: 100%; height: 100%; object-fit: fill; }
+      .receipt-title { font-size: 18px; padding: 4px 14px; }
+      .rrow { font-size: 10.5px; padding: 5px 8px; }
+      .member-card { padding: 6px 10px; border-radius: 10px; }
+      .receipt-signatures { margin-top: 10px !important; }
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>

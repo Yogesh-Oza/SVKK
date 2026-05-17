@@ -86,6 +86,7 @@ export function formatPolicyReferenceNo(grouping: string, year4: string, monthSh
   return `${g}${y}${m}${String(seq).padStart(4, "0")}`;
 }
 
+/** Legacy MIS format: `RCP/2025/94100` */
 export function formatReceiptNo(period: string, seq: number): string {
-  return `REC-${period}-${String(seq).padStart(6, "0")}`;
+  return `RCP/${period}/${String(seq).padStart(5, "0")}`;
 }
