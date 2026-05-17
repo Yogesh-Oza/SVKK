@@ -57,6 +57,18 @@ const schema = z.object({
   RATE_LIMIT_API_MAX: z.coerce.number().min(1).optional(),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().min(1).optional(),
   RATE_LIMIT_RBAC_MAX: z.coerce.number().min(1).optional(),
+  /** Public web app URL for links in notification emails */
+  FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
+  /** SMTP — optional; without these, emails are skipped but in-app notifications still work */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().optional(),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -2,16 +2,12 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import type { PolicyMemberRow } from "@/features/svkk-mis/policy-member-report-section";
+import { buildDashboardHref, misQueryFromRange, policiesQueryFromRange } from "@/lib/svkk/dashboard-navigation";
+import type { DashboardDateRange } from "@/lib/svkk/dashboard-date-presets";
 import { formatInr } from "./currency";
-
-type MisSummary = {
-  asOfDate?: string;
-  totalPolicies: number;
-  totalClaims: number;
-  totalClaimAmount: string | number;
-  totalApprovedAmount: string | number;
-};
+import { ArrowDownRight, ArrowUpRight, ChevronRight, Minus } from "lucide-react";
+import Link from "next/link";
 
 export type DashboardMetrics = {
   asOfDate: string;
@@ -32,95 +28,152 @@ type CardDef = {
   title: string;
   value: string;
   sub: string;
+  href: string;
   trend: { label: string; positive?: boolean; negative?: boolean };
 };
 
-function claimAmountNum(v: string | number): number {
-  if (typeof v === "number") return v;
-  const n = Number(String(v).replace(/[,\s]/g, ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function Trend({ trend }: { trend: CardDef["trend"] }) {
-  if (trend.negative) {
+function Trend({ trend: trendData }: { trend: CardDef["trend"] }) {
+  if (trendData.negative) {
     return (
       <span className="text-destructive inline-flex items-center gap-0.5 text-xs font-medium">
         <ArrowDownRight className="size-3" />
-        {trend.label}
+        {trendData.label}
       </span>
     );
   }
-  if (trend.positive) {
+  if (trendData.positive) {
     return (
       <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5 text-xs font-medium">
         <ArrowUpRight className="size-3" />
-        {trend.label}
+        {trendData.label}
       </span>
     );
   }
   return (
     <span className="text-muted-foreground inline-flex items-center gap-0.5 text-xs">
       <Minus className="size-3" />
-      {trend.label}
+      {trendData.label}
     </span>
   );
 }
 
-function liveCardsFrom(summary: MisSummary, dashboard: DashboardMetrics | null): CardDef[] {
+function buildCards(
+  range: DashboardDateRange,
+  mis: PolicyMemberRow | null,
+  dashboard: DashboardMetrics | null,
+): CardDef[] {
+  const misQ = misQueryFromRange(range);
+  const polQ = policiesQueryFromRange(range);
+
+  if (mis) {
+    const cards: CardDef[] = [
+      {
+        title: "Policies",
+        value: String(mis.totalPolicies),
+        sub: "In selected period (MIS scope)",
+        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
+        trend: { label: "View list", positive: true },
+      },
+      {
+        title: "Members + policies",
+        value: String(mis.membersPlusPolicies),
+        sub: "Insured rows in period",
+        href: buildDashboardHref({ pathname: "/mis", query: { ...misQ, groupBy: "village" } }),
+        trend: { label: "Open MIS", positive: true },
+      },
+      {
+        title: "Co premium",
+        value: formatInr(mis.sumCo),
+        sub: "Same basis as MIS report",
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS breakdown", positive: true },
+      },
+      {
+        title: "Gross premium",
+        value: formatInr(mis.sumGross),
+        sub: "Gross in scope",
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS breakdown" },
+      },
+      {
+        title: "VKK premium",
+        value: formatInr(mis.sumVkk),
+        sub: "Total VKK column",
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS breakdown" },
+      },
+      {
+        title: "Commission",
+        value: formatInr(mis.sumComm),
+        sub: "Commission total",
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS breakdown" },
+      },
+    ];
+
+    if (dashboard) {
+      cards.push(
+        {
+          title: "Expected premium",
+          value: formatInr(dashboard.totalExpectedPremium),
+          sub: "Policy-year window (as-of)",
+          href: buildDashboardHref({ pathname: "/policies", query: polQ }),
+          trend: { label: "Policy years" },
+        },
+        {
+          title: "Paid (completed)",
+          value: formatInr(dashboard.totalPaidCompleted),
+          sub: "Completed payments",
+          href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+          trend: { label: "Reconciliation", positive: true },
+        },
+        {
+          title: "Gap (expected − paid)",
+          value: formatInr(dashboard.paymentGap),
+          sub: "As of " + new Date(dashboard.asOfDate).toLocaleDateString("en-IN"),
+          href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+          trend: { label: "View MIS", negative: dashboard.paymentGap > 0 },
+        },
+      );
+    }
+
+    return cards;
+  }
+
   if (dashboard) {
     return [
       {
         title: "Policies (scoped)",
         value: String(dashboard.totalPolicies),
         sub: "Active window per as-of",
-        trend: { label: "Live", positive: true },
+        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
+        trend: { label: "View list", positive: true },
       },
       {
         title: "Expected premium",
         value: formatInr(dashboard.totalExpectedPremium),
         sub: "Policy year expectations",
-        trend: { label: "Live" },
+        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
+        trend: { label: "Policies" },
       },
       {
         title: "Paid (completed)",
         value: formatInr(dashboard.totalPaidCompleted),
         sub: "Payment rows",
-        trend: { label: "Live", positive: true },
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS", positive: true },
       },
       {
         title: "Gap (expected − paid)",
         value: formatInr(dashboard.paymentGap),
         sub: "As of " + new Date(dashboard.asOfDate).toLocaleDateString("en-IN"),
-        trend: { label: "Live" },
+        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+        trend: { label: "MIS", negative: dashboard.paymentGap > 0 },
       },
     ];
   }
-  return [
-    {
-      title: "Policies (scoped)",
-      value: String(summary.totalPolicies),
-      sub: "From your MIS feed",
-      trend: { label: "Live", positive: true },
-    },
-    {
-      title: "Claims (scoped)",
-      value: String(summary.totalClaims),
-      sub: "In your villages",
-      trend: { label: "Live", positive: true },
-    },
-    {
-      title: "Claim amount",
-      value: formatInr(claimAmountNum(summary.totalClaimAmount)),
-      sub: "Reported total",
-      trend: { label: "Live" },
-    },
-    {
-      title: "Approved",
-      value: formatInr(claimAmountNum(summary.totalApprovedAmount)),
-      sub: "Settled in scope",
-      trend: { label: "Live" },
-    },
-  ];
+
+  return [];
 }
 
 function MetricCardSkeleton() {
@@ -138,13 +191,35 @@ function MetricCardSkeleton() {
   );
 }
 
+function ClickableMetricCard({ card }: { card: CardDef }) {
+  return (
+    <Link href={card.href} className="group block cursor-pointer">
+      <Card className="shadow-sm transition-shadow hover:shadow-md hover:border-primary/30 h-full">
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+          <CardTitle className="text-muted-foreground text-sm font-medium">{card.title}</CardTitle>
+          <ChevronRight className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-semibold tracking-tight tabular-nums">{card.value}</p>
+          <p className="text-muted-foreground mt-1 text-xs">{card.sub}</p>
+          <div className="mt-2">
+            <Trend trend={card.trend} />
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
 export function DashboardMetricCards({
-  live,
+  range,
+  misTotals,
   dashboard,
   canSeeMis,
   loading,
 }: {
-  live: MisSummary | null;
+  range: DashboardDateRange;
+  misTotals: PolicyMemberRow | null;
   dashboard: DashboardMetrics | null;
   canSeeMis: boolean;
   loading: boolean;
@@ -153,33 +228,27 @@ export function DashboardMetricCards({
     return null;
   }
 
-  if (loading || !live) {
+  if (loading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => (
           <MetricCardSkeleton key={i} />
         ))}
       </div>
     );
   }
 
-  const cards = liveCardsFrom(live, dashboard);
+  const cards = buildCards(range, misTotals, dashboard);
+  if (!cards.length) {
+    return (
+      <p className="text-muted-foreground text-sm">No metrics for this period. Try another date range.</p>
+    );
+  }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {cards.map((c) => (
-        <Card key={c.title} className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">{c.title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold tracking-tight tabular-nums">{c.value}</p>
-            <p className="text-muted-foreground mt-1 text-xs">{c.sub}</p>
-            <div className="mt-2">
-              <Trend trend={c.trend} />
-            </div>
-          </CardContent>
-        </Card>
+        <ClickableMetricCard key={c.title} card={c} />
       ))}
     </div>
   );

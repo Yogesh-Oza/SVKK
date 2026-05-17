@@ -1,80 +1,188 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { PieSlice } from "@/features/svkk-dashboard/aggregate-mis-rows";
+import type { DashboardChartsPayload } from "@/features/svkk-dashboard/dashboard-metric-cards";
+import {
+  buildDashboardHref,
+  misQueryFromRange,
+  policiesQueryFromRange,
+  productVariantFromLabel,
+} from "@/lib/svkk/dashboard-navigation";
+import type { DashboardDateRange } from "@/lib/svkk/dashboard-date-presets";
 import { formatInrShort } from "./currency";
-import type { DashboardChartsPayload } from "./dashboard-metric-cards";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { useRouter } from "next/navigation";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
-const chartConfig = {
-  premium: { label: "Expected premium", color: "hsl(var(--chart-1))" },
+const PIE_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+  "hsl(210 40% 55%)",
+  "hsl(160 35% 45%)",
+  "hsl(30 70% 50%)",
+];
+
+const barConfig = {
+  premium: { label: "Co premium", color: "hsl(var(--chart-1))" },
+} satisfies import("@/components/ui/chart").ChartConfig;
+
+const pieConfig = {
+  value: { label: "Amount" },
 } satisfies import("@/components/ui/chart").ChartConfig;
 
 type Props = {
   loading: boolean;
+  range: DashboardDateRange;
   charts: DashboardChartsPayload | null;
+  productPie: PieSlice[];
+  villagePie: PieSlice[];
+  agePie: PieSlice[];
+  productCounts: { label: string; count: number }[];
 };
 
-export function PremiumTrendAndBreakdown({ loading, charts }: Props) {
+function PiePanel({
+  title,
+  description,
+  data,
+  onSliceClick,
+}: {
+  title: string;
+  description: string;
+  data: PieSlice[];
+  onSliceClick?: (name: string) => void;
+}) {
+  if (!data.length) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground py-12 text-center text-sm">No data in this period.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="cursor-pointer">
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer config={pieConfig} className="mx-auto h-56 w-full max-w-sm">
+          <PieChart>
+            <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={48}
+              outerRadius={80}
+              paddingAngle={2}
+              onClick={(_, index) => {
+                const row = data[index];
+                if (row?.name) onSliceClick?.(row.name);
+              }}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} className="cursor-pointer" />
+              ))}
+            </Pie>
+            <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+          </PieChart>
+        </ChartContainer>
+        <ul className="mt-3 space-y-1 text-xs">
+          {data.slice(0, 5).map((row) => (
+            <li key={row.name} className="flex justify-between gap-2 tabular-nums">
+              <span className="text-muted-foreground truncate">{row.name}</span>
+              <span>
+                {row.percent}% · {formatInrShort(row.value)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function PremiumTrendAndBreakdown({
+  loading,
+  range,
+  charts,
+  productPie,
+  villagePie,
+  agePie,
+  productCounts,
+}: Props) {
+  const router = useRouter();
+  const misQ = misQueryFromRange(range);
+  const polQ = policiesQueryFromRange(range);
+
+  const goMis = (extra?: Record<string, string | string[]>) => {
+    router.push(buildDashboardHref({ pathname: "/mis", query: { ...misQ, ...extra } }));
+  };
+
+  const goPolicies = (extra?: Record<string, string | string[]>) => {
+    router.push(buildDashboardHref({ pathname: "/policies", query: { ...polQ, ...extra } }));
+  };
+
   if (loading) {
     return (
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-4 w-64" />
-            </div>
-            <Skeleton className="h-8 w-28" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-72 w-full" />
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader className="space-y-2">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-56" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 5 }, (_, i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-56" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-56 w-full" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
 
-  if (!charts) {
-    return null;
-  }
-
-  const chartData = charts.monthly.map((row) => ({
-    month: row.monthLabel,
-    premium: row.premium,
-  }));
+  const chartData =
+    charts?.monthly.map((row) => ({
+      month: row.monthLabel,
+      premium: row.premium,
+      year: row.year,
+      monthNum: row.month,
+    })) ?? [];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
-      <Card className="lg:col-span-3">
-        <CardHeader className="flex flex-row items-start justify-between space-y-0">
-          <div>
-            <CardTitle className="text-base">Premium by policy start month</CardTitle>
-            <CardDescription>
-              Expected net premium in your scope (12 months ending at as-of), grouped by policy-year
-              start date
-            </CardDescription>
-          </div>
-          <Button type="button" variant="outline" size="sm" className="cursor-pointer" disabled>
-            Last 12 months
-          </Button>
+    <div className="space-y-4">
+      <Card
+        className="cursor-pointer transition-shadow hover:shadow-md"
+        onClick={() => goMis({ groupBy: "village" })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") goMis({ groupBy: "village" });
+        }}
+      >
+        <CardHeader>
+          <CardTitle className="text-base">Premium by policy start month</CardTitle>
+          <CardDescription>
+            Co premium by policy-year start month (12 months ending at to-date). Click to open MIS.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {chartData.every((d) => d.premium === 0) ? (
@@ -82,7 +190,7 @@ export function PremiumTrendAndBreakdown({ loading, charts }: Props) {
               No premium in this window for the selected scope.
             </p>
           ) : (
-            <ChartContainer config={chartConfig} className="h-72 w-full">
+            <ChartContainer config={barConfig} className="h-72 w-full">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border/50" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
@@ -94,46 +202,96 @@ export function PremiumTrendAndBreakdown({ loading, charts }: Props) {
                 />
                 <ChartTooltip
                   content={
-                    <ChartTooltipContent
-                      formatter={(value, name) => [formatInrShort(Number(value)), name]}
-                    />
+                    <ChartTooltipContent formatter={(value, name) => [formatInrShort(Number(value)), name]} />
                   }
                 />
-                <Bar dataKey="premium" fill="var(--color-premium)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar
+                  dataKey="premium"
+                  fill="var(--color-premium)"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={28}
+                  className="cursor-pointer"
+                  onClick={(data) => {
+                    const payload = data as { monthNum?: number; year?: number };
+                    if (payload.monthNum) {
+                      goMis({ groupBy: "village", months: String(payload.monthNum) });
+                    }
+                  }}
+                />
               </BarChart>
             </ChartContainer>
           )}
         </CardContent>
       </Card>
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-base">Premium mix by product</CardTitle>
-          <CardDescription>Share of expected net premium by policy type in scope</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {charts.productMix.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-sm">No product mix data in scope.</p>
-          ) : (
-            charts.productMix.map((row) => (
-              <div key={row.label} className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground max-w-[70%] truncate" title={row.label}>
-                    {row.label}
-                  </span>
-                  <span className="font-medium tabular-nums">{row.percent}%</span>
-                </div>
-                <div className="bg-muted h-2 overflow-hidden rounded-full">
-                  <div
-                    className="bg-primary h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(100, row.percent)}%` }}
-                  />
-                </div>
-                <p className="text-muted-foreground text-xs tabular-nums">{formatInrShort(row.premium)}</p>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <PiePanel
+          title="Premium by product"
+          description="Share of co premium by policy type. Click a slice for policies or MIS."
+          data={productPie}
+          onSliceClick={(name) => {
+            const variant = productVariantFromLabel(name);
+            if (variant) {
+              goPolicies({ adProductVariants: variant });
+            } else {
+              goMis({ groupBy: "policy_type" });
+            }
+          }}
+        />
+        <PiePanel
+          title="Premium by village"
+          description="Top villages by co premium in period."
+          data={villagePie}
+          onSliceClick={(name) => {
+            if (name === "Other") {
+              goMis({ groupBy: "village" });
+            } else {
+              goMis({ groupBy: "village", villages: name });
+            }
+          }}
+        />
+        <PiePanel
+          title="Members by age band"
+          description="Member count by age band (MIS age grouping)."
+          data={agePie}
+          onSliceClick={() => goMis({ groupBy: "age" })}
+        />
+      </div>
+
+      {productCounts.length > 0 ? (
+        <Card
+          className="cursor-pointer transition-shadow hover:shadow-md"
+          onClick={() => goMis({ groupBy: "policy_type" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") goMis({ groupBy: "policy_type" });
+          }}
+        >
+          <CardHeader>
+            <CardTitle className="text-base">Policy count by product</CardTitle>
+            <CardDescription>Number of policies in the selected period</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-3">
+            {productCounts.map((row) => (
+              <button
+                key={row.label}
+                type="button"
+                className="hover:bg-muted/60 rounded-lg border p-3 text-left transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const variant = productVariantFromLabel(row.label);
+                  if (variant) goPolicies({ adProductVariants: variant });
+                  else goMis({ groupBy: "policy_type" });
+                }}
+              >
+                <p className="text-muted-foreground text-xs">{row.label}</p>
+                <p className="text-xl font-semibold tabular-nums">{row.count.toLocaleString("en-IN")}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

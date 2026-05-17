@@ -3,7 +3,6 @@
 import {
   IconBarrierBlock,
   IconBrowserCheck,
-  IconCalendar,
   IconCoin,
   IconColumns,
   IconError404,
@@ -46,7 +45,6 @@ interface CommandSearchProps {
 
 const searchItems: SearchItem[] = [
   { title: "Users", url: "/users", group: "Apps", icon: IconUsers, adminOnly: true },
-  { title: "Calendar", url: "/calendar", group: "Apps", icon: IconCalendar },
   {
     title: "Sign In 1",
     url: "/sign-in-1",

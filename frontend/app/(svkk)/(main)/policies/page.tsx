@@ -99,7 +99,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -221,6 +221,8 @@ function formatInrRupee(v: unknown): string | null {
 
 export default function SvkkPoliciesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlHydrated = useRef(false);
   const { user } = useSvkkAuth();
   const perms = user?.permissions ?? [];
   const canDel = canDeletePolicy(perms);
@@ -272,6 +274,19 @@ export default function SvkkPoliciesPage() {
   const [filtersOpen, setFiltersOpen] = useState(true);
 
   const missingUrl = !getSvkkApiBase();
+
+  useEffect(() => {
+    if (urlHydrated.current) return;
+    urlHydrated.current = true;
+    const df = searchParams.get("dateFrom");
+    const dt = searchParams.get("dateTo");
+    if (df !== null) setDateFrom(df);
+    if (dt) setDateTo(dt);
+    const v = searchParams.getAll("villages");
+    if (v.length) setVillages(v);
+    const variants = searchParams.getAll("adProductVariants");
+    if (variants.length) setAdVariants(variants);
+  }, [searchParams]);
 
   useEffect(() => {
     const t = setTimeout(() => {

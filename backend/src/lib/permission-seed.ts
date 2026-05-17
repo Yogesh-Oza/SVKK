@@ -42,6 +42,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "users:manage",
       "roles:manage",
       "admin:settings",
+      "notifications:read",
     ],
   },
   SUPERVISOR: {
@@ -51,6 +52,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "policy:read",
       "policy:update",
       "policy:scope_village",
+      "notifications:read",
       "calculation:live",
       "upload:google-drive",
       "upload:one-drive",
@@ -61,6 +63,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "claim:update",
       "claim:scope_village",
       "receipt:create",
+      "notifications:read",
     ],
   },
   USER: {
@@ -69,6 +72,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "policy:create",
       "policy:read",
       "policy:scope_own",
+      "notifications:read",
       "calculation:live",
       "upload:google-drive",
       "upload:one-drive",

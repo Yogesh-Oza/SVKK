@@ -48,7 +48,7 @@ export default function AppSidebar({
   const { config } = useSidebarConfig();
   const isAdmin = user?.role === "admin";
 
-  /** One sidebar: MediClaim (SVKK API) links first, then CRM (alerts, calendar, settings, …). */
+  /** One sidebar: MediClaim (SVKK API) links first, then CRM (notifications, settings, …). */
   const navGroups = useMemo((): NavGroupType[] => {
     const crm = filterNavGroupsByRole(sidebarData.navGroups, isAdmin);
     if (!sessionUser) {

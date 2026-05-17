@@ -250,11 +250,28 @@ type PolicyMemberReportParams = {
   restrictPolicyYearToAsOf: boolean;
 };
 
+/** Member age band label — must match in SELECT and GROUP BY for ONLY_FULL_GROUP_BY. */
+function memberAgeBucketSql(d: Date): Prisma.Sql {
+  return Prisma.sql`(
+    CASE
+      WHEN m.dob IS NULL OR TIMESTAMPDIFF(YEAR, m.dob, ${d}) < 0 THEN '—'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 18 THEN '0–18'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 35 THEN '19–35'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 45 THEN '36–45'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 50 THEN '46–50'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 55 THEN '51–55'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 60 THEN '56–60'
+      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 65 THEN '61–65'
+      ELSE '65+'
+    END
+  )`;
+}
+
 function groupDimExpr(
   groupBy: PolicyMemberReportParams["groupBy"],
   d: Date,
-  start: Date,
-  end: Date,
+  _start: Date,
+  _end: Date,
 ): Prisma.Sql {
   if (groupBy === "village") {
     return Prisma.sql`COALESCE(p.village, '—')`;
@@ -273,20 +290,7 @@ function groupDimExpr(
       END
     )`;
   }
-  // age: member age bucket (rows = age bands)
-  return Prisma.sql`(
-    CASE
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) < 0 THEN '—'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 18 THEN '0–18'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 35 THEN '19–35'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 45 THEN '36–45'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 50 THEN '46–50'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 55 THEN '51–55'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 60 THEN '56–60'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 65 THEN '61–65'
-      ELSE '65+'
-    END
-  )`;
+  return memberAgeBucketSql(d);
 }
 
 function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
@@ -516,7 +520,7 @@ export async function queryPolicyMemberReport(
         ${myF}
         ${createdF}
         ${fiscF}
-      GROUP BY ${dim}, p.id, p.adProductVariant, py.id
+      GROUP BY ${dim}, p.id, p.adProductVariant, py.id, m.id
     ) t
     GROUP BY t.dim
   `)
@@ -573,21 +577,60 @@ export async function queryPolicyMemberReport(
     GROUP BY t.dim
   `);
 
-  const people = await prisma.$queryRaw<
-    {
-      label: string;
-      totalMemberRows: bigint;
-      mpp: bigint;
-      a0: bigint;
-      a1: bigint;
-      a2: bigint;
-      a3: bigint;
-      a4: bigint;
-      a5: bigint;
-      a6: bigint;
-      a7: bigint;
-    }[]
-  >(Prisma.sql`
+  const people =
+    args.groupBy === "age"
+      ? await prisma.$queryRaw<
+          {
+            label: string;
+            totalMemberRows: bigint;
+            mpp: bigint;
+            a0: bigint;
+            a1: bigint;
+            a2: bigint;
+            a3: bigint;
+            a4: bigint;
+            a5: bigint;
+            a6: bigint;
+            a7: bigint;
+          }[]
+        >(Prisma.sql`
+    SELECT
+      x.label,
+      COUNT(x.mid) AS totalMemberRows,
+      (COUNT(DISTINCT x.mid) + COUNT(DISTINCT x.pid)) AS mpp,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 0 AND 18 THEN x.mid END) AS a0,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 19 AND 35 THEN x.mid END) AS a1,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 36 AND 45 THEN x.mid END) AS a2,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 46 AND 50 THEN x.mid END) AS a3,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 51 AND 55 THEN x.mid END) AS a4,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 56 AND 60 THEN x.mid END) AS a5,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 61 AND 65 THEN x.mid END) AS a6,
+      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears > 65 THEN x.mid END) AS a7
+    FROM (
+      SELECT
+        ${dim} AS label,
+        m.id AS mid,
+        p.id AS pid,
+        TIMESTAMPDIFF(YEAR, m.dob, ${d}) AS ageYears
+      ${fromMember}
+    ) x
+    GROUP BY x.label
+  `)
+      : await prisma.$queryRaw<
+          {
+            label: string;
+            totalMemberRows: bigint;
+            mpp: bigint;
+            a0: bigint;
+            a1: bigint;
+            a2: bigint;
+            a3: bigint;
+            a4: bigint;
+            a5: bigint;
+            a6: bigint;
+            a7: bigint;
+          }[]
+        >(Prisma.sql`
     SELECT
       ${dim} AS label,
       COUNT(m.id) AS totalMemberRows,

@@ -105,6 +105,12 @@ enum DropdownType {
   YES_NO
 }
 
+enum NotificationType {
+  POLICY_CREATED
+  POLICY_NUMBER_UPDATED
+  RENEWAL_REMINDER
+}
+
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
@@ -124,6 +130,7 @@ model User {
   userVillages       UserVillage[]
   policiesCreated    Policy[]            @relation("PolicyCreatedBy")
   idempotencyRecords IdempotencyRecord[]
+  notifications      Notification[]
 
   @@index([roleId])
 }
@@ -292,9 +299,10 @@ model Policy {
   updatedAt           DateTime          @updatedAt
   deletedAt           DateTime?
 
-  years    PolicyYear[]
-  claims   Claim[]
-  receipts Receipt[]
+  years         PolicyYear[]
+  claims        Claim[]
+  receipts      Receipt[]
+  notifications Notification[]
 
   @@unique([policyNo, policyTypeId])
   @@index([insuredPartyId])
@@ -348,13 +356,48 @@ model PolicyYear {
   updatedAt                    DateTime    @updatedAt
   deletedAt                    DateTime?
 
-  members  Member[]
-  receipts Receipt[]
-  payments Payment[]
+  members              Member[]
+  receipts             Receipt[]
+  payments             Payment[]
+  renewalReminderLogs  RenewalReminderLog[]
 
   @@unique([policyId, yearLabel])
   @@index([policyChartId])
   @@index([policyId, deletedAt])
+  @@index([policyEnd, deletedAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  policyId  String?
+  policy    Policy?          @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  type      NotificationType
+  title     String           @db.VarChar(255)
+  body      String           @db.Text
+  linkUrl   String?          @db.VarChar(500)
+  emailTo   String?          @db.VarChar(255)
+  emailSent Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([policyId])
+  @@index([createdAt])
+}
+
+/// Prevents duplicate renewal emails per policy year and reminder offset (60/30/8/2 days).
+model RenewalReminderLog {
+  id           String     @id @default(cuid())
+  policyYearId String
+  policyYear   PolicyYear @relation(fields: [policyYearId], references: [id], onDelete: Cascade)
+  offsetDays   Int
+  emailTo      String?    @db.VarChar(255)
+  sentAt       DateTime   @default(now())
+
+  @@unique([policyYearId, offsetDays])
+  @@index([sentAt])
 }
 
 model Member {

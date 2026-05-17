@@ -1,7 +1,6 @@
 import type { SidebarData } from "@/lib/types";
 import {
   IconBrowserCheck,
-  IconCalendar,
   IconNotification,
   IconPalette,
   IconSettings,
@@ -17,16 +16,6 @@ export const sidebarData: SidebarData = {
           title: "Notifications",
           url: "/notifications",
           icon: IconNotification,
-        },
-      ],
-    },
-    {
-      title: "General",
-      items: [
-        {
-          title: "Calendar",
-          url: "/calendar",
-          icon: IconCalendar,
         },
       ],
     },

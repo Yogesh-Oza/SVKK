@@ -23,9 +23,6 @@ function stubForPathname(pathname: string, search: string): object {
   if (pathname === "/api/notifications") {
     return { notifications: [] };
   }
-  if (pathname === "/api/calendar/events") {
-    return { events: [] };
-  }
   if (pathname.startsWith("/api/leads")) {
     if (pathname.includes("/reassign") || pathname.includes("/stage")) {
       return { ok: true };

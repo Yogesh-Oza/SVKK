@@ -40,6 +40,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowUpDown, Download, RotateCcw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function todayIsoDate(): string {
@@ -311,7 +312,11 @@ type Props = {
   onError: (m: string) => void;
 };
 
+const VALID_GROUP_BY = new Set(GROUP_BY_OPTIONS.map((o) => o.value));
+
 export function PolicyMemberReportSection({ onError }: Props) {
+  const searchParams = useSearchParams();
+  const urlHydrated = useRef(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState(todayIsoDate);
   const [groupBy, setGroupBy] = useState<(typeof GROUP_BY_OPTIONS)[number]["value"]>("village");
@@ -330,6 +335,25 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const { options: ddOptions } = useDropdownOptions();
+
+  useEffect(() => {
+    if (urlHydrated.current) return;
+    urlHydrated.current = true;
+    const df = searchParams.get("dateFrom");
+    const dt = searchParams.get("dateTo");
+    const gb = searchParams.get("groupBy");
+    if (df !== null) setDateFrom(df);
+    if (dt) setDateTo(dt);
+    if (gb && VALID_GROUP_BY.has(gb as (typeof GROUP_BY_OPTIONS)[number]["value"])) {
+      setGroupBy(gb as (typeof GROUP_BY_OPTIONS)[number]["value"]);
+    }
+    const v = searchParams.getAll("villages");
+    if (v.length) setVillages(v);
+    const m = searchParams.getAll("months");
+    if (m.length) setMonths(m);
+    const c = searchParams.getAll("categoryKeys");
+    if (c.length) setCategoryKeys(c);
+  }, [searchParams]);
 
   const villageOptions = useMemo<PolicyFilterOption[]>(
     () => (filterMeta?.villages ?? []).map((v) => ({ value: v, label: v })),
@@ -748,8 +772,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={colCount} className="h-20 text-center text-muted-foreground">
-                  No data found for selected filters.
+                <TableCell colSpan={colCount} className="h-32 text-left">
+                  <p className="text-muted-foreground ml-[15%] py-6 text-sm font-medium">
+                    {data.length === 0
+                      ? "No records"
+                      : "No records match your search"}
+                  </p>
                 </TableCell>
               </TableRow>
             )}

@@ -14,6 +14,7 @@ import { allocateCounter, formatSvkkId } from "../../services/counter.service.js
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
+import { dispatchPolicyCreated, dispatchPolicyNumberOrDocumentUpdated } from "../../services/notification/notification-dispatch.js";
 import {
   createPolicyBodySchema,
   type PolicyMemberReplaceRow,
@@ -384,6 +385,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       yearLabel: result.year.yearLabel,
     } as unknown as Prisma.InputJsonValue,
   });
+
+  dispatchPolicyCreated(result.policy.id, input.actorUserId);
 
   return prisma.policy.findFirstOrThrow({
     where: { id: result.policy.id, deletedAt: null },
@@ -1020,6 +1023,21 @@ export async function updatePolicySections(input: {
     beforeData: beforeSnapshot as unknown as Prisma.InputJsonValue,
     afterData: { policy: updated, yearLabel: input.year?.yearLabel } as unknown as Prisma.InputJsonValue,
   });
+
+  dispatchPolicyNumberOrDocumentUpdated(
+    input.policyId,
+    input.actorUserId,
+    {
+      policyNo: existing.policyNo,
+      policyUrl: existing.policyUrl,
+      policyUrl2: existing.policyUrl2,
+    },
+    {
+      policyNo: updated.policyNo,
+      policyUrl: updated.policyUrl,
+      policyUrl2: updated.policyUrl2,
+    },
+  );
 
   return updated;
 }
