@@ -1,3 +1,5 @@
+import { wrapEmailBody } from "./email-layout.js";
+
 export type EmailTemplateId =
   | "policy_created"
   | "policy_number_updated"
@@ -17,14 +19,7 @@ export type EmailTemplateDefinition = {
   variables: string[];
 };
 
-const wrap = (body: string) => `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><style>
-body{font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#0b1728;margin:0;padding:24px;background:#f4f7fb}
-.card{max-width:560px;margin:0 auto;background:#fff;border:1px solid #d9e3ee;border-radius:12px;padding:24px}
-h1{font-size:18px;margin:0 0 12px}
-.muted{color:#66798f;font-size:13px}
-.btn{display:inline-block;margin-top:16px;padding:10px 18px;background:#174ea6;color:#fff!important;text-decoration:none;border-radius:8px;font-size:14px}
-</style></head><body><div class="card">${body}<p class="muted">SVKK MediClaim</p></div></body></html>`;
+const wrap = (body: string) => wrapEmailBody(body);
 
 export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
   {

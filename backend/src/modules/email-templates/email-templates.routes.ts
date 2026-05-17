@@ -35,10 +35,10 @@ export function createEmailTemplatesRouter(env: Env) {
         const body = z
           .object({
             subject: z.string().min(1).max(500),
-            html: z.string().min(1).max(100_000),
+            body: z.string().min(1).max(50_000),
           })
           .parse(req.body);
-        await saveEmailTemplate(templateId, body.subject, body.html);
+        await saveEmailTemplate(templateId, body.subject, body.body);
         res.json({ ok: true });
       } catch (e) {
         next(e);

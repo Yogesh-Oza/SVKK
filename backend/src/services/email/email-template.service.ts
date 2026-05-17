@@ -5,6 +5,7 @@ import {
   type EmailTemplateId,
   getTemplateDefinition,
 } from "./email-template-catalog.js";
+import { extractEmailBody, wrapEmailBody } from "./email-layout.js";
 
 export type RenderedEmail = { subject: string; html: string };
 
@@ -20,9 +21,10 @@ export async function getEmailTemplateContent(
     where: { key: { in: [def.subjectKey, def.htmlKey] } },
   });
   const map = new Map(rows.map((r) => [r.key, r.value]));
+  const stored = map.get(def.htmlKey)?.trim() || def.defaultHtml;
   return {
     subject: map.get(def.subjectKey)?.trim() || def.defaultSubject,
-    html: map.get(def.htmlKey)?.trim() || def.defaultHtml,
+    html: wrapEmailBody(extractEmailBody(stored)),
   };
 }
 
@@ -41,26 +43,34 @@ export async function listEmailTemplatesForAdmin(): Promise<
   Array<
     EmailTemplateDefinition & {
       subject: string;
-      html: string;
+      body: string;
+      defaultSubject: string;
+      defaultBody: string;
     }
   >
 > {
   const keys = EMAIL_TEMPLATE_CATALOG.flatMap((t) => [t.subjectKey, t.htmlKey]);
   const rows = await prisma.appSetting.findMany({ where: { key: { in: keys } } });
   const map = new Map(rows.map((r) => [r.key, r.value]));
-  return EMAIL_TEMPLATE_CATALOG.map((def) => ({
-    ...def,
-    subject: map.get(def.subjectKey)?.trim() || def.defaultSubject,
-    html: map.get(def.htmlKey)?.trim() || def.defaultHtml,
-  }));
+  return EMAIL_TEMPLATE_CATALOG.map((def) => {
+    const stored = map.get(def.htmlKey)?.trim() || def.defaultHtml;
+    return {
+      ...def,
+      subject: map.get(def.subjectKey)?.trim() || def.defaultSubject,
+      body: extractEmailBody(stored),
+      defaultSubject: def.defaultSubject,
+      defaultBody: extractEmailBody(def.defaultHtml),
+    };
+  });
 }
 
 export async function saveEmailTemplate(
   templateId: EmailTemplateId,
   subject: string,
-  html: string,
+  body: string,
 ): Promise<void> {
   const def = getTemplateDefinition(templateId);
+  const html = wrapEmailBody(body);
   await prisma.$transaction([
     prisma.appSetting.upsert({
       where: { key: def.subjectKey },
@@ -81,6 +91,6 @@ export async function seedDefaultEmailTemplatesIfMissing(): Promise<void> {
       where: { key: { in: [def.subjectKey, def.htmlKey] } },
     });
     if (existing.length >= 2) continue;
-    await saveEmailTemplate(def.id, def.defaultSubject, def.defaultHtml);
+    await saveEmailTemplate(def.id, def.defaultSubject, extractEmailBody(def.defaultHtml));
   }
 }
