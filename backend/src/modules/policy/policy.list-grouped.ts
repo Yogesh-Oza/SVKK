@@ -24,6 +24,7 @@ export type PolicyListGroupedItem = {
     svkkPublicId: string;
     name: string;
     mobile: string;
+    email: string | null;
     customerId: string | null;
     pan: string | null;
   };
@@ -34,6 +35,9 @@ export type PolicyListGroupedItem = {
   area: string | null;
   remarks: string | null;
   periodMonthText: string | null;
+  periodYearText: string | null;
+  whatsappNo: string | null;
+  policyGrouping: string | null;
   personsInsuredCount: number | null;
   adProductVariant: string | null;
   policyType: { id: string; name: string };
@@ -108,16 +112,20 @@ function buildGroupedItem(partyId: string, policies: PolicyRow[]): PolicyListGro
       svkkPublicId: party.svkkPublicId,
       name: party.name,
       mobile: party.mobile,
+      email: party.email,
       customerId: party.customerId,
       pan: party.pan,
     },
     primaryPolicyId: primary.id,
-    policyNo: primary.policyNo,
+    policyNo: years[0]?.policyNo ?? primary.policyNo,
     referenceNo: primary.referenceNo,
     village: primary.village,
     area: primary.area,
     remarks: primary.remarks,
     periodMonthText: primary.periodMonthText,
+    periodYearText: primary.periodYearText ?? years[0]?.yearLabel ?? null,
+    whatsappNo: primary.whatsappNo,
+    policyGrouping: primary.policyGrouping,
     personsInsuredCount: primary.personsInsuredCount,
     adProductVariant: primary.adProductVariant,
     policyType: { id: primary.policyType.id, name: primary.policyType.name },

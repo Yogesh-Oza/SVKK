@@ -47,6 +47,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
+import { PolicyListSnapshotPanel } from "@/features/svkk-policies/policy-list-snapshot";
 import {
   PolicyFilterMulti,
   type PolicyFilterOption,
@@ -121,10 +122,14 @@ type ListPolicy = {
   remarks: string | null;
   adProductVariant?: string | null;
   periodMonthText?: string | null;
+  periodYearText?: string | null;
+  whatsappNo?: string | null;
+  policyGrouping?: string | null;
   insuredParty: {
     svkkPublicId: string;
     name: string;
     mobile: string;
+    email?: string | null;
     customerId: string | null;
     pan: string | null;
   };
@@ -179,8 +184,10 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "mobile_desc", label: "Mobile Z–A" },
   { value: "policyNo", label: "Policy no. A–Z" },
   { value: "policyNo_desc", label: "Policy no. Z–A" },
-  { value: "referenceNo", label: "Reference no. A–Z" },
-  { value: "referenceNo_desc", label: "Reference no. Z–A" },
+  { value: "periodMonthText", label: "Month A–Z" },
+  { value: "periodMonthText_desc", label: "Month Z–A" },
+  { value: "categoryName", label: "Category A–Z" },
+  { value: "categoryName_desc", label: "Category Z–A" },
   { value: "svkkId", label: "SVKK ID A–Z" },
   { value: "svkkId_desc", label: "SVKK ID Z–A" },
 ];
@@ -664,26 +671,42 @@ export default function SvkkPoliciesPage() {
         ),
       },
       {
-        id: "referenceNo",
-        accessorFn: (r) => r.referenceNo ?? "",
+        id: "month",
+        accessorFn: (r) => r.periodMonthText ?? "",
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
-            title="Reference No"
-            sortAsc="referenceNo"
-            sortDesc="referenceNo_desc"
+            title="Month"
+            sortAsc="periodMonthText"
+            sortDesc="periodMonthText_desc"
+            activeSort={sort}
+            onSortChange={applySort}
+          />
+        ),
+        cell: ({ row }) => (
+          <span className={cn(policyTableMuted, "max-w-[120px] truncate")}>
+            {row.original.periodMonthText?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "category",
+        accessorFn: (r) => r.category?.name ?? r.category?.key ?? "",
+        header: ({ column }) => (
+          <PoliciesColumnHeader
+            column={column}
+            title="Category"
+            sortAsc="categoryName"
+            sortDesc="categoryName_desc"
             activeSort={sort}
             onSortChange={applySort}
           />
         ),
         cell: ({ row }) => {
-          const ref = row.original.referenceNo?.trim() || "—";
+          const cat = row.original.category?.name ?? row.original.category?.key;
           return (
-            <span
-              className={cn(policyTableMuted, "max-w-[200px] truncate font-mono text-xs")}
-              title={ref !== "—" ? ref : undefined}
-            >
-              {ref}
+            <span className={cn(policyTableMuted, "max-w-[140px] truncate")} title={cat ?? undefined}>
+              {cat?.trim() || "—"}
             </span>
           );
         },
@@ -1312,70 +1335,7 @@ export default function SvkkPoliciesPage() {
                               ))}
                             </div>
                             {rowYearAction?.svkkPublicId === original.svkkPublicId ? null : (
-                              <div className="max-w-full space-y-4">
-                                <div className="ring-primary/15 rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
-                                  <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">
-                                    Policy snapshot
-                                    <span className="text-blue-700/70 dark:text-blue-300/70 ml-2 font-normal normal-case">
-                                      (summary for this SVKK ID)
-                                    </span>
-                                  </p>
-                                  <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                                    <div className="min-w-0">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Policy no.
-                                      </dt>
-                                      <dd className="text-blue-950 dark:text-blue-50 font-mono text-xs font-semibold break-all">
-                                        {original.policyNo ?? "—"}
-                                      </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Customer ID
-                                      </dt>
-                                      <dd className="text-blue-950 dark:text-blue-50 font-mono text-xs font-semibold break-all">
-                                        {original.insuredParty.customerId ?? "—"}
-                                      </dd>
-                                    </div>
-                                    <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Insured
-                                      </dt>
-                                      <dd className="text-blue-950 dark:text-blue-50 font-medium wrap-break-word">
-                                        {original.insuredParty.name}
-                                      </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Village / area
-                                      </dt>
-                                      <dd className="text-blue-950 dark:text-blue-50 wrap-break-word">
-                                        {[original.village, original.area].filter(Boolean).join(" · ") || "—"}
-                                      </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Category · month
-                                      </dt>
-                                      <dd className="text-blue-950 dark:text-blue-50">
-                                        {[original.category?.key, original.periodMonthText].filter(Boolean).join(" · ") ||
-                                          "—"}
-                                      </dd>
-                                    </div>
-                                    <div className="min-w-0 sm:col-span-2 lg:col-span-3">
-                                      <dt className="text-blue-800/70 dark:text-blue-300/65 mb-0.5 text-xs font-medium">
-                                        Group / note
-                                      </dt>
-                                      <dd
-                                        className="text-blue-950/90 dark:text-blue-100/90 line-clamp-2 text-xs wrap-break-word"
-                                        title={original.remarks ?? undefined}
-                                      >
-                                        {original.remarks?.trim() ? original.remarks : "—"}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </div>
-                              </div>
+                              <PolicyListSnapshotPanel row={original} />
                             )}
                           </motion.div>
                         </TableCell>
