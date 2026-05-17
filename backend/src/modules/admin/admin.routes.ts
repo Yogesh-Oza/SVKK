@@ -7,6 +7,7 @@ import { prisma } from "../../lib/prisma.js";
 import { CategoryType, ChartMode, DropdownType, PolicyChartKind } from "@prisma/client";
 import { invalidateChartCache } from "../premium/chart-cache.js";
 import type { PremiumMatrixJson } from "../premium/premium.types.js";
+import { deletePolicyType } from "./admin-policy-type.service.js";
 
 const dropdownTypeValues = Object.values(DropdownType) as [DropdownType, ...DropdownType[]];
 
@@ -64,9 +65,7 @@ export function createAdminRouter(env: Env) {
 
   r.delete("/policy-types/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
     try {
-      await prisma.policyType.delete({
-        where: { id: String(req.params.id) },
-      });
+      await deletePolicyType(String(req.params.id));
       res.status(204).end();
     } catch (e) {
       next(e);

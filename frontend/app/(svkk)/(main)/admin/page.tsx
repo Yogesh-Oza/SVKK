@@ -38,6 +38,8 @@ import {
   type DropdownType,
 } from "@/lib/svkk/dropdown-options";
 import { refreshDropdownOptions } from "@/lib/svkk/use-dropdown-options";
+import { getSvkkErrorMessage } from "@/features/users/utils/api-error";
+import { toast } from "sonner";
 
 type PolicyType = {
   id: string;
@@ -403,9 +405,17 @@ export default function SvkkAdminPage() {
     );
   }
   async function deletePolicyType(id: string) {
-    await guarded(async () => {
+    const label = types.find((t) => t.id === id)?.name ?? "Policy type";
+    setBusy(true);
+    try {
       await svkkJson(`/admin/policy-types/${id}`, { method: "DELETE" });
-    });
+      toast.success(`"${label}" deleted`);
+      await loadAll();
+    } catch (e) {
+      toast.warning(getSvkkErrorMessage(e, `Could not delete "${label}"`));
+    } finally {
+      setBusy(false);
+    }
   }
   async function deleteGrouping(id: string) {
     await guarded(
