@@ -320,6 +320,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   // Fallback group prefix derived from a carried-forward SVKK ID when the form's
   // Policy Group dropdown is empty (e.g. the prior policy never had one set).
   const seededGroupRef = useRef("");
+  const detailHydrationKeyRef = useRef<string | null>(null);
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.permissions ? canUploadPolicyDrive(user.permissions) : false;
@@ -372,6 +373,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
   const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
+  /** Remounts Policy Type / Month selects after edit hydration (Radix Select stale value fix). */
+  const [selectFieldsMountKey, setSelectFieldsMountKey] = useState(0);
+  /** Edit form waits until Formik is reset from API detail (avoids empty Select on first paint). */
+  const [editHydrated, setEditHydrated] = useState(() => !policyId);
 
   useEffect(() => {
     let cancelled = false;
@@ -395,9 +400,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     return getAdPolicyInitialValues();
   }, [isEdit, detail, editYearLabel]);
 
+  const editMappedValues = useMemo(() => {
+    if (!isEdit || !detail) {
+      return null;
+    }
+    return policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
+  }, [isEdit, detail, editYearLabel]);
+
   const formik = useFormik<AdPolicyFormValues>({
     initialValues,
-    enableReinitialize: true,
+    enableReinitialize: !isEdit,
     validationSchema: adPolicyValidationSchema,
     validateOnBlur: true,
     validateOnChange: true,
@@ -660,6 +672,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         setPremiumManual({});
         setAgeManual({});
         await formik.setValues(nextValues);
+        setSelectFieldsMountKey((k) => k + 1);
         setFetchNotice(modeNotice);
       } catch (e) {
         setFetchNotice(e instanceof Error ? e.message : "Failed to load policy details");
@@ -1185,6 +1198,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [missingUrl, loadAdPolicyType, isEdit]);
 
   useEffect(() => {
+    if (!isEdit) {
+      setEditHydrated(true);
+      return;
+    }
+    setEditHydrated(false);
+    detailHydrationKeyRef.current = null;
+  }, [isEdit, policyId]);
+
+  useEffect(() => {
     if (missingUrl || !isEdit || !policyId) {
       return;
     }
@@ -1212,7 +1234,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
   }, [isEdit, detail, editYearLabel]);
 
-  const detailHydrationKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isEdit || !detail) {
       return;
@@ -1222,11 +1243,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       return;
     }
     detailHydrationKeyRef.current = hydrationKey;
-    const nextValues = policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
-    void formik.setValues(nextValues);
-    setPremiumManual({});
-    setAgeManual({});
-  }, [isEdit, detail, editYearLabel, formik.setValues]);
+    void (async () => {
+      const nextValues = policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
+      setPremiumManual({});
+      setAgeManual({});
+      await formik.resetForm({ values: nextValues });
+      setSelectFieldsMountKey((k) => k + 1);
+      setEditHydrated(true);
+    })();
+  }, [isEdit, detail, editYearLabel, formik.resetForm]);
 
   useEffect(() => {
     // Lock auto-id only when we are updating an existing policy. After Carry
@@ -1512,6 +1537,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("diffAmt", differenceAmountPaidByHolder);
   }, [freezeAutoCalculations, premiumManual, setFieldValue, values]);
 
+  const adProductSelectValue = values.adProduct || editMappedValues?.adProduct || "";
+  const monthSelectValue = values.month || editMappedValues?.month || "";
+
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
   }
@@ -1519,7 +1547,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (detailErr) {
       return <p className="text-destructive text-sm">{detailErr}</p>;
     }
-    if (!detail) {
+    if (!detail || !editHydrated) {
       return <p className="text-muted-foreground text-sm">Loading policy…</p>;
     }
   } else if (loadErr) {
@@ -1855,7 +1883,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <div className="space-y-2">
                 <RequiredLabel>Policy Type</RequiredLabel>
                 <Select
-                  value={values.adProduct || "__none__"}
+                  key={`adProduct-${selectFieldsMountKey}`}
+                  value={adProductSelectValue || "__none__"}
                   onValueChange={(v) => void setFieldValue("adProduct", v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger className="w-full">
@@ -1967,7 +1996,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <div className="space-y-2">
                 <RequiredLabel>Month</RequiredLabel>
                 <Select
-                  value={values.month || "__none__"}
+                  key={`month-${selectFieldsMountKey}`}
+                  value={monthSelectValue || "__none__"}
                   onValueChange={(v) => void setFieldValue("month", v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger className="w-full">

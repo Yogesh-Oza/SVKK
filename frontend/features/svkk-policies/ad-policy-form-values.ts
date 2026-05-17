@@ -1,3 +1,4 @@
+import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import type { AdMemberRow } from "./ad-member-types";
 
 export type AdPolicyPaymentModeForm = "ONLINE" | "CHEQUE" | "CASH";
@@ -225,7 +226,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     policyChangeRemark: "",
     refNo: "",
     year: "",
-    month: String(new Date().getMonth() + 1),
+    month: POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER[new Date().getMonth()],
     policyGrouping: "",
     urls: [],
     url2: "",

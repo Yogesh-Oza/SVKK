@@ -1317,7 +1317,7 @@ export default function SvkkPoliciesPage() {
                                   <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">
                                     Policy snapshot
                                     <span className="text-blue-700/70 dark:text-blue-300/70 ml-2 font-normal normal-case">
-                                      (latest year; details vary by year below)
+                                      (summary for this SVKK ID)
                                     </span>
                                   </p>
                                   <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -1374,48 +1374,6 @@ export default function SvkkPoliciesPage() {
                                       </dd>
                                     </div>
                                   </dl>
-                                </div>
-
-                                <div>
-                                  <p className="text-muted-foreground mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
-                                    <span className="bg-primary h-2 w-2 shrink-0 rounded-full" aria-hidden />
-                                    Amounts by year
-                                  </p>
-                                  <ul className="flex max-w-full flex-col gap-2">
-                                    {original.years.map((y, yi) => (
-                                      <li
-                                        key={`${y.policyId}-${y.yearLabel}`}
-                                        className={cn(
-                                          "flex max-w-full flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
-                                          "border-l-primary/55 border-l-4 transition-colors",
-                                          yi % 2 === 0
-                                            ? "bg-card border-border"
-                                            : "bg-emerald-50/40 border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-900/50",
-                                        )}
-                                      >
-                                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
-                                          <span className="text-primary bg-primary/12 inline-flex min-w-18 items-center justify-center rounded-md px-2 py-1 text-sm font-bold tabular-nums">
-                                            {y.yearLabel}
-                                          </span>
-                                          <Badge
-                                            variant="outline"
-                                            className="border-emerald-300/80 bg-emerald-100/90 font-mono text-xs tabular-nums text-emerald-950 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-100"
-                                          >
-                                            SI {formatInrRupee(y.sumInsured) ?? "—"}
-                                          </Badge>
-                                          <Badge
-                                            variant="outline"
-                                            className="border-amber-300/90 bg-amber-100/95 font-mono text-xs font-bold tabular-nums text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/45 dark:text-amber-100"
-                                          >
-                                            Premium {formatInrRupee(y.vkkPremium) ?? "—"}
-                                          </Badge>
-                                        </div>
-                                        <p className="text-muted-foreground hidden text-[10px] font-medium uppercase tracking-wide sm:block">
-                                          Tap a chip above to open or print
-                                        </p>
-                                      </li>
-                                    ))}
-                                  </ul>
                                 </div>
                               </div>
                             )}
