@@ -1,5 +1,5 @@
 import { resolveAdProductFormValue } from "./ad-product-variant";
-import { emptyMemberRow, type AdMemberRow } from "./ad-member-types";
+import type { AdMemberRow } from "./ad-member-types";
 import type {
   AdPolicyFormValues,
   AdPolicyPaymentTransactionForm,

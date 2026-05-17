@@ -1061,7 +1061,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       setActiveSection(section);
 
       // Ensure errors render even if the field wasn't touched yet.
-      await formik.setTouched({ ...(touched as any), [firstPath]: true } as any, true);
+      await formik.setFieldTouched(firstPath, true, true);
 
       // Try to focus/scroll the first invalid input for immediate visibility.
       requestAnimationFrame(() => {
@@ -1074,7 +1074,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.focus?.();
       });
     },
-    [formik, sectionForFieldPath, touched],
+    [formik, sectionForFieldPath],
   );
 
   const resetFetchedPolicyState = useCallback(async () => {

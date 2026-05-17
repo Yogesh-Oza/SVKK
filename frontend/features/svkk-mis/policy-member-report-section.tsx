@@ -179,17 +179,21 @@ function formatCell(key: keyof PolicyMemberRow, v: number) {
 }
 
 function sortableHeader<T>(title: string) {
-  return ({ column }: { column: Column<T, unknown> }) => (
-    <Button
-      type="button"
-      variant="ghost"
-      className="h-8 px-1.5 -ml-1.5 font-medium"
-      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-    >
-      {title}
-      <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-60" />
-    </Button>
-  );
+  function SortableHeader({ column }: { column: Column<T, unknown> }) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-1.5 -ml-1.5 font-medium"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        {title}
+        <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+      </Button>
+    );
+  }
+  SortableHeader.displayName = `SortableHeader(${title})`;
+  return SortableHeader;
 }
 
 function sumFiltered(rows: Row<PolicyMemberRow>[]) {

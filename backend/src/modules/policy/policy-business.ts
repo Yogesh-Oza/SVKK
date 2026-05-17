@@ -1,5 +1,8 @@
 import { CounterType, type Prisma } from "@prisma/client";
-import { allocateCounter } from "../../services/counter.service.js";
+import {
+  allocateCounterAtLeast,
+  POLICY_SEQUENCE_MIN,
+} from "../../services/counter.service.js";
 
 const MONTH_SHORT = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
 
@@ -30,7 +33,12 @@ export async function generatePolicyPublicId(input: {
   const group = normalizeGrouping(input.policyGrouping);
   const mon = monthShort(input.month);
   const period = `${group}-${mon}`;
-  const seq = await allocateCounter(CounterType.SVKK_PUBLIC_ID, period, input.tx);
+  const seq = await allocateCounterAtLeast(
+    CounterType.SVKK_PUBLIC_ID,
+    period,
+    POLICY_SEQUENCE_MIN,
+    input.tx,
+  );
   return `${group}${mon}${String(seq).padStart(4, "0")}`;
 }
 
@@ -49,7 +57,7 @@ export async function generateReferenceNo(input: {
   if (!refType) {
     throw new Error("CounterType POLICY_REFERENCE is not available in Prisma client");
   }
-  const seq = await allocateCounter(refType, period, input.tx);
+  const seq = await allocateCounterAtLeast(refType, period, POLICY_SEQUENCE_MIN, input.tx);
   return `${group}${yearPart}${mon}${String(seq).padStart(4, "0")}`;
 }
 

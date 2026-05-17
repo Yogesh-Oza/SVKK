@@ -18,6 +18,7 @@ import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
   canDeletePolicy,
+  canUpdatePolicy,
 } from "@/lib/svkk/permissions";
 import { parsePolicyUrls } from "@/features/svkk-policies/ad-policy-detail-to-form";
 import { resolvePolicyPaymentDisplays } from "@/features/svkk-policies/policy-bank-display";
@@ -26,6 +27,8 @@ import {
   singleRowYearSibling,
   type PolicyListYearSibling,
 } from "@/features/svkk-policies/policy-year-siblings";
+import { Pencil } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -236,6 +239,7 @@ export default function SvkkPolicyDetailPage() {
 
   const perms = user?.permissions ?? [];
   const canDel = canDeletePolicy(perms);
+  const canEdit = canUpdatePolicy(perms);
 
   const applyYearToDetail = useCallback((detail: PolicyDetail, yearLabel: string) => {
     const matched =
@@ -277,7 +281,7 @@ export default function SvkkPolicyDetailPage() {
         if (cancelled) return;
         setYearTabs(tabs);
 
-        let targetTab =
+        const targetTab =
           (selectedYearLabel ? tabs.find((t) => t.yearLabel === selectedYearLabel) : undefined) ??
           tabs[0];
         if (!targetTab) {
@@ -367,8 +371,18 @@ export default function SvkkPolicyDetailPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">View policy</h1>
+        {canEdit ? (
+          <Button asChild variant="default" size="sm" className="gap-1.5">
+            <Link
+              href={`/policies/${id}/edit?year=${encodeURIComponent(activeYearLabel)}`}
+            >
+              <Pencil className="size-3.5" />
+              Edit policy
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       {yearTabs.length > 0 ? (
