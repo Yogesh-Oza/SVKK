@@ -13,6 +13,7 @@ import {
   getDashboardCharts,
   getDashboardMetrics,
   getPolicyMemberReport,
+  getPolicyMemberReportDetail,
   getVillageReport,
 } from "./mis.service.js";
 
@@ -257,6 +258,43 @@ export function createMisRouter(_env: Env) {
           req.permissions!,
           scope,
           normalizePolicyMemberReportQuery(q),
+        );
+        res.json(rep);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/policy-member-report/detail",
+    requirePermission("mis:read"),
+    async (req, res, next) => {
+      try {
+        const q = policyMemberReportQuerySchema
+          .extend({
+            drillVillage: z.string().optional(),
+            drillArea: z.string().optional(),
+          })
+          .parse(req.query);
+        const normalized = normalizePolicyMemberReportQuery(q);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const rep = await getPolicyMemberReportDetail(
+          req.userId!,
+          req.permissions!,
+          scope,
+          {
+            drillVillage: q.drillVillage?.trim() || null,
+            drillArea: q.drillArea?.trim() || null,
+            dateFrom: normalized.dateFrom,
+            dateTo: normalized.dateTo,
+            categoryKeys: normalized.categoryKeys,
+            policyGroupings: normalized.policyGroupings,
+            sumInsureds: normalized.sumInsureds,
+            months: normalized.months,
+            years: normalized.years,
+            fiscalLabels: normalized.fiscalLabels,
+          },
         );
         res.json(rep);
       } catch (e) {

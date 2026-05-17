@@ -281,7 +281,47 @@ export type PolicyMemberReportGroupBy =
   | "area"
   | "policy_type"
   | "sum_insured"
-  | "age";
+  | "age"
+  | "policy_grouping";
+
+const DRILL_CATEGORY_ORDER = ["A", "B", "C", "D", "STAFF"] as const;
+const DRILL_GROUPING_ORDER = ["SVKK", "NVKK", "RTY", "OTHER"] as const;
+
+function emptyPolicyMemberRow(label: string): PolicyMemberReportRow {
+  return {
+    label,
+    totalPolicies: 0n,
+    membersPlusPolicies: 0n,
+    cntAshaKiran: 0n,
+    cntFamilyFloater: 0n,
+    cntIndividual: 0n,
+    sumVkk: "0",
+    sumCo: "0",
+    sumGross: "0",
+    sumComm: "0",
+    sumTwoLac: "0",
+    sumPolHolder: "0",
+    sumGaam: "0",
+    sumRefund: "0",
+    sumCd: "0",
+    age0_18: 0n,
+    age19_35: 0n,
+    age36_45: 0n,
+    age46_50: 0n,
+    age51_55: 0n,
+    age56_60: 0n,
+    age61_65: 0n,
+    age65p: 0n,
+  };
+}
+
+function normalizeGroupingLabel(label: string): string {
+  const u = label.trim().toUpperCase();
+  if (DRILL_GROUPING_ORDER.includes(u as (typeof DRILL_GROUPING_ORDER)[number])) {
+    return u;
+  }
+  return u || "OTHER";
+}
 
 /**
  * Policy & Member report (filters + as-of). Rows are one per `groupBy` dimension; amounts are
@@ -349,5 +389,105 @@ export async function getPolicyMemberReport(
     dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
     groupBy: input.groupBy,
     rows: jsonRows,
+  };
+}
+
+/**
+ * Drill-down for village/area row click: one table per category (A–D, STAFF),
+ * rows = policy grouping (SVKK, NVKK, RTY, OTHER).
+ */
+export async function getPolicyMemberReportDetail(
+  userId: string,
+  permissions: Set<string>,
+  scope: MisScope,
+  input: {
+    drillVillage: string | null;
+    drillArea: string | null;
+    dateFrom: Date | null;
+    dateTo: Date | null;
+    categoryKeys: string[];
+    policyGroupings: string[];
+    sumInsureds: string[];
+    months: number[];
+    years: number[];
+    fiscalLabels: string[];
+  },
+) {
+  const village = input.drillVillage?.trim() || null;
+  const area = input.drillArea?.trim() || null;
+  if (!village && !area) {
+    throw new Error("drillVillage or drillArea is required");
+  }
+  if (village && area) {
+    throw new Error("Provide only one of drillVillage or drillArea");
+  }
+
+  const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, undefined);
+  const { start, end, ageAsOf } = reportPeriodBoundsUTC(input.dateFrom, input.dateTo);
+  const createdFrom = input.dateFrom ? asOfDayBoundsUTC(input.dateFrom).start : null;
+  const createdTo =
+    input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
+  const restrictPolicyYearToAsOf = input.dateFrom != null;
+
+  const categories =
+    input.categoryKeys.length > 0
+      ? DRILL_CATEGORY_ORDER.filter((c) =>
+          input.categoryKeys.some((k) => k.toUpperCase() === c),
+        )
+      : [...DRILL_CATEGORY_ORDER];
+
+  const baseQuery = {
+    scopeOnP,
+    periodStart: start,
+    periodEnd: end,
+    asOf: ageAsOf,
+    ageAsOf,
+    groupBy: "policy_grouping" as const,
+    policyGroupings: input.policyGroupings,
+    villages: village ? [village] : [],
+    areas: area ? [area] : [],
+    sumInsureds: input.sumInsureds,
+    months: input.months,
+    years: input.years,
+    createdFrom,
+    createdTo,
+    fiscalLabels: input.fiscalLabels,
+    restrictPolicyYearToAsOf,
+  };
+
+  const sections: Array<{
+    categoryKey: string;
+    categoryLabel: string;
+    rows: ReturnType<typeof toPolicyMemberJsonRow>[];
+  }> = [];
+
+  for (const categoryKey of categories) {
+    const raw = await queryPolicyMemberReport(prisma, {
+      ...baseQuery,
+      categoryKeys: [categoryKey],
+    });
+    const byGrouping = new Map(
+      raw.map((r) => [normalizeGroupingLabel(r.label), r]),
+    );
+    const rows = DRILL_GROUPING_ORDER.map((g) => {
+      const hit = byGrouping.get(g);
+      return toPolicyMemberJsonRow(hit ?? emptyPolicyMemberRow(g));
+    });
+    sections.push({
+      categoryKey,
+      categoryLabel: `${categoryKey.toLowerCase()} category`,
+      rows,
+    });
+  }
+
+  const drillType = village ? ("village" as const) : ("area" as const);
+  const drillLabel = village ?? area ?? "—";
+
+  return {
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
+    drillType,
+    drillLabel,
+    sections,
   };
 }

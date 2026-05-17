@@ -39,6 +39,7 @@ import {
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
+import { PolicyMemberDrillDownSheet } from "@/features/svkk-mis/policy-member-drill-down-sheet";
 import { ArrowUpDown, Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -78,7 +79,7 @@ const CREATED_MONTH_OPTIONS: PolicyFilterOption[] = [
   { value: "12", label: "December" },
 ];
 
-const ROW_KEYS: (keyof PolicyMemberRow)[] = [
+export const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "label",
   "totalPolicies",
   "membersPlusPolicies",
@@ -161,7 +162,7 @@ function int(n: number) {
   return n.toLocaleString("en-IN");
 }
 
-function formatCell(key: keyof PolicyMemberRow, v: number) {
+export function formatCell(key: keyof PolicyMemberRow, v: number) {
   const moneyKeys: (keyof PolicyMemberRow)[] = [
     "sumVkk",
     "sumCo",
@@ -251,7 +252,10 @@ function sumFiltered(rows: Row<PolicyMemberRow>[]) {
   return z;
 }
 
-function makeColumns(dimLabel: string): ColumnDef<PolicyMemberRow>[] {
+function makeColumns(
+  dimLabel: string,
+  onDrill?: (label: string) => void,
+): ColumnDef<PolicyMemberRow>[] {
   const n = (id: keyof PolicyMemberRow, title: string) =>
     ({
       accessorKey: id,
@@ -268,7 +272,21 @@ function makeColumns(dimLabel: string): ColumnDef<PolicyMemberRow>[] {
     {
       accessorKey: "label",
       header: sortableHeader<PolicyMemberRow>(dimLabel),
-      cell: ({ row }) => <span className="font-medium">{row.original.label}</span>,
+      cell: ({ row }) => {
+        const label = row.original.label;
+        if (onDrill && label && label !== "—") {
+          return (
+            <button
+              type="button"
+              className="cursor-pointer text-left font-medium text-primary underline-offset-2 hover:underline"
+              onClick={() => onDrill(label)}
+            >
+              {label}
+            </button>
+          );
+        }
+        return <span className="font-medium">{label}</span>;
+      },
     },
     n("totalPolicies", "Total policies"),
     n("membersPlusPolicies", "Members + policies"),
@@ -334,7 +352,21 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
+  const [drillOpen, setDrillOpen] = useState(false);
+  const [drillTarget, setDrillTarget] = useState<{
+    type: "village" | "area";
+    label: string;
+  } | null>(null);
   const { options: ddOptions } = useDropdownOptions();
+
+  const openDrill = useCallback(
+    (label: string) => {
+      if (groupBy !== "village" && groupBy !== "area") return;
+      setDrillTarget({ type: groupBy, label });
+      setDrillOpen(true);
+    },
+    [groupBy],
+  );
 
   useEffect(() => {
     if (urlHydrated.current) return;
@@ -383,8 +415,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
   }, [ddOptions.SUM_INSURED, filterMeta?.sumInsuredValues]);
 
   const columns = useMemo(
-    () => makeColumns(activeGroup ? DIM_HEADER[activeGroup] : "—"),
-    [activeGroup],
+    () =>
+      makeColumns(
+        DIM_HEADER[groupBy],
+        groupBy === "village" || groupBy === "area" ? openDrill : undefined,
+      ),
+    [groupBy, openDrill],
   );
   const colCount = columns.length;
 
@@ -722,6 +758,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
           onChange={(e) => setFilterText(e.target.value)}
           placeholder="Filter any column…"
         />
+        {groupBy === "village" || groupBy === "area" ? (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            Click a {groupBy === "village" ? "village" : "area"} name to open category breakdown
+            (SVKK, NVKK, RTY, OTHER).
+          </p>
+        ) : null}
       </div>
 
       <div className="relative max-w-full overflow-x-auto rounded-md border">
@@ -799,6 +841,14 @@ export function PolicyMemberReportSection({ onError }: Props) {
           </TableBody>
         </Table>
       </div>
+
+      <PolicyMemberDrillDownSheet
+        open={drillOpen}
+        onOpenChange={setDrillOpen}
+        drillType={drillTarget?.type ?? null}
+        drillLabel={drillTarget?.label ?? null}
+        reportQueryString={reportQueryString}
+      />
     </div>
   );
 }

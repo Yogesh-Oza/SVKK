@@ -235,7 +235,7 @@ type PolicyMemberReportParams = {
   periodEnd: Date;
   asOf: Date;
   ageAsOf: Date;
-  groupBy: "village" | "area" | "policy_type" | "sum_insured" | "age";
+  groupBy: "village" | "area" | "policy_type" | "sum_insured" | "age" | "policy_grouping";
   categoryKeys: string[];
   policyGroupings: string[];
   villages: string[];
@@ -289,6 +289,9 @@ function groupDimExpr(
         ELSE CAST(CAST(py.sumInsured AS UNSIGNED) AS CHAR)
       END
     )`;
+  }
+  if (groupBy === "policy_grouping") {
+    return Prisma.sql`COALESCE(NULLIF(TRIM(UPPER(p.policyGrouping)), ''), 'OTHER')`;
   }
   return memberAgeBucketSql(d);
 }
