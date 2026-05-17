@@ -1,19 +1,11 @@
 "use client";
 
 /**
- * Client-side PDF download for the Receipt Preview iframe.
+ * Receipt PDF via html2canvas + jsPDF.
  *
- * The iframe (`iframe[title="Receipt Preview Frame"]`) is rendered with the
- * full receipt HTML via `srcDoc`. To get a faithful PDF we:
- *   1. Read the full HTML out of the iframe (or take it from `htmlOverride`).
- *   2. Parse it, extract every `<style>` plus the body's children.
- *   3. Render that into an off-screen container in the *main* document, sized
- *      to A4 width so the rasterizer captures the receipt at full quality.
- *   4. Feed the container to html2pdf.js (html2canvas + jsPDF) → real .pdf
- *      file download. No browser print dialog involved.
- *
- * Dynamic import keeps the ~200KB+ pdf bundle out of the main chunk; the
- * library is only loaded the first time the user clicks "Save as PDF".
+ * html2pdf.js clones the DOM into `document.body`, so html2canvas parses the
+ * app theme (`globals.css` with `oklch()`). We capture inside the preview
+ * iframe only and never move nodes to the parent page.
  */
 export async function downloadReceiptPreviewAsPdf(
   filename: string = "policy-receipt.pdf",
@@ -21,35 +13,122 @@ export async function downloadReceiptPreviewAsPdf(
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
-  const html = htmlOverride ?? readReceiptIframeHtml();
-  if (!html) return false;
-
-  const container = renderReceiptIntoHiddenContainer(html);
-  document.body.appendChild(container);
+  let iframe: HTMLIFrameElement | null = null;
+  let ownsIframe = false;
 
   try {
-    const mod = await import("html2pdf.js");
-    const html2pdf = mod.default;
-    await html2pdf()
-      .set({
-        filename,
-        margin: 10,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          windowWidth: container.scrollWidth,
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        enableLinks: true,
-      })
-      .from(container)
-      .save();
+    const existing = document.querySelector<HTMLIFrameElement>(
+      'iframe[title="Receipt Preview Frame"]',
+    );
+
+    if (!htmlOverride && existing?.contentDocument?.body) {
+      iframe = existing;
+    } else {
+      const html = htmlOverride ?? readReceiptIframeHtml();
+      if (!html) return false;
+      iframe = await mountReceiptCaptureIframe(html);
+      ownsIframe = true;
+    }
+
+    const target = await resolveReceiptCaptureTarget(iframe);
+    if (!target) return false;
+
+    const canvas = await captureReceiptCanvas(target);
+    await saveCanvasAsPdf(canvas, filename);
     return true;
+  } catch (err) {
+    console.error("[receipt-pdf]", err);
+    return false;
   } finally {
-    container.remove();
+    if (ownsIframe && iframe) {
+      iframe.remove();
+    }
   }
+}
+
+async function captureReceiptCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
+  const html2canvas = (await import("html2canvas")).default;
+
+  const width = Math.ceil(target.offsetWidth || target.scrollWidth || 794);
+  const height = Math.ceil(target.offsetHeight || target.scrollHeight || 1123);
+
+  return html2canvas(target, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+    width,
+    height,
+    windowWidth: width,
+    windowHeight: height,
+    onclone: (clonedDoc) => {
+      stripUnsupportedColorFunctions(clonedDoc);
+    },
+  });
+}
+
+/** Always one A4 page — scale receipt down if capture is slightly taller than printable area. */
+async function saveCanvasAsPdf(canvas: HTMLCanvasElement, filename: string): Promise<void> {
+  const { jsPDF } = await import("jspdf");
+
+  const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  const imgData = canvas.toDataURL("image/jpeg", 0.98);
+
+  // Receipt layout is 190×277mm; fit inside A4 (210×297mm) with a small margin.
+  const marginMm = 5;
+  const maxW = pageW - marginMm * 2;
+  const maxH = pageH - marginMm * 2;
+
+  let drawW = maxW;
+  let drawH = (canvas.height * drawW) / canvas.width;
+
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = (canvas.width * drawH) / canvas.height;
+  }
+
+  const x = (pageW - drawW) / 2;
+  const y = (pageH - drawH) / 2;
+
+  pdf.addImage(imgData, "JPEG", x, y, drawW, drawH);
+  pdf.save(filename);
+}
+
+/** Remove oklch/lab/etc. from inline stylesheets in the cloned tree. */
+function stripUnsupportedColorFunctions(doc: Document): void {
+  doc.querySelectorAll("style").forEach((node) => {
+    const text = node.textContent;
+    if (!text || !/oklch|lab\(|lch\(/i.test(text)) return;
+    node.textContent = text
+      .replace(/oklch\([^)]+\)/gi, "#0f172a")
+      .replace(/lab\([^)]+\)/gi, "#0f172a")
+      .replace(/lch\([^)]+\)/gi, "#0f172a");
+  });
+
+  doc.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+    const href = link.getAttribute("href") ?? "";
+    if (href.includes("_next") || href.includes("globals") || href.includes("layout")) {
+      link.remove();
+    }
+  });
+
+  doc.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    const style = el.getAttribute("style");
+    if (!style || !/oklch|lab\(|lch\(/i.test(style)) return;
+    el.setAttribute(
+      "style",
+      style
+        .replace(/oklch\([^)]+\)/gi, "#0f172a")
+        .replace(/lab\([^)]+\)/gi, "#0f172a")
+        .replace(/lch\([^)]+\)/gi, "#0f172a"),
+    );
+  });
 }
 
 function readReceiptIframeHtml(): string | null {
@@ -61,20 +140,60 @@ function readReceiptIframeHtml(): string | null {
   return frame.contentDocument?.documentElement?.outerHTML ?? null;
 }
 
-function renderReceiptIntoHiddenContainer(html: string): HTMLDivElement {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  const styleTags = Array.from(doc.head.querySelectorAll("style"))
-    .map((s) => s.outerHTML)
-    .join("\n");
-  const bodyHtml = doc.body.innerHTML;
+async function mountReceiptCaptureIframe(html: string): Promise<HTMLIFrameElement> {
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Receipt PDF Capture");
+  iframe.style.cssText =
+    "position:fixed;left:-99999px;top:0;width:794px;height:1200px;border:0;visibility:hidden;";
+  document.body.appendChild(iframe);
 
-  const container = document.createElement("div");
-  // A4 width @ 96dpi ≈ 794px. Place far off-screen so we never flash content.
-  container.style.cssText =
-    "position:fixed; left:-99999px; top:0; width:794px; background:#ffffff; color:#000000;";
-  container.innerHTML = `${styleTags}<div class="receipt-pdf-root">${bodyHtml}</div>`;
-  return container;
+  await new Promise<void>((resolve, reject) => {
+    iframe.onload = () => resolve();
+    iframe.onerror = () => reject(new Error("Receipt iframe failed to load"));
+    iframe.srcdoc = html;
+  });
+
+  return iframe;
+}
+
+async function resolveReceiptCaptureTarget(
+  iframe: HTMLIFrameElement,
+): Promise<HTMLElement | null> {
+  const doc = iframe.contentDocument;
+  if (!doc?.body) return null;
+
+  if (doc.readyState !== "complete") {
+    await new Promise<void>((resolve) => {
+      iframe.addEventListener("load", () => resolve(), { once: true });
+    });
+  }
+
+  await waitForImages(doc);
+
+  return (
+    doc.querySelector<HTMLElement>(".receipt-a4-sheet") ??
+    doc.querySelector<HTMLElement>(".receipt-body") ??
+    doc.body
+  );
+}
+
+function waitForImages(doc: Document): Promise<void> {
+  const images = Array.from(doc.images);
+  if (images.length === 0) return Promise.resolve();
+
+  return Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) {
+            resolve();
+            return;
+          }
+          img.addEventListener("load", () => resolve(), { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+        }),
+    ),
+  ).then(() => undefined);
 }
 
 /** Lightweight wrapper around the iframe's native print. */
