@@ -201,7 +201,7 @@ function groupingFromApi(g: string | null | undefined): string {
   return g?.trim() ?? "";
 }
 
-function parseRemarks(raw: string | null | undefined): { generalRemark: string; policyChangeRemark: string } {
+export function parseRemarks(raw: string | null | undefined): { generalRemark: string; policyChangeRemark: string } {
   const text = raw?.trim() ?? "";
   if (!text) {
     return { generalRemark: "", policyChangeRemark: "" };
