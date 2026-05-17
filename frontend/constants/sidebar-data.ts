@@ -10,16 +10,6 @@ import {
 export const sidebarData: SidebarData = {
   navGroups: [
     {
-      title: "Dashboard",
-      items: [
-        {
-          title: "Notifications",
-          url: "/notifications",
-          icon: IconNotification,
-        },
-      ],
-    },
-    {
       title: "Other",
       items: [
         {

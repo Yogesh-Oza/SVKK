@@ -6,9 +6,9 @@ import { sendEmail, isEmailConfigured } from "../email/email.service.js";
 import { renderEmailTemplate } from "../email/email-template.service.js";
 import type { EmailTemplateId } from "../email/email-template-catalog.js";
 import {
-  buildPolicyPageUrl,
-  extractPolicyDocumentUrl,
   formatDateDmy,
+  policyDocumentLinkHtml,
+  resolveNotificationLinks,
 } from "./policy-url.js";
 
 type PolicyBundle = {
@@ -46,8 +46,8 @@ async function loadPolicyBundle(policyId: string): Promise<PolicyBundle | null> 
 }
 
 function templateVarsFromPolicy(env: Env, p: PolicyBundle, yearLabel?: string, policyEnd?: Date | null) {
-  const policyUrl = buildPolicyPageUrl(env, p.id);
-  const documentUrl = extractPolicyDocumentUrl(p) ?? policyUrl;
+  const links = resolveNotificationLinks(env, p);
+  const documentUrl = links.policyDocumentUrl;
   return {
     holderName: p.insuredParty.name,
     svkkPublicId: p.insuredParty.svkkPublicId,
@@ -56,8 +56,11 @@ function templateVarsFromPolicy(env: Env, p: PolicyBundle, yearLabel?: string, p
     village: p.village ?? "—",
     yearLabel: yearLabel ?? p.years[0]?.yearLabel ?? "—",
     policyEndDate: formatDateDmy(policyEnd ?? p.years[0]?.policyEnd),
-    policyUrl,
+    /** Policy URL field from the policy form (OneDrive / shared link) — not the SVKK app URL */
+    policyUrl: documentUrl,
     documentUrl,
+    policyDocumentLink: policyDocumentLinkHtml(documentUrl || null),
+    appPolicyUrl: links.appPolicyUrl,
   };
 }
 
@@ -106,7 +109,7 @@ export async function notifyPolicyCreated(
   if (!p) return;
 
   const vars = templateVarsFromPolicy(env, p);
-  const linkUrl = vars.policyUrl;
+  const { staffLinkUrl } = resolveNotificationLinks(env, p);
   const emailSent = await emailHolderIfPossible(
     env,
     log,
@@ -122,7 +125,7 @@ export async function notifyPolicyCreated(
     body: `${p.insuredParty.name} — ${p.referenceNo ?? p.insuredParty.svkkPublicId}${
       emailSent ? " (email sent)" : isEmailConfigured(env) ? "" : " (email not configured)"
     }`,
-    linkUrl,
+    linkUrl: staffLinkUrl,
     actorUserId: input.actorUserId,
     emailTo: p.insuredParty.email,
     emailSent,
@@ -145,7 +148,7 @@ export async function notifyPolicyNumberOrDocumentUpdated(
   if (!p) return;
 
   const vars = templateVarsFromPolicy(env, p);
-  const linkUrl = vars.documentUrl;
+  const { staffLinkUrl } = resolveNotificationLinks(env, p);
   const emailSent = await emailHolderIfPossible(
     env,
     log,
@@ -163,7 +166,7 @@ export async function notifyPolicyNumberOrDocumentUpdated(
     type: NotificationType.POLICY_NUMBER_UPDATED,
     title: "Policy number / document updated",
     body: `${p.insuredParty.name} — ${parts.join("; ")}`,
-    linkUrl,
+    linkUrl: staffLinkUrl,
     actorUserId: input.actorUserId,
     emailTo: p.insuredParty.email,
     emailSent,

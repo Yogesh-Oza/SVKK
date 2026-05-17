@@ -8,7 +8,7 @@ import {
   RENEWAL_OFFSET_DAYS,
   renewalTemplateIdForOffset,
 } from "../email/email-template-catalog.js";
-import { buildPolicyPageUrl, formatDateDmy } from "./policy-url.js";
+import { formatDateDmy, policyDocumentLinkHtml, resolveNotificationLinks } from "./policy-url.js";
 
 function utcDayStart(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -60,14 +60,17 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
     for (const py of years) {
       const p = py.policy;
       const email = p.insuredParty.email?.trim();
-      const policyUrl = buildPolicyPageUrl(env, p.id);
+      const links = resolveNotificationLinks(env, p);
       const vars = {
         holderName: p.insuredParty.name,
         policyNo: p.policyNo ?? "—",
         yearLabel: py.yearLabel,
         policyEndDate: formatDateDmy(py.policyEnd),
-        policyUrl,
+        policyUrl: links.policyDocumentUrl,
+        documentUrl: links.policyDocumentUrl,
+        policyDocumentLink: policyDocumentLinkHtml(links.policyDocumentUrl || null, "View policy document"),
         village: p.village ?? "—",
+        appPolicyUrl: links.appPolicyUrl,
       };
 
       let emailSent = false;
@@ -90,7 +93,7 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
             type: NotificationType.RENEWAL_REMINDER,
             title: `Renewal in ${offsetDays} days`,
             body: `${p.insuredParty.name} — ${py.yearLabel} ends ${vars.policyEndDate}`,
-            linkUrl: policyUrl,
+            linkUrl: links.staffLinkUrl,
             emailTo: email ?? null,
             emailSent,
           },

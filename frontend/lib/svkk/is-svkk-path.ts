@@ -8,6 +8,8 @@ const SVKK_PATH_PREFIXES = [
   "/logs",
   "/users",
   "/receipt-settings",
+  "/notifications",
+  "/email-templates",
 ] as const;
 
 /**

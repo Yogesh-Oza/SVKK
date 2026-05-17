@@ -20,25 +20,30 @@ export function createNotificationsRouter(env: Env) {
         })
         .parse(req.query);
 
-      const rows = await prisma.notification.findMany({
-        where: {
-          OR: [{ userId: null }, { userId: req.userId! }],
-          ...(q.unreadOnly ? { readAt: null } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        take: q.limit,
-        select: {
-          id: true,
-          type: true,
-          title: true,
-          body: true,
-          linkUrl: true,
-          policyId: true,
-          emailSent: true,
-          readAt: true,
-          createdAt: true,
-        },
-      });
+      const where = {
+        OR: [{ userId: null }, { userId: req.userId! }],
+        ...(q.unreadOnly ? { readAt: null } : {}),
+      };
+
+      const [rows, unreadCount] = await Promise.all([
+        prisma.notification.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: q.limit,
+          select: {
+            id: true,
+            type: true,
+            title: true,
+            body: true,
+            linkUrl: true,
+            policyId: true,
+            emailSent: true,
+            readAt: true,
+            createdAt: true,
+          },
+        }),
+        prisma.notification.count({ where: { ...where, readAt: null } }),
+      ]);
 
       res.json({
         notifications: rows.map((n) => ({
@@ -52,7 +57,7 @@ export function createNotificationsRouter(env: Env) {
           isRead: n.readAt != null,
           createdAt: n.createdAt.toISOString(),
         })),
-        unreadCount: rows.filter((n) => !n.readAt).length,
+        unreadCount,
       });
     } catch (e) {
       next(e);

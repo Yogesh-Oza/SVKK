@@ -6,6 +6,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { svkkJson } from "@/lib/svkk/api";
+import { getSvkkApiBase } from "@/lib/svkk/config";
+import { hasPermission } from "@/lib/svkk/permissions";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,12 +20,17 @@ type Notification = {
   type: string;
   title: string;
   body: string;
-  leadId: string | null;
+  linkUrl: string | null;
+  policyId: string | null;
   isRead: boolean;
   createdAt: string;
 };
 
 export function NotificationBell() {
+  const { user } = useSvkkAuth();
+  const canSee = user ? hasPermission(user.permissions, "notifications:read") : false;
+  const useSvkk = Boolean(getSvkkApiBase()) && canSee;
+
   const [open, setOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -29,44 +38,58 @@ export function NotificationBell() {
   const router = useRouter();
 
   const fetchNotifications = React.useCallback(async () => {
+    if (!useSvkk) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch("/api/notifications?limit=10");
-      if (res.ok) {
-        const data = await res.json();
-        const next: Notification[] = data.notifications ?? [];
-        setNotifications(next);
-        setUnreadCount(next.filter((n) => !n.isRead).length);
-      }
+      const data = await svkkJson<{ notifications: Notification[]; unreadCount: number }>(
+        "/notifications?limit=10",
+      );
+      setNotifications(data.notifications ?? []);
+      setUnreadCount(data.unreadCount ?? 0);
     } catch {
       setNotifications([]);
       setUnreadCount(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [useSvkk]);
 
   React.useEffect(() => {
-    if (open) {
-      fetchNotifications();
+    if (open && useSvkk) {
+      void fetchNotifications();
     }
-  }, [open, fetchNotifications]);
+  }, [open, useSvkk, fetchNotifications]);
+
+  React.useEffect(() => {
+    if (!useSvkk) return;
+    void fetchNotifications();
+    const t = setInterval(() => void fetchNotifications(), 60_000);
+    return () => clearInterval(t);
+  }, [useSvkk, fetchNotifications]);
 
   const handleNotificationClick = async (n: Notification) => {
-    if (!n.isRead) {
+    if (!n.isRead && useSvkk) {
       try {
-        await fetch(`/api/notifications/${n.id}/read`, { method: "POST" });
+        await svkkJson(`/notifications/${n.id}/read`, { method: "POST" });
         setUnreadCount((c) => Math.max(0, c - 1));
         setNotifications((prev) =>
-          prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x))
+          prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)),
         );
       } catch {
-        // ignore
+        /* ignore */
       }
     }
     setOpen(false);
-    if (n.leadId) {
-      router.push(`/leads/${n.leadId}`);
+    if (n.linkUrl?.startsWith("http")) {
+      window.open(n.linkUrl, "_blank", "noopener,noreferrer");
+    } else if (n.policyId) {
+      router.push(`/policies/${n.policyId}`);
+    } else if (n.linkUrl) {
+      router.push(n.linkUrl);
     }
   };
 
@@ -77,8 +100,12 @@ export function NotificationBell() {
     if (diff < 60000) return "Just now";
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return d.toLocaleDateString();
+    return d.toLocaleDateString("en-IN");
   };
+
+  if (!useSvkk) {
+    return null;
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -86,51 +113,44 @@ export function NotificationBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative text-muted-foreground hover:text-foreground"
+          className="relative text-muted-foreground hover:text-foreground cursor-pointer"
         >
           <Bell className="h-[1.2rem] w-[1.2rem]" />
           <span className="sr-only">Notifications</span>
-          {unreadCount > 0 && (
+          {unreadCount > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
-          )}
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
         <div className="border-b px-3 py-2">
           <h3 className="font-semibold">Notifications</h3>
+          <p className="text-muted-foreground text-xs">Policy events &amp; renewals</p>
         </div>
         <div className="max-h-[320px] overflow-y-auto">
           {loading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              Loading...
-            </div>
+            <div className="text-muted-foreground py-8 text-center text-sm">Loading…</div>
           ) : notifications.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              No notifications
-            </div>
+            <div className="text-muted-foreground py-8 text-center text-sm">No notifications yet</div>
           ) : (
             <div className="divide-y">
               {notifications.map((n) => (
                 <button
                   key={n.id}
                   type="button"
-                  className="w-full px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
-                  onClick={() => handleNotificationClick(n)}
+                  className="hover:bg-muted/50 w-full px-3 py-2.5 text-left transition-colors cursor-pointer"
+                  onClick={() => void handleNotificationClick(n)}
                 >
                   <div className="flex items-start gap-2">
-                    {!n.isRead && (
+                    {!n.isRead ? (
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                    )}
+                    ) : null}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{n.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {n.body}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatTime(n.createdAt)}
-                      </p>
+                      <p className="text-muted-foreground truncate text-xs">{n.body}</p>
+                      <p className="text-muted-foreground mt-0.5 text-xs">{formatTime(n.createdAt)}</p>
                     </div>
                   </div>
                 </button>
@@ -141,7 +161,7 @@ export function NotificationBell() {
         <div className="border-t px-3 py-2">
           <Link
             href="/notifications"
-            className="text-sm font-medium text-primary hover:underline"
+            className="text-primary text-sm font-medium hover:underline"
             onClick={() => setOpen(false)}
           >
             View all

@@ -41,9 +41,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
 <p><strong>SVKK ID:</strong> {{svkkPublicId}}<br/>
 <strong>Reference:</strong> {{referenceNo}}<br/>
 <strong>Village:</strong> {{village}}</p>
-<a class="btn" href="{{policyUrl}}">View policy</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "svkkPublicId", "referenceNo", "policyNo", "village", "policyUrl"],
+    variables: [
+      "holderName",
+      "svkkPublicId",
+      "referenceNo",
+      "policyNo",
+      "village",
+      "policyUrl",
+      "policyDocumentLink",
+    ],
   },
   {
     id: "policy_number_updated",
@@ -58,9 +66,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
 <p>Your policy record has been updated.</p>
 <p><strong>Policy No:</strong> {{policyNo}}<br/>
 <strong>SVKK ID:</strong> {{svkkPublicId}}</p>
-<a class="btn" href="{{documentUrl}}">Open policy document</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "policyNo", "svkkPublicId", "referenceNo", "documentUrl", "policyUrl"],
+    variables: [
+      "holderName",
+      "policyNo",
+      "svkkPublicId",
+      "referenceNo",
+      "documentUrl",
+      "policyUrl",
+      "policyDocumentLink",
+    ],
   },
   {
     id: "renewal_60",
@@ -73,9 +89,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
       `<h1>Renewal in about 2 months</h1>
 <p>Dear {{holderName}},</p>
 <p>Your policy <strong>{{policyNo}}</strong> ({{yearLabel}}) is due for renewal on <strong>{{policyEndDate}}</strong>.</p>
-<a class="btn" href="{{policyUrl}}">View policy</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "policyNo", "yearLabel", "policyEndDate", "policyUrl", "village"],
+    variables: [
+      "holderName",
+      "policyNo",
+      "yearLabel",
+      "policyEndDate",
+      "policyUrl",
+      "policyDocumentLink",
+      "village",
+    ],
   },
   {
     id: "renewal_30",
@@ -88,9 +112,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
       `<h1>Renewal in about 1 month</h1>
 <p>Dear {{holderName}},</p>
 <p>Your policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong>. Please plan renewal with SVKK.</p>
-<a class="btn" href="{{policyUrl}}">View policy</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "policyNo", "yearLabel", "policyEndDate", "policyUrl", "village"],
+    variables: [
+      "holderName",
+      "policyNo",
+      "yearLabel",
+      "policyEndDate",
+      "policyUrl",
+      "policyDocumentLink",
+      "village",
+    ],
   },
   {
     id: "renewal_8",
@@ -103,9 +135,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
       `<h1>Renewal in 8 days</h1>
 <p>Dear {{holderName}},</p>
 <p>Your policy <strong>{{policyNo}}</strong> expires on <strong>{{policyEndDate}}</strong>.</p>
-<a class="btn" href="{{policyUrl}}">View policy</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "policyNo", "yearLabel", "policyEndDate", "policyUrl", "village"],
+    variables: [
+      "holderName",
+      "policyNo",
+      "yearLabel",
+      "policyEndDate",
+      "policyUrl",
+      "policyDocumentLink",
+      "village",
+    ],
   },
   {
     id: "renewal_2",
@@ -118,9 +158,17 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
       `<h1>Renewal in 2 days</h1>
 <p>Dear {{holderName}},</p>
 <p>This is a final reminder that policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong>.</p>
-<a class="btn" href="{{policyUrl}}">View policy</a>`,
+{{policyDocumentLink}}`,
     ),
-    variables: ["holderName", "policyNo", "yearLabel", "policyEndDate", "policyUrl", "village"],
+    variables: [
+      "holderName",
+      "policyNo",
+      "yearLabel",
+      "policyEndDate",
+      "policyUrl",
+      "policyDocumentLink",
+      "village",
+    ],
   },
 ];
 

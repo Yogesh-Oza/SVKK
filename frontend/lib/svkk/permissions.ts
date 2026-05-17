@@ -8,11 +8,13 @@ export type SvkkNavId =
   | "policyNew"
   | "claims"
   | "mis"
+  | "notifications"
   | "admin"
   | "roles"
   | "logs"
   | "users"
-  | "settings";
+  | "settings"
+  | "emailTemplates";
 
 type NavEntry = {
   id: SvkkNavId;
@@ -34,10 +36,12 @@ const NAV: NavEntry[] = [
   { id: "policyNew", href: "/policies/new", label: "Add policy", permission: "policy:create" },
   { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
   { id: "mis", href: "/mis", label: "MIS", permission: "mis:read" },
+  { id: "notifications", href: "/notifications", label: "Notifications", permission: "notifications:read" },
   { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:policyTypes" },
   { id: "roles", href: "/roles", label: "Roles & permissions", permission: "roles:manage" },
   { id: "users", href: "/users", label: "Users", permission: "users:manage" },
   { id: "settings", href: "/receipt-settings", label: "Receipt Settings", permission: "admin:settings" },
+  { id: "emailTemplates", href: "/email-templates", label: "Email templates", permission: "admin:settings" },
   { id: "logs", href: "/logs", label: "Activity logs", permission: "logs:read" },
 ];
 
