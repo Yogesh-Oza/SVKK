@@ -1,7 +1,9 @@
 /**
  * Legacy ETL tunables — edit maps without touching runner logic.
+ * Bump on breaking transform/apply changes; resume requires matching version.
  */
 export const migrationVersion = "v1";
+export const CURRENT_VERSION = migrationVersion;
 
 export const POLICY_TYPE_MAP: Record<string, { policyTypeKey: string }> = {
   "family-floater": { policyTypeKey: "ad_policy" },
@@ -19,6 +21,8 @@ export const CATEGORY_LETTER_MAP: Record<string, string> = {
   c: "c",
   d: "d",
   e: "e",
+  ashakiran: "asha_kiran_cat",
+  "asha kiran": "asha_kiran_cat",
 };
 
 export const POLICY_GROUPING_MAP: Record<string, "SVKK" | "NVKK" | "RTY" | "OTHER"> = {

@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { CATEGORY_TEXT_MAP } from "./config/dropdown-mappings.js";
 import {
   CATEGORY_LETTER_MAP,
   POLICY_GROUPING_MAP,
@@ -6,6 +7,9 @@ import {
   memberDobSentinelUtc,
   migrationAuditTag,
 } from "./config/migration.js";
+import type { DropdownResolver } from "./dropdown-resolver.js";
+import { normalizeLegacyText } from "./normalize.js";
+import { parseLegacyDate } from "./parse-legacy-date.js";
 import type { LegacyMemberRow, LegacyPolicyRow } from "./types.js";
 
 const DIGITS_ONLY = /^\d+$/;
@@ -52,7 +56,11 @@ export function mapPolicyTypeKey(policyTypeRaw: string | null | undefined): stri
 export function mapCategoryKey(catRaw: string | null | undefined): string | null {
   if (catRaw == null) return null;
   const c = catRaw.trim().toLowerCase();
-  return CATEGORY_LETTER_MAP[c] ?? null;
+  return (
+    CATEGORY_LETTER_MAP[c] ??
+    CATEGORY_TEXT_MAP[normalizeLegacyText(catRaw)] ??
+    null
+  );
 }
 
 export function mapPolicyGrouping(
@@ -72,27 +80,8 @@ export function parseDecimalSafe(raw: string | null | undefined): Prisma.Decimal
   return new Prisma.Decimal(s);
 }
 
-/** Date-only: interpret calendar Y-M-D as UTC midnight (stable for legacy DATE). */
-export function parseDateSafe(raw: string | Date | null | undefined): Date | null {
-  if (raw == null) return null;
-  if (raw instanceof Date) {
-    if (Number.isNaN(raw.getTime())) return null;
-    const y = raw.getUTCFullYear();
-    const m = raw.getUTCMonth() + 1;
-    const d = raw.getUTCDate();
-    if (y < 1900) return null;
-    return new Date(Date.UTC(y, m - 1, d));
-  }
-  const s = String(raw).trim();
-  if (!s || s.startsWith("0000-00")) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  if (y < 1900 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return new Date(Date.UTC(y, mo - 1, d));
-}
+/** @deprecated Use parseLegacyDate */
+export const parseDateSafe = parseLegacyDate;
 
 export function parseIntSafe(raw: string | null | undefined): number | null {
   if (raw == null) return null;
@@ -148,11 +137,11 @@ export function transformPolicyRow(row: LegacyPolicyRow): TransformedPolicy {
   const svkkRaw = row.svvk_id != null ? String(row.svvk_id).trim() : "";
   const svkkPublicId = svkkRaw || `LEGACY-${refNo}`.slice(0, 64);
 
-  const holderDob = parseDateSafe(row.dob);
-  const policyStart = parseDateSafe(row.policy_start_date);
-  const policyEnd = parseDateSafe(row.policy_expiry_date);
-  const refundChequeDate = parseDateSafe(row.refund_cheque_date);
-  const courierDate = parseDateSafe(row.courier_date);
+  const holderDob = parseLegacyDate(row.dob);
+  const policyStart = parseLegacyDate(row.policy_start_date);
+  const policyEnd = parseLegacyDate(row.policy_expiry_date);
+  const refundChequeDate = parseLegacyDate(row.refund_cheque_date);
+  const courierDate = parseLegacyDate(row.courier_date);
 
   const grouping = mapPolicyGrouping(row.policy_grouping);
 
@@ -278,8 +267,63 @@ export interface TransformedMember {
   ageAtEntry: number | null;
 }
 
+export interface ResolvedPolicyFields {
+  area: string | null;
+  village: string | null;
+  city: string | null;
+  holderRelationship: string | null;
+  policyGrouping: string | null;
+  paymentMode: string;
+}
+
+export async function resolvePolicyDropdownFields(
+  row: LegacyPolicyRow,
+  resolver: DropdownResolver,
+): Promise<ResolvedPolicyFields> {
+  const chequeMode =
+    row.policy_cheque_no?.trim().toLowerCase().includes("cash") ? "CASH" : null;
+  const [area, village, city, holderRelationship, paymentMode] = await Promise.all([
+    resolver.resolveArea(row.area),
+    resolver.resolveVillage(row.village),
+    resolver.resolveCity(row.city),
+    resolver.resolveRelation(row.relation),
+    resolver.resolvePaymentMode(chequeMode),
+  ]);
+  const grouping = mapPolicyGrouping(row.policy_grouping) ?? "OTHER";
+  return {
+    area,
+    village,
+    city,
+    holderRelationship,
+    policyGrouping: grouping,
+    paymentMode,
+  };
+}
+
+export function mergeResolvedPolicyFields(
+  policyData: Record<string, unknown>,
+  resolved: ResolvedPolicyFields,
+): void {
+  policyData.area = resolved.area;
+  policyData.village = resolved.village;
+  policyData.city = resolved.city;
+  policyData.holderRelationship = resolved.holderRelationship;
+  policyData.policyGrouping = resolved.policyGrouping;
+}
+
+export async function transformMemberRowAsync(
+  row: LegacyMemberRow,
+  resolver: DropdownResolver,
+): Promise<TransformedMember> {
+  const base = transformMemberRow(row);
+  const relationship =
+    (await resolver.resolveRelation(row.relation)) ?? base.relationship;
+  const gender = await resolver.resolveGender(null);
+  return { ...base, relationship, gender };
+}
+
 export function transformMemberRow(row: LegacyMemberRow): TransformedMember {
-  const parsed = parseDateSafe(row.dob);
+  const parsed = parseLegacyDate(row.dob);
   let dob: Date;
   let dobSentinel = false;
   if (parsed) {
@@ -295,10 +339,10 @@ export function transformMemberRow(row: LegacyMemberRow): TransformedMember {
     relationship,
     dob,
     dobSentinel,
-    gender: "Unknown",
+    gender: "O",
     sumInsured: parseDecimalSafe(row.sum_insured),
     cumulativeBonus: parseDecimalSafe(row.comulative_bonus),
-    dateOfJoining: parseDateSafe(row.date_of_joining),
+    dateOfJoining: parseLegacyDate(row.date_of_joining),
     memberPhone: (() => {
       const n = normalizeMobileOrNull(row.ph_no);
       if (n) return n.replace(/^\+/, "").slice(0, 20);

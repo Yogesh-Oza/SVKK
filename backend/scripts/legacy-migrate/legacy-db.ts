@@ -46,6 +46,17 @@ export async function fetchPolicyChunkKeyset(
   return rows;
 }
 
+export async function fetchPolicyByRefNo(
+  pool: mysql.Pool,
+  refNo: string,
+): Promise<LegacyPolicyRow | null> {
+  const [rows] = await pool.query<LegacyPolicyRow[]>(
+    "SELECT * FROM policy_table WHERE ref_no = ? LIMIT 1",
+    [refNo],
+  );
+  return rows[0] ?? null;
+}
+
 export async function fetchMembersForRefNos(
   pool: mysql.Pool,
   refNos: string[],

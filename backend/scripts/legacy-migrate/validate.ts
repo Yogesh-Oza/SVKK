@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { PolicyChartKind } from "@prisma/client";
-import { transformPolicyRow } from "./transform.js";
+import { normalizeLegacyText } from "./normalize.js";
+import { transformPolicyRow, trimPolicyNo } from "./transform.js";
 import type { LegacyPolicyRow } from "./types.js";
 
 export interface ResolvedTargets {
@@ -70,22 +71,90 @@ export interface MigrationLookups {
   policyTypes: Map<string, { id: string; key: string }>;
   holderChartByPolicyTypeId: Map<string, string>;
   categories: Map<string, { id: string; key: string }>;
+  policyGroupings: Map<string, string>;
+}
+
+export interface DuplicateCheckResult {
+  duplicate: boolean;
+  code?: "DUPLICATE_POLICY_NO" | "OVERLAPPING_DATES";
+  reason?: string;
 }
 
 export async function buildMigrationLookups(prisma: PrismaClient): Promise<MigrationLookups> {
-  const [types, charts, cats] = await Promise.all([
+  const [types, charts, cats, groupings] = await Promise.all([
     prisma.policyType.findMany({ select: { id: true, key: true } }),
     prisma.policyChart.findMany({
       where: { version: 1, chartKind: PolicyChartKind.HOLDER },
       select: { id: true, policyTypeId: true },
     }),
     prisma.category.findMany({ select: { id: true, key: true } }),
+    prisma.policyGroupingOption.findMany({ select: { name: true } }),
   ]);
+  const policyGroupings = new Map<string, string>();
+  for (const g of groupings) {
+    policyGroupings.set(normalizeLegacyText(g.name), g.name);
+  }
   return {
     policyTypes: new Map(types.map((t) => [t.key, t])),
     holderChartByPolicyTypeId: new Map(charts.map((c) => [c.policyTypeId, c.id])),
     categories: new Map(cats.map((c) => [c.key, c])),
+    policyGroupings,
   };
+}
+
+export async function checkBusinessDuplicates(
+  prisma: PrismaClient,
+  row: LegacyPolicyRow,
+  policyTypeId: string,
+  mobile: string,
+  excludeReferenceNo?: string,
+): Promise<DuplicateCheckResult> {
+  const policyNo = trimPolicyNo(row.policy_no);
+  if (policyNo) {
+    const existing = await prisma.policy.findFirst({
+      where: {
+        policyNo,
+        policyTypeId,
+        deletedAt: null,
+        ...(excludeReferenceNo ? { NOT: { referenceNo: excludeReferenceNo } } : {}),
+      },
+    });
+    if (existing) {
+      return {
+        duplicate: true,
+        code: "DUPLICATE_POLICY_NO",
+        reason: `policyNo=${policyNo} already exists on policy ${existing.id}`,
+      };
+    }
+  }
+
+  const start = row.policy_start_date ? new Date(String(row.policy_start_date)) : null;
+  const end = row.policy_expiry_date ? new Date(String(row.policy_expiry_date)) : null;
+  if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+    const party = await prisma.insuredParty.findUnique({ where: { mobile } });
+    if (party) {
+      const overlap = await prisma.policyYear.findFirst({
+        where: {
+          policy: {
+            insuredPartyId: party.id,
+            deletedAt: null,
+            ...(excludeReferenceNo ? { referenceNo: { not: excludeReferenceNo } } : {}),
+          },
+          policyStart: { lte: end },
+          policyEnd: { gte: start },
+        },
+      });
+      if (overlap) {
+        return {
+          duplicate: false,
+          code: "OVERLAPPING_DATES",
+          reason: `Overlapping policy dates for mobile ${mobile}`,
+        };
+      }
+    }
+  }
+
+  return { duplicate: false };
 }
 
 export function validatePolicyRowWithLookups(

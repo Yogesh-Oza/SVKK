@@ -1,29 +1,47 @@
 /**
- * Legacy MySQL → Prisma ETL CLI
- *
- *   DATABASE_URL=... DATABASE_URL_LEGACY=... tsx ... --dry-run
- *   DATABASE_URL=... LEGACY_DATABASE=techuico_insurance tsx ... --dry-run
- *   (After importing techuico_insurance.sql into that MySQL database — see README.)
- *
- * Apply mode uses lock file unless SKIP_LEGACY_MIGRATION_LOCK=1.
+ * Legacy MySQL → Prisma ETL CLI (masters → policies → reconcile)
  */
 import "dotenv/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PrismaClient } from "@prisma/client";
+import { MigrationPhase, MigrationRunMode, MigrationRunStatus, PrismaClient } from "@prisma/client";
 import { applyLegacyPolicyRowWithRetries } from "./apply-policy-row.js";
+import { saveCheckpoint, loadCheckpointRefNo } from "./checkpoint.js";
 import {
+  CURRENT_VERSION,
   defaultChunkSize,
   defaultDbRetries,
   defaultProgressEveryN,
   defaultRetryDelayMs,
+  migrationVersion,
 } from "./config/migration.js";
-import { createLegacyPool, countOrphanMembers, countPolicyRows, fetchMembersForRefNos, fetchPolicyChunkKeyset } from "./legacy-db.js";
+import { DropdownResolver } from "./dropdown-resolver.js";
+import {
+  countOrphanMembers,
+  countPolicyRows,
+  createLegacyPool,
+  fetchMembersForRefNos,
+  fetchPolicyByRefNo,
+  fetchPolicyChunkKeyset,
+} from "./legacy-db.js";
 import { JsonlLogger } from "./logger.js";
 import { acquireMigrationLock } from "./lock.js";
+import { migrateMasters } from "./migrate-masters.js";
+import { enqueueFailedRow, resolveFailedRow, writeMigrationLog } from "./migration-db-log.js";
+import { persistReconciliationAudit, runReconciliation } from "./reconcile.js";
+import {
+  assertNoConflictingActiveRun,
+  assertVersionMatch,
+  forceDeactivateRun,
+  unlockStaleRuns,
+} from "./run-migration-guard.js";
+import { resolvePolicyDropdownFields, transformPolicyRow } from "./transform.js";
 import type { DryRunMetrics, LegacyMemberRow, LegacyPolicyRow, MigrationLogLine } from "./types.js";
-import { transformPolicyRow } from "./transform.js";
-import { buildMigrationLookups, validatePolicyRowWithLookups } from "./validate.js";
+import {
+  buildMigrationLookups,
+  checkBusinessDuplicates,
+  validatePolicyRowWithLookups,
+} from "./validate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,6 +71,11 @@ function emptyMetrics(): DryRunMetrics {
     orphanMemberRowsInLegacy: 0,
     memberDobSentinelCount: 0,
     validationErrors: 0,
+    unmatchedCreated: 0,
+    paymentsCreated: 0,
+    chequesCreated: 0,
+    receiptsCreated: 0,
+    duplicateWarnings: 0,
   };
 }
 
@@ -64,7 +87,6 @@ function countValidationFailure(
   metrics[code] += 1;
 }
 
-/** Same server/credentials as DATABASE_URL, different database name (e.g. after mysql import of .sql dump). */
 function legacyUrlFromBaseDatabaseUrl(databaseUrl: string, legacyDbName: string): string {
   const u = new URL(databaseUrl);
   u.pathname = `/${legacyDbName.replace(/^\//, "")}`;
@@ -74,7 +96,6 @@ function legacyUrlFromBaseDatabaseUrl(databaseUrl: string, legacyDbName: string)
 function resolveLegacyUrl(): string | null {
   const explicit = process.env.DATABASE_URL_LEGACY?.trim();
   if (explicit) return explicit;
-
   const legacyDb =
     argValue("legacy-db", undefined)?.trim() ||
     process.env.LEGACY_DATABASE?.trim() ||
@@ -90,10 +111,381 @@ function resolveLegacyUrl(): string | null {
   return null;
 }
 
+function legacyDbNameFromUrl(url: string): string {
+  try {
+    return new URL(url).pathname.replace(/^\//, "") || "legacy";
+  } catch {
+    return "legacy";
+  }
+}
+
+async function createMigrationRun(
+  prisma: PrismaClient,
+  apply: boolean,
+  legacyDbName: string,
+  chunkSize: number,
+): Promise<string> {
+  const run = await prisma.migrationRun.create({
+    data: {
+      migrationVersion: CURRENT_VERSION,
+      mode: apply ? MigrationRunMode.apply : MigrationRunMode.dry_run,
+      status: MigrationRunStatus.running,
+      isActive: apply,
+      legacyDbName,
+      chunkSize,
+      cliArgs: process.argv.slice(2),
+    },
+  });
+  return run.id;
+}
+
+async function finishMigrationRun(
+  prisma: PrismaClient,
+  runId: string,
+  status: MigrationRunStatus,
+): Promise<void> {
+  await prisma.migrationRun.update({
+    where: { id: runId },
+    data: { status, isActive: false, finishedAt: new Date() },
+  });
+}
+
+async function processPolicyChunks(options: {
+  prisma: PrismaClient;
+  pool: ReturnType<typeof createLegacyPool>;
+  migrationRunId: string;
+  apply: boolean;
+  dryRun: boolean;
+  chunkSize: number;
+  limit: number | null;
+  afterRefNo: string | null;
+  skipMasters: boolean;
+  lookups: Awaited<ReturnType<typeof buildMigrationLookups>>;
+  resolver: DropdownResolver;
+  logger: JsonlLogger;
+  metrics: DryRunMetrics;
+  verbose: boolean;
+  failFast: boolean;
+  interruptRef: { value: boolean };
+}): Promise<{ processed: number; lastRefNo: string | null; interrupted: boolean }> {
+  const {
+    prisma,
+    pool,
+    migrationRunId,
+    apply,
+    dryRun,
+    chunkSize,
+    limit,
+    lookups,
+    resolver,
+    logger,
+    metrics,
+    verbose,
+    failFast,
+  } = options;
+
+  let processed = 0;
+  let lastRefNo = options.afterRefNo;
+  let stopAll = false;
+  const progressEvery = apply ? 10 : defaultProgressEveryN;
+
+  while (!stopAll && !options.interruptRef.value) {
+    const chunk = await fetchPolicyChunkKeyset(pool, lastRefNo, chunkSize);
+    if (chunk.length === 0) break;
+
+    const refNos = chunk.map((r) => String(r.ref_no).trim());
+    const allMembers = await fetchMembersForRefNos(pool, refNos);
+    const membersByRef = new Map<string, LegacyMemberRow[]>();
+    for (const m of allMembers) {
+      const r = m.ref_no?.trim();
+      if (!r) continue;
+      const list = membersByRef.get(r) ?? [];
+      list.push(m);
+      membersByRef.set(r, list);
+    }
+
+    for (const row of chunk) {
+      if (options.interruptRef.value) {
+        stopAll = true;
+        break;
+      }
+      if (limit != null && processed >= limit) {
+        stopAll = true;
+        break;
+      }
+
+      const refNo = String(row.ref_no).trim();
+      lastRefNo = refNo;
+      processed++;
+      const members = membersByRef.get(refNo) ?? [];
+      const logBase = { refNo, warnings: [] as string[], migrationRunId };
+
+      const validation = validatePolicyRowWithLookups(row, lookups);
+      if (!validation.ok) {
+        const errType: MigrationLogLine["errorType"] =
+          validation.code === "missingRefNo" || validation.code === "validationErrors"
+            ? "VALIDATION_ERROR"
+            : validation.code === "unknownPolicyType"
+              ? "MAPPING_ERROR"
+              : "SKIPPED_REASON";
+        countValidationFailure(
+          metrics,
+          validation.code === "unknownPolicyType"
+            ? "unknownPolicyType"
+            : validation.code === "missingChart"
+              ? "missingChart"
+              : validation.code === "missingRefNo"
+                ? "missingRefNo"
+                : "validationErrors",
+        );
+        logger.write({
+          ...logBase,
+          status: "SKIPPED",
+          errorType: errType,
+          reason: validation.reason,
+          warnings: [],
+          ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
+        });
+        if (apply) {
+          await writeMigrationLog(prisma, migrationRunId, {
+            refNo,
+            entity: "policy",
+            status: "SKIPPED",
+            errorType: errType,
+            reason: validation.reason,
+            warnings: [],
+          });
+        }
+        continue;
+      }
+
+      let t;
+      try {
+        t = transformPolicyRow(row);
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        metrics.wouldFail += 1;
+        logger.write({
+          ...logBase,
+          status: "FAILED",
+          errorType: "VALIDATION_ERROR",
+          reason,
+          warnings: [],
+        });
+        if (apply) {
+          await enqueueFailedRow(prisma, migrationRunId, refNo, MigrationPhase.policies, "VALIDATION_ERROR", reason);
+        }
+        if (failFast) throw e;
+        continue;
+      }
+
+      if (t.usedSyntheticMobile) metrics.missingMobile += 1;
+
+      if (apply) {
+        const dup = await checkBusinessDuplicates(
+          prisma,
+          row,
+          validation.targets.policyTypeId,
+          t.mobile,
+          refNo,
+        );
+        if (dup.code === "DUPLICATE_POLICY_NO") {
+          metrics.wouldSkip += 1;
+          logger.write({
+            ...logBase,
+            status: "SKIPPED",
+            errorType: "SKIPPED_REASON",
+            reason: dup.reason ?? "duplicate",
+            warnings: [],
+          });
+          await writeMigrationLog(prisma, migrationRunId, {
+            refNo,
+            entity: "policy",
+            status: "SKIPPED",
+            errorType: "SKIPPED_REASON",
+            reason: dup.reason,
+            warnings: [],
+          });
+          continue;
+        }
+        if (dup.code === "OVERLAPPING_DATES") {
+          metrics.duplicateWarnings += 1;
+          logBase.warnings.push("OVERLAPPING_DATES");
+        }
+      }
+
+      const resolved = await resolvePolicyDropdownFields(row, resolver);
+
+      if (dryRun) {
+        metrics.wouldSucceed += 1;
+        let sentinel = 0;
+        for (const m of members) {
+          const d = m.dob;
+          const ds = d == null ? "" : String(d);
+          if (!ds || ds.startsWith("0000-00")) sentinel += 1;
+        }
+        metrics.memberDobSentinelCount += sentinel;
+        logger.write({
+          ...logBase,
+          status: "SUCCESS",
+          errorType: null,
+          reason: "dry_run_ok",
+          warnings: t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [],
+        });
+      } else {
+        try {
+          const result = await applyLegacyPolicyRowWithRetries(
+            prisma,
+            row,
+            members,
+            validation.targets,
+            defaultDbRetries,
+            defaultRetryDelayMs,
+            { migrationRunId, resolver, resolved },
+          );
+          metrics.wouldSucceed += 1;
+          metrics.memberDobSentinelCount += result.memberDobSentinelCount;
+          if (result.paymentCreated) metrics.paymentsCreated += 1;
+          if (result.chequeCreated) metrics.chequesCreated += 1;
+          if (result.receiptCreated) metrics.receiptsCreated += 1;
+
+          const warnings = [
+            ...new Set([...result.warnings, ...(t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [])]),
+          ];
+          logger.write({
+            ...logBase,
+            status: "SUCCESS",
+            errorType: null,
+            reason: null,
+            warnings,
+          });
+          await writeMigrationLog(prisma, migrationRunId, {
+            refNo,
+            entity: "policy",
+            status: "SUCCESS",
+            errorType: null,
+            reason: null,
+            warnings,
+          });
+          await resolveFailedRow(prisma, migrationRunId, refNo, MigrationPhase.policies);
+        } catch (e) {
+          metrics.wouldFail += 1;
+          const reason = e instanceof Error ? e.message : String(e);
+          logger.write({
+            ...logBase,
+            status: "FAILED",
+            errorType: "DB_ERROR",
+            reason,
+            warnings: [],
+            ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
+          });
+          await writeMigrationLog(prisma, migrationRunId, {
+            refNo,
+            entity: "policy",
+            status: "FAILED",
+            errorType: "DB_ERROR",
+            reason,
+            warnings: [],
+            rawJson: verbose ? (row as unknown as Record<string, unknown>) : undefined,
+          });
+          await enqueueFailedRow(prisma, migrationRunId, refNo, MigrationPhase.policies, "DB_ERROR", reason);
+          if (failFast) throw e;
+        }
+      }
+
+      if (processed % progressEvery === 0) {
+        console.error(`Progress: processed ${processed} rows (last ref_no=${lastRefNo})`);
+        if (apply && lastRefNo) {
+          await saveCheckpoint(prisma, migrationRunId, MigrationPhase.policies, lastRefNo, processed);
+        }
+      }
+    }
+
+    if (stopAll) break;
+    if (chunk.length < chunkSize) break;
+  }
+
+  if (apply && lastRefNo) {
+    await saveCheckpoint(prisma, migrationRunId, MigrationPhase.policies, lastRefNo, processed);
+  }
+
+  return { processed, lastRefNo, interrupted: options.interruptRef.value };
+}
+
+async function runRetryFailed(
+  prisma: PrismaClient,
+  pool: ReturnType<typeof createLegacyPool>,
+  migrationRunId: string,
+  chunkSize: number,
+  limit: number | null,
+): Promise<void> {
+  await assertVersionMatch(prisma, migrationRunId);
+  await assertNoConflictingActiveRun(prisma, migrationRunId, true);
+
+  await prisma.migrationRun.update({
+    where: { id: migrationRunId },
+    data: { isActive: true, status: MigrationRunStatus.running },
+  });
+
+  const queue = await prisma.migrationFailedQueue.findMany({
+    where: { migrationRunId, resolvedAt: null, phase: MigrationPhase.policies },
+    take: limit ?? undefined,
+  });
+
+  const lookups = await buildMigrationLookups(prisma);
+  const resolver = await DropdownResolver.load(prisma, migrationRunId, false);
+  let ok = 0;
+  let fail = 0;
+
+  for (const item of queue) {
+    const row = await fetchPolicyByRefNo(pool, item.refNo);
+    if (!row) {
+      fail += 1;
+      continue;
+    }
+    const members = await fetchMembersForRefNos(pool, [item.refNo]);
+    const validation = validatePolicyRowWithLookups(row, lookups);
+    if (!validation.ok) {
+      fail += 1;
+      continue;
+    }
+    try {
+      const resolved = await resolvePolicyDropdownFields(row, resolver);
+      await applyLegacyPolicyRowWithRetries(
+        prisma,
+        row,
+        members,
+        validation.targets,
+        defaultDbRetries,
+        defaultRetryDelayMs,
+        { migrationRunId, resolver, resolved },
+      );
+      await resolveFailedRow(prisma, migrationRunId, item.refNo, MigrationPhase.policies);
+      ok += 1;
+    } catch {
+      fail += 1;
+    }
+  }
+
+  await finishMigrationRun(prisma, migrationRunId, MigrationRunStatus.completed);
+  console.log(JSON.stringify({ migrationRunId, retried: queue.length, ok, fail }, null, 2));
+}
+
 async function main() {
-  const dryRun = argFlag("dry-run") || !argFlag("apply");
-  const apply = argFlag("apply");
-  if (dryRun && apply) {
+  const reconcileOnly = argFlag("reconcile");
+  const retryFailed = argFlag("retry-failed");
+  const mastersOnly = argFlag("masters-only");
+  const skipMasters = argFlag("skip-masters");
+  const unlockStale = argFlag("unlock-stale");
+  const forceNewRun = argFlag("force-new-run");
+  const failFast = argFlag("fail-fast");
+
+  const dryRun = !argFlag("apply") && !retryFailed && !reconcileOnly;
+  const apply = argFlag("apply") || retryFailed;
+  const resumeRunId = argValue("resume", undefined)?.trim();
+  const explicitRunId = argValue("run-id", undefined)?.trim();
+
+  if (argFlag("dry-run") && argFlag("apply")) {
     console.error("Use either --dry-run or --apply, not both.");
     process.exit(1);
   }
@@ -112,221 +504,218 @@ async function main() {
 
   const legacyUrl = resolveLegacyUrl();
   if (!legacyUrl) {
-    console.error(`
-Missing legacy MySQL connection.
-
-The ETL reads tables (policy_table, member) over MySQL — it does not open .sql files directly.
-
-1) Import your dump into MySQL, e.g.:
-   mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS techuico_insurance CHARACTER SET utf8mb4;"
-   mysql -u root -p techuico_insurance < path/to/techuico_insurance.sql
-
-2) Then either:
-   - Set DATABASE_URL_LEGACY="mysql://user:pass@host:3306/techuico_insurance"
-   - Or set LEGACY_DATABASE=techuico_insurance (same host/user/password as DATABASE_URL)
-
-Optional CLI: --legacy-db=techuico_insurance
-`);
+    console.error("Missing legacy DB — set DATABASE_URL_LEGACY or LEGACY_DATABASE");
     process.exit(1);
   }
 
   const prisma = new PrismaClient();
-  const lookups = await buildMigrationLookups(prisma);
   const pool = createLegacyPool(legacyUrl);
+  const legacyDbName = legacyDbNameFromUrl(legacyUrl);
+
+  if (unlockStale) {
+    if (!argFlag("confirm")) {
+      console.error("Pass --confirm with --unlock-stale");
+      process.exit(1);
+    }
+    const n = await unlockStaleRuns(prisma, Number(argValue("stale-minutes", "30")) || 30);
+    console.log(JSON.stringify({ unlockedStaleRuns: n }, null, 2));
+    await pool.end();
+    await prisma.$disconnect();
+    return;
+  }
+
+  if (forceNewRun && resumeRunId) {
+    console.error("Cannot use --force-new-run with --resume");
+    process.exit(1);
+  }
+
+  if (forceNewRun && argFlag("confirm")) {
+    const active = await prisma.migrationRun.findFirst({
+      where: { status: MigrationRunStatus.running, isActive: true },
+    });
+    if (active) await forceDeactivateRun(prisma, active.id);
+  }
+
+  let migrationRunId = resumeRunId ?? explicitRunId ?? null;
+
+  if (retryFailed) {
+    if (!migrationRunId) {
+      console.error("--retry-failed requires --run-id=");
+      process.exit(1);
+    }
+    try {
+      await runRetryFailed(prisma, pool, migrationRunId, chunkSize, limit);
+    } finally {
+      await pool.end();
+      await prisma.$disconnect();
+    }
+    return;
+  }
+
+  if (reconcileOnly) {
+    if (!migrationRunId) {
+      console.error("--reconcile requires --run-id=");
+      process.exit(1);
+    }
+    await assertVersionMatch(prisma, migrationRunId);
+    const report = await runReconciliation(prisma, pool, migrationRunId);
+    console.log(JSON.stringify(report, null, 2));
+    await pool.end();
+    await prisma.$disconnect();
+    return;
+  }
+
+  await assertNoConflictingActiveRun(prisma, resumeRunId, apply);
+
+  if (resumeRunId) {
+    await assertVersionMatch(prisma, resumeRunId);
+    migrationRunId = resumeRunId;
+    if (apply) {
+      await prisma.migrationRun.update({
+        where: { id: migrationRunId },
+        data: { isActive: true, status: MigrationRunStatus.running, lastHeartbeatAt: new Date() },
+      });
+    }
+  } else if (!migrationRunId) {
+    migrationRunId = await createMigrationRun(prisma, apply, legacyDbName, chunkSize);
+  }
+
   const metrics = emptyMetrics();
   metrics.totalPolicyRows = await countPolicyRows(pool);
   metrics.orphanMemberRowsInLegacy = await countOrphanMembers(pool);
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const logPath = path.join(logDir, `migration-${ts}.jsonl`);
+  const logPath = path.join(logDir, `migration-${migrationRunId}-${ts}.jsonl`);
   const logger = new JsonlLogger(logPath);
 
   let releaseLock: (() => Promise<void>) | null = null;
-  if (!dryRun && process.env.SKIP_LEGACY_MIGRATION_LOCK !== "1") {
-    const lockPath = path.join(__dirname, ".migration.lock");
-    releaseLock = await acquireMigrationLock(lockPath);
+  if (apply && process.env.SKIP_LEGACY_MIGRATION_LOCK !== "1") {
+    releaseLock = await acquireMigrationLock(path.join(__dirname, ".migration.lock"));
   }
+
+  const interruptRef = { value: false };
+  process.once("SIGINT", () => {
+    interruptRef.value = true;
+    console.error("\n[legacy-migrate] Interrupt — finishing current row…\n");
+  });
 
   console.log(
     JSON.stringify(
       {
+        migrationRunId,
         mode: dryRun ? "DRY_RUN" : "APPLY",
+        migrationVersion,
         totalPolicyRows: metrics.totalPolicyRows,
-        orphanMemberRowsInLegacy: metrics.orphanMemberRowsInLegacy,
         logFile: logPath,
         chunkSize,
         limit,
+        resume: Boolean(resumeRunId),
       },
       null,
       2,
     ),
   );
 
-  let processed = 0;
-  let lastRefNo: string | null = null;
-  let stopAll = false;
-  let interrupted = false;
-  process.once("SIGINT", () => {
-    interrupted = true;
-    console.error(
-      "\n[legacy-migrate] Interrupt received — finishing current row, then printing partial summary.\n",
-    );
-  });
-
-  console.error(
-    `[legacy-migrate] ${dryRun ? "Dry-run" : "Apply"}: processing up to ${metrics.totalPolicyRows} policy rows (see JSON summary when done)…`,
-  );
-  /** Apply does one DB transaction per row — can be slow; dry-run is in-memory so wider spacing is fine. */
-  const progressEvery = apply ? 10 : defaultProgressEveryN;
-  if (apply) {
-    console.error(
-      `[legacy-migrate] Apply: progress prints every ${progressEvery} rows; each policy uses a DB transaction (wait if this line is the only output for a while).`,
-    );
-  }
-
   try {
-    while (!stopAll && !interrupted) {
-      const chunk: LegacyPolicyRow[] = await fetchPolicyChunkKeyset(pool, lastRefNo, chunkSize);
-      if (chunk.length === 0) break;
+    const lookups = await buildMigrationLookups(prisma);
+    const resolver = await DropdownResolver.load(prisma, migrationRunId, dryRun);
 
-      const refNos = chunk.map((r) => String(r.ref_no).trim());
-      const allMembers = await fetchMembersForRefNos(pool, refNos);
-      const membersByRef = new Map<string, LegacyMemberRow[]>();
-      for (const m of allMembers) {
-        const r = m.ref_no?.trim();
-        if (!r) continue;
-        const list = membersByRef.get(r) ?? [];
-        list.push(m);
-        membersByRef.set(r, list);
-      }
-
-      for (const row of chunk) {
-        if (interrupted) {
-          stopAll = true;
-          break;
-        }
-        if (limit != null && processed >= limit) {
-          stopAll = true;
-          break;
-        }
-        lastRefNo = String(row.ref_no).trim();
-        processed++;
-
-        const members = membersByRef.get(lastRefNo) ?? [];
-
-        const logBase = {
-          refNo: lastRefNo,
-          warnings: [] as string[],
-        };
-
-        const validation = validatePolicyRowWithLookups(row, lookups);
-        if (!validation.ok) {
-          const errType: MigrationLogLine["errorType"] =
-            validation.code === "missingRefNo" || validation.code === "validationErrors"
-              ? "VALIDATION_ERROR"
-              : validation.code === "unknownPolicyType"
-                ? "MAPPING_ERROR"
-                : "SKIPPED_REASON";
-
-          countValidationFailure(
-            metrics,
-            validation.code === "unknownPolicyType"
-              ? "unknownPolicyType"
-              : validation.code === "missingChart"
-                ? "missingChart"
-                : validation.code === "missingRefNo"
-                  ? "missingRefNo"
-                  : "validationErrors",
-          );
-
-          logger.write({
-            ...logBase,
-            status: "SKIPPED",
-            errorType: errType,
-            reason: validation.reason,
-            warnings: [],
-            ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
-          });
-        } else {
-          const t = transformPolicyRow(row);
-          if (t.usedSyntheticMobile) metrics.missingMobile += 1;
-
-          if (dryRun) {
-            metrics.wouldSucceed += 1;
-            let sentinel = 0;
-            for (const m of members) {
-              const d = m.dob;
-              const ds = d == null ? "" : String(d);
-              if (!ds || ds.startsWith("0000-00")) sentinel += 1;
-            }
-            metrics.memberDobSentinelCount += sentinel;
-
-            logger.write({
-              ...logBase,
-              status: "SUCCESS",
-              errorType: null,
-              reason: "dry_run_ok",
-              warnings: t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [],
-            });
-          } else {
-            try {
-              const result = await applyLegacyPolicyRowWithRetries(
-                prisma,
-                row,
-                members,
-                validation.targets,
-                defaultDbRetries,
-                defaultRetryDelayMs,
-              );
-
-              metrics.wouldSucceed += 1;
-              metrics.memberDobSentinelCount += result.memberDobSentinelCount;
-
-              logger.write({
-                ...logBase,
-                status: "SUCCESS",
-                errorType: null,
-                reason: null,
-                warnings: [...new Set([...result.warnings, ...(t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [])])],
-              });
-            } catch (e) {
-              metrics.wouldFail += 1;
-              const reason = e instanceof Error ? e.message : String(e);
-              logger.write({
-                ...logBase,
-                status: "FAILED",
-                errorType: "DB_ERROR",
-                reason,
-                warnings: [],
-                ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
-              });
-            }
-          }
-        }
-
-        if (processed % progressEvery === 0) {
-          console.error(`Progress: processed ${processed} rows (last ref_no=${lastRefNo})`);
-        }
-      }
-
-      if (stopAll) break;
-      if (chunk.length < chunkSize) break;
-      lastRefNo = chunk[chunk.length - 1]!.ref_no.trim();
+    if (!skipMasters && !resumeRunId) {
+      const masterResult = await migrateMasters(prisma, pool, migrationRunId, dryRun);
+      metrics.unmatchedCreated += masterResult.dropdownsCreated;
+      console.error(
+        `[legacy-migrate] Masters: ${masterResult.distinctValuesProcessed} distinct values, ${masterResult.dropdownsCreated} dropdowns created`,
+      );
     }
+
+    if (mastersOnly) {
+      await finishMigrationRun(
+        prisma,
+        migrationRunId,
+        dryRun ? MigrationRunStatus.completed : MigrationRunStatus.completed,
+      );
+      console.log(JSON.stringify({ migrationRunId, mastersOnly: true, metrics }, null, 2));
+      return;
+    }
+
+    const afterRefNo =
+      resumeRunId && !skipMasters
+        ? await loadCheckpointRefNo(prisma, migrationRunId, MigrationPhase.policies)
+        : resumeRunId
+          ? await loadCheckpointRefNo(prisma, migrationRunId, MigrationPhase.policies)
+          : null;
+
+    const chunkResult = await processPolicyChunks({
+      prisma,
+      pool,
+      migrationRunId,
+      apply,
+      dryRun,
+      chunkSize,
+      limit,
+      afterRefNo,
+      skipMasters,
+      lookups,
+      resolver,
+      logger,
+      metrics,
+      verbose,
+      failFast,
+      interruptRef,
+    });
+
+    metrics.unmatchedCreated += resolver.getDropdownsCreatedCount();
+
+    let reconcilePassed = true;
+    if (apply && !chunkResult.interrupted) {
+      const report = await runReconciliation(prisma, pool, migrationRunId);
+      reconcilePassed = report.passed;
+      await persistReconciliationAudit(prisma, migrationRunId, report, {
+        policies: metrics.wouldSucceed,
+        members: metrics.memberDobSentinelCount,
+        payments: metrics.paymentsCreated,
+        cheques: metrics.chequesCreated,
+        receipts: metrics.receiptsCreated,
+        skipped: metrics.wouldSkip,
+        failed: metrics.wouldFail,
+        dropdownsCreated: metrics.unmatchedCreated,
+      });
+      console.log(JSON.stringify({ reconciliation: report }, null, 2));
+    }
+
+    const finalStatus =
+      metrics.wouldFail > 0 && failFast
+        ? MigrationRunStatus.failed
+        : apply && !reconcilePassed
+          ? MigrationRunStatus.failed
+          : MigrationRunStatus.completed;
+
+    await finishMigrationRun(prisma, migrationRunId, finalStatus);
+
+    console.log(
+      JSON.stringify(
+        {
+          migrationRunId,
+          rowsProcessed: chunkResult.processed,
+          interrupted: chunkResult.interrupted,
+          summary: metrics,
+          logFile: logPath,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (e) {
+    if (migrationRunId) {
+      await finishMigrationRun(prisma, migrationRunId, MigrationRunStatus.failed);
+    }
+    throw e;
   } finally {
     if (releaseLock) await releaseLock();
     await logger.end();
     await pool.end();
     await prisma.$disconnect();
   }
-
-  const finalPayload = {
-    rowsProcessed: processed,
-    interrupted,
-    summary: metrics,
-    logFile: logPath,
-  };
-  console.log(JSON.stringify(finalPayload, null, 2));
 }
 
 main().catch((e) => {

@@ -111,6 +111,37 @@ enum NotificationType {
   RENEWAL_REMINDER
 }
 
+enum MigrationRunMode {
+  dry_run
+  apply
+}
+
+enum MigrationRunStatus {
+  running
+  completed
+  failed
+  rolled_back
+}
+
+enum MigrationPhase {
+  masters
+  policies
+  payments
+  receipts
+}
+
+enum MigrationLogStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum MigrationUnmatchedAction {
+  exact
+  fuzzy
+  created
+}
+
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
@@ -161,25 +192,30 @@ model UserSession {
 }
 
 model InsuredParty {
-  id           String    @id @default(cuid())
+  id                     String    @id @default(cuid())
   /// External / legacy customer key; searchable
-  customerId   String?   @unique @db.VarChar(64)
-  mobile       String    @unique
-  svkkPublicId String    @unique
-  name         String
-  email        String?
+  customerId             String?   @unique @db.VarChar(64)
+  mobile                 String    @unique
+  svkkPublicId           String    @unique
+  name                   String
+  email                  String?
   /// PAN: validate format in app; optional for incomplete records
-  pan          String?   @db.VarChar(20)
-  aadhaarNo    String?   @db.VarChar(12)
-  dateOfBirth  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  pan                    String?   @db.VarChar(20)
+  aadhaarNo              String?   @db.VarChar(12)
+  dateOfBirth            DateTime?
+  /// Set when row was first created by a legacy migration apply run
+  createdInMigrationRunId String?  @db.VarChar(30)
+  migratedRunId          String?   @db.VarChar(30)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   policies Policy[]
   claims   Claim[]
 
   @@index([pan])
   @@index([customerId])
+  @@index([migratedRunId])
+  @@index([createdInMigrationRunId])
 }
 
 model PolicyType {
@@ -295,6 +331,7 @@ model Policy {
   version             Int               @default(1)
   createdById         String?
   createdBy           User?             @relation("PolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  migratedRunId       String?           @db.VarChar(30)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   deletedAt           DateTime?
@@ -305,6 +342,7 @@ model Policy {
   notifications Notification[]
 
   @@unique([policyNo, policyTypeId])
+  @@index([migratedRunId])
   @@index([insuredPartyId])
   @@index([createdById])
   @@index([village, deletedAt])
@@ -352,6 +390,7 @@ model PolicyYear {
   gaamMahajanVkk               Decimal?    @db.Decimal(14, 2)
   excessShortAmount            Decimal?    @db.Decimal(14, 2)
   diffPaidByHolder             Decimal?    @db.Decimal(14, 2)
+  migratedRunId                String?     @db.VarChar(30)
   createdAt                    DateTime    @default(now())
   updatedAt                    DateTime    @updatedAt
   deletedAt                    DateTime?
@@ -363,6 +402,7 @@ model PolicyYear {
 
   @@unique([policyId, yearLabel])
   @@index([policyChartId])
+  @@index([migratedRunId])
   @@index([policyId, deletedAt])
   @@index([policyEnd, deletedAt])
 }
@@ -416,10 +456,12 @@ model Member {
   addOnsAmount    Decimal?   @db.Decimal(14, 2)
   basicPremium    Decimal?   @db.Decimal(14, 2)
   ageAtEntry      Int?
+  migratedRunId   String?    @db.VarChar(30)
   deletedAt       DateTime?
 
   @@index([policyYearId])
   @@index([dob, deletedAt])
+  @@index([migratedRunId])
 }
 
 /// Physical cheque; linked from Payment when method is CHQ
@@ -435,11 +477,13 @@ model Cheque {
   nameAsPerCheque String?      @db.VarChar(200)
   notOver         String?      @db.VarChar(50)
   chequeDate      DateTime?
+  migratedRunId   String?      @db.VarChar(30)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   payments        Payment[]
 
   @@index([status])
+  @@index([migratedRunId])
 }
 
 /// Money applied to a policy year; use for reconciliation vs expectedNetPremium
@@ -463,12 +507,15 @@ model Payment {
   method            PayMethod
   chequeId          String?
   cheque            Cheque?       @relation(fields: [chequeId], references: [id], onDelete: SetNull)
+  migratedRunId     String?       @db.VarChar(30)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   deletedAt         DateTime?
 
+  @@unique([transactionNumber])
   @@index([policyYearId, deletedAt, status])
   @@index([chequeId])
+  @@index([migratedRunId])
 }
 
 model Receipt {
@@ -481,10 +528,12 @@ model Receipt {
   amount       Decimal     @db.Decimal(14, 2)
   paymentMode  String?
   s3Key        String?
-  policyDate   DateTime?
-  createdAt    DateTime    @default(now())
+  policyDate    DateTime?
+  migratedRunId String?     @db.VarChar(30)
+  createdAt     DateTime    @default(now())
 
   @@index([policyId])
+  @@index([migratedRunId])
 }
 
 model Counter {
@@ -688,4 +737,110 @@ model MISSnapshot {
   netPremium    Decimal? @db.Decimal(18, 2)
 
   @@unique([date, village])
+}
+
+/// Legacy ETL run parent — concurrency via isActive + status running
+model MigrationRun {
+  id                  String             @id @default(cuid())
+  migrationVersion    String             @db.VarChar(16)
+  mode                MigrationRunMode
+  status              MigrationRunStatus @default(running)
+  isActive            Boolean            @default(true)
+  legacyDbName        String?            @db.VarChar(128)
+  chunkSize           Int?
+  cliArgs             Json?
+  lastCheckpointRefNo String?            @db.VarChar(255)
+  lastHeartbeatAt     DateTime?
+  startedAt           DateTime           @default(now())
+  finishedAt          DateTime?
+
+  checkpoints   MigrationCheckpoint[]
+  logs          MigrationLog[]
+  unmatched     MigrationUnmatchedValue[]
+  failedQueue   MigrationFailedQueue[]
+  audit         MigrationAudit?
+
+  @@index([status, isActive])
+  @@index([startedAt])
+}
+
+model MigrationCheckpoint {
+  id              String         @id @default(cuid())
+  migrationRunId  String
+  migrationRun    MigrationRun   @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  phase           MigrationPhase
+  lastRefNo       String?        @db.VarChar(255)
+  rowsProcessed   Int            @default(0)
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([migrationRunId, phase])
+  @@index([migrationRunId])
+}
+
+model MigrationLog {
+  id             String             @id @default(cuid())
+  migrationRunId String
+  migrationRun   MigrationRun       @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  refNo          String             @db.VarChar(255)
+  entity         String             @db.VarChar(64)
+  status         MigrationLogStatus
+  errorType      String?            @db.VarChar(32)
+  reason         String?            @db.Text
+  warnings       Json?
+  rawJson        Json?
+  createdAt      DateTime           @default(now())
+
+  @@index([migrationRunId, status])
+  @@index([migrationRunId, refNo])
+}
+
+model MigrationUnmatchedValue {
+  id              String                   @id @default(cuid())
+  migrationRunId  String
+  migrationRun    MigrationRun             @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  dropdownType    DropdownType
+  legacyRaw       String                   @db.VarChar(255)
+  normalizedKey   String                   @db.VarChar(128)
+  resolvedValue   String                   @db.VarChar(64)
+  action          MigrationUnmatchedAction
+  fuzzyScore      Float?
+  matchedToValue  String?                  @db.VarChar(64)
+  createdAt       DateTime                 @default(now())
+
+  @@index([migrationRunId, dropdownType])
+}
+
+model MigrationFailedQueue {
+  id             String       @id @default(cuid())
+  migrationRunId String
+  migrationRun   MigrationRun @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  refNo          String       @db.VarChar(255)
+  phase          MigrationPhase
+  errorType      String       @db.VarChar(32)
+  reason         String       @db.Text
+  attempts       Int          @default(0)
+  lastAttemptAt  DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([migrationRunId, refNo, phase])
+  @@index([migrationRunId, resolvedAt])
+}
+
+model MigrationAudit {
+  id             String       @id @default(cuid())
+  migrationRunId String       @unique
+  migrationRun   MigrationRun @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  legacyTotals   Json?
+  newTotals      Json?
+  deltas         Json?
+  policies       Int          @default(0)
+  members        Int          @default(0)
+  payments       Int          @default(0)
+  cheques        Int          @default(0)
+  receipts       Int          @default(0)
+  skipped        Int          @default(0)
+  failed         Int          @default(0)
+  dropdownsCreated Int        @default(0)
+  createdAt      DateTime     @default(now())
 }

@@ -16,6 +16,7 @@
     "db:seed:data-md": "tsx scripts/seed-data-md.ts",
     "user:create": "tsx scripts/create-user.ts",
     "legacy-migrate": "tsx scripts/legacy-migrate/run.ts",
+    "legacy-migrate:rollback": "tsx scripts/legacy-migrate/rollback-run.ts",
     "test": "vitest run",
     "lint": "eslint src --ext .ts"
   },

@@ -10,6 +10,7 @@ export type ErrorType =
   | null;
 
 export interface MigrationLogLine {
+  migrationRunId?: string;
   refNo: string;
   status: LogStatus;
   errorType: ErrorType;
@@ -117,4 +118,9 @@ export interface DryRunMetrics {
   orphanMemberRowsInLegacy: number;
   memberDobSentinelCount: number;
   validationErrors: number;
+  unmatchedCreated: number;
+  paymentsCreated: number;
+  chequesCreated: number;
+  receiptsCreated: number;
+  duplicateWarnings: number;
 }

@@ -1,89 +1,98 @@
 # Legacy MySQL → Prisma ETL
 
-Imports `policy_table` and `member` from the legacy `techuico_insurance`-style database into the current Prisma schema (`InsuredParty`, `Policy`, `PolicyYear`, `Member`).
+Imports `policy_table` and `member` from the legacy `techuico_insurance`-style database into the current Prisma schema (`InsuredParty`, `Policy`, `PolicyYear`, `Member`, `Payment`, `Cheque`, `Receipt`).
 
 ## Prerequisites
 
-1. **Target DB** — Run migrations (including `Policy.referenceNo` unique index) and seed:
+1. **Target DB** — Deploy migrations (includes `MigrationRun` audit tables + `migratedRunId` tags) and seed:
 
    ```bash
    npx prisma migrate deploy
    npm run db:seed
+   npm run db:seed:data-md
+   npx prisma generate
    ```
 
-2. **Uniqueness** — Before the unique index, confirm legacy data has one row per `ref_no`:
+2. **Legacy data** — Import SQL dump into MySQL; ETL reads live tables, not `.sql` files.
 
-   ```sql
-   SELECT COUNT(*) AS c, COUNT(DISTINCT ref_no) AS d FROM policy_table;
-   ```
+3. **Environment** — `DATABASE_URL` (target) and `DATABASE_URL_LEGACY` or `LEGACY_DATABASE=techuico_insurance`.
 
-   On the target DB, ensure no conflicting `Policy.referenceNo` values if re-running.
+## Pipeline order
 
-3. **Legacy data source (`techuico_insurance.sql` etc.)**
-
-   The CLI does **not** read `.sql` files. Import the dump into MySQL first, then point the ETL at that database:
-
-   ```bash
-   mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS techuico_insurance CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   mysql -u root -p techuico_insurance < path/to/techuico_insurance.sql
-   ```
-
-4. **Environment**
-
-   - `DATABASE_URL` — Prisma (target) MySQL, e.g. database `svkk`.
-   - **Either** `DATABASE_URL_LEGACY` — full connection string to the legacy database,  
-   **or** `LEGACY_DATABASE` / `LEGACY_DATABASE_NAME` — only the database name (same host, user, password, port as `DATABASE_URL`). Example: `LEGACY_DATABASE=techuico_insurance`.
-
-   See `.env.example`.
+1. **Masters** — DISTINCT legacy values → `DropdownOption` (fuzzy match before auto-create)
+2. **Lookup cache** — in-memory maps (policy types, categories, charts)
+3. **Policies** — insured parties, policies, years, members (`createMany` per chunk)
+4. **Payments / cheques / receipts** — per policy row when `--apply`
+5. **Reconciliation** — legacy vs new counts/totals (`MigrationAudit`)
 
 ## Commands
 
-Dry-run (default-safe; no writes):
-
 ```bash
+# Dry-run (no policy writes; masters may still preview creates in metrics)
 npm run legacy-migrate -- --dry-run
-npm run legacy-migrate -- --dry-run --limit=100 --chunk-size=200
-```
+npm run legacy-migrate -- --dry-run --limit=100
 
-After the first JSON block (totals / log path), the tool still walks every policy row. Wait for the **final JSON** with `rowsProcessed` and `summary` (`wouldSucceed`, `wouldSkip`, …). If you stop early (Ctrl+C), you get a partial `rowsProcessed` and `"interrupted": true`.
-
-Apply (writes; uses lock file `scripts/legacy-migrate/.migration.lock` unless `SKIP_LEGACY_MIGRATION_LOCK=1`):
-
-```bash
+# Full apply
 npm run legacy-migrate -- --apply
+
+# Masters only
+npm run legacy-migrate -- --apply --masters-only
+
+# Resume after crash (same code version required)
+npm run legacy-migrate -- --apply --resume=<migrationRunId>
+
+# Retry failed rows only
+npm run legacy-migrate -- --retry-failed --run-id=<migrationRunId>
+
+# Reconciliation report only
+npm run legacy-migrate -- --reconcile --run-id=<migrationRunId>
+
+# Rollback (preview / execute)
+npm run legacy-migrate:rollback -- --run-id=<id> --dry-run
+npm run legacy-migrate:rollback -- --run-id=<id> --confirm
+
+# Stale lock recovery
+npm run legacy-migrate -- --unlock-stale --confirm
 ```
 
-Flags:
+## Flags
 
-- `--dry-run` — Validate and log only.
-- `--apply` — Run per-row transactions against Prisma.
-- `--legacy-db=name` — Legacy database name (overrides `LEGACY_DATABASE`); builds URL from `DATABASE_URL`.
-- `--chunk-size=N` — Keyset page size (default from `config/migration.ts`).
-- `--limit=N` — Stop after N policy rows (smoke tests).
-- `--log-dir=path` — JSONL log directory (default `scripts/legacy-migrate/logs`).
-- `--verbose` — Attach `rawData` to failed log lines.
+| Flag | Purpose |
+|------|---------|
+| `--apply` / `--dry-run` | Write mode |
+| `--resume=<runId>` | Continue from checkpoint |
+| `--run-id=<id>` | Pin migration run id |
+| `--masters-only` | Phase 1 only |
+| `--skip-masters` | Skip master import |
+| `--retry-failed --run-id=` | Reprocess `MigrationFailedQueue` |
+| `--reconcile --run-id=` | Compare legacy vs migrated totals |
+| `--fail-fast` | Stop on first error (default: queue failures) |
+| `--chunk-size`, `--limit` | Throughput |
+| `--unlock-stale --confirm` | Mark stale `running` runs inactive |
+| `--force-new-run --confirm` | Emergency: deactivate other active run |
 
-## Behaviour summary
+## Reliability
 
-- **Keyset pagination** on `policy_table.ref_no`.
-- **One `prisma.$transaction` per policy row** (all members for that row in the same tx).
-- **Idempotency:** `Policy.upsert` by `referenceNo`; `PolicyYear.upsert` by `(policyId, yearLabel)`; members replaced with `deleteMany` + `createMany`.
-- **Retries:** Up to 3 attempts on transient DB errors (deadlock / timeout).
-- **Logs:** One JSON line per row: `status`, `errorType`, `reason`, `warnings`, `migrationVersion`, `ts`.
+- **Concurrency:** only one active `--apply` run (`MigrationRun.isActive` + file lock)
+- **Version lock:** `CURRENT_VERSION` in `config/migration.ts` must match run on resume/retry
+- **Checkpoints:** `lastRefNo` saved each chunk → `--resume`
+- **Failed queue:** `MigrationFailedQueue` + `--retry-failed`
+- **Audit:** `MigrationLog`, `MigrationUnmatchedValue`, `MigrationAudit` keyed by `migrationRunId`
+- **Rollback:** `npm run legacy-migrate:rollback` deletes rows tagged with `migratedRunId`
 
 ## Configuration
 
-Edit `config/migration.ts` for:
+- `config/migration.ts` — version, policy type / category / grouping maps
+- `config/dropdown-mappings.ts` — relation, gender, payment mode, cheque status maps
 
-- `POLICY_TYPE_MAP` (legacy `policy_type` text → Prisma `PolicyType.key`)
-- Category letter map, policy grouping map, sentinel DOB, chunk defaults, date handling notes
+## Verification
 
-## Verification checklist
+1. Dry-run → review summary + `unmatchedCreated`
+2. `--apply --limit=1000` → `--reconcile` passes
+3. Kill mid-run → `--resume` continues
+4. Second `--apply` while first running → rejected
+5. Spot-check `ref_no` in UI (dropdown values, payments)
 
-1. Dry-run on a copy of production legacy data; review JSONL and console summary (`wouldSucceed`, `wouldSkip`, `missingChart`, `unknownPolicyType`, `orphanMemberRowsInLegacy`).
-2. Run `--apply` on staging; spot-check a few `ref_no` values (holder, year premiums, member list).
-3. Run `--apply` twice on the same data; counts should stay stable (no duplicate policies/members).
+## PolicyType / charts
 
-## PolicyType / chart requirements
-
-Each mapped `PolicyType` must have a **HOLDER** `PolicyChart` at **version 1** (as created by `prisma/seed.ts` for `ad_policy` and `asha_kiran`). If you add types, add charts before migrating.
+Each mapped `PolicyType` needs a **HOLDER** `PolicyChart` v1 (`ad_policy`, `asha_kiran` from seed).
