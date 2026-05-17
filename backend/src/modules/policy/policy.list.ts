@@ -31,6 +31,9 @@ export type PolicyListQuery = {
   policyGrouping?: string;
   policyGroupings?: string[];
   chequeStatus?: ChequeStatus;
+  /** Policy created-at range (YYYY-MM-DD, UTC calendar day bounds). */
+  dateFrom?: string;
+  dateTo?: string;
   /** Offset pagination (mutually exclusive with cursor in route) */
   page?: number;
   pageSize?: number;
@@ -86,6 +89,35 @@ function containsInsensitive(value: string): Prisma.StringFilter {
 }
 
 /** Include common casings so filters match `MARCH`, `March`, etc. on case-sensitive DB collations. */
+function utcDayBoundsFromIsoDate(isoDate: string): { start: Date; end: Date } | undefined {
+  const d = new Date(isoDate.trim());
+  if (Number.isNaN(d.getTime())) {
+    return undefined;
+  }
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const day = d.getUTCDate();
+  return {
+    start: new Date(Date.UTC(y, m, day, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(y, m, day, 23, 59, 59, 999)),
+  };
+}
+
+function createdAtRangeFilter(dateFrom?: string, dateTo?: string): Prisma.PolicyWhereInput | undefined {
+  const fromBounds = dateFrom?.trim() ? utcDayBoundsFromIsoDate(dateFrom) : undefined;
+  const toBounds = dateTo?.trim() ? utcDayBoundsFromIsoDate(dateTo) : undefined;
+  if (fromBounds && toBounds) {
+    return { createdAt: { gte: fromBounds.start, lte: toBounds.end } };
+  }
+  if (fromBounds) {
+    return { createdAt: { gte: fromBounds.start } };
+  }
+  if (toBounds) {
+    return { createdAt: { lte: toBounds.end } };
+  }
+  return undefined;
+}
+
 function expandPeriodMonthTextVariants(months: string[]): string[] {
   const out = new Set<string>();
   for (const m of months) {
@@ -283,6 +315,9 @@ export function buildPolicyListWhere(
   if (sumMatch) extraParts.push(sumMatch);
   if (chequeFilter) extraParts.push(chequeFilter);
   if (monthFilter) extraParts.push(monthFilter);
+
+  const createdAtFilter = createdAtRangeFilter(q.dateFrom, q.dateTo);
+  if (createdAtFilter) extraParts.push(createdAtFilter);
 
   const and: Prisma.PolicyWhereInput[] = [scopeWhere];
   if (searchWhere) and.push(searchWhere);

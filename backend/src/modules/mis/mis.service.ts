@@ -229,6 +229,7 @@ export async function getDashboardCharts(
     createdFrom: null,
     createdTo: null,
     fiscalLabels: [],
+    restrictPolicyYearToAsOf: false,
   });
   const mixParsed = mixRows.map((r) => ({
     label: friendlyProductLabel(r.label),
@@ -309,6 +310,8 @@ export async function getPolicyMemberReport(
   const createdFrom = input.dateFrom ? asOfDayBoundsUTC(input.dateFrom).start : null;
   const createdTo =
     input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
+  // Without a from-date, match policy register: count all policy years, use to-date only for age.
+  const restrictPolicyYearToAsOf = input.dateFrom != null;
   const rows = await queryPolicyMemberReport(prisma, {
     scopeOnP,
     periodStart: start,
@@ -326,6 +329,7 @@ export async function getPolicyMemberReport(
     createdFrom,
     createdTo,
     fiscalLabels: input.fiscalLabels,
+    restrictPolicyYearToAsOf,
   });
   const orderedRows =
     input.groupBy === "sum_insured"

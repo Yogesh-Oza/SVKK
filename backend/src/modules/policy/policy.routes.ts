@@ -91,6 +91,8 @@ const policyListFiltersSchema = z.object({
   policyGrouping: z.string().trim().max(64).optional(),
   policyGroupings: stringArrayQuery,
   chequeStatus: z.nativeEnum(ChequeStatus).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
   sort: z.string().optional(),
 });
 
@@ -131,6 +133,8 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
     policyGrouping: q.policyGrouping?.trim() || undefined,
     policyGroupings: q.policyGroupings,
     chequeStatus: q.chequeStatus,
+    dateFrom: q.dateFrom?.trim() || undefined,
+    dateTo: q.dateTo?.trim() || undefined,
     sort: q.sort,
   };
 }

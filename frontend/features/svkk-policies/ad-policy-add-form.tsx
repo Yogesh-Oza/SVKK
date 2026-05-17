@@ -1834,19 +1834,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardHeader>
               <CardTitle>Policy Details</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2">
-                <AutoFieldLabel hint="Auto-generated from Policy Group + Month sequence. You can override manually.">
-                  SVKK ID
-                </AutoFieldLabel>
-                <Input
-                  name="svkkPublicId"
-                  value={values.svkkPublicId}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  autoComplete="off"
-                />
-              </div>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">Policy Details</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Customer ID</Label>
                 <Input
@@ -1880,6 +1871,87 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </SelectContent>
                 </Select>
                 <FormikError name="adProduct" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
+                <Label>Policy Start Date</Label>
+                <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
+                <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
+                <Label>Policy End Date</Label>
+                <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
+                <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
+                <Label>Previous Policy No</Label>
+                <Input name="previousPolicyNo" value={values.previousPolicyNo} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label>Previous End Date (Age anchor)</Label>
+                <Input
+                  name="previousEndDate"
+                  type="date"
+                  value={values.previousEndDate}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <RequiredLabel>Sum Insured (SI)</RequiredLabel>
+                <DropdownCombobox
+                  value={values.sumInsured}
+                  onChange={(v) => void setFieldValue("sumInsured", v)}
+                  options={sumInsuredOptions}
+                  placeholder="Select sum insured"
+                  searchPlaceholder="Search amount"
+                />
+                <FormikError name="sumInsured" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
+                <RequiredLabel>Person Count</RequiredLabel>
+                <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 1" />
+                <FormikError name="person" errors={errors} touched={touched} submitCount={submitCount} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cumulative Bonus</Label>
+                <Input
+                  name="comulativeBonus"
+                  value={values.comulativeBonus}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Insurance Company</Label>
+                <Input name="company" value={values.company} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+              <div className="space-y-2">
+                <Label>TPA</Label>
+                <Input name="tpa" value={values.tpa} onChange={handleChange} onBlur={handleBlur} />
+              </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">SVKK Details</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <AutoFieldLabel hint="Auto-generated from Policy Group + Month sequence. You can override manually.">
+                  SVKK ID
+                </AutoFieldLabel>
+                <Input
+                  name="svkkPublicId"
+                  value={values.svkkPublicId}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <AutoFieldLabel hint="Auto-generated from Policy Group + Year + Month sequence. You can override manually.">
+                  Reference No
+                </AutoFieldLabel>
+                <Input name="refNo" value={values.refNo} onChange={handleChange} onBlur={handleBlur} />
               </div>
               <div className="space-y-2">
                 <RequiredLabel>Category</RequiredLabel>
@@ -1930,22 +2002,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="year" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Sum Insured (SI)</RequiredLabel>
-                <DropdownCombobox
-                  value={values.sumInsured}
-                  onChange={(v) => void setFieldValue("sumInsured", v)}
-                  options={sumInsuredOptions}
-                  placeholder="Select sum insured"
-                  searchPlaceholder="Search amount"
-                />
-                <FormikError name="sumInsured" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <RequiredLabel>Person</RequiredLabel>
-                <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 1" />
-                <FormikError name="person" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
                 <RequiredLabel>Village</RequiredLabel>
                 <DropdownCombobox
                   value={values.village}
@@ -1968,26 +2024,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <FormikError name="area" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
-                <Label>Policy End Date</Label>
-                <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <Label>Previous Policy No</Label>
-                <Input name="previousPolicyNo" value={values.previousPolicyNo} onChange={handleChange} onBlur={handleBlur} />
-              </div>
-              <div className="space-y-2">
-                <Label>Previous End Date (Age anchor)</Label>
-                <Input
-                  name="previousEndDate"
-                  type="date"
-                  value={values.previousEndDate}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Policy Group</Label>
+                <Label>Group</Label>
                 <DropdownCombobox
                   value={values.policyGroup}
                   onChange={(v) => void setFieldValue("policyGroup", v)}
@@ -1997,34 +2034,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
                 <FormikError name="policyGroup" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
-              <div className="space-y-2">
-                <Label>Policy Start</Label>
-                <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
-                <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Insurance company</Label>
-                <Input name="company" value={values.company} onChange={handleChange} onBlur={handleBlur} />
-              </div>
-              <div className="space-y-2">
-                <Label>TPA</Label>
-                <Input name="tpa" value={values.tpa} onChange={handleChange} onBlur={handleBlur} />
-              </div>
-              <div className="space-y-2">
-                <Label>Cumulative Bonus</Label>
-                <Input
-                  name="comulativeBonus"
-                  value={values.comulativeBonus}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <AutoFieldLabel hint="Auto-generated from Policy Group + Year + Month sequence. You can override manually.">
-                  Reference No
-                </AutoFieldLabel>
-                <Input name="refNo" value={values.refNo} onChange={handleChange} onBlur={handleBlur} />
-              </div>
+
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">Policy URL</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2 sm:col-span-2 lg:col-span-4">
                 <Label>Policy URL {values.urls.length > 0 && <span className="text-muted-foreground ml-1 text-xs font-normal">{values.urls.length} / 5</span>}</Label>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2076,6 +2091,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   className="min-w-0 flex-1"
                 />
               </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -2085,133 +2102,150 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardHeader>
               <CardTitle>Policy Holder Details</CardTitle>
               <CardDescription>
-                Holder Name, PAN, Village, DOB, Age (auto from policy end date; editable), Relationship, Joining Date, Gender, Add-ons.
+                Holder details, documents, and holder policy fields (joining date, add-ons, basic premium).
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2 sm:col-span-2">
-                <RequiredLabel>Holder Name</RequiredLabel>
-                <Input
-                  name="policyHolder"
-                  value={values.policyHolder}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  autoComplete="name"
-                />
-                <FormikError name="policyHolder" errors={errors} touched={touched} submitCount={submitCount} />
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">Holder Details</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2 sm:col-span-2">
+                    <RequiredLabel>Name</RequiredLabel>
+                    <Input
+                      name="policyHolder"
+                      value={values.policyHolder}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      autoComplete="name"
+                    />
+                    <FormikError name="policyHolder" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
+                    <Input
+                      id={`${idPrefix}-dob`}
+                      name="dob"
+                      type="date"
+                      value={values.dob}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                    <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Age</Label>
+                    <Input
+                      name="age"
+                      value={values.age}
+                      onChange={(e) => {
+                        markAgeManual("age");
+                        handleChange(e);
+                      }}
+                      onBlur={handleBlur}
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <RequiredLabel>Village</RequiredLabel>
+                    <DropdownCombobox
+                      value={values.village}
+                      onChange={(v) => void setFieldValue("village", v)}
+                      options={villageOptions}
+                      placeholder="Select village"
+                      searchPlaceholder="Search village"
+                    />
+                    <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Gender</Label>
+                    <DropdownCombobox
+                      value={values.holderGender}
+                      onChange={(v) => void setFieldValue("holderGender", v)}
+                      options={genderOptions}
+                      placeholder="Select gender"
+                      searchPlaceholder="Search gender"
+                    />
+                    <FormikError name="holderGender" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Relation</Label>
+                    <DropdownCombobox
+                      value={values.relation}
+                      onChange={(v) => void setFieldValue("relation", v)}
+                      options={relationOptions}
+                      placeholder="Select relation"
+                      searchPlaceholder="Search relation"
+                    />
+                    <FormikError name="relation" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>PAN Card</Label>
-                <Input
-                  id={`${idPrefix}-pan`}
-                  name="panNo"
-                  value={values.panNo}
-                  onChange={(e) => void setFieldValue("panNo", e.target.value.toUpperCase())}
-                  onBlur={handleBlur}
-                  maxLength={10}
-                  autoComplete="off"
-                />
+
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">Document Details</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label>PAN</Label>
+                    <Input
+                      id={`${idPrefix}-pan`}
+                      name="panNo"
+                      value={values.panNo}
+                      onChange={(e) => void setFieldValue("panNo", e.target.value.toUpperCase())}
+                      onBlur={handleBlur}
+                      maxLength={10}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Aadhaar</Label>
+                    <Input
+                      name="aadhaarNo"
+                      value={values.aadhaarNo}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      maxLength={12}
+                      autoComplete="off"
+                      placeholder="12-digit Aadhaar number"
+                    />
+                    <FormikError name="aadhaarNo" errors={errors} touched={touched} submitCount={submitCount} />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Aadhaar No.</Label>
-                <Input
-                  name="aadhaarNo"
-                  value={values.aadhaarNo}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  maxLength={12}
-                  autoComplete="off"
-                  placeholder="12-digit Aadhaar number"
-                />
-                <FormikError name="aadhaarNo" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <RequiredLabel>Village</RequiredLabel>
-                <DropdownCombobox
-                  value={values.village}
-                  onChange={(v) => void setFieldValue("village", v)}
-                  options={villageOptions}
-                  placeholder="Select village"
-                  searchPlaceholder="Search village"
-                />
-                <FormikError name="village" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
-                <Input
-                  id={`${idPrefix}-dob`}
-                  name="dob"
-                  type="date"
-                  value={values.dob}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-                <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <Label>Gender</Label>
-                <DropdownCombobox
-                  value={values.holderGender}
-                  onChange={(v) => void setFieldValue("holderGender", v)}
-                  options={genderOptions}
-                  placeholder="Select gender"
-                  searchPlaceholder="Search gender"
-                />
-                <FormikError name="holderGender" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <Label>Relationship</Label>
-                <DropdownCombobox
-                  value={values.relation}
-                  onChange={(v) => void setFieldValue("relation", v)}
-                  options={relationOptions}
-                  placeholder="Select relation"
-                  searchPlaceholder="Search relation"
-                />
-                <FormikError name="relation" errors={errors} touched={touched} submitCount={submitCount} />
-              </div>
-              <div className="space-y-2">
-                <Label>Joining Date</Label>
-                <Input
-                  name="holderJoiningDate"
-                  type="date"
-                  value={values.holderJoiningDate}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Add-ons (Amount rs)</Label>
-                <Input
-                  name="holderAddOns"
-                  value={values.holderAddOns}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Basic Premium</Label>
-                <Input
-                  name="basicPremiumPs"
-                  value={values.basicPremiumPs}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  inputMode="decimal"
-                  placeholder="e.g. 5000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Age</Label>
-                <Input
-                  name="age"
-                  value={values.age}
-                  onChange={(e) => {
-                    markAgeManual("age");
-                    handleChange(e);
-                  }}
-                  onBlur={handleBlur}
-                  inputMode="numeric"
-                />
+
+              <div className="rounded-lg border bg-muted/25 p-4 shadow-sm">
+                <p className="text-foreground mb-3 text-sm font-semibold">Policy Details</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label>Joining Date</Label>
+                    <Input
+                      name="holderJoiningDate"
+                      type="date"
+                      value={values.holderJoiningDate}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Add-ons (Amount rs)</Label>
+                    <Input
+                      name="holderAddOns"
+                      value={values.holderAddOns}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Basic Premium</Label>
+                    <Input
+                      name="basicPremiumPs"
+                      value={values.basicPremiumPs}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      inputMode="decimal"
+                      placeholder="e.g. 5000"
+                    />
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

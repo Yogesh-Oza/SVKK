@@ -59,6 +59,20 @@ export function policyYearActiveOnAsOfSql(
   )`;
 }
 
+/** When false, all non-deleted policy years count (aligns with policy register when no from-date). */
+export function policyYearInReportScopeSql(
+  periodStart: Date,
+  periodEnd: Date,
+  asOf: Date,
+  yearAlias = "py",
+  restrictToAsOfWindow = true,
+): Prisma.Sql {
+  if (!restrictToAsOfWindow) {
+    return Prisma.sql`1=1`;
+  }
+  return policyYearActiveOnAsOfSql(periodStart, periodEnd, asOf, yearAlias);
+}
+
 export type VillageAggregateRow = {
   village: string | null;
   totalPolicies: bigint;
@@ -232,6 +246,8 @@ type PolicyMemberReportParams = {
   createdFrom: Date | null;
   createdTo: Date | null;
   fiscalLabels: string[];
+  /** When false, include every non-deleted policy year (policy register parity without from-date). */
+  restrictPolicyYearToAsOf: boolean;
 };
 
 function groupDimExpr(
@@ -353,7 +369,7 @@ function fiscalLabelsFilterSql(fiscalLabels: string[]): Prisma.Sql {
 }
 
 function baseFromClause(
-  args: { scopeOnP: Prisma.Sql; start: Date; end: Date; asOf: Date },
+  args: { scopeOnP: Prisma.Sql; start: Date; end: Date; asOf: Date; restrictPolicyYearToAsOf: boolean },
   filters: {
     catF: Prisma.Sql;
     pgF: Prisma.Sql;
@@ -371,7 +387,13 @@ function baseFromClause(
     ? Prisma.sql`LEFT JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL`
     : Prisma.empty;
   const mReq = requireMember ? Prisma.sql` AND m.id IS NOT NULL` : Prisma.empty;
-  const yearActive = policyYearActiveOnAsOfSql(args.start, args.end, args.asOf);
+  const yearActive = policyYearInReportScopeSql(
+    args.start,
+    args.end,
+    args.asOf,
+    "py",
+    args.restrictPolicyYearToAsOf,
+  );
   return Prisma.sql`
     FROM Policy p
     LEFT JOIN Category cat ON p.categoryId = cat.id
@@ -402,8 +424,8 @@ export async function queryPolicyMemberReport(
   const end = args.periodEnd;
   const d = args.ageAsOf;
   const asOf = args.asOf;
-  const yearActive = policyYearActiveOnAsOfSql(start, end, asOf, "py");
-  const yearActiveX = policyYearActiveOnAsOfSql(start, end, asOf, "x");
+  const yearActive = policyYearInReportScopeSql(start, end, asOf, "py", args.restrictPolicyYearToAsOf);
+  const yearActiveX = policyYearInReportScopeSql(start, end, asOf, "x", args.restrictPolicyYearToAsOf);
   const dim = groupDimExpr(args.groupBy, d, start, end);
   const catF = categoryKeysFilterSql(args.categoryKeys);
   const pgF = policyGroupingsFilterSql(args.policyGroupings);
@@ -414,7 +436,13 @@ export async function queryPolicyMemberReport(
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
   const filters = { catF, pgF, villF, areaF, sumF, myF, createdF, fiscF };
-  const fArgs = { scopeOnP: args.scopeOnP, start, end, asOf };
+  const fArgs = {
+    scopeOnP: args.scopeOnP,
+    start,
+    end,
+    asOf,
+    restrictPolicyYearToAsOf: args.restrictPolicyYearToAsOf,
+  };
 
   const fromMember = baseFromClause(fArgs, filters, true, args.groupBy === "age");
 

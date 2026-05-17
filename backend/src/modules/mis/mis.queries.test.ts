@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { policyYearActiveOnAsOfSql, reportPeriodBoundsUTC } from "./mis.queries.js";
+import {
+  policyYearActiveOnAsOfSql,
+  policyYearInReportScopeSql,
+  reportPeriodBoundsUTC,
+} from "./mis.queries.js";
 
 function sqlText(sql: Prisma.Sql): string {
   return sql.strings.join("?");
@@ -24,5 +28,15 @@ describe("policyYearActiveOnAsOfSql", () => {
     expect(sql).toContain("py.policyStart IS NULL AND py.policyEnd IS NULL");
     expect(sql).toContain("yearLabel REGEXP");
     expect(sql).toContain("-04-01");
+  });
+});
+
+describe("policyYearInReportScopeSql", () => {
+  it("skips as-of window when restrictToAsOfWindow is false", () => {
+    const start = new Date("2026-05-16T00:00:00.000Z");
+    const end = new Date("2026-05-16T23:59:59.999Z");
+    const asOf = new Date("2026-05-16T12:00:00.000Z");
+    const sql = sqlText(policyYearInReportScopeSql(start, end, asOf, "py", false));
+    expect(sql).toBe("1=1");
   });
 });

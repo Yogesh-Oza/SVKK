@@ -200,6 +200,10 @@ function parseInrAmount(v: unknown): number | null {
 }
 
 /** Indian-style grouping, e.g. ₹ 58,839 */
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function formatInrRupee(v: unknown): string | null {
   const n = parseInrAmount(v);
   if (n == null) return null;
@@ -219,6 +223,8 @@ export default function SvkkPoliciesPage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
   const prevSearchApplied = useRef(searchApplied);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState(todayIsoDate);
   const [villages, setVillages] = useState<string[]>([]);
   const [periodYears, setPeriodYears] = useState<string[]>([]);
   const [periodMonths, setPeriodMonths] = useState<string[]>([]);
@@ -276,6 +282,8 @@ export default function SvkkPoliciesPage() {
   const filtersKey = useMemo(
     () =>
       JSON.stringify({
+        dateFrom,
+        dateTo,
         villages,
         periodYears,
         periodMonths,
@@ -285,7 +293,18 @@ export default function SvkkPoliciesPage() {
         sumInsureds,
         policyGroupings,
       }),
-    [villages, periodYears, periodMonths, categoryIds, adVariants, areas, sumInsureds, policyGroupings],
+    [
+      dateFrom,
+      dateTo,
+      villages,
+      periodYears,
+      periodMonths,
+      categoryIds,
+      adVariants,
+      areas,
+      sumInsureds,
+      policyGroupings,
+    ],
   );
   const prevFiltersKey = useRef(filtersKey);
   useEffect(() => {
@@ -301,6 +320,8 @@ export default function SvkkPoliciesPage() {
     q.set("pageSize", String(pageSize));
     q.set("sort", sort);
     if (searchApplied.trim()) q.set("search", searchApplied.trim());
+    if (dateFrom) q.set("dateFrom", dateFrom);
+    if (dateTo) q.set("dateTo", dateTo);
     villages.forEach((v) => q.append("villages", v));
     periodYears.forEach((y) => q.append("periodYearTexts", y));
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
@@ -315,6 +336,8 @@ export default function SvkkPoliciesPage() {
     pageSize,
     sort,
     searchApplied,
+    dateFrom,
+    dateTo,
     villages,
     periodYears,
     periodMonths,
@@ -431,6 +454,8 @@ export default function SvkkPoliciesPage() {
   const activeFilterCount = useMemo(() => {
     let n = 0;
     if (searchApplied.trim()) n++;
+    if (dateFrom) n++;
+    if (dateTo !== todayIsoDate()) n++;
     if (villages.length) n++;
     if (periodYears.length) n++;
     if (periodMonths.length) n++;
@@ -442,6 +467,8 @@ export default function SvkkPoliciesPage() {
     return n;
   }, [
     searchApplied,
+    dateFrom,
+    dateTo,
     villages,
     periodYears,
     periodMonths,
@@ -874,44 +901,6 @@ export default function SvkkPoliciesPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="from-primary/8 border-primary/15 bg-linear-to-br to-card py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-primary/12 flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <Shield className="text-primary size-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">SVKK IDs (grouped)</p>
-              <p className="text-2xl font-bold tabular-nums tracking-tight">
-                {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <LayoutList className="text-muted-foreground size-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">On this page</p>
-              <p className="text-2xl font-bold tabular-nums">{rows.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <Users className="text-muted-foreground size-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Selected</p>
-              <p className="text-2xl font-bold tabular-nums">{selectedCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       <Card className="overflow-hidden py-0 shadow-md">
         <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
           <CardHeader className="bg-muted/20 flex flex-row flex-wrap items-start justify-between gap-4 border-b py-5 sm:items-center">
@@ -988,6 +977,28 @@ export default function SvkkPoliciesPage() {
               </div>
               <Separator />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                    From date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-10 bg-background/90"
+                  />
+                </div>
+                <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                    To date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="h-10 bg-background/90"
+                  />
+                </div>
                 <PolicyFilterMulti
                   label="Year"
                   placeholder="All years"
@@ -1053,48 +1064,88 @@ export default function SvkkPoliciesPage() {
                   onChange={setPolicyGroupings}
                   accentClassName="border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card"
                 />
-                <div className="flex flex-wrap items-end gap-2">
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={loading || exportBusy}
-                    onClick={() => void exportPoliciesCsv()}
-                  >
-                    <Download className="size-3.5" />
-                    {exportBusy ? "Exporting…" : "Export CSV"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => {
-                      setSearchDraft("");
-                      setSearchApplied("");
-                      prevSearchApplied.current = "";
-                      setVillages([]);
-                      setPeriodYears([]);
-                      setPeriodMonths([]);
-                      setCategoryIds([]);
-                      setAdVariants([]);
-                      setAreas([]);
-                      setSumInsureds([]);
-                      setPolicyGroupings([]);
-                      setSort("createdAt");
-                      setPage(1);
-                    }}
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Reset filters
-                  </Button>
-                </div>
+              </div>
+              <div className="mt-2 mb-4 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={loading || exportBusy}
+                  onClick={() => void exportPoliciesCsv()}
+                >
+                  <Download className="size-3.5" />
+                  {exportBusy ? "Exporting…" : "Export CSV"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setSearchDraft("");
+                    setSearchApplied("");
+                    prevSearchApplied.current = "";
+                    setDateFrom("");
+                    setDateTo(todayIsoDate());
+                    setVillages([]);
+                    setPeriodYears([]);
+                    setPeriodMonths([]);
+                    setCategoryIds([]);
+                    setAdVariants([]);
+                    setAreas([]);
+                    setSumInsureds([]);
+                    setPolicyGroupings([]);
+                    setSort("createdAt");
+                    setPage(1);
+                  }}
+                >
+                  <RotateCcw className="size-3.5" />
+                  Reset filters
+                </Button>
               </div>
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
       </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="from-primary/8 border-primary/15 bg-linear-to-br to-card py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-primary/12 flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Shield className="text-primary size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">SVKK IDs (grouped)</p>
+              <p className="text-2xl font-bold tabular-nums tracking-tight">
+                {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <LayoutList className="text-muted-foreground size-5" />
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">On this page</p>
+              <p className="text-2xl font-bold tabular-nums">{rows.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="py-0 shadow-sm">
+          <CardContent className="flex items-center gap-3 px-4 py-4">
+            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Users className="text-muted-foreground size-5" />
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Selected</p>
+              <p className="text-2xl font-bold tabular-nums">{selectedCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {canDel && selectedCount > 0 ? (
         <motion.div

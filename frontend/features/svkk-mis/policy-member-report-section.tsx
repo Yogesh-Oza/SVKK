@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -38,8 +39,15 @@ import {
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpDown, Download, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Wait after filter changes before hitting the MIS report API (table search stays instant). */
+const REPORT_FETCH_DEBOUNCE_MS = 400;
 
 const GROUP_BY_OPTIONS = [
   { value: "village" as const, label: "Village wise" },
@@ -301,7 +309,7 @@ type Props = {
 
 export function PolicyMemberReportSection({ onError }: Props) {
   const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(todayIsoDate);
   const [groupBy, setGroupBy] = useState<(typeof GROUP_BY_OPTIONS)[number]["value"]>("village");
   const [categoryKeys, setCategoryKeys] = useState<string[]>([]);
   const [villages, setVillages] = useState<string[]>([]);
@@ -314,7 +322,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<PolicyMemberRow[]>([]);
   const [activeGroup, setActiveGroup] = useState<ReportResponse["groupBy"] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const { options: ddOptions } = useDropdownOptions();
 
@@ -349,6 +358,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
     () => makeColumns(activeGroup ? DIM_HEADER[activeGroup] : "—"),
     [activeGroup],
   );
+  const colCount = columns.length;
 
   const table = useReactTable({
     data,
@@ -392,25 +402,21 @@ export function PolicyMemberReportSection({ onError }: Props) {
     villages,
   ]);
 
-  const runReport = useCallback(async () => {
-    onError("");
-    if (!getSvkkApiBase()) {
-      onError("Configure NEXT_PUBLIC_API_URL");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await svkkJson<ReportResponse>(
-        `/mis/policy-member-report?${buildQuery().toString()}`,
-      );
-      setData(res.rows);
-      setActiveGroup(res.groupBy);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Report failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [buildQuery, onError]);
+  const reportQueryString = useMemo(() => buildQuery().toString(), [
+    areas,
+    categoryKeys,
+    dateFrom,
+    dateTo,
+    fiscalYears,
+    groupBy,
+    months,
+    policyGroupings,
+    sumInsureds,
+    villages,
+  ]);
+
+  const reportFetchGenerationRef = useRef(0);
+  const reportDebounceReadyRef = useRef(false);
 
   useEffect(() => {
     if (!getSvkkApiBase()) return;
@@ -425,11 +431,106 @@ export function PolicyMemberReportSection({ onError }: Props) {
   }, []);
 
   useEffect(() => {
-    void runReport();
-  }, [runReport]);
+    if (!getSvkkApiBase()) {
+      onError("Configure NEXT_PUBLIC_API_URL");
+      setLoading(false);
+      return;
+    }
+    onError("");
+    setLoading(true);
 
-  const downloadCsv = useCallback(() => {
+    const delay = reportDebounceReadyRef.current ? REPORT_FETCH_DEBOUNCE_MS : 0;
+    reportDebounceReadyRef.current = true;
+
+    const timer = window.setTimeout(() => {
+      const generation = ++reportFetchGenerationRef.current;
+      void (async () => {
+        try {
+          const res = await svkkJson<ReportResponse>(
+            `/mis/policy-member-report?${reportQueryString}`,
+          );
+          if (generation !== reportFetchGenerationRef.current) return;
+          setData(res.rows);
+          setActiveGroup(res.groupBy);
+        } catch (e) {
+          if (generation !== reportFetchGenerationRef.current) return;
+          onError(e instanceof Error ? e.message : "Report failed");
+        } finally {
+          if (generation === reportFetchGenerationRef.current) {
+            setLoading(false);
+          }
+        }
+      })();
+    }, delay);
+
+    return () => {
+      window.clearTimeout(timer);
+      reportFetchGenerationRef.current += 1;
+    };
+  }, [onError, reportQueryString]);
+
+  const onGroupByChange = useCallback((v: string) => {
+    const next = v as (typeof GROUP_BY_OPTIONS)[number]["value"];
+    setGroupBy(next);
+    if (next !== "village") {
+      setVillages([]);
+    }
+    if (next !== "area") {
+      setAreas([]);
+    }
+    if (next !== "sum_insured") {
+      setSumInsureds([]);
+    }
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setDateFrom("");
+    setDateTo(todayIsoDate());
+    setGroupBy("village");
+    setCategoryKeys([]);
+    setVillages([]);
+    setAreas([]);
+    setSumInsureds([]);
+    setPolicyGroupings([]);
+    setMonths([]);
+    setFiscalYears([]);
+    setFilterText("");
+    setSorting([]);
+  }, []);
+
+  const filtersActive = useMemo(
+    () =>
+      dateFrom !== "" ||
+      dateTo !== todayIsoDate() ||
+      groupBy !== "village" ||
+      categoryKeys.length > 0 ||
+      villages.length > 0 ||
+      areas.length > 0 ||
+      sumInsureds.length > 0 ||
+      policyGroupings.length > 0 ||
+      months.length > 0 ||
+      fiscalYears.length > 0 ||
+      filterText.trim() !== "" ||
+      sorting.length > 0,
+    [
+      areas,
+      categoryKeys,
+      dateFrom,
+      dateTo,
+      filterText,
+      fiscalYears,
+      groupBy,
+      months,
+      policyGroupings,
+      sorting.length,
+      sumInsureds,
+      villages,
+    ],
+  );
+
+  const exportReportCsv = useCallback(() => {
     void (async () => {
+      setExportBusy(true);
       try {
         const res = await backendApi.get(
           `/mis/export/policy-member-report.csv?${buildQuery().toString()}`,
@@ -444,6 +545,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
         URL.revokeObjectURL(url);
       } catch (e) {
         onError(e instanceof Error ? e.message : "Export failed");
+      } finally {
+        setExportBusy(false);
       }
     })();
   }, [buildQuery, onError]);
@@ -487,10 +590,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
           <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
             Group rows by
           </Label>
-          <Select
-            value={groupBy}
-            onValueChange={(v) => setGroupBy(v as (typeof groupBy))}
-          >
+          <Select value={groupBy} onValueChange={onGroupByChange}>
             <SelectTrigger className="mt-0 h-10 bg-background/90">
               <SelectValue />
             </SelectTrigger>
@@ -503,30 +603,36 @@ export function PolicyMemberReportSection({ onError }: Props) {
             </SelectContent>
           </Select>
         </div>
-        <PolicyFilterMulti
-          label="Village"
-          placeholder="All villages"
-          options={villageOptions}
-          selected={villages}
-          onChange={setVillages}
-          accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
-        />
-        <PolicyFilterMulti
-          label="Area"
-          placeholder="All areas"
-          options={areaOptions}
-          selected={areas}
-          onChange={setAreas}
-          accentClassName="border-teal-200/90 from-teal-50/95 to-card dark:border-teal-900/50 dark:from-teal-950/35 dark:to-card"
-        />
-        <PolicyFilterMulti
-          label="Sum insured"
-          placeholder="All sum insured"
-          options={sumInsuredOptions}
-          selected={sumInsureds}
-          onChange={setSumInsureds}
-          accentClassName="border-orange-200/90 from-orange-50/95 to-card dark:border-orange-900/50 dark:from-orange-950/35 dark:to-card"
-        />
+        {groupBy === "village" ? (
+          <PolicyFilterMulti
+            label="Village"
+            placeholder="All villages"
+            options={villageOptions}
+            selected={villages}
+            onChange={setVillages}
+            accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
+          />
+        ) : null}
+        {groupBy === "area" ? (
+          <PolicyFilterMulti
+            label="Area"
+            placeholder="All areas"
+            options={areaOptions}
+            selected={areas}
+            onChange={setAreas}
+            accentClassName="border-teal-200/90 from-teal-50/95 to-card dark:border-teal-900/50 dark:from-teal-950/35 dark:to-card"
+          />
+        ) : null}
+        {groupBy === "sum_insured" ? (
+          <PolicyFilterMulti
+            label="Sum insured"
+            placeholder="All sum insured"
+            options={sumInsuredOptions}
+            selected={sumInsureds}
+            onChange={setSumInsureds}
+            accentClassName="border-orange-200/90 from-orange-50/95 to-card dark:border-orange-900/50 dark:from-orange-950/35 dark:to-card"
+          />
+        ) : null}
         <PolicyFilterMulti
           label="Policy grouping"
           placeholder="All groupings"
@@ -551,20 +657,33 @@ export function PolicyMemberReportSection({ onError }: Props) {
           onChange={setFiscalYears}
           accentClassName="border-amber-200/90 from-amber-50/95 to-card dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card"
         />
-        <div className="flex flex-wrap items-end gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={downloadCsv}>
-            Download CSV
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={loading}
-            onClick={() => void runReport()}
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </Button>
-        </div>
+      </div>
+      <div className="mt-2 mb-4 flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className="gap-1.5"
+          disabled={loading || exportBusy}
+          onClick={() => void exportReportCsv()}
+        >
+          <Download className="size-3.5" />
+          {exportBusy ? "Exporting…" : "Export CSV"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={loading || !filtersActive}
+          onClick={resetFilters}
+        >
+          <RotateCcw className="size-3.5" />
+          Reset filters
+        </Button>
+        {loading ? (
+          <span className="text-muted-foreground text-xs">Updating report…</span>
+        ) : null}
       </div>
 
       <div className="max-w-sm">
@@ -577,7 +696,13 @@ export function PolicyMemberReportSection({ onError }: Props) {
         />
       </div>
 
-      <div className="max-w-full overflow-x-auto rounded-md border">
+      <div className="relative max-w-full overflow-x-auto rounded-md border">
+        {loading ? (
+          <div
+            className="from-primary/40 pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 animate-pulse bg-linear-to-r via-primary to-primary/40"
+            aria-hidden
+          />
+        ) : null}
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -597,7 +722,17 @@ export function PolicyMemberReportSection({ onError }: Props) {
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.length ? (
+            {loading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={`sk-${i}`}>
+                  {Array.from({ length: colCount }).map((__, j) => (
+                    <TableCell key={j} className="py-1.5 min-w-[5.5rem]">
+                      <Skeleton className="h-8 w-full max-w-32" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} className="text-sm">
                   {row.getVisibleCells().map((cell) => (
@@ -609,12 +744,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-20 text-center text-muted-foreground">
-                  {loading ? "…" : "No data found for selected filters."}
+                <TableCell colSpan={colCount} className="h-20 text-center text-muted-foreground">
+                  No data found for selected filters.
                 </TableCell>
               </TableRow>
             )}
-            {table.getFilteredRowModel().rows.length > 0 ? (
+            {!loading && table.getFilteredRowModel().rows.length > 0 ? (
               <TableRow className="border-t-2 border-t-foreground/10 bg-muted/30 font-medium">
                 {ROW_KEYS.map((k) => (
                   <TableCell key={k} className="py-2 text-sm">
