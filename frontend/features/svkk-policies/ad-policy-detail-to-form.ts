@@ -174,6 +174,7 @@ export type SvkkPolicyDetailForForm = {
       cumulativeBonus: Decimalish;
       dateOfJoining: string | null;
       memberPhone: string | null;
+      addOnsAmount: Decimalish;
       basicPremium: Decimalish;
       ageAtEntry: number | null;
     }>;
@@ -508,7 +509,7 @@ export function policyDetailToAdFormValues(
             cumulativeBonus: decStr(m.cumulativeBonus),
             phNo: m.memberPhone ?? "",
             basicPremium: decStr(m.basicPremium),
-            addOnsAmount: "",
+            addOnsAmount: decStr(m.addOnsAmount),
             gender: m.gender || "M",
           };
         })

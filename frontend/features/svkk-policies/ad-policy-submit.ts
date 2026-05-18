@@ -315,6 +315,7 @@ export async function submitAdPolicyPatchRequest({
     nomineeName: values.nomineeName.trim() || null,
     nomineeRelation: values.nomineeRelation.trim() || null,
     contactPhone: values.nomineePhoneNumber.trim() || values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
+    whatsappNo: values.whatsappNo.replace(/\D/g, "").slice(0, 12) || null,
     remarks: combinedRemarks,
     holderCumulativeBonus: parseNum(values.comulativeBonus) ?? null,
     holderJoiningYear: values.joiningYear.trim() || null,

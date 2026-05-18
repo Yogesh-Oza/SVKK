@@ -25,6 +25,10 @@ import {
   generatePolicyPublicId,
   generateReferenceNo,
 } from "./policy-business.js";
+import {
+  assertUniqueTransactionNumbersInBatch,
+  normalizeTxnNumber,
+} from "./policy-payment.helpers.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -299,6 +303,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           cumulativeBonus: m.cumulativeBonus != null && m.cumulativeBonus !== undefined ? m.cumulativeBonus : undefined,
           dateOfJoining: m.dateOfJoining ?? undefined,
           memberPhone: m.memberPhone ?? undefined,
+          addOnsAmount:
+            m.addOnsAmount != null && m.addOnsAmount !== undefined ? m.addOnsAmount : undefined,
           basicPremium: m.basicPremium != null && m.basicPremium !== undefined ? m.basicPremium : undefined,
           ageAtEntry: m.ageAtEntry != null && m.ageAtEntry !== undefined ? m.ageAtEntry : undefined,
         },
@@ -650,7 +656,9 @@ async function insertPaymentsForYear(
   policyYearId: string,
   payments: PaymentReplaceRow[],
 ) {
+  assertUniqueTransactionNumbersInBatch(payments);
   for (const paymentRow of payments) {
+    const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);
     const mappedStatus =
       paymentRow.status === "DISHONOURED"
         ? PaymentStatus.FAILED
@@ -658,14 +666,10 @@ async function insertPaymentsForYear(
           ? PaymentStatus.COMPLETED
           : PaymentStatus.PENDING;
     let chequeId: string | undefined;
-    if (
-      paymentRow.method === PayMethod.CHQ &&
-      paymentRow.bankName &&
-      paymentRow.transactionNumber
-    ) {
+    if (paymentRow.method === PayMethod.CHQ && paymentRow.bankName && txnNumber) {
       const ch = await tx.cheque.create({
         data: {
-          number: paymentRow.transactionNumber,
+          number: txnNumber,
           bankName: paymentRow.bankName,
           ifsc: paymentRow.ifscCode ?? undefined,
           status:
@@ -694,7 +698,7 @@ async function insertPaymentsForYear(
         method: paymentRow.method,
         status: mappedStatus,
         chequeId: chequeId ?? null,
-        transactionNumber: paymentRow.transactionNumber ?? undefined,
+        transactionNumber: txnNumber,
         transactionDate: paymentRow.transactionDate ?? undefined,
         bankName: paymentRow.bankName ?? undefined,
         branchName: paymentRow.branchName ?? undefined,
@@ -722,9 +726,10 @@ async function replaceYearPayments(
   if (!yearRow || yearRow.deletedAt) {
     throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
   }
+  // Clear transactionNumber so soft-deleted rows do not block re-insert (global unique index).
   await tx.payment.updateMany({
     where: { policyYearId: yearRow.id, deletedAt: null },
-    data: { deletedAt: new Date() },
+    data: { deletedAt: new Date(), transactionNumber: null },
   });
   if (payments.length > 0) {
     await insertPaymentsForYear(tx, yearRow.id, payments);
@@ -763,6 +768,8 @@ async function replaceYearMembers(
         m.cumulativeBonus != null && m.cumulativeBonus !== undefined ? m.cumulativeBonus : undefined,
       dateOfJoining: m.dateOfJoining ?? undefined,
       memberPhone: m.memberPhone ?? undefined,
+      addOnsAmount:
+        m.addOnsAmount != null && m.addOnsAmount !== undefined ? m.addOnsAmount : undefined,
       basicPremium: m.basicPremium != null && m.basicPremium !== undefined ? m.basicPremium : undefined,
       ageAtEntry: m.ageAtEntry != null && m.ageAtEntry !== undefined ? m.ageAtEntry : undefined,
     })),
