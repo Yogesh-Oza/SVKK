@@ -13,6 +13,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiGet, apiPatch, apiPost } from "@/lib/api/svkk-client";
+import {
+  pickExclusiveScope,
+  policyScopeValidationMessage,
+  POLICY_SCOPE_KEYS,
+  resolvePermissionClosure,
+} from "@/lib/rbac/permission-closure";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -106,6 +112,9 @@ export function RoleFormDialog({
 
   const toggle = (key: string, checked: boolean) => {
     setSelected((prev) => {
+      if (POLICY_SCOPE_KEYS.includes(key as (typeof POLICY_SCOPE_KEYS)[number])) {
+        return pickExclusiveScope(key, checked, prev, POLICY_SCOPE_KEYS);
+      }
       const next = new Set(prev);
       if (checked) next.add(key);
       else next.delete(key);
@@ -131,6 +140,12 @@ export function RoleFormDialog({
     }
     if (selected.size === 0) {
       toast.error("Select at least one permission");
+      return;
+    }
+    const resolved = resolvePermissionClosure(selected);
+    const scopeError = policyScopeValidationMessage(resolved);
+    if (scopeError) {
+      toast.error(scopeError);
       return;
     }
     setSaving(true);

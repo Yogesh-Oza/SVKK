@@ -34,7 +34,7 @@ export async function refreshSvkkAccessToken(): Promise<string | null> {
   try {
     const { data } = await axios.post<{ accessToken?: string; refreshToken?: string }>(
       `${base}/auth/refresh`,
-      rt ? { refreshToken: rt } : null,
+      rt ? { refreshToken: rt } : {},
       {
         withCredentials: true,
         timeout: 30_000,

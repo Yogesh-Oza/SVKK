@@ -5,6 +5,7 @@ import type { AppLogger } from "../../utils/logger.js";
 import { sendEmail, isEmailConfigured } from "../email/email.service.js";
 import { renderEmailTemplate } from "../email/email-template.service.js";
 import type { EmailTemplateId } from "../email/email-template-catalog.js";
+import { buildReceiptFieldsHtml } from "../email/email-receipt-fields.js";
 import {
   formatDateDmy,
   policyDocumentLinkHtml,
@@ -42,6 +43,62 @@ async function loadPolicyBundle(policyId: string): Promise<PolicyBundle | null> 
         select: { yearLabel: true, policyEnd: true },
       },
     },
+  });
+}
+
+async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string): Promise<string> {
+  const receipt = await prisma.receipt.findFirst({
+    where: { policyId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      receiptNo: true,
+      policyDate: true,
+      amount: true,
+      paymentMode: true,
+    },
+  });
+  if (!receipt) return "";
+
+  const policy = await prisma.policy.findFirst({
+    where: { id: policyId },
+    select: {
+      policyNo: true,
+      village: true,
+      area: true,
+      contactPhone: true,
+      insuredParty: {
+        select: {
+          svkkPublicId: true,
+          customerId: true,
+          email: true,
+          pan: true,
+          aadhaarNo: true,
+        },
+      },
+      category: { select: { name: true } },
+      policyType: { select: { name: true } },
+      personsInsuredCount: true,
+    },
+  });
+
+  const ip = policy?.insuredParty;
+  return buildReceiptFieldsHtml({
+    receiptNo: receipt.receiptNo,
+    receiptDate: formatDateDmy(receipt.policyDate),
+    svkkId: ip?.svkkPublicId ?? "",
+    customerId: ip?.customerId ?? "",
+    policyHolderName: holderName,
+    policyNo: policy?.policyNo ?? "",
+    area: policy?.area ?? "",
+    phoneNo: policy?.contactPhone ?? "",
+    emailId: ip?.email ?? "",
+    village: policy?.village ?? "",
+    personCount: policy?.personsInsuredCount != null ? String(policy.personsInsuredCount) : "",
+    category: policy?.category?.name ?? "",
+    policyType: policy?.policyType?.name ?? "",
+    premiumAmount: String(receipt.amount),
+    amountReceived: String(receipt.amount),
+    paymentMode: receipt.paymentMode ?? "",
   });
 }
 
@@ -108,12 +165,13 @@ export async function notifyPolicyCreated(
   const p = await loadPolicyBundle(input.policyId);
   if (!p) return;
 
-  const vars = templateVarsFromPolicy(env, p);
+  const receiptFields = await receiptFieldsHtmlForPolicy(p.id, p.insuredParty.name);
+  const vars = { ...templateVarsFromPolicy(env, p), receiptFields };
   const { staffLinkUrl } = resolveNotificationLinks(env, p);
   const emailSent = await emailHolderIfPossible(
     env,
     log,
-    "policy_created",
+    "mediclaim_new_policy_ack",
     p.insuredParty.email,
     vars,
   );

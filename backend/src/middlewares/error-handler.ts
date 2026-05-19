@@ -31,6 +31,16 @@ export function errorHandler(
     });
   }
 
+  if (err instanceof SyntaxError && "status" in err && (err as SyntaxError & { status?: number }).status === 400) {
+    req.log?.warn({ err }, "invalid JSON body");
+    return res.status(400).json({
+      success: false,
+      code: "INVALID_JSON",
+      message: "Request body must be valid JSON",
+      traceId,
+    });
+  }
+
   req.log?.error({ err }, "unhandled error");
   return res.status(500).json({
     success: false,

@@ -1,12 +1,17 @@
 import { wrapEmailBody } from "./email-layout.js";
+import { MEDICLAIM_EMAIL_TEMPLATES } from "./email-template-mediclaim.js";
 
 export type EmailTemplateId =
-  | "policy_created"
   | "policy_number_updated"
   | "renewal_60"
   | "renewal_30"
   | "renewal_8"
-  | "renewal_2";
+  | "renewal_2"
+  | "mediclaim_renewal_ack"
+  | "mediclaim_new_policy_ack"
+  | "mediclaim_dishonoured"
+  | "mediclaim_premium_reminder"
+  | "mediclaim_cheque_honoured";
 
 export type EmailTemplateDefinition = {
   id: EmailTemplateId;
@@ -22,32 +27,6 @@ export type EmailTemplateDefinition = {
 const wrap = (body: string) => wrapEmailBody(body);
 
 export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
-  {
-    id: "policy_created",
-    label: "Policy generated",
-    description: "Sent when a new policy is created in the system.",
-    subjectKey: "email_tpl_policy_created_subject",
-    htmlKey: "email_tpl_policy_created_html",
-    defaultSubject: "Your SVKK policy {{referenceNo}} has been registered",
-    defaultHtml: wrap(
-      `<h1>Policy registered</h1>
-<p>Dear {{holderName}},</p>
-<p>Your policy has been generated successfully.</p>
-<p><strong>SVKK ID:</strong> {{svkkPublicId}}<br/>
-<strong>Reference:</strong> {{referenceNo}}<br/>
-<strong>Village:</strong> {{village}}</p>
-{{policyDocumentLink}}`,
-    ),
-    variables: [
-      "holderName",
-      "svkkPublicId",
-      "referenceNo",
-      "policyNo",
-      "village",
-      "policyUrl",
-      "policyDocumentLink",
-    ],
-  },
   {
     id: "policy_number_updated",
     label: "Policy number & document",
@@ -165,6 +144,7 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
       "village",
     ],
   },
+  ...MEDICLAIM_EMAIL_TEMPLATES,
 ];
 
 export const RENEWAL_OFFSET_DAYS = [60, 30, 8, 2] as const;

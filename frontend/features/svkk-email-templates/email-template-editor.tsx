@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { buildPreviewHtml } from "@/lib/svkk/email-template-layout";
+import { buildPreviewHtml, isMediclaimTemplateId } from "@/lib/svkk/email-template-layout";
 import { Bold, Link2, Loader2, RotateCcw, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -61,7 +61,11 @@ export function EmailTemplateEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
 
-  const preview = useMemo(() => buildPreviewHtml(body, subject), [body, subject]);
+  const mediclaim = isMediclaimTemplateId(templateId);
+  const preview = useMemo(
+    () => buildPreviewHtml(body, subject, templateId),
+    [body, subject, templateId],
+  );
 
   const syncBodyFromEditor = useCallback(() => {
     if (!editorRef.current) return;
@@ -84,6 +88,12 @@ export function EmailTemplateEditor({
   function insertDocumentLink() {
     if (!editorRef.current) return;
     insertAtCursor(editorRef.current, "{{policyDocumentLink}}");
+    syncBodyFromEditor();
+  }
+
+  function insertReceiptFields() {
+    if (!editorRef.current) return;
+    insertAtCursor(editorRef.current, "{{receiptFields}}");
     syncBodyFromEditor();
   }
 
@@ -134,6 +144,18 @@ export function EmailTemplateEditor({
                 <Link2 className="mr-1 size-3.5" />
                 Document link
               </Button>
+              {mediclaim ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 cursor-pointer"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={insertReceiptFields}
+                >
+                  Receipt block
+                </Button>
+              ) : null}
               <Select onValueChange={insertVariable}>
                 <SelectTrigger className="h-8 w-[160px] cursor-pointer text-xs">
                   <SelectValue placeholder="Insert variable" />
@@ -152,12 +174,13 @@ export function EmailTemplateEditor({
 
         <TabsContent value="edit" className="mt-3 space-y-2">
           <p className="text-muted-foreground text-xs">
-            Edit the message below. Layout, fonts, and footer are fixed — only this content is saved.
-            Use <strong>Document link</strong> for the Policy URL button (not a raw URL).
+            {mediclaim
+              ? "Mediclaim layout: branded header and TEAM MEDICLAIM signature are fixed. Edit the message and use Insert variable for dynamic fields."
+              : "Edit the message below. Layout, fonts, and footer are fixed — only this content is saved. Use Document link for the Policy URL button."}
           </p>
-          <div className="rounded-xl border bg-[#f4f7fb] p-4">
+          <div className="rounded-xl border bg-[#eef2f7] p-4">
             <div
-              className="email-template-editor-card mx-auto max-w-[560px] rounded-xl border border-[#d9e3ee] bg-white p-6 text-[#0b1728] shadow-sm [&_.btn]:inline-block [&_.btn]:mt-4 [&_.btn]:rounded-lg [&_.btn]:bg-[#174ea6] [&_.btn]:px-[18px] [&_.btn]:py-2.5 [&_.btn]:text-sm [&_.btn]:text-white [&_.btn]:no-underline [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-semibold [&_p]:my-2 [&_p]:leading-relaxed"
+              className={`email-template-editor-card mx-auto max-w-[600px] rounded-xl border border-[#d9e3ee] bg-white p-6 text-[#0b1728] shadow-sm [&_.alert-box]:my-3 [&_.btn]:inline-block [&_.btn]:mt-3 [&_.btn]:rounded-lg [&_.btn]:bg-[#174ea6] [&_.btn]:px-[18px] [&_.btn]:py-2.5 [&_.btn]:text-sm [&_.btn]:text-white [&_.btn]:no-underline [&_.policy-block]:my-3 [&_.receipt-box]:my-3 [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-semibold [&_p]:my-2 [&_p]:leading-relaxed`}
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
@@ -173,10 +196,12 @@ export function EmailTemplateEditor({
           <p className="text-muted-foreground mb-2 text-xs">
             Sample data is shown for placeholders. Real emails use each policy&apos;s values.
           </p>
-          <div className="overflow-hidden rounded-xl border bg-[#f4f7fb]">
+          <div
+            className={`overflow-hidden rounded-xl border ${mediclaim ? "bg-[#eef2f7]" : "bg-[#f4f7fb]"}`}
+          >
             <iframe
               title={`Preview: ${label}`}
-              className="min-h-[420px] w-full border-0 bg-[#f4f7fb]"
+              className={`min-h-[480px] w-full border-0 ${mediclaim ? "bg-[#eef2f7]" : "bg-[#f4f7fb]"}`}
               sandbox=""
               srcDoc={preview.html}
             />

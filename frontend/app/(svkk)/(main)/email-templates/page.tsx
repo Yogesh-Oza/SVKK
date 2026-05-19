@@ -99,7 +99,8 @@ export default function EmailTemplatesPage() {
           <Loader2 className="size-4 animate-spin" /> Loading templates…
         </p>
       ) : (
-        templates.map((t) => (
+        <>
+        {templates.filter((t) => !t.id.startsWith("mediclaim_")).map((t) => (
           <Card key={t.id}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -137,7 +138,60 @@ export default function EmailTemplatesPage() {
               />
             </CardContent>
           </Card>
-        ))
+        ))}
+        {templates.some((t) => t.id.startsWith("mediclaim_")) ? (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Mediclaim templates</h2>
+              <p className="text-muted-foreground text-sm">
+                Branded acknowledgement, dishonour, reminder, and cheque-cleared notices. Styling and
+                signature are fixed; message body and placeholders are editable.
+              </p>
+            </div>
+            {templates
+              .filter((t) => t.id.startsWith("mediclaim_"))
+              .map((t) => (
+                <Card key={t.id}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Mail className="size-5" />
+                      {t.label}
+                    </CardTitle>
+                    <CardDescription>{t.description}</CardDescription>
+                    <p className="text-muted-foreground text-xs">
+                      Variables: {t.variables.map((v) => `{{${v}}}`).join(", ")}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <EmailTemplateEditor
+                      templateId={t.id}
+                      label={t.label}
+                      description={t.description}
+                      variables={t.variables}
+                      subject={drafts[t.id]?.subject ?? ""}
+                      body={drafts[t.id]?.body ?? ""}
+                      saving={savingId === t.id}
+                      onSubjectChange={(subject) =>
+                        setDrafts((d) => ({
+                          ...d,
+                          [t.id]: { subject, body: d[t.id]?.body ?? "" },
+                        }))
+                      }
+                      onBodyChange={(body) =>
+                        setDrafts((d) => ({
+                          ...d,
+                          [t.id]: { subject: d[t.id]?.subject ?? "", body },
+                        }))
+                      }
+                      onSave={() => void save(t.id)}
+                      onReset={() => resetToDefault(t.id)}
+                    />
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        ) : null}
+        </>
       )}
     </div>
   );
