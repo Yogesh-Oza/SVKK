@@ -95,8 +95,13 @@ export const EMAIL_TEMPLATE_SAMPLE_VARS: Record<string, string> = {
   dishonourReason: "Insufficient funds",
 };
 
+/** Templates with TEAM MEDICLAIM header + signature (matches backend usesMediclaimBranding). */
 export function isMediclaimTemplateId(templateId: string): boolean {
-  return templateId.startsWith("mediclaim_");
+  return (
+    templateId.startsWith("mediclaim_") ||
+    templateId === "policy_number_updated" ||
+    templateId.startsWith("renewal_")
+  );
 }
 
 export function buildPreviewHtml(

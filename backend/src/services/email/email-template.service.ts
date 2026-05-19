@@ -5,7 +5,7 @@ import {
   type EmailTemplateId,
   getTemplateDefinition,
 } from "./email-template-catalog.js";
-import { extractEmailBody, wrapEmailBody } from "./email-layout.js";
+import { extractEmailBody, wrapEmailBodyForTemplate } from "./email-layout.js";
 
 export type RenderedEmail = { subject: string; html: string };
 
@@ -24,7 +24,7 @@ export async function getEmailTemplateContent(
   const stored = map.get(def.htmlKey)?.trim() || def.defaultHtml;
   return {
     subject: map.get(def.subjectKey)?.trim() || def.defaultSubject,
-    html: wrapEmailBody(extractEmailBody(stored)),
+    html: wrapEmailBodyForTemplate(templateId, extractEmailBody(stored)),
   };
 }
 
@@ -70,7 +70,7 @@ export async function saveEmailTemplate(
   body: string,
 ): Promise<void> {
   const def = getTemplateDefinition(templateId);
-  const html = wrapEmailBody(body);
+  const html = wrapEmailBodyForTemplate(templateId, body);
   await prisma.$transaction([
     prisma.appSetting.upsert({
       where: { key: def.subjectKey },

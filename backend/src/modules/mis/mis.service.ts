@@ -10,7 +10,9 @@ import {
   queryVillageAggregates,
   queryVillagePaymentTotals,
   queryMemberAgeBuckets,
+  queryDistinctPolicyCategoryKeys,
   queryPolicyMemberReport,
+  UNCATEGORIZED_CATEGORY_KEY,
   type PolicyMemberReportRow,
 } from "./mis.queries.js";
 
@@ -284,8 +286,50 @@ export type PolicyMemberReportGroupBy =
   | "age"
   | "policy_grouping";
 
-const DRILL_CATEGORY_ORDER = ["A", "B", "C", "D", "STAFF"] as const;
+/** Preferred section order; additional keys (e.g. asha_kiran_cat, e) are appended from data. */
+const PREFERRED_DRILL_CATEGORY_KEYS = ["a", "b", "c", "d", "staff"] as const;
 const DRILL_GROUPING_ORDER = ["SVKK", "NVKK", "RTY", "OTHER"] as const;
+
+function drillCategoryLabel(categoryKey: string): string {
+  if (categoryKey === UNCATEGORIZED_CATEGORY_KEY) return "Uncategorized";
+  if (categoryKey === "asha_kiran_cat") return "Asha Kiran";
+  return `${categoryKey} category`;
+}
+
+/** Align user filter tokens (A, STAFF) with DB category keys (a, staff, asha_kiran_cat). */
+function categoryKeyMatchesFilter(dbKey: string, filterToken: string): boolean {
+  const f = filterToken.trim().toLowerCase();
+  if (!f) return false;
+  if (dbKey === UNCATEGORIZED_CATEGORY_KEY) return false;
+  return dbKey === f;
+}
+
+/**
+ * Build drill-down category list: preferred A–D/STAFF first, then other keys present in data
+ * (e.g. asha_kiran_cat, e), then uncategorized — so section totals match the main row.
+ */
+export function resolveDrillCategoryKeys(
+  discovered: string[],
+  userCategoryFilters: string[],
+): string[] {
+  const pool =
+    userCategoryFilters.length > 0
+      ? discovered.filter((k) =>
+          userCategoryFilters.some((f) => categoryKeyMatchesFilter(k, f)),
+        )
+      : [...discovered];
+
+  const preferred = PREFERRED_DRILL_CATEGORY_KEYS.filter((k) => pool.includes(k));
+  const rest = pool
+    .filter((k) => !PREFERRED_DRILL_CATEGORY_KEYS.includes(k as (typeof PREFERRED_DRILL_CATEGORY_KEYS)[number]))
+    .filter((k) => k !== UNCATEGORIZED_CATEGORY_KEY)
+    .sort((a, b) => a.localeCompare(b));
+  const ordered = [...preferred, ...rest];
+  if (pool.includes(UNCATEGORIZED_CATEGORY_KEY)) {
+    ordered.push(UNCATEGORIZED_CATEGORY_KEY);
+  }
+  return ordered;
+}
 
 function emptyPolicyMemberRow(label: string): PolicyMemberReportRow {
   return {
@@ -429,13 +473,6 @@ export async function getPolicyMemberReportDetail(
     input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
   const restrictPolicyYearToAsOf = input.dateFrom != null;
 
-  const categories =
-    input.categoryKeys.length > 0
-      ? DRILL_CATEGORY_ORDER.filter((c) =>
-          input.categoryKeys.some((k) => k.toUpperCase() === c),
-        )
-      : [...DRILL_CATEGORY_ORDER];
-
   const baseQuery = {
     scopeOnP,
     periodStart: start,
@@ -454,6 +491,9 @@ export async function getPolicyMemberReportDetail(
     fiscalLabels: input.fiscalLabels,
     restrictPolicyYearToAsOf,
   };
+
+  const discovered = await queryDistinctPolicyCategoryKeys(prisma, baseQuery);
+  const categories = resolveDrillCategoryKeys(discovered, input.categoryKeys);
 
   const sections: Array<{
     categoryKey: string;
@@ -475,7 +515,7 @@ export async function getPolicyMemberReportDetail(
     });
     sections.push({
       categoryKey,
-      categoryLabel: `${categoryKey.toLowerCase()} category`,
+      categoryLabel: drillCategoryLabel(categoryKey),
       rows,
     });
   }

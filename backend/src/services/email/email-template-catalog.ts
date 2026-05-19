@@ -1,4 +1,4 @@
-import { wrapEmailBody } from "./email-layout.js";
+import { wrapMediclaimEmailBody } from "./email-layout.js";
 import { MEDICLAIM_EMAIL_TEMPLATES } from "./email-template-mediclaim.js";
 
 export type EmailTemplateId =
@@ -24,7 +24,7 @@ export type EmailTemplateDefinition = {
   variables: string[];
 };
 
-const wrap = (body: string) => wrapEmailBody(body);
+const wrap = (body: string) => wrapMediclaimEmailBody(body);
 
 export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
   {
@@ -35,11 +35,12 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
     htmlKey: "email_tpl_policy_number_updated_html",
     defaultSubject: "Policy {{policyNo}} — document available",
     defaultHtml: wrap(
-      `<h1>Policy details updated</h1>
-<p>Dear {{holderName}},</p>
-<p>Your policy record has been updated.</p>
+      `<p>Dear Valued Policyholder <strong>{{holderName}}</strong>,</p>
+<p>This is to inform you that your Mediclaim policy record has been updated.</p>
+<div class="policy-block">
 <p><strong>Policy No:</strong> {{policyNo}}<br/>
 <strong>SVKK ID:</strong> {{svkkPublicId}}</p>
+</div>
 {{policyDocumentLink}}`,
     ),
     variables: [
@@ -60,9 +61,9 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
     htmlKey: "email_tpl_renewal_60_html",
     defaultSubject: "Renewal reminder: policy ends on {{policyEndDate}}",
     defaultHtml: wrap(
-      `<h1>Renewal in about 2 months</h1>
-<p>Dear {{holderName}},</p>
-<p>Your policy <strong>{{policyNo}}</strong> ({{yearLabel}}) is due for renewal on <strong>{{policyEndDate}}</strong>.</p>
+      `<p>Dear Valued Policyholder <strong>{{holderName}}</strong>,</p>
+<p>Greetings from <strong>SHREE VAGAD KALA KENDRA</strong>.</p>
+<p>Your Mediclaim policy <strong>{{policyNo}}</strong> ({{yearLabel}}) is due for renewal on <strong>{{policyEndDate}}</strong>. We recommend planning renewal in advance to ensure uninterrupted coverage.</p>
 {{policyDocumentLink}}`,
     ),
     variables: [
@@ -83,9 +84,9 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
     htmlKey: "email_tpl_renewal_30_html",
     defaultSubject: "Renewal reminder: 1 month until {{policyEndDate}}",
     defaultHtml: wrap(
-      `<h1>Renewal in about 1 month</h1>
-<p>Dear {{holderName}},</p>
-<p>Your policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong>. Please plan renewal with SVKK.</p>
+      `<p>Dear Valued Policyholder <strong>{{holderName}}</strong>,</p>
+<p>Greetings from <strong>SHREE VAGAD KALA KENDRA</strong>.</p>
+<p>Your Mediclaim policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong>. Please plan renewal with us at the earliest convenience.</p>
 {{policyDocumentLink}}`,
     ),
     variables: [
@@ -106,9 +107,8 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
     htmlKey: "email_tpl_renewal_8_html",
     defaultSubject: "Urgent: policy renewal in 8 days ({{policyEndDate}})",
     defaultHtml: wrap(
-      `<h1>Renewal in 8 days</h1>
-<p>Dear {{holderName}},</p>
-<p>Your policy <strong>{{policyNo}}</strong> expires on <strong>{{policyEndDate}}</strong>.</p>
+      `<p>Dear Valued Policyholder <strong>{{holderName}}</strong>,</p>
+<p><strong>Urgent renewal reminder:</strong> Your Mediclaim policy <strong>{{policyNo}}</strong> expires on <strong>{{policyEndDate}}</strong> (8 days remaining).</p>
 {{policyDocumentLink}}`,
     ),
     variables: [
@@ -129,9 +129,8 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateDefinition[] = [
     htmlKey: "email_tpl_renewal_2_html",
     defaultSubject: "Final reminder: policy ends {{policyEndDate}}",
     defaultHtml: wrap(
-      `<h1>Renewal in 2 days</h1>
-<p>Dear {{holderName}},</p>
-<p>This is a final reminder that policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong>.</p>
+      `<p>Dear Valued Policyholder <strong>{{holderName}}</strong>,</p>
+<p><strong>Final reminder:</strong> Your Mediclaim policy <strong>{{policyNo}}</strong> ends on <strong>{{policyEndDate}}</strong> (2 days remaining). Please contact us immediately if renewal is pending.</p>
 {{policyDocumentLink}}`,
     ),
     variables: [

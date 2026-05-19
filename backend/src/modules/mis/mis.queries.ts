@@ -296,9 +296,15 @@ function groupDimExpr(
   return memberAgeBucketSql(d);
 }
 
+/** Sentinel for policies with no category (not in A/B/C/D/STAFF drill slices). */
+export const UNCATEGORIZED_CATEGORY_KEY = "__uncategorized__";
+
 function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
   if (!categoryKeys.length) {
     return Prisma.empty;
+  }
+  if (categoryKeys.length === 1 && categoryKeys[0] === UNCATEGORIZED_CATEGORY_KEY) {
+    return Prisma.sql` AND (p.categoryId IS NULL OR cat.id IS NULL)`;
   }
   return Prisma.sql` AND LOWER(${Prisma.raw("`cat`.`key`")}) IN (${Prisma.join(
     categoryKeys.map((k) => Prisma.sql`LOWER(${k})`),
@@ -420,6 +426,52 @@ function baseFromClause(
       ${filters.fiscF}
       ${mReq}
   `;
+}
+
+/**
+ * Distinct category keys for policies in scope (used for drill-down sections).
+ * Includes {@link UNCATEGORIZED_CATEGORY_KEY} when policies have no category.
+ */
+export async function queryDistinctPolicyCategoryKeys(
+  prisma: PrismaClient,
+  args: Omit<PolicyMemberReportParams, "groupBy" | "categoryKeys">,
+): Promise<string[]> {
+  const start = args.periodStart;
+  const end = args.periodEnd;
+  const asOf = args.asOf;
+  const yearActive = policyYearInReportScopeSql(start, end, asOf, "py", args.restrictPolicyYearToAsOf);
+  const pgF = policyGroupingsFilterSql(args.policyGroupings);
+  const villF = villagesFilterSql(args.villages);
+  const areaF = areasFilterSql(args.areas);
+  const sumF = sumInsuredsFilterSql(args.sumInsureds);
+  const myF = monthsYearsFilterSql(args.months, args.years);
+  const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
+  const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
+
+  const rows = await prisma.$queryRaw<{ categoryKey: string | null }[]>(Prisma.sql`
+    SELECT DISTINCT cat.\`key\` AS categoryKey
+    FROM Policy p
+    LEFT JOIN Category cat ON p.categoryId = cat.id
+    INNER JOIN PolicyYear py ON py.policyId = p.id
+      AND py.deletedAt IS NULL
+      AND ${yearActive}
+    WHERE p.deletedAt IS NULL
+      AND (${args.scopeOnP})
+      ${pgF}
+      ${villF}
+      ${areaF}
+      ${sumF}
+      ${myF}
+      ${createdF}
+      ${fiscF}
+  `);
+
+  const keys = new Set<string>();
+  for (const r of rows) {
+    const k = r.categoryKey?.trim().toLowerCase();
+    keys.add(k && k.length > 0 ? k : UNCATEGORIZED_CATEGORY_KEY);
+  }
+  return [...keys];
 }
 
 /** Policy & Member report: one row per `groupBy` dimension. Financial sums from policy years; age counts from members. */

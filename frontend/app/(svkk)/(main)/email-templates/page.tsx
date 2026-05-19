@@ -1,11 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmailTemplateEditor } from "@/features/svkk-email-templates/email-template-editor";
+import { EmailTemplatesWorkspace } from "@/features/svkk-email-templates/email-templates-workspace";
 import { backendApi } from "@/lib/svkk/api";
+import { isMediclaimTemplateId } from "@/lib/svkk/email-template-layout";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ export default function EmailTemplatesPage() {
   const { user } = useSvkkAuth();
   const canEdit = user ? hasPermission(user.permissions, "admin:settings") : false;
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, TemplateDraft>>({});
@@ -35,12 +36,14 @@ export default function EmailTemplatesPage() {
     setLoading(true);
     try {
       const { data } = await backendApi.get<{ templates: EmailTemplate[] }>("/email-templates");
-      setTemplates(data.templates ?? []);
+      const list = (data.templates ?? []).filter((t) => isMediclaimTemplateId(t.id));
+      setTemplates(list);
       const next: Record<string, TemplateDraft> = {};
-      for (const t of data.templates ?? []) {
+      for (const t of list) {
         next[t.id] = { subject: t.subject, body: t.body };
       }
       setDrafts(next);
+      setSelectedId((prev) => (list.some((t) => t.id === prev) ? prev : (list[0]?.id ?? "")));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load templates");
     } finally {
@@ -88,9 +91,8 @@ export default function EmailTemplatesPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Email templates</h1>
         <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-          Edit message content visually — styling and footer are fixed. Use{" "}
-          <strong>Insert variable</strong> or <strong>Document link</strong> for dynamic fields. Preview shows
-          sample policy data; sent emails use real holder and policy values.
+          Choose a template from the list, then edit subject and body. TEAM MEDICLAIM header and signature are
+          fixed. Use <strong>Insert variable</strong> or <strong>Document link</strong> for dynamic fields.
         </p>
       </div>
 
@@ -99,99 +101,27 @@ export default function EmailTemplatesPage() {
           <Loader2 className="size-4 animate-spin" /> Loading templates…
         </p>
       ) : (
-        <>
-        {templates.filter((t) => !t.id.startsWith("mediclaim_")).map((t) => (
-          <Card key={t.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Mail className="size-5" />
-                {t.label}
-              </CardTitle>
-              <CardDescription>{t.description}</CardDescription>
-              <p className="text-muted-foreground text-xs">
-                Variables: {t.variables.map((v) => `{{${v}}}`).join(", ")}
-              </p>
-            </CardHeader>
-            <CardContent>
-              <EmailTemplateEditor
-                templateId={t.id}
-                label={t.label}
-                description={t.description}
-                variables={t.variables}
-                subject={drafts[t.id]?.subject ?? ""}
-                body={drafts[t.id]?.body ?? ""}
-                saving={savingId === t.id}
-                onSubjectChange={(subject) =>
-                  setDrafts((d) => ({
-                    ...d,
-                    [t.id]: { subject, body: d[t.id]?.body ?? "" },
-                  }))
-                }
-                onBodyChange={(body) =>
-                  setDrafts((d) => ({
-                    ...d,
-                    [t.id]: { subject: d[t.id]?.subject ?? "", body },
-                  }))
-                }
-                onSave={() => void save(t.id)}
-                onReset={() => resetToDefault(t.id)}
-              />
-            </CardContent>
-          </Card>
-        ))}
-        {templates.some((t) => t.id.startsWith("mediclaim_")) ? (
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Mediclaim templates</h2>
-              <p className="text-muted-foreground text-sm">
-                Branded acknowledgement, dishonour, reminder, and cheque-cleared notices. Styling and
-                signature are fixed; message body and placeholders are editable.
-              </p>
-            </div>
-            {templates
-              .filter((t) => t.id.startsWith("mediclaim_"))
-              .map((t) => (
-                <Card key={t.id}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Mail className="size-5" />
-                      {t.label}
-                    </CardTitle>
-                    <CardDescription>{t.description}</CardDescription>
-                    <p className="text-muted-foreground text-xs">
-                      Variables: {t.variables.map((v) => `{{${v}}}`).join(", ")}
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <EmailTemplateEditor
-                      templateId={t.id}
-                      label={t.label}
-                      description={t.description}
-                      variables={t.variables}
-                      subject={drafts[t.id]?.subject ?? ""}
-                      body={drafts[t.id]?.body ?? ""}
-                      saving={savingId === t.id}
-                      onSubjectChange={(subject) =>
-                        setDrafts((d) => ({
-                          ...d,
-                          [t.id]: { subject, body: d[t.id]?.body ?? "" },
-                        }))
-                      }
-                      onBodyChange={(body) =>
-                        setDrafts((d) => ({
-                          ...d,
-                          [t.id]: { subject: d[t.id]?.subject ?? "", body },
-                        }))
-                      }
-                      onSave={() => void save(t.id)}
-                      onReset={() => resetToDefault(t.id)}
-                    />
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        ) : null}
-        </>
+        <EmailTemplatesWorkspace
+          templates={templates}
+          selectedId={selectedId}
+          onSelectId={setSelectedId}
+          drafts={drafts}
+          savingId={savingId}
+          onSubjectChange={(id, subject) =>
+            setDrafts((d) => ({
+              ...d,
+              [id]: { subject, body: d[id]?.body ?? "" },
+            }))
+          }
+          onBodyChange={(id, body) =>
+            setDrafts((d) => ({
+              ...d,
+              [id]: { subject: d[id]?.subject ?? "", body },
+            }))
+          }
+          onSave={(id) => void save(id)}
+          onReset={resetToDefault}
+        />
       )}
     </div>
   );

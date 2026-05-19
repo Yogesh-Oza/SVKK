@@ -73,6 +73,10 @@ export function EmailTemplateEditor({
   }, [onBodyChange]);
 
   useEffect(() => {
+    setTab("edit");
+  }, [templateId]);
+
+  useEffect(() => {
     if (tab !== "edit" || !editorRef.current) return;
     if (editorRef.current.innerHTML !== body) {
       editorRef.current.innerHTML = body;

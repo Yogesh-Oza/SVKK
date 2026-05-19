@@ -49,6 +49,19 @@ ${inner}${MEDICLAIM_LAYOUT_FOOTER}
 </div></body></html>`;
 }
 
+/** Templates that use TEAM MEDICLAIM header + signature (not generic SVKK footer). */
+export function usesMediclaimBranding(templateId: string): boolean {
+  return (
+    templateId.startsWith("mediclaim_") ||
+    templateId === "policy_number_updated" ||
+    templateId.startsWith("renewal_")
+  );
+}
+
+export function wrapEmailBodyForTemplate(templateId: string, body: string): string {
+  return usesMediclaimBranding(templateId) ? wrapMediclaimEmailBody(body) : wrapEmailBody(body);
+}
+
 export function wrapEmailBody(body: string): string {
   const inner = body.trim();
   return `<!DOCTYPE html>
