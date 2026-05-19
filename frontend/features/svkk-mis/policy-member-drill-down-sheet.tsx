@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { backendApi } from "@/lib/api/svkk-client";
 import {
   Table,
   TableBody,
@@ -17,7 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { svkkJson } from "@/lib/svkk/api";
-import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import {
   formatCell,
   type PolicyMemberRow,
@@ -78,8 +81,10 @@ export function PolicyMemberDrillDownSheet({
   reportQueryString,
 }: Props) {
   const [loading, setLoading] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [detail, setDetail] = useState<DrillResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !drillType || !drillLabel) {
@@ -97,6 +102,7 @@ export function PolicyMemberDrillDownSheet({
 
     setLoading(true);
     setError(null);
+    setExportError(null);
     void (async () => {
       try {
         const res = await svkkJson<DrillResponse>(
@@ -112,6 +118,42 @@ export function PolicyMemberDrillDownSheet({
     })();
   }, [open, drillType, drillLabel, reportQueryString]);
 
+  const exportDrillDownCsv = useCallback(() => {
+    if (!drillType || !drillLabel) return;
+    void (async () => {
+      setExportBusy(true);
+      setExportError(null);
+      try {
+        const q = new URLSearchParams(reportQueryString);
+        if (drillType === "village") {
+          q.set("drillVillage", drillLabel);
+        } else {
+          q.set("drillArea", drillLabel);
+        }
+        const res = await backendApi.get(
+          `/mis/export/policy-member-report-detail.csv?${q.toString()}`,
+          { responseType: "blob" },
+        );
+        const slug = drillLabel
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        const blob = new Blob([res.data], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `policy-member-${drillType}-${slug || "detail"}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        setExportError(e instanceof Error ? e.message : "Export failed");
+      } finally {
+        setExportBusy(false);
+      }
+    })();
+  }, [drillLabel, drillType, reportQueryString]);
+
   const title =
     drillType && drillLabel
       ? `${drillType === "village" ? "Village" : "Area"}: ${drillLabel}`
@@ -121,11 +163,29 @@ export function PolicyMemberDrillDownSheet({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(92vh,960px)] w-[min(98vw,1800px)] max-w-[min(98vw,1800px)]! flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(98vw,1800px)]!">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Breakdown by category and policy grouping (SVKK, NVKK, RTY, OTHER). Uses the same
-            filters as the main report.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-4 pr-8">
+            <div className="min-w-0 space-y-1">
+              <DialogTitle>{title}</DialogTitle>
+              <DialogDescription>
+                Breakdown by category and policy grouping (SVKK, NVKK, RTY, OTHER). Uses the same
+                filters as the main report.
+              </DialogDescription>
+              {exportError ? (
+                <p className="text-destructive text-sm">{exportError}</p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              disabled={loading || exportBusy || !drillType || !drillLabel}
+              onClick={() => exportDrillDownCsv()}
+            >
+              <Download className="size-3.5" />
+              {exportBusy ? "Exporting…" : "Export CSV"}
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">

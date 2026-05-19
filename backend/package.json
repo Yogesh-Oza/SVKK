@@ -14,6 +14,7 @@
     "db:deploy": "prisma migrate deploy && prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:data-md": "tsx scripts/seed-data-md.ts",
+    "db:transfer-local": "tsx scripts/transfer-local-to-remote.ts",
     "user:create": "tsx scripts/create-user.ts",
     "legacy-migrate": "tsx scripts/legacy-migrate/run.ts",
     "legacy-migrate:rollback": "tsx scripts/legacy-migrate/rollback-run.ts",

@@ -10,6 +10,11 @@ import {
   mergeDateRange,
 } from "../../services/mis-scope.service.js";
 import {
+  buildPolicyMemberDrillDownCsv,
+  drillDownExportFilename,
+  POLICY_MEMBER_REPORT_METRIC_COLS,
+} from "./mis.export-drill-down.js";
+import {
   getDashboardCharts,
   getDashboardMetrics,
   getPolicyMemberReport,
@@ -304,6 +309,48 @@ export function createMisRouter(_env: Env) {
   );
 
   r.get(
+    "/export/policy-member-report-detail.csv",
+    requirePermission("mis:read"),
+    async (req, res, next) => {
+      try {
+        const q = policyMemberReportQuerySchema
+          .extend({
+            drillVillage: z.string().optional(),
+            drillArea: z.string().optional(),
+          })
+          .parse(req.query);
+        const normalized = normalizePolicyMemberReportQuery(q);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const rep = await getPolicyMemberReportDetail(
+          req.userId!,
+          req.permissions!,
+          scope,
+          {
+            drillVillage: q.drillVillage?.trim() || null,
+            drillArea: q.drillArea?.trim() || null,
+            dateFrom: normalized.dateFrom,
+            dateTo: normalized.dateTo,
+            categoryKeys: normalized.categoryKeys,
+            policyGroupings: normalized.policyGroupings,
+            sumInsureds: normalized.sumInsureds,
+            months: normalized.months,
+            years: normalized.years,
+            fiscalLabels: normalized.fiscalLabels,
+          },
+        );
+        const csv = buildPolicyMemberDrillDownCsv(rep);
+        const filename = drillDownExportFilename(rep.drillType, rep.drillLabel);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        // BOM helps Excel open ₹ and en-IN formatting correctly on Windows.
+        res.send(`\uFEFF${csv}`);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
     "/export/policy-member-report.csv",
     requirePermission("mis:read"),
     async (req, res, next) => {
@@ -316,31 +363,7 @@ export function createMisRouter(_env: Env) {
           scope,
           normalizePolicyMemberReportQuery(q),
         );
-        const cols = [
-          "label",
-          "totalPolicies",
-          "membersPlusPolicies",
-          "cntAshaKiran",
-          "cntFamilyFloater",
-          "cntIndividual",
-          "sumVkk",
-          "sumCo",
-          "sumGross",
-          "sumComm",
-          "sumTwoLac",
-          "sumPolHolder",
-          "sumGaam",
-          "sumRefund",
-          "sumCd",
-          "age0_18",
-          "age19_35",
-          "age36_45",
-          "age46_50",
-          "age51_55",
-          "age56_60",
-          "age61_65",
-          "age65p",
-        ] as const;
+        const cols = POLICY_MEMBER_REPORT_METRIC_COLS;
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="policy-member-report.csv"');
         res.write(`${cols.join(",")}\n`);
