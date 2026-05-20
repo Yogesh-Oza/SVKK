@@ -38,7 +38,6 @@ import {
   fetchPremiumSnapshot,
   fileToChartRows,
   normPolicyKey,
-  rs,
   savePremiumSnapshot,
   type ChartBand,
   type ChartData,
@@ -57,6 +56,14 @@ type SavedChartDetail = {
   chartKind: "COMBINED" | "HOLDER" | "MEMBER";
   siColumns: number[];
   bands: ChartBand[];
+};
+
+type PolicyTypeRefRow = {
+  id: string;
+  key: string;
+  name: string;
+  chartMode: string;
+  description: string | null;
 };
 
 type AdminNew = {
@@ -120,6 +127,7 @@ export default function CalculatorAdminPage() {
   const [state, setState] = useState<PremiumState>({ defs: {}, charts: {} });
   /** Last server-known snapshot. Compared with `state` to derive dirty-ness. */
   const [serverState, setServerState] = useState<PremiumState>({ defs: {}, charts: {} });
+  const [policyTypeIdByKey, setPolicyTypeIdByKey] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"charts" | "discounts">("charts");
   const [policy, setPolicy] = useState<PolicyKey>("asha_kiran");
   const [newPolicy, setNewPolicy] = useState<AdminNew>(EMPTY_NEW);
@@ -136,6 +144,11 @@ export default function CalculatorAdminPage() {
     let cancelled = false;
     (async () => {
       try {
+        const types = await svkkJson<PolicyTypeRefRow[]>("/calculation/reference/policy-types");
+        if (cancelled) return;
+        setPolicyTypeIdByKey(
+          Object.fromEntries(types.map((t) => [t.key, t.id])),
+        );
         const next = await fetchPremiumSnapshot();
         if (cancelled) return;
         setState(next);
@@ -177,6 +190,8 @@ export default function CalculatorAdminPage() {
     try {
       await savePremiumSnapshot(state);
       // Re-fetch so server-generated ids and any normalized values are reflected.
+      const types = await svkkJson<PolicyTypeRefRow[]>("/calculation/reference/policy-types");
+      setPolicyTypeIdByKey(Object.fromEntries(types.map((t) => [t.key, t.id])));
       const fresh = await fetchPremiumSnapshot();
       setState(fresh);
       setServerState(structuredClone(fresh));
@@ -199,7 +214,7 @@ export default function CalculatorAdminPage() {
   const def = state.defs[policy];
   const chart = state.charts[policy];
   const mode: "same" | "different" = def?.mode ?? "same";
-  const policyTypeId = rs.typesByKey[policy]?.id ?? "";
+  const policyTypeId = policyTypeIdByKey[policy] ?? "";
 
   async function loadSavedCharts() {
     if (!policyTypeId) {
