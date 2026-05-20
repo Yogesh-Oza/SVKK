@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 export type RbacAuditAction =
   | "ROLE_CREATED"
   | "ROLE_UPDATED"
+  | "ROLE_GEO_UPDATED"
   | "ROLE_CLONED"
   | "ROLE_SOFT_DELETED"
   | "ROLE_DISABLED"

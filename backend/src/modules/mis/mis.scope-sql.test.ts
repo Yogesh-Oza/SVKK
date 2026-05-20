@@ -26,7 +26,7 @@ describe("buildPolicyScopeSqlP", () => {
   });
 
   it("SUPER_ADMIN wildcard sees all policies", () => {
-    const sql = buildPolicyScopeSqlP(perms("SUPER_ADMIN"), "u1", { kind: "villages", villages: [] }, undefined);
+    const sql = buildPolicyScopeSqlP(perms("SUPER_ADMIN"), "u1", { kind: "full" }, undefined);
     expect(sqlText(sql)).not.toContain("createdById");
   });
 });
