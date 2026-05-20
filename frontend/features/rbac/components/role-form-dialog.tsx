@@ -136,6 +136,22 @@ export function RoleFormDialog({
 
   const showGeo = useMemo(() => roleRequiresGeo(resolvedPermissions), [resolvedPermissions]);
 
+  const isScopeGroup = useCallback(
+    (g: PermissionGroup) =>
+      g.permissions.length > 0 &&
+      g.permissions.every((p) => p.isScope || scopeFamilyForKey(p.key) !== null),
+    [],
+  );
+
+  const scopeGroups = useMemo(
+    () => filteredGroups.filter(isScopeGroup),
+    [filteredGroups, isScopeGroup],
+  );
+  const nonScopeGroups = useMemo(
+    () => filteredGroups.filter((g) => !isScopeGroup(g)),
+    [filteredGroups, isScopeGroup],
+  );
+
   const validationMessage = useMemo(() => {
     const permMsg = permissionValidationMessage(resolvedPermissions);
     if (permMsg) return permMsg;
@@ -263,8 +279,15 @@ export function RoleFormDialog({
         await apiPatch(`/rbac/roles/${role.id}`, body);
         toast.success("Role updated");
       } else if (cloneFrom) {
-        await apiPost(`/rbac/roles/${cloneFrom.id}/clone`, { name: name.trim() });
-        toast.success("Role cloned");
+        // Clone dialog allows editing permissions + geography; create a new role using the form state.
+        await apiPost("/rbac/roles", {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          permissionKeys,
+          villageOptionIds,
+          areaOptionIds,
+        });
+        toast.success("Role created");
       } else {
         await apiPost("/rbac/roles", {
           name: name.trim(),
@@ -342,119 +365,174 @@ export function RoleFormDialog({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-6 px-6 py-4">
-            {showGeo ? (
+            <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+              {/* Left: permissions (excluding scope groups) */}
               <section className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold">Geography access (this role only)</h3>
-                  <p className="text-muted-foreground text-xs">
-                    {villageOptionIds.length} villages · {areaOptionIds.length} areas selected — only
-                    checked rows are stored for this role.
-                  </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-sm font-semibold">Permissions</h3>
+                  <Input
+                    className="sm:max-w-xs"
+                    placeholder="Search permissions…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
                 </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <GeoCheckboxPanel
-                    title="Allowed villages"
-                    search={geoVillageSearch}
-                    onSearchChange={setGeoVillageSearch}
-                    options={filteredVillages}
-                    selectedIds={villageOptionIds}
-                    onToggle={(id, checked) => toggleGeoId("village", id, checked)}
-                    onSelectVisible={() => setAllGeo("village", villageIdsVisible, true)}
-                    onClearVisible={() => setAllGeo("village", villageIdsVisible, false)}
-                    onClearAll={() => setVillageOptionIds([])}
-                  />
-                  <GeoCheckboxPanel
-                    title="Allowed areas"
-                    search={geoAreaSearch}
-                    onSearchChange={setGeoAreaSearch}
-                    options={filteredAreas}
-                    selectedIds={areaOptionIds}
-                    onToggle={(id, checked) => toggleGeoId("area", id, checked)}
-                    onSelectVisible={() => setAllGeo("area", areaIdsVisible, true)}
-                    onClearVisible={() => setAllGeo("area", areaIdsVisible, false)}
-                    onClearAll={() => setAreaOptionIds([])}
-                  />
+                <div className="rounded-md border p-4">
+                  {loading ? (
+                    <p className="text-muted-foreground text-sm">Loading permissions…</p>
+                  ) : (
+                    <div className="space-y-5">
+                      {nonScopeGroups.map((g) => {
+                        const keys = g.permissions.map((p) => p.key);
+                        const allOn = keys.every((k) => selected.has(k));
+                        return (
+                          <div key={g.group} className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-medium">{g.group}</p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 shrink-0 text-xs"
+                                onClick={() => toggleGroup(keys, !allOn, false)}
+                              >
+                                {allOn ? "Clear group" : "Select group"}
+                              </Button>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                              {g.permissions.map((p) => (
+                                <label
+                                  key={p.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-1.5 text-sm hover:bg-muted/50"
+                                >
+                                  <Checkbox
+                                    checked={selected.has(p.key)}
+                                    onCheckedChange={(c) => toggle(p.key, c === true)}
+                                    disabled={isEdit && role?.isSystem && p.key === "*:*"}
+                                  />
+                                  <span>
+                                    {p.label}
+                                    <span className="text-muted-foreground block text-xs">
+                                      {p.key}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </section>
-            ) : (
-              <p className="text-muted-foreground rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
-                No geography picker: enable{" "}
-                <strong className="font-medium text-foreground">Village-scoped</strong> under
-                Policy scope, Claim scope, or MIS scope to assign villages/areas for this role.
-              </p>
-            )}
 
-            <section className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-sm font-semibold">Permissions</h3>
-                <Input
-                  className="sm:max-w-xs"
-                  placeholder="Search permissions…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <div className="rounded-md border p-4">
-                {loading ? (
-                  <p className="text-muted-foreground text-sm">Loading permissions…</p>
-                ) : (
-                  <div className="space-y-5">
-                    {filteredGroups.map((g) => {
-                      const keys = g.permissions.map((p) => p.key);
-                      const allOn = keys.every((k) => selected.has(k));
-                      const isScopeGroup =
-                        g.permissions.length > 0 &&
-                        g.permissions.every(
-                          (p) => p.isScope || scopeFamilyForKey(p.key) !== null,
-                        );
-                      return (
-                        <div key={g.group} className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-medium">{g.group}</p>
-                              {isScopeGroup ? (
-                                <p className="text-muted-foreground text-xs">
-                                  Select only one option
-                                </p>
-                              ) : null}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 shrink-0 text-xs"
-                              onClick={() => toggleGroup(keys, !allOn, isScopeGroup)}
-                            >
-                              {allOn || isScopeGroup ? "Clear group" : "Select group"}
-                            </Button>
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                            {g.permissions.map((p) => (
-                              <label
-                                key={p.id}
-                                className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-1.5 text-sm hover:bg-muted/50"
-                              >
-                                <Checkbox
-                                  checked={selected.has(p.key)}
-                                  onCheckedChange={(c) => toggle(p.key, c === true)}
-                                  disabled={isEdit && role?.isSystem && p.key === "*:*"}
-                                />
-                                <span>
-                                  {p.label}
-                                  <span className="text-muted-foreground block text-xs">
-                                    {p.key}
-                                  </span>
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
+              {/* Right: scopes + geography */}
+              <aside className="space-y-4">
+                <section className="rounded-md border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Scope</h3>
+                      <p className="text-muted-foreground text-xs">
+                        Policy / Claims / MIS scope (select one per group)
+                      </p>
+                    </div>
                   </div>
+                  {scopeGroups.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No scope groups found.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {scopeGroups.map((g) => {
+                        const keys = g.permissions.map((p) => p.key);
+                        const anyOn = keys.some((k) => selected.has(k));
+                        return (
+                          <div key={g.group} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">{g.group}</p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => toggleGroup(keys, false, true)}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                            <div className="space-y-2">
+                              {g.permissions.map((p) => (
+                                <label
+                                  key={p.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-1.5 text-sm hover:bg-muted/50"
+                                >
+                                  <Checkbox
+                                    checked={selected.has(p.key)}
+                                    onCheckedChange={(c) => toggle(p.key, c === true)}
+                                  />
+                                  <span>
+                                    {p.label}
+                                    <span className="text-muted-foreground block text-xs">
+                                      {p.key}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            {!anyOn ? (
+                              <p className="text-muted-foreground text-xs">
+                                Pick one option in this scope group.
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {showGeo ? (
+                  <section className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Geography access (this role only)</h3>
+                      <p className="text-muted-foreground text-xs">
+                        {villageOptionIds.length} villages · {areaOptionIds.length} areas selected — only
+                        checked rows are stored for this role.
+                      </p>
+                    </div>
+                    <div className="grid gap-4">
+                      <GeoCheckboxPanel
+                        title="Allowed villages"
+                        search={geoVillageSearch}
+                        onSearchChange={setGeoVillageSearch}
+                        options={filteredVillages}
+                        selectedIds={villageOptionIds}
+                        onToggle={(id, checked) => toggleGeoId("village", id, checked)}
+                        onSelectVisible={() => setAllGeo("village", villageIdsVisible, true)}
+                        onClearVisible={() => setAllGeo("village", villageIdsVisible, false)}
+                        onClearAll={() => setVillageOptionIds([])}
+                      />
+                      <GeoCheckboxPanel
+                        title="Allowed areas"
+                        search={geoAreaSearch}
+                        onSearchChange={setGeoAreaSearch}
+                        options={filteredAreas}
+                        selectedIds={areaOptionIds}
+                        onToggle={(id, checked) => toggleGeoId("area", id, checked)}
+                        onSelectVisible={() => setAllGeo("area", areaIdsVisible, true)}
+                        onClearVisible={() => setAllGeo("area", areaIdsVisible, false)}
+                        onClearAll={() => setAreaOptionIds([])}
+                      />
+                    </div>
+                  </section>
+                ) : (
+                  <p className="text-muted-foreground rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
+                    No geography picker: enable{" "}
+                    <strong className="font-medium text-foreground">Village-scoped</strong> under
+                    Policy scope, Claim scope, or MIS scope to assign villages/areas for this role.
+                  </p>
                 )}
-              </div>
-            </section>
+              </aside>
+            </div>
           </div>
         </ScrollArea>
 

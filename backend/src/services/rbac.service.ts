@@ -123,6 +123,7 @@ export async function hasPermission(roleId: string, key: string): Promise<boolea
 }
 
 const POLICY_SCOPE_KEYS = ["policy:scope_all", "policy:scope_village", "policy:scope_own"] as const;
+const DASHBOARD_SCOPE_KEYS = ["dashboard:scope_all", "dashboard:scope_village"] as const;
 const MIS_SCOPE_KEYS = ["mis:scope_all", "mis:scope_village"] as const;
 const CLAIM_SCOPE_KEYS = ["claim:scope_all", "claim:scope_village"] as const;
 
@@ -139,6 +140,7 @@ function assertAtMostOne(selected: string[], allowed: readonly string[], label: 
 export function assertValidScopeSet(keys: Iterable<string>): void {
   const list = [...keys];
   assertAtMostOne(list, POLICY_SCOPE_KEYS, "policy");
+  assertAtMostOne(list, DASHBOARD_SCOPE_KEYS, "dashboard");
   assertAtMostOne(list, MIS_SCOPE_KEYS, "MIS");
   assertAtMostOne(list, CLAIM_SCOPE_KEYS, "claim");
 

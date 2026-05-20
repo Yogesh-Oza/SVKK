@@ -4,6 +4,7 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
+import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
   buildMisVillageWhere,
   loadMisScope,
@@ -184,7 +185,8 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const m = await getDashboardMetrics(
           req.userId!,
@@ -211,7 +213,8 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const charts = await getDashboardCharts(
           req.userId!,
@@ -257,7 +260,8 @@ export function createMisRouter(_env: Env) {
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema.parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const rep = await getPolicyMemberReport(
           req.userId!,
           req.permissions!,

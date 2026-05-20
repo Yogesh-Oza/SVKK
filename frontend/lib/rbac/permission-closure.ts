@@ -14,6 +14,7 @@ export const WILDCARD_PERMISSION = "*:*";
 
 const POLICY_ACCESS_KEYS = ["policy:read", "policy:create", "policy:update", "policy:delete"] as const;
 export const POLICY_SCOPE_KEYS = ["policy:scope_all", "policy:scope_village", "policy:scope_own"] as const;
+export const DASHBOARD_SCOPE_KEYS = ["dashboard:scope_all", "dashboard:scope_village"] as const;
 export const MIS_SCOPE_KEYS = ["mis:scope_all", "mis:scope_village"] as const;
 export const CLAIM_SCOPE_KEYS = ["claim:scope_all", "claim:scope_village"] as const;
 
@@ -21,9 +22,10 @@ export const VILLAGE_SCOPE_PERMISSION_KEYS = [
   "policy:scope_village",
   "claim:scope_village",
   "mis:scope_village",
+  "dashboard:scope_village",
 ] as const;
 
-const SCOPE_FAMILIES = [POLICY_SCOPE_KEYS, MIS_SCOPE_KEYS, CLAIM_SCOPE_KEYS] as const;
+const SCOPE_FAMILIES = [POLICY_SCOPE_KEYS, DASHBOARD_SCOPE_KEYS, MIS_SCOPE_KEYS, CLAIM_SCOPE_KEYS] as const;
 
 export function roleRequiresGeo(keys: Set<string>): boolean {
   return VILLAGE_SCOPE_PERMISSION_KEYS.some((k) => keys.has(k));
@@ -80,6 +82,11 @@ export function permissionValidationMessage(keys: Set<string>): string | null {
   const policyHits = countScopeHits(keys, POLICY_SCOPE_KEYS);
   if (policyHits > 1) {
     return "Only one policy scope allowed: choose All policies, Village-scoped, or Own — not more than one.";
+  }
+
+  const dashHits = countScopeHits(keys, DASHBOARD_SCOPE_KEYS);
+  if (dashHits > 1) {
+    return "Only one dashboard scope allowed: choose Full dashboard or Village dashboard — not both.";
   }
 
   const misHits = countScopeHits(keys, MIS_SCOPE_KEYS);

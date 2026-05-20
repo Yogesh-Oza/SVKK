@@ -13,6 +13,8 @@ export interface PermissionCatalogEntry {
 
 export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   { key: "dashboard:read", label: "View dashboard", group: "Dashboard", groupOrder: 10, sortOrder: 1 },
+  { key: "dashboard:scope_all", label: "Full dashboard scope", group: "Dashboard scope", groupOrder: 11, isScope: true, sortOrder: 1 },
+  { key: "dashboard:scope_village", label: "Village dashboard scope", group: "Dashboard scope", groupOrder: 11, isScope: true, sortOrder: 2 },
   { key: "policy:create", label: "Create policies", group: "Policies", groupOrder: 20, sortOrder: 1 },
   { key: "policy:read", label: "List & view policies", group: "Policies", groupOrder: 20, sortOrder: 2 },
   { key: "policy:update", label: "Update policies", group: "Policies", groupOrder: 20, sortOrder: 3 },

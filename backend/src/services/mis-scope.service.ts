@@ -16,18 +16,20 @@ export type GeoScope =
 /** @deprecated Use GeoScope — kept for existing imports */
 export type MisScope = GeoScope;
 
-export type ScopeModule = "policy" | "claim" | "mis";
+export type ScopeModule = "policy" | "claim" | "mis" | "dashboard";
 
 const VILLAGE_SCOPE_KEYS: Record<ScopeModule, string> = {
   policy: "policy:scope_village",
   claim: "claim:scope_village",
   mis: "mis:scope_village",
+  dashboard: "dashboard:scope_village",
 };
 
 const ALL_SCOPE_KEYS: Record<ScopeModule, string> = {
   policy: "policy:scope_all",
   claim: "claim:scope_all",
   mis: "mis:scope_all",
+  dashboard: "dashboard:scope_all",
 };
 
 async function roleGeoScope(roleId: string): Promise<GeoScope> {
