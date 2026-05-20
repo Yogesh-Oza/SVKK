@@ -733,7 +733,7 @@ function ChartSummary({
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">
                   {siList.length
-                    ? siList.map((v) => `₹${rs(v)}`).join(", ")
+                    ? siList.map((v) => `₹${Number(v).toLocaleString("en-IN")}`).join(", ")
                     : <span className="text-muted-foreground">—</span>}
                 </TableCell>
               </TableRow>
@@ -830,9 +830,9 @@ function SavedChartsPanel({
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="min-w-[7rem]">Age</TableHead>
+                          <TableHead className="min-w-28">Age</TableHead>
                           {c.siColumns.map((si) => (
-                            <TableHead key={si} className="text-right min-w-[7rem]">
+                            <TableHead key={si} className="text-right min-w-28">
                               ₹{Number(si).toLocaleString("en-IN")}
                             </TableHead>
                           ))}
