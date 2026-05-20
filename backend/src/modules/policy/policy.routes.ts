@@ -37,6 +37,7 @@ import { AdProductVariant, ChequeStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
+import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
   assertGeoFieldsOnWrite,
   assertPolicyReadable,
@@ -290,6 +291,12 @@ export function createPolicyRouter(env: Env) {
       }
 
       const body = createPolicyBodySchema.parse(req.body);
+      if (
+        !hasPermissionInSet(req.permissions!, "policy:commission") &&
+        (body.commissionAmount != null || body.vkkCommission != null)
+      ) {
+        throw new AppError("FORBIDDEN", "Insufficient permissions to set commission fields", 403);
+      }
       const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       assertGeoFieldsOnWrite(
         { village: body.village, area: body.area },
@@ -502,6 +509,12 @@ export function createPolicyRouter(env: Env) {
       });
       if (!row) throw new AppError("NOT_FOUND", "Policy not found", 404);
       assertPolicyReadable(row, req.userId!, req.permissions!, scope);
+      if (!hasPermissionInSet(req.permissions!, "policy:commission")) {
+        for (const y of row.years) {
+          (y as unknown as { commissionAmount?: null }).commissionAmount = null;
+          (y as unknown as { vkkCommission?: null }).vkkCommission = null;
+        }
+      }
       res.json({
         ...row,
         insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
@@ -524,6 +537,12 @@ export function createPolicyRouter(env: Env) {
       const parsed = patchPolicyBodySchema.parse(req.body);
       const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers, replacePayments } =
         patchBodyToInput(parsed);
+      if (
+        !hasPermissionInSet(req.permissions!, "policy:commission") &&
+        (year?.commissionAmount !== undefined || year?.vkkCommission !== undefined)
+      ) {
+        throw new AppError("FORBIDDEN", "Insufficient permissions to update commission fields", 403);
+      }
       assertGeoFieldsOnWrite(
         {
           village: policy?.village !== undefined ? policy.village : existing.village,

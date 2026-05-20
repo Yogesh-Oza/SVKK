@@ -27,6 +27,8 @@ import { formatInr } from "@/features/svkk-dashboard/currency";
 import { backendApi } from "@/lib/api/svkk-client";
 import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { hasPermission } from "@/lib/svkk/permissions";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import {
   flexRender,
@@ -255,6 +257,7 @@ function sumFiltered(rows: Row<PolicyMemberRow>[]) {
 function makeColumns(
   dimLabel: string,
   onDrill?: (label: string) => void,
+  canSeeCommission?: boolean,
 ): ColumnDef<PolicyMemberRow>[] {
   const n = (id: keyof PolicyMemberRow, title: string) =>
     ({
@@ -268,7 +271,7 @@ function makeColumns(
       },
     }) satisfies ColumnDef<PolicyMemberRow>;
 
-  return [
+  const base: ColumnDef<PolicyMemberRow>[] = [
     {
       accessorKey: "label",
       header: sortableHeader<PolicyMemberRow>(dimLabel),
@@ -296,7 +299,7 @@ function makeColumns(
     n("sumVkk", "Total VKK premium"),
     n("sumCo", "Co premium"),
     n("sumGross", "Gross premium"),
-    n("sumComm", "Commission"),
+    ...(canSeeCommission ? [n("sumComm", "Commission")] : []),
     n("sumTwoLac", "Two lakh F"),
     n("sumPolHolder", "Policy holder premium"),
     n("sumGaam", "Gaam Mahajan VKK refund"),
@@ -311,6 +314,7 @@ function makeColumns(
     n("age61_65", "Age 61–65"),
     n("age65p", "Age >65"),
   ];
+  return base;
 }
 
 function globalFilterFn(
@@ -333,6 +337,8 @@ type Props = {
 const VALID_GROUP_BY = new Set(GROUP_BY_OPTIONS.map((o) => o.value));
 
 export function PolicyMemberReportSection({ onError }: Props) {
+  const { user } = useSvkkAuth();
+  const canSeeComm = user ? hasPermission(user.permissions, "policy:commission") : false;
   const searchParams = useSearchParams();
   const urlHydrated = useRef(false);
   const [dateFrom, setDateFrom] = useState("");
@@ -419,8 +425,9 @@ export function PolicyMemberReportSection({ onError }: Props) {
       makeColumns(
         DIM_HEADER[groupBy],
         groupBy === "village" || groupBy === "area" ? openDrill : undefined,
+        canSeeComm,
       ),
-    [groupBy, openDrill],
+    [groupBy, openDrill, canSeeComm],
   );
   const colCount = columns.length;
 

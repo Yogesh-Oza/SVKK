@@ -70,6 +70,10 @@ export function canUpdatePolicy(permissions: string[]) {
   return hasPermission(permissions, "policy:update");
 }
 
+export function canSeeCommission(permissions: string[]) {
+  return hasPermission(permissions, "policy:commission");
+}
+
 export function canUploadPolicyDrive(permissions: string[]) {
   return (
     hasPermission(permissions, "upload:google-drive") ||

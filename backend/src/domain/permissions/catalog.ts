@@ -19,6 +19,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   { key: "policy:read", label: "List & view policies", group: "Policies", groupOrder: 20, sortOrder: 2 },
   { key: "policy:update", label: "Update policies", group: "Policies", groupOrder: 20, sortOrder: 3 },
   { key: "policy:delete", label: "Delete policies", group: "Policies", groupOrder: 20, sortOrder: 4 },
+  { key: "policy:commission", label: "Commission fields", group: "Policies", groupOrder: 20, sortOrder: 5, description: "View/edit Commission and VKK Commission fields." },
   { key: "policy:scope_all", label: "All policies (scope)", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 1 },
   { key: "policy:scope_village", label: "Village-scoped policies", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 2 },
   { key: "policy:scope_own", label: "Own policies only", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 3 },

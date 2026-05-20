@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { DropdownCombobox } from "@/components/svkk/dropdown-combobox";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import { canSeeCommission } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import {
@@ -325,6 +326,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.permissions ? canUploadPolicyDrive(user.permissions) : false;
+  const allowCommission = user?.permissions ? canSeeCommission(user.permissions) : false;
 
   const receiptImageUrls = useReceiptSettings();
   const { options: ddOptions } = useDropdownOptions();
@@ -459,6 +461,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             ? { policyId: fetchedPolicyForUpdate.id, detail: fetchedPolicyForUpdate }
             : null;
 
+      const submitValues = allowCommission
+        ? values
+        : {
+            ...values,
+            commission: "",
+            vkkCommission: "",
+          };
+
       if (editCtx) {
         const y = editCtx.detail.years.find((yy) => yy.yearLabel === editYearLabel) ?? editCtx.detail.years[0];
         if (!y) {
@@ -468,7 +478,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         try {
           await submitAdPolicyPatchRequest({
             policyId: editCtx.policyId,
-            values,
+            values: submitValues,
             expectedUpdatedAt: editCtx.detail.updatedAt,
             yearLabel: y.yearLabel,
           });
@@ -488,7 +498,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
       try {
         const id = await submitAdPolicyRequest({
-          values,
+          values: submitValues,
           policyTypeId,
           policyChartId,
           idemKey: idemKeyRef.current,
@@ -2679,19 +2689,28 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 onBlur={handleBlur}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Commission</Label>
-              <Input name="commission" value={values.commission} onChange={handlePremiumInput("commission")} onBlur={handleBlur} />
-            </div>
-            <div className="space-y-2">
-              <Label>VKK Commission</Label>
-              <Input
-                name="vkkCommission"
-                value={values.vkkCommission}
-                onChange={handlePremiumInput("vkkCommission")}
-                onBlur={handleBlur}
-              />
-            </div>
+            {allowCommission ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Commission</Label>
+                  <Input
+                    name="commission"
+                    value={values.commission}
+                    onChange={handlePremiumInput("commission")}
+                    onBlur={handleBlur}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>VKK Commission</Label>
+                  <Input
+                    name="vkkCommission"
+                    value={values.vkkCommission}
+                    onChange={handlePremiumInput("vkkCommission")}
+                    onBlur={handleBlur}
+                  />
+                </div>
+              </>
+            ) : null}
             <div className="space-y-2">
               <Label>Policy Holder Premium</Label>
               <Input

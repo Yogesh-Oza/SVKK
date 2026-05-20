@@ -12,6 +12,8 @@ import {
   VIEW_TH_CLASS,
   yesNoLabel,
 } from "@/features/svkk-policies/policy-detail-view-helpers";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import { canSeeCommission } from "@/lib/svkk/permissions";
 
 export type PolicyDetailViewRow = {
   policyNo: string | null;
@@ -230,6 +232,8 @@ export function PolicyDetailViewBody({
   activeYearLabel: string;
   policyTypeLabel: string;
 }) {
+  const { user } = useSvkkAuth();
+  const allowCommission = user?.permissions ? canSeeCommission(user.permissions) : false;
   const fmt = (v: unknown) => displayVal(formatNumIn(v) || dStr(v));
   const fmtDate = (iso: string | null | undefined) => displayVal(iso ? formatDateIso(iso) : "");
   const fmtDob = (iso: string | null | undefined) => displayVal(iso ? formatDateDmy(iso) : "");
@@ -411,8 +415,12 @@ export function PolicyDetailViewBody({
               { label: "TAXES AMOUNT", value: fmt(y?.taxAmount) },
               { label: "SVKK Premium", value: fmt(y?.svkkPremium ?? y?.vkkPremium) },
               { label: "Net Premium", value: fmt(y?.expectedNetPremium ?? y?.netPremium) },
-              { label: "Commission", value: fmt(y?.commissionAmount) },
-              { label: "VKK Commission", value: fmt(y?.vkkCommission) },
+              ...(allowCommission
+                ? [
+                    { label: "Commission", value: fmt(y?.commissionAmount) },
+                    { label: "VKK Commission", value: fmt(y?.vkkCommission) },
+                  ]
+                : []),
               { label: "Policy Holder Premium", value: fmt(y?.yearPolicyHolderPremium) },
               {
                 label: "Premium (1 Lakh Individual / 2 Lakh Floater)",

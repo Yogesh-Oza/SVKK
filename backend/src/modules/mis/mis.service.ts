@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { buildPolicyScopeSqlP } from "./mis.scope-sql.js";
+import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
   asOfDayBoundsUTC,
   reportPeriodBoundsUTC,
@@ -425,6 +426,9 @@ export async function getPolicyMemberReport(
     const row = toPolicyMemberJsonRow(r);
     if (sumInsuredLabels) {
       row.label = resolveSumInsuredLabel(r.label, sumInsuredLabels);
+    }
+    if (!hasPermissionInSet(permissions, "policy:commission")) {
+      row.sumComm = 0;
     }
     return row;
   });
