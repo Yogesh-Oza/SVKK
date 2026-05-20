@@ -2,7 +2,7 @@
 
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { getRequiredPermissionForPath } from "@/lib/svkk/route-permissions";
-import { hasPermission } from "@/lib/svkk/permissions";
+import { getSvkkNavForPermissions, hasPermission } from "@/lib/svkk/permissions";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
@@ -19,12 +19,20 @@ export function SvkkPermissionGate({ children }: { children: ReactNode }) {
     !required ||
     (user?.permissions && hasPermission(user.permissions, required));
 
+  const redirectHref = (() => {
+    const perms = user?.permissions;
+    if (!perms?.length) return "/forbidden";
+    const nav = getSvkkNavForPermissions(perms);
+    const first = nav.find((n) => n.href && n.href !== pathname)?.href ?? nav[0]?.href;
+    return first ?? "/forbidden";
+  })();
+
   useEffect(() => {
     if (loading || !permissionsHydrated || !user || allowed) {
       return;
     }
-    router.replace("/dashboard");
-  }, [loading, permissionsHydrated, user, allowed, router]);
+    router.replace(redirectHref);
+  }, [loading, permissionsHydrated, user, allowed, router, redirectHref]);
 
   if (loading || !permissionsHydrated) {
     return (
