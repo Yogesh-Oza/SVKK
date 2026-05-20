@@ -1,6 +1,7 @@
 "use client";
 
-import { initializeAuth, loginWithPassword, logoutUser } from "@/lib/store/slices/auth-slice";
+import { registerSessionInvalidationHandler } from "@/lib/svkk/session-invalidation";
+import { clearAuth, initializeAuth, loginWithPassword, logoutUser } from "@/lib/store/slices/auth-slice";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import type { SvkkUser } from "@/lib/svkk/types";
 import {
@@ -12,6 +13,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 
 export type { SvkkUser } from "@/lib/svkk/types";
 
@@ -39,6 +41,16 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
     }
     once.current = true;
     void d(initializeAuth());
+  }, [d]);
+
+  useEffect(() => {
+    return registerSessionInvalidationHandler((message) => {
+      d(clearAuth());
+      toast.info(message);
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login");
+      }
+    });
   }, [d]);
 
   const user = useAppSelector((s) => s.auth.user);

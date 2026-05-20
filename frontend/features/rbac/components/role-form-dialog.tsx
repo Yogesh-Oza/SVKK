@@ -14,11 +14,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiGet, apiPatch, apiPost } from "@/lib/api/svkk-client";
 import {
+  permissionValidationMessage,
   pickExclusiveScope,
-  policyScopeValidationMessage,
-  POLICY_SCOPE_KEYS,
   resolvePermissionClosure,
+  scopeFamilyForKey,
 } from "@/lib/rbac/permission-closure";
+import type { AxiosError } from "axios";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -110,10 +111,18 @@ export function RoleFormDialog({
       .filter((g) => g.permissions.length > 0);
   }, [groups, search]);
 
+  const resolvedPermissions = useMemo(() => resolvePermissionClosure(selected), [selected]);
+
+  const validationMessage = useMemo(
+    () => permissionValidationMessage(resolvedPermissions),
+    [resolvedPermissions],
+  );
+
   const toggle = (key: string, checked: boolean) => {
     setSelected((prev) => {
-      if (POLICY_SCOPE_KEYS.includes(key as (typeof POLICY_SCOPE_KEYS)[number])) {
-        return pickExclusiveScope(key, checked, prev, POLICY_SCOPE_KEYS);
+      const family = scopeFamilyForKey(key);
+      if (family) {
+        return pickExclusiveScope(key, checked, prev, family);
       }
       const next = new Set(prev);
       if (checked) next.add(key);
@@ -122,7 +131,11 @@ export function RoleFormDialog({
     });
   };
 
-  const toggleGroup = (keys: string[], checked: boolean) => {
+  const toggleGroup = (keys: string[], checked: boolean, isScopeGroup: boolean) => {
+    if (isScopeGroup && checked) {
+      toast.error("Pick only one scope option in this group — you cannot combine them.");
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
       for (const k of keys) {
@@ -133,6 +146,15 @@ export function RoleFormDialog({
     });
   };
 
+  function extractApiErrorMessage(e: unknown): string {
+    const axiosErr = e as AxiosError<{ message?: string }>;
+    const msg = axiosErr.response?.data?.message;
+    if (typeof msg === "string" && msg.trim()) {
+      return msg;
+    }
+    return e instanceof Error ? e.message : "Save failed";
+  }
+
   const handleSave = async () => {
     if (name.trim().length < 2) {
       toast.error("Role name is required");
@@ -142,8 +164,7 @@ export function RoleFormDialog({
       toast.error("Select at least one permission");
       return;
     }
-    const resolved = resolvePermissionClosure(selected);
-    const scopeError = policyScopeValidationMessage(resolved);
+    const scopeError = permissionValidationMessage(resolvePermissionClosure(selected));
     if (scopeError) {
       toast.error(scopeError);
       return;
@@ -182,7 +203,7 @@ export function RoleFormDialog({
       onSuccess();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(extractApiErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -196,7 +217,8 @@ export function RoleFormDialog({
             {isEdit ? "Edit role" : cloneFrom ? "Clone role" : "Create role"}
           </DialogTitle>
           <DialogDescription>
-            Assign permissions for this role. Dependencies are enforced on the server.
+            Assign permissions for this role. Scope groups (policy, MIS, claims) allow only one
+            option each. Dependencies are enforced on the server.
           </DialogDescription>
         </DialogHeader>
 
@@ -223,6 +245,11 @@ export function RoleFormDialog({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {validationMessage ? (
+            <p className="text-destructive text-sm" role="alert">
+              {validationMessage}
+            </p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto rounded-md border p-3">
@@ -233,18 +260,28 @@ export function RoleFormDialog({
               {filteredGroups.map((g) => {
                 const keys = g.permissions.map((p) => p.key);
                 const allOn = keys.every((k) => selected.has(k));
+                const isScopeGroup =
+                  g.permissions.length > 0 &&
+                  g.permissions.every(
+                    (p) => p.isScope || scopeFamilyForKey(p.key) !== null,
+                  );
                 return (
                   <div key={g.group} className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{g.group}</p>
+                      <div>
+                        <p className="text-sm font-medium">{g.group}</p>
+                        {isScopeGroup ? (
+                          <p className="text-muted-foreground text-xs">Select only one option</p>
+                        ) : null}
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         className="h-7 text-xs"
-                        onClick={() => toggleGroup(keys, !allOn)}
+                        onClick={() => toggleGroup(keys, !allOn, isScopeGroup)}
                       >
-                        {allOn ? "Clear group" : "Select group"}
+                        {allOn || isScopeGroup ? "Clear group" : "Select group"}
                       </Button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -278,7 +315,11 @@ export function RoleFormDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+          <Button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving || Boolean(validationMessage)}
+          >
             {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
             Save
           </Button>

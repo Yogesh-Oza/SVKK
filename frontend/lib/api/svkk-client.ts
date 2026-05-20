@@ -5,6 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { invalidateSession } from "@/lib/svkk/session-invalidation";
 import {
   clearStoredTokens,
   getStoredAccessToken,
@@ -20,6 +21,20 @@ function isAuthLoginOrPublic(url: string | undefined): boolean {
     return false;
   }
   return url.includes("/auth/login");
+}
+
+function apiErrorMessage(error: AxiosError): string | undefined {
+  const data = error.response?.data;
+  if (data && typeof data === "object" && "message" in data) {
+    const msg = (data as { message?: unknown }).message;
+    return typeof msg === "string" ? msg : undefined;
+  }
+  return undefined;
+}
+
+function isPermissionsChangedError(error: AxiosError): boolean {
+  const msg = apiErrorMessage(error);
+  return error.response?.status === 403 && Boolean(msg?.includes("Permissions changed"));
 }
 
 /**
@@ -96,6 +111,13 @@ backendApi.interceptors.response.use(
     const original = error.config as Retriable | undefined;
     const status = error.response?.status;
 
+    if (isPermissionsChangedError(error)) {
+      invalidateSession(
+        apiErrorMessage(error) ?? "Your role permissions changed. Please sign in again.",
+      );
+      return Promise.reject(error);
+    }
+
     if (
       !original ||
       status !== 401 ||
@@ -118,6 +140,9 @@ backendApi.interceptors.response.use(
       return backendApi.request(original);
     }
 
+    invalidateSession(
+      apiErrorMessage(error) ?? "Your session ended. Please sign in again.",
+    );
     return Promise.reject(error);
   },
 );
