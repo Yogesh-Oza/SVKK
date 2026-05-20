@@ -187,70 +187,74 @@ export function createCalculationRouter(env: Env) {
   r.put("/admin/snapshot", requirePermission("admin:charts"), async (req, res, next) => {
     try {
       const body = SnapshotBodySchema.parse(req.body);
-      await prisma.$transaction(async (tx) => {
-        for (const p of body.policyTypes) {
-          const chartMode = modeToChartMode(p.mode);
-          const policyType = await tx.policyType.upsert({
-            where: { key: p.key },
-            update: {
-              name: p.name,
-              description: p.description ?? null,
-              chartMode,
-              discountConfig: p.discount,
-            },
-            create: {
-              key: p.key,
-              name: p.name,
-              description: p.description ?? null,
-              chartMode,
-              discountConfig: p.discount,
-            },
-          });
-
-          const writes: { kind: PolicyChartKind; bands: FrontendBand[] }[] = [];
-          if (p.mode === "same") {
-            if (p.charts.combined?.length) {
-              writes.push({ kind: PolicyChartKind.COMBINED, bands: p.charts.combined });
-            }
-          } else {
-            if (p.charts.holder?.length) {
-              writes.push({ kind: PolicyChartKind.HOLDER, bands: p.charts.holder });
-            }
-            if (p.charts.member?.length) {
-              writes.push({ kind: PolicyChartKind.MEMBER, bands: p.charts.member });
-            }
-          }
-
-          for (const w of writes) {
-            const matrixJson = bandsToMatrix(w.bands);
-            const existing = await tx.policyChart.findFirst({
-              where: { policyTypeId: policyType.id, chartKind: w.kind },
-              orderBy: { version: "desc" },
-              select: { id: true, version: true },
-            });
-            const upserted = await tx.policyChart.upsert({
-              where: {
-                policyTypeId_version_chartKind: {
-                  policyTypeId: policyType.id,
-                  version: existing?.version ?? 1,
-                  chartKind: w.kind,
-                },
-              },
+      await prisma.$transaction(
+        async (tx) => {
+          for (const p of body.policyTypes) {
+            const chartMode = modeToChartMode(p.mode);
+            const policyType = await tx.policyType.upsert({
+              where: { key: p.key },
               update: {
-                premiumMatrix: matrixJson as unknown as object,
+                name: p.name,
+                description: p.description ?? null,
+                chartMode,
+                discountConfig: p.discount,
               },
               create: {
-                policyTypeId: policyType.id,
-                version: 1,
-                effectiveFrom: new Date(),
-                chartKind: w.kind,
-                premiumMatrix: matrixJson as unknown as object,
+                key: p.key,
+                name: p.name,
+                description: p.description ?? null,
+                chartMode,
+                discountConfig: p.discount,
               },
             });
-            invalidateChartCache(upserted.id);
+
+            const writes: { kind: PolicyChartKind; bands: FrontendBand[] }[] = [];
+            if (p.mode === "same") {
+              if (p.charts.combined?.length) {
+                writes.push({ kind: PolicyChartKind.COMBINED, bands: p.charts.combined });
+              }
+            } else {
+              if (p.charts.holder?.length) {
+                writes.push({ kind: PolicyChartKind.HOLDER, bands: p.charts.holder });
+              }
+              if (p.charts.member?.length) {
+                writes.push({ kind: PolicyChartKind.MEMBER, bands: p.charts.member });
+              }
+            }
+
+            for (const w of writes) {
+              const matrixJson = bandsToMatrix(w.bands);
+              const existing = await tx.policyChart.findFirst({
+                where: { policyTypeId: policyType.id, chartKind: w.kind },
+                orderBy: { version: "desc" },
+                select: { id: true, version: true },
+              });
+              const upserted = await tx.policyChart.upsert({
+                where: {
+                  policyTypeId_version_chartKind: {
+                    policyTypeId: policyType.id,
+                    version: existing?.version ?? 1,
+                    chartKind: w.kind,
+                  },
+                },
+                update: {
+                  premiumMatrix: matrixJson as unknown as object,
+                },
+                create: {
+                  policyTypeId: policyType.id,
+                  version: 1,
+                  effectiveFrom: new Date(),
+                  chartKind: w.kind,
+                  premiumMatrix: matrixJson as unknown as object,
+                },
+              });
+              invalidateChartCache(upserted.id);
+            }
           }
-        }
-      });
+        },
+        // Admin snapshot saves can be slow with many charts; avoid interactive transaction timeout (P2028).
+        { maxWait: 20_000, timeout: 120_000 },
+      );
       res.json({ ok: true });
     } catch (e) {
       next(e);
