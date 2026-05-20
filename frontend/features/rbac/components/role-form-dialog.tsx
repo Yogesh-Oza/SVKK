@@ -295,8 +295,23 @@ export function RoleFormDialog({
             {isEdit ? "Edit role" : cloneFrom ? "Clone role" : "Create role"}
           </DialogTitle>
           <DialogDescription className="text-left">
-            Village-scoped roles need at least one village or area. When both are set, records must
-            match both. Scope groups allow only one option each.
+            <span className="block">
+              Geography appears only when this role uses{" "}
+              <strong className="font-medium">village scope</strong> for policies, claims, or MIS (
+              <code className="text-xs">policy:scope_village</code>,{" "}
+              <code className="text-xs">claim:scope_village</code>, or{" "}
+              <code className="text-xs">mis:scope_village</code>
+              ). All-scope roles do not need it.
+            </span>
+            <span className="mt-2 block">
+              The village/area lists are the full master catalog: tick only what{" "}
+              <strong className="font-medium">this role</strong> may access. Other roles are
+              unchanged until you edit them.
+            </span>
+            <span className="mt-2 block">
+              If both villages and areas are selected for a role, a record must match both. Scope
+              groups (policy / MIS / claims) allow only one option each.
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -330,9 +345,10 @@ export function RoleFormDialog({
             {showGeo ? (
               <section className="space-y-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Geography access</h3>
+                  <h3 className="text-sm font-semibold">Geography access (this role only)</h3>
                   <p className="text-muted-foreground text-xs">
-                    {villageOptionIds.length} villages · {areaOptionIds.length} areas selected
+                    {villageOptionIds.length} villages · {areaOptionIds.length} areas selected — only
+                    checked rows are stored for this role.
                   </p>
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -360,7 +376,13 @@ export function RoleFormDialog({
                   />
                 </div>
               </section>
-            ) : null}
+            ) : (
+              <p className="text-muted-foreground rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
+                No geography picker: enable{" "}
+                <strong className="font-medium text-foreground">Village-scoped</strong> under
+                Policy scope, Claim scope, or MIS scope to assign villages/areas for this role.
+              </p>
+            )}
 
             <section className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

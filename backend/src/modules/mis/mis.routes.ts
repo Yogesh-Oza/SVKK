@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   buildMisVillageWhere,
@@ -175,7 +175,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/dashboard",
-    requirePermission("mis:read"),
+    requireAnyPermission(["mis:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -202,7 +202,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/dashboard-charts",
-    requirePermission("mis:read"),
+    requireAnyPermission(["mis:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -253,7 +253,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/policy-member-report",
-    requirePermission("mis:read"),
+    requireAnyPermission(["mis:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema.parse(req.query);

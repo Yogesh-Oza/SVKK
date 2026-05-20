@@ -13,7 +13,7 @@ import {
 } from "@/features/svkk-dashboard/dashboard-metric-cards";
 import { PremiumTrendAndBreakdown } from "@/features/svkk-dashboard/premium-trend-and-breakdown";
 import type { PolicyMemberRow } from "@/features/svkk-mis/policy-member-report-section";
-import { canAccessMis } from "@/lib/svkk/permissions";
+import { canAccessDashboardMis, canAccessMis } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
 import {
@@ -53,7 +53,10 @@ export default function SvkkDashboardPage() {
   const [misLoading, setMisLoading] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
-  const canSeeMis = user ? canAccessMis(user.permissions) : false;
+  const canLoadDashboardMis = user ? canAccessDashboardMis(user.permissions) : false;
+  const canOpenFullMis = user ? canAccessMis(user.permissions) : false;
+  // Back-compat alias: older renders referenced `canSeeMis`.
+  const canSeeMis = canLoadDashboardMis;
 
   const range = useMemo(
     () => resolveDashboardDateRange(preset, customFrom, customTo),
@@ -70,7 +73,7 @@ export default function SvkkDashboardPage() {
   }, [misTotals]);
 
   const load = useCallback(async () => {
-    if (!canSeeMis) return;
+    if (!canLoadDashboardMis) return;
 
     const asOfQ = "?asOfDate=" + encodeURIComponent(range.dateTo);
     const vQ = buildMisQuery(range, "village");
@@ -92,11 +95,11 @@ export default function SvkkDashboardPage() {
     setAgePie(rowsToPieSlices(ageReport.rows, "membersPlusPolicies"));
     setDashboard(d);
     setCharts(c);
-  }, [canSeeMis, range]);
+  }, [canLoadDashboardMis, range]);
 
   useEffect(() => {
     if (missingUrl) return;
-    if (!canSeeMis) {
+    if (!canLoadDashboardMis) {
       setMisLoading(false);
       setDashboard(null);
       setCharts(null);
@@ -118,7 +121,7 @@ export default function SvkkDashboardPage() {
         setMisLoading(false);
       }
     })();
-  }, [missingUrl, canSeeMis, load]);
+  }, [missingUrl, canLoadDashboardMis, load]);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL in .env.</p>;
@@ -132,11 +135,12 @@ export default function SvkkDashboardPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Policy dashboard</h1>
           <p className="text-muted-foreground max-w-2xl text-sm">
-            Live MIS scope metrics aligned with the Policy &amp; Member report. Use date presets, then
-            click any card or chart to open Policies or MIS with the same filters.
+            MIS metrics for your date range, filtered the same way as the Policy &amp; Member report
+            (village/area scope from your role when MIS is village-scoped). Use presets, then open
+            Policies or MIS with the same filters from the cards.
           </p>
         </div>
-        {canSeeMis ? (
+        {canOpenFullMis ? (
           <Button variant="outline" size="sm" className="cursor-pointer shrink-0" asChild>
             <Link href={misHref}>
               <ExternalLink className="mr-2 size-4" />
@@ -146,7 +150,7 @@ export default function SvkkDashboardPage() {
         ) : null}
       </div>
 
-      {canSeeMis ? (
+      {canLoadDashboardMis ? (
         <DashboardDateToolbar
           preset={preset}
           range={range}
@@ -162,12 +166,12 @@ export default function SvkkDashboardPage() {
         range={range}
         misTotals={misTotals}
         dashboard={dashboard}
-        canSeeMis={canSeeMis}
+        canSeeMis={canLoadDashboardMis}
         loading={misLoading}
       />
-      {canSeeMis && err ? <p className="text-destructive text-sm">{err}</p> : null}
+      {canLoadDashboardMis && err ? <p className="text-destructive text-sm">{err}</p> : null}
 
-      {canSeeMis && !err ? (
+      {canLoadDashboardMis && !err ? (
         <PremiumTrendAndBreakdown
           loading={misLoading}
           range={range}
@@ -179,10 +183,12 @@ export default function SvkkDashboardPage() {
         />
       ) : null}
 
-      {user?.role === "USER" ? (
-        <p className="text-muted-foreground text-sm max-w-prose">
-          You can create policies and review policies in your scope. Supervisors and admins see
-          additional scope metrics and exports.
+      {canLoadDashboardMis && !canOpenFullMis ? (
+        <p className="text-muted-foreground max-w-prose text-sm">
+          Charts and totals follow your role&apos;s{" "}
+          <strong className="text-foreground">MIS village/area scope</strong> (same as the Policy
+          &amp; Member report). To open the full MIS screen and exports, add{" "}
+          <code className="text-xs">mis:read</code> to this role.
         </p>
       ) : null}
     </div>

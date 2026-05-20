@@ -61,6 +61,11 @@ export function canAccessMis(permissions: string[]) {
   return hasPermission(permissions, "mis:read");
 }
 
+/** Load dashboard MIS widgets (same APIs as MIS report) with `mis:read` or `dashboard:read`. */
+export function canAccessDashboardMis(permissions: string[]) {
+  return hasPermission(permissions, "mis:read") || hasPermission(permissions, "dashboard:read");
+}
+
 export function canUpdatePolicy(permissions: string[]) {
   return hasPermission(permissions, "policy:update");
 }

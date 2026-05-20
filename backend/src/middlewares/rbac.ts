@@ -28,6 +28,29 @@ export function requirePermission(key: PermissionKey | string) {
   };
 }
 
+/** Pass if the role has any of the listed permissions (OR). */
+export function requireAnyPermission(keys: readonly string[]) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const roleId = req.roleId;
+      if (!roleId) {
+        return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
+      }
+
+      const perms =
+        req.permissions ?? (await getEffectivePermissions(roleId));
+      req.permissions = perms;
+
+      if (!keys.some((k) => hasPermissionInSet(perms, k))) {
+        return next(new AppError("FORBIDDEN", "Insufficient permissions", 403));
+      }
+      next();
+    } catch (e) {
+      next(e);
+    }
+  };
+}
+
 /** @internal For unit tests — checks permission against a preloaded set */
 export function isRoleAllowed(key: string, perms: Set<string>): boolean {
   return hasPermissionInSet(perms, key);
