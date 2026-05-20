@@ -17,7 +17,17 @@ export const POLICY_SCOPE_KEYS = ["policy:scope_all", "policy:scope_village", "p
 export const MIS_SCOPE_KEYS = ["mis:scope_all", "mis:scope_village"] as const;
 export const CLAIM_SCOPE_KEYS = ["claim:scope_all", "claim:scope_village"] as const;
 
+export const VILLAGE_SCOPE_PERMISSION_KEYS = [
+  "policy:scope_village",
+  "claim:scope_village",
+  "mis:scope_village",
+] as const;
+
 const SCOPE_FAMILIES = [POLICY_SCOPE_KEYS, MIS_SCOPE_KEYS, CLAIM_SCOPE_KEYS] as const;
+
+export function roleRequiresGeo(keys: Set<string>): boolean {
+  return VILLAGE_SCOPE_PERMISSION_KEYS.some((k) => keys.has(k));
+}
 
 export function scopeFamilyForKey(key: string): readonly string[] | null {
   for (const family of SCOPE_FAMILIES) {
@@ -83,6 +93,19 @@ export function permissionValidationMessage(keys: Set<string>): string | null {
   }
 
   return policyScopeValidationMessage(keys);
+}
+
+/** Mirrors backend assertRoleGeoRequired when option IDs are known. */
+export function geoValidationMessageWithSelection(
+  keys: Set<string>,
+  villageOptionIds: string[],
+  areaOptionIds: string[],
+): string | null {
+  if (!roleRequiresGeo(keys)) return null;
+  if (villageOptionIds.length === 0 && areaOptionIds.length === 0) {
+    return "Village-scoped permissions require at least one allowed village or area.";
+  }
+  return null;
 }
 
 export function pickExclusiveScope(

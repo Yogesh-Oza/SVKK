@@ -128,7 +128,18 @@ export default function RolesPage() {
             <TableBody>
               {roles.map((role) => (
                 <TableRow key={role.id}>
-                  <TableCell className="font-medium">{role.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div>
+                      {role.name}
+                      {(role.villageOptionIds?.length ?? 0) > 0 ||
+                      (role.areaOptionIds?.length ?? 0) > 0 ? (
+                        <p className="text-muted-foreground text-xs font-normal">
+                          {role.villageOptionIds?.length ?? 0} villages ·{" "}
+                          {role.areaOptionIds?.length ?? 0} areas
+                        </p>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">{role.slug}</TableCell>
                   <TableCell>{(role as RbacRoleRow & { userCount?: number }).userCount ?? "—"}</TableCell>
                   <TableCell>

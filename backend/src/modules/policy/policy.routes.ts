@@ -38,6 +38,7 @@ import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
 import {
+  assertGeoFieldsOnWrite,
   assertPolicyReadable,
   buildPolicyReadWhere,
   loadMisScope,
@@ -289,6 +290,13 @@ export function createPolicyRouter(env: Env) {
       }
 
       const body = createPolicyBodySchema.parse(req.body);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      assertGeoFieldsOnWrite(
+        { village: body.village, area: body.area },
+        scope,
+        req.permissions!,
+        "policy",
+      );
       const out = await createPolicyWithYear({
         actorUserId: req.userId!,
         ...body,
@@ -308,7 +316,7 @@ export function createPolicyRouter(env: Env) {
     requirePermission("policy:read"),
     async (req, res, next) => {
       try {
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
         const fq = z
           .object({
             village: z.string().optional(),
@@ -338,11 +346,11 @@ export function createPolicyRouter(env: Env) {
         const body = z
           .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
           .parse(req.body);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
         for (const id of body.ids) {
           const existing = await prisma.policy.findUnique({
             where: { id, deletedAt: null },
-            select: { id: true, village: true, createdById: true },
+            select: { id: true, village: true, area: true, createdById: true },
           });
           if (!existing) {
             throw new AppError("NOT_FOUND", `Policy not found: ${id}`, 404);
@@ -366,7 +374,7 @@ export function createPolicyRouter(env: Env) {
       const usePage = q.page != null;
       const listFilter = listFilterFromQuery(q);
 
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const listArgs = {
         where,
@@ -407,7 +415,7 @@ export function createPolicyRouter(env: Env) {
     try {
       const q = policyListFiltersSchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const rows = await queryPolicyListForExport({ where, sort: listFilter.sort });
       if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
@@ -469,7 +477,7 @@ export function createPolicyRouter(env: Env) {
 
   r.get("/:id", requirePermission("policy:read"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const row = await prisma.policy.findFirst({
         where: { id: String(req.params.id), deletedAt: null },
         include: {
@@ -505,10 +513,10 @@ export function createPolicyRouter(env: Env) {
 
   r.patch("/:id", requirePermission("policy:update"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
-        select: { id: true, village: true, createdById: true },
+        select: { id: true, village: true, area: true, createdById: true },
       });
       if (!existing) throw new AppError("NOT_FOUND", "Policy not found", 404);
       assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
@@ -516,6 +524,15 @@ export function createPolicyRouter(env: Env) {
       const parsed = patchPolicyBodySchema.parse(req.body);
       const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers, replacePayments } =
         patchBodyToInput(parsed);
+      assertGeoFieldsOnWrite(
+        {
+          village: policy?.village !== undefined ? policy.village : existing.village,
+          area: policy?.area !== undefined ? policy.area : existing.area,
+        },
+        scope,
+        req.permissions!,
+        "policy",
+      );
       const row = await updatePolicySections({
         actorUserId: req.userId!,
         policyId: String(req.params.id),
@@ -537,7 +554,7 @@ export function createPolicyRouter(env: Env) {
 
   r.delete("/:id", requirePermission("policy:delete"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true, createdById: true },

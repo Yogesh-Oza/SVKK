@@ -113,6 +113,7 @@ async function main() {
     },
   });
 
+  // Legacy UserVillage kept for rollback; authorization reads RbacRoleVillage.
   await prisma.userVillage.deleteMany({ where: { userId: supervisor.id } });
   for (const village of ["DemoVillageA", "DemoVillageB"]) {
     await prisma.userVillage.create({
@@ -249,6 +250,8 @@ async function main() {
     { type: DropdownType.VILLAGE, value: "mathura", label: "Mathura", sortOrder: 2 },
     { type: DropdownType.VILLAGE, value: "becharaji", label: "Becharaji", sortOrder: 3 },
     { type: DropdownType.VILLAGE, value: "idar", label: "Idar", sortOrder: 4 },
+    { type: DropdownType.VILLAGE, value: "demovillagea", label: "DemoVillageA", sortOrder: 5 },
+    { type: DropdownType.VILLAGE, value: "demovillageb", label: "DemoVillageB", sortOrder: 6 },
 
     { type: DropdownType.AREA, value: "naroda", label: "Naroda", sortOrder: 0 },
     { type: DropdownType.AREA, value: "bopal", label: "Bopal", sortOrder: 1 },
@@ -262,6 +265,24 @@ async function main() {
       where: { type_value: { type: d.type, value: d.value } },
       update: { label: d.label, sortOrder: d.sortOrder, isSystem: true, isActive: true },
       create: { ...d, isSystem: true, isActive: true },
+    });
+  }
+
+  const supervisorVillageOptions = await prisma.dropdownOption.findMany({
+    where: {
+      type: DropdownType.VILLAGE,
+      value: { in: ["demovillagea", "demovillageb"] },
+    },
+    select: { id: true },
+  });
+  await prisma.rbacRoleVillage.deleteMany({ where: { roleId: supervisorRoleId } });
+  if (supervisorVillageOptions.length) {
+    await prisma.rbacRoleVillage.createMany({
+      data: supervisorVillageOptions.map((o) => ({
+        roleId: supervisorRoleId,
+        dropdownOptionId: o.id,
+      })),
+      skipDuplicates: true,
     });
   }
 

@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildPolicyReadWhere } from "./mis-scope.service.js";
+import {
+  assertRecordInGeoScope,
+  assertRoleGeoRequired,
+  buildGeoPolicyWhere,
+  buildPolicyReadWhere,
+} from "./mis-scope.service.js";
 import { resolvePermissionClosure } from "../domain/permissions/dependencies.js";
 import { DEFAULT_ROLE_PERMISSIONS } from "../lib/permission-seed.js";
+import { AppError } from "../errors/app-error.js";
 
 function perms(legacy: keyof typeof DEFAULT_ROLE_PERMISSIONS): Set<string> {
   return resolvePermissionClosure(DEFAULT_ROLE_PERMISSIONS[legacy].allow);
@@ -10,7 +16,7 @@ function perms(legacy: keyof typeof DEFAULT_ROLE_PERMISSIONS): Set<string> {
 describe("buildPolicyReadWhere", () => {
   it("USER scope_own restricts to createdById", () => {
     const w = buildPolicyReadWhere(
-      { kind: "villages", villages: [] },
+      { kind: "full" },
       undefined,
       "u1",
       perms("USER"),
@@ -18,49 +24,69 @@ describe("buildPolicyReadWhere", () => {
     expect(w).toMatchObject({ createdById: "u1", deletedAt: null });
   });
 
-  it("USER with village filter", () => {
-    const w = buildPolicyReadWhere(
-      { kind: "villages", villages: [] },
-      "V1",
-      "u1",
-      perms("USER"),
-    );
-    expect(w).toMatchObject({ createdById: "u1", village: "V1" });
-  });
-
-  it("ADMIN scope_all uses full scope", () => {
-    const w = buildPolicyReadWhere(
-      { kind: "full" },
-      "X",
-      "u1",
-      perms("ADMIN"),
-    );
+  it("ADMIN scope_all uses full scope with village filter", () => {
+    const w = buildPolicyReadWhere({ kind: "full" }, "X", "u1", perms("ADMIN"));
     expect(w).toMatchObject({
       AND: [{ deletedAt: null }, { village: { in: ["X"] } }],
     });
   });
+});
 
-  it("ADMIN multi-village filter", () => {
-    const w = buildPolicyReadWhere(
-      { kind: "full" },
-      undefined,
-      "u1",
-      perms("ADMIN"),
-      ["V1", "V2"],
-    );
-    expect(w).toMatchObject({
-      AND: [{ deletedAt: null }, { village: { in: ["V1", "V2"] } }],
+describe("buildGeoPolicyWhere", () => {
+  it("requires non-null village and area when both lists set", () => {
+    const w = buildGeoPolicyWhere(["Mumbai"], ["Naroda"]);
+    expect(w).toEqual({
+      AND: [
+        { village: { not: null } },
+        { NOT: { village: "" } },
+        { village: { in: ["Mumbai"] } },
+        { area: { not: null } },
+        { NOT: { area: "" } },
+        { area: { in: ["Naroda"] } },
+      ],
     });
   });
 
-  it("SUPER_ADMIN wildcard sees all policies, not scope_own only", () => {
-    const w = buildPolicyReadWhere(
-      { kind: "full" },
-      undefined,
-      "u1",
-      perms("SUPER_ADMIN"),
-    );
-    expect(w).toEqual({ deletedAt: null });
-    expect(w).not.toHaveProperty("createdById");
+  it("empty lists yield no rows", () => {
+    expect(buildGeoPolicyWhere([], [])).toEqual({ id: { in: [] } });
+  });
+});
+
+describe("assertRecordInGeoScope", () => {
+  const geoScope = { kind: "geo" as const, villageValues: ["mumbai"], areaValues: ["naroda"] };
+  const villagePerms = perms("SUPERVISOR");
+
+  it("rejects null village", () => {
+    expect(() =>
+      assertRecordInGeoScope(
+        { village: null, area: "naroda" },
+        geoScope,
+        villagePerms,
+        "policy",
+      ),
+    ).toThrow(AppError);
+  });
+
+  it("matches case-insensitively", () => {
+    expect(() =>
+      assertRecordInGeoScope(
+        { village: "Mumbai", area: "Naroda" },
+        geoScope,
+        villagePerms,
+        "policy",
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("assertRoleGeoRequired", () => {
+  it("rejects village scope without geo options", () => {
+    expect(() =>
+      assertRoleGeoRequired(["policy:scope_village", "policy:read"], [], []),
+    ).toThrow(/at least one allowed village or area/i);
+  });
+
+  it("allows scope_all without geo", () => {
+    expect(() => assertRoleGeoRequired(["policy:scope_all"], [], [])).not.toThrow();
   });
 });

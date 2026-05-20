@@ -26,7 +26,7 @@ export function createReceiptRouter(env: Env) {
         })
         .parse(req.body);
 
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const policy = await prisma.policy.findUnique({
         where: { id: String(req.params.policyId) },
         include: {

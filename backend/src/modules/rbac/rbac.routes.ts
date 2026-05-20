@@ -14,11 +14,21 @@ import {
   softDeleteRole,
   updateRole,
 } from "./rbac-roles.service.js";
+import { listGeoMasterOptions } from "../../services/role-geo.service.js";
 
 export function createRbacRouter(_env: Env) {
   const r = Router();
   r.use(requireAuth(_env));
   r.use(rbacRateLimit);
+
+  r.get("/geo-options", requirePermission("roles:manage"), async (_req, res, next) => {
+    try {
+      const options = await listGeoMasterOptions();
+      res.json(options);
+    } catch (e) {
+      next(e);
+    }
+  });
 
   r.get("/permissions", requirePermission("roles:manage"), async (_req, res, next) => {
     try {
@@ -48,21 +58,27 @@ export function createRbacRouter(_env: Env) {
   r.get("/roles", requirePermission("roles:manage"), async (_req, res, next) => {
     try {
       const roles = await listRoles();
-      res.json({
-        roles: roles.map((role) => ({
-          id: role.id,
-          name: role.name,
-          slug: role.slug,
-          description: role.description,
-          isSystem: role.isSystem,
-          isActive: role.isActive,
-          permVersion: role.permVersion,
-          userCount: role._count.users,
-          permissionKeys: role.permissions
-            .filter((p) => p.effect === "ALLOW")
-            .map((p) => p.permission.key),
-        })),
-      });
+      const rolesWithGeo = await Promise.all(
+        roles.map(async (role) => {
+          const full = await getRoleById(role.id);
+          return {
+            id: full.id,
+            name: full.name,
+            slug: full.slug,
+            description: full.description,
+            isSystem: full.isSystem,
+            isActive: full.isActive,
+            permVersion: full.permVersion,
+            userCount: full._count.users,
+            permissionKeys: full.permissions
+              .filter((p) => p.effect === "ALLOW")
+              .map((p) => p.permission.key),
+            villageOptionIds: full.villageOptionIds,
+            areaOptionIds: full.areaOptionIds,
+          };
+        }),
+      );
+      res.json({ roles: rolesWithGeo });
     } catch (e) {
       next(e);
     }
@@ -85,6 +101,8 @@ export function createRbacRouter(_env: Env) {
           slug: z.string().min(2).max(64).optional(),
           description: z.string().max(500).optional(),
           permissionKeys: z.array(z.string()).min(1),
+          villageOptionIds: z.array(z.string()).optional(),
+          areaOptionIds: z.array(z.string()).optional(),
         })
         .parse(req.body);
       const role = await createRole(req.userId!, body);
@@ -111,6 +129,8 @@ export function createRbacRouter(_env: Env) {
           name: z.string().min(2).max(80).optional(),
           description: z.string().max(500).optional(),
           permissionKeys: z.array(z.string()).min(1).optional(),
+          villageOptionIds: z.array(z.string()).optional(),
+          areaOptionIds: z.array(z.string()).optional(),
           isActive: z.boolean().optional(),
         })
         .parse(req.body);

@@ -12,11 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiGet, apiPatch, apiPost } from "@/lib/api/svkk-client";
 import {
+  geoValidationMessageWithSelection,
   permissionValidationMessage,
   pickExclusiveScope,
   resolvePermissionClosure,
+  roleRequiresGeo,
   scopeFamilyForKey,
 } from "@/lib/rbac/permission-closure";
 import type { AxiosError } from "axios";
@@ -47,7 +50,12 @@ export type RbacRoleRow = {
   isSystem: boolean;
   isActive: boolean;
   permissionKeys: string[];
+  villageOptionIds?: string[];
+  areaOptionIds?: string[];
 };
+
+type GeoOption = { id: string; value: string; label: string };
+type GeoOptionsResponse = { villages: GeoOption[]; areas: GeoOption[] };
 
 interface RoleFormDialogProps {
   role?: RbacRoleRow | null;
@@ -68,16 +76,25 @@ export function RoleFormDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [search, setSearch] = useState("");
+  const [geoVillageSearch, setGeoVillageSearch] = useState("");
+  const [geoAreaSearch, setGeoAreaSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<PermissionGroup[]>([]);
+  const [geoOptions, setGeoOptions] = useState<GeoOptionsResponse>({ villages: [], areas: [] });
+  const [villageOptionIds, setVillageOptionIds] = useState<string[]>([]);
+  const [areaOptionIds, setAreaOptionIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loadPermissions = useCallback(async () => {
     setLoading(true);
     try {
-      const json = await apiGet<{ groups: PermissionGroup[] }>("/rbac/permissions");
-      setGroups(json.groups ?? []);
+      const [permJson, geoJson] = await Promise.all([
+        apiGet<{ groups: PermissionGroup[] }>("/rbac/permissions"),
+        apiGet<GeoOptionsResponse>("/rbac/geo-options"),
+      ]);
+      setGroups(permJson.groups ?? []);
+      setGeoOptions(geoJson);
     } catch {
       toast.error("Failed to load permissions");
     } finally {
@@ -92,7 +109,11 @@ export function RoleFormDialog({
     setName(cloneFrom ? `${cloneFrom.name} (copy)` : (source?.name ?? ""));
     setDescription(source?.description ?? "");
     setSelected(new Set(source?.permissionKeys ?? []));
+    setVillageOptionIds(source?.villageOptionIds ?? []);
+    setAreaOptionIds(source?.areaOptionIds ?? []);
     setSearch("");
+    setGeoVillageSearch("");
+    setGeoAreaSearch("");
   }, [open, role, cloneFrom, loadPermissions]);
 
   const filteredGroups = useMemo(() => {
@@ -113,10 +134,55 @@ export function RoleFormDialog({
 
   const resolvedPermissions = useMemo(() => resolvePermissionClosure(selected), [selected]);
 
-  const validationMessage = useMemo(
-    () => permissionValidationMessage(resolvedPermissions),
-    [resolvedPermissions],
-  );
+  const showGeo = useMemo(() => roleRequiresGeo(resolvedPermissions), [resolvedPermissions]);
+
+  const validationMessage = useMemo(() => {
+    const permMsg = permissionValidationMessage(resolvedPermissions);
+    if (permMsg) return permMsg;
+    return geoValidationMessageWithSelection(
+      resolvedPermissions,
+      villageOptionIds,
+      areaOptionIds,
+    );
+  }, [resolvedPermissions, villageOptionIds, areaOptionIds]);
+
+  const filteredVillages = useMemo(() => {
+    const q = geoVillageSearch.trim().toLowerCase();
+    if (!q) return geoOptions.villages;
+    return geoOptions.villages.filter(
+      (v) => v.label.toLowerCase().includes(q) || v.value.toLowerCase().includes(q),
+    );
+  }, [geoOptions.villages, geoVillageSearch]);
+
+  const filteredAreas = useMemo(() => {
+    const q = geoAreaSearch.trim().toLowerCase();
+    if (!q) return geoOptions.areas;
+    return geoOptions.areas.filter(
+      (a) => a.label.toLowerCase().includes(q) || a.value.toLowerCase().includes(q),
+    );
+  }, [geoOptions.areas, geoAreaSearch]);
+
+  const setAllGeo = (kind: "village" | "area", ids: string[], on: boolean) => {
+    const setter = kind === "village" ? setVillageOptionIds : setAreaOptionIds;
+    setter((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return [...next];
+    });
+  };
+
+  const toggleGeoId = (kind: "village" | "area", id: string, checked: boolean) => {
+    const setter = kind === "village" ? setVillageOptionIds : setAreaOptionIds;
+    setter((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return [...next];
+    });
+  };
 
   const toggle = (key: string, checked: boolean) => {
     setSelected((prev) => {
@@ -164,7 +230,10 @@ export function RoleFormDialog({
       toast.error("Select at least one permission");
       return;
     }
-    const scopeError = permissionValidationMessage(resolvePermissionClosure(selected));
+    const resolved = resolvePermissionClosure(selected);
+    const scopeError =
+      permissionValidationMessage(resolved) ??
+      geoValidationMessageWithSelection(resolved, villageOptionIds, areaOptionIds);
     if (scopeError) {
       toast.error(scopeError);
       return;
@@ -177,8 +246,12 @@ export function RoleFormDialog({
           name?: string;
           description?: string;
           permissionKeys: string[];
+          villageOptionIds?: string[];
+          areaOptionIds?: string[];
         } = {
           permissionKeys,
+          villageOptionIds,
+          areaOptionIds,
         };
         if (!(isEdit && role.isSystem)) {
           body.name = name.trim();
@@ -197,6 +270,8 @@ export function RoleFormDialog({
           name: name.trim(),
           description: description.trim() || undefined,
           permissionKeys,
+          villageOptionIds,
+          areaOptionIds,
         });
         toast.success("Role created");
       }
@@ -209,20 +284,23 @@ export function RoleFormDialog({
     }
   };
 
+  const villageIdsVisible = filteredVillages.map((v) => v.id);
+  const areaIdsVisible = filteredAreas.map((a) => a.id);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col">
-        <DialogHeader>
+      <DialogContent className="flex h-[min(92vh,920px)] max-h-[92vh] w-[min(96vw,80rem)] max-w-[min(96vw,80rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,80rem)]">
+        <DialogHeader className="shrink-0 space-y-1 border-b px-6 py-4 text-left">
           <DialogTitle>
             {isEdit ? "Edit role" : cloneFrom ? "Clone role" : "Create role"}
           </DialogTitle>
-          <DialogDescription>
-            Assign permissions for this role. Scope groups (policy, MIS, claims) allow only one
-            option each. Dependencies are enforced on the server.
+          <DialogDescription className="text-left">
+            Village-scoped roles need at least one village or area. When both are set, records must
+            match both. Scope groups allow only one option each.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 py-2">
+        <div className="grid shrink-0 gap-3 border-b px-6 py-4 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="role-name">Name</Label>
             <Input
@@ -240,78 +318,125 @@ export function RoleFormDialog({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <Input
-            placeholder="Search permissions…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
           {validationMessage ? (
-            <p className="text-destructive text-sm" role="alert">
+            <p className="text-destructive col-span-full text-sm" role="alert">
               {validationMessage}
             </p>
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-md border p-3">
-          {loading ? (
-            <p className="text-muted-foreground text-sm">Loading permissions…</p>
-          ) : (
-            <div className="space-y-4">
-              {filteredGroups.map((g) => {
-                const keys = g.permissions.map((p) => p.key);
-                const allOn = keys.every((k) => selected.has(k));
-                const isScopeGroup =
-                  g.permissions.length > 0 &&
-                  g.permissions.every(
-                    (p) => p.isScope || scopeFamilyForKey(p.key) !== null,
-                  );
-                return (
-                  <div key={g.group} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium">{g.group}</p>
-                        {isScopeGroup ? (
-                          <p className="text-muted-foreground text-xs">Select only one option</p>
-                        ) : null}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => toggleGroup(keys, !allOn, isScopeGroup)}
-                      >
-                        {allOn || isScopeGroup ? "Clear group" : "Select group"}
-                      </Button>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {g.permissions.map((p) => (
-                        <label
-                          key={p.id}
-                          className="flex cursor-pointer items-start gap-2 text-sm"
-                        >
-                          <Checkbox
-                            checked={selected.has(p.key)}
-                            onCheckedChange={(c) => toggle(p.key, c === true)}
-                            disabled={isEdit && role?.isSystem && p.key === "*:*"}
-                          />
-                          <span>
-                            {p.label}
-                            <span className="text-muted-foreground block text-xs">
-                              {p.key}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-6 px-6 py-4">
+            {showGeo ? (
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Geography access</h3>
+                  <p className="text-muted-foreground text-xs">
+                    {villageOptionIds.length} villages · {areaOptionIds.length} areas selected
+                  </p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <GeoCheckboxPanel
+                    title="Allowed villages"
+                    search={geoVillageSearch}
+                    onSearchChange={setGeoVillageSearch}
+                    options={filteredVillages}
+                    selectedIds={villageOptionIds}
+                    onToggle={(id, checked) => toggleGeoId("village", id, checked)}
+                    onSelectVisible={() => setAllGeo("village", villageIdsVisible, true)}
+                    onClearVisible={() => setAllGeo("village", villageIdsVisible, false)}
+                    onClearAll={() => setVillageOptionIds([])}
+                  />
+                  <GeoCheckboxPanel
+                    title="Allowed areas"
+                    search={geoAreaSearch}
+                    onSearchChange={setGeoAreaSearch}
+                    options={filteredAreas}
+                    selectedIds={areaOptionIds}
+                    onToggle={(id, checked) => toggleGeoId("area", id, checked)}
+                    onSelectVisible={() => setAllGeo("area", areaIdsVisible, true)}
+                    onClearVisible={() => setAllGeo("area", areaIdsVisible, false)}
+                    onClearAll={() => setAreaOptionIds([])}
+                  />
+                </div>
+              </section>
+            ) : null}
 
-        <DialogFooter>
+            <section className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-sm font-semibold">Permissions</h3>
+                <Input
+                  className="sm:max-w-xs"
+                  placeholder="Search permissions…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="rounded-md border p-4">
+                {loading ? (
+                  <p className="text-muted-foreground text-sm">Loading permissions…</p>
+                ) : (
+                  <div className="space-y-5">
+                    {filteredGroups.map((g) => {
+                      const keys = g.permissions.map((p) => p.key);
+                      const allOn = keys.every((k) => selected.has(k));
+                      const isScopeGroup =
+                        g.permissions.length > 0 &&
+                        g.permissions.every(
+                          (p) => p.isScope || scopeFamilyForKey(p.key) !== null,
+                        );
+                      return (
+                        <div key={g.group} className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-medium">{g.group}</p>
+                              {isScopeGroup ? (
+                                <p className="text-muted-foreground text-xs">
+                                  Select only one option
+                                </p>
+                              ) : null}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 shrink-0 text-xs"
+                              onClick={() => toggleGroup(keys, !allOn, isScopeGroup)}
+                            >
+                              {allOn || isScopeGroup ? "Clear group" : "Select group"}
+                            </Button>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                            {g.permissions.map((p) => (
+                              <label
+                                key={p.id}
+                                className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-1.5 text-sm hover:bg-muted/50"
+                              >
+                                <Checkbox
+                                  checked={selected.has(p.key)}
+                                  onCheckedChange={(c) => toggle(p.key, c === true)}
+                                  disabled={isEdit && role?.isSystem && p.key === "*:*"}
+                                />
+                                <span>
+                                  {p.label}
+                                  <span className="text-muted-foreground block text-xs">
+                                    {p.key}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="shrink-0 gap-2 border-t px-6 py-4 sm:justify-end">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -326,6 +451,75 @@ export function RoleFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function GeoCheckboxPanel({
+  title,
+  search,
+  onSearchChange,
+  options,
+  selectedIds,
+  onToggle,
+  onSelectVisible,
+  onClearVisible,
+  onClearAll,
+}: {
+  title: string;
+  search: string;
+  onSearchChange: (v: string) => void;
+  options: GeoOption[];
+  selectedIds: string[];
+  onToggle: (id: string, checked: boolean) => void;
+  onSelectVisible: () => void;
+  onClearVisible: () => void;
+  onClearAll: () => void;
+}) {
+  return (
+    <div className="flex h-[min(38vh,300px)] flex-col rounded-md border">
+      <div className="space-y-2 border-b p-3">
+        <p className="text-sm font-medium">{title}</p>
+        <Input
+          placeholder={`Search ${title.toLowerCase()}…`}
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="h-8"
+        />
+        <div className="flex flex-wrap gap-1">
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={onSelectVisible}>
+            Select shown
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={onClearVisible}>
+            Clear shown
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onClearAll}>
+            Clear all
+          </Button>
+        </div>
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="grid gap-1 p-2 sm:grid-cols-2">
+          {options.length === 0 ? (
+            <p className="text-muted-foreground col-span-full px-2 py-4 text-sm">No matches</p>
+          ) : (
+            options.map((opt) => (
+              <label
+                key={opt.id}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+              >
+                <Checkbox
+                  checked={selectedIds.includes(opt.id)}
+                  onCheckedChange={(c) => onToggle(opt.id, c === true)}
+                />
+                <span className="truncate" title={opt.label}>
+                  {opt.label}
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 

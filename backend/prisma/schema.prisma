@@ -346,6 +346,8 @@ model Policy {
   @@index([insuredPartyId])
   @@index([createdById])
   @@index([village, deletedAt])
+  @@index([area, deletedAt])
+  @@index([village, area, deletedAt])
   @@index([categoryId, deletedAt])
   @@index([policyTypeId, deletedAt])
   @@index([createdAt, deletedAt])
@@ -579,11 +581,41 @@ model RbacRole {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  permissions RolePermission[]
-  users       User[]
+  permissions    RolePermission[]
+  users          User[]
+  villageOptions RbacRoleVillage[]
+  areaOptions    RbacRoleArea[]
 
   @@index([slug])
   @@index([isActive, isDeleted])
+}
+
+/// Role-level allowed villages (master DropdownOption type VILLAGE).
+model RbacRoleVillage {
+  id               String         @id @default(cuid())
+  roleId           String
+  role             RbacRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  dropdownOptionId String
+  option           DropdownOption @relation("RoleVillageOption", fields: [dropdownOptionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now())
+
+  @@unique([roleId, dropdownOptionId])
+  @@index([roleId])
+  @@index([dropdownOptionId])
+}
+
+/// Role-level allowed areas (master DropdownOption type AREA).
+model RbacRoleArea {
+  id               String         @id @default(cuid())
+  roleId           String
+  role             RbacRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  dropdownOptionId String
+  option           DropdownOption @relation("RoleAreaOption", fields: [dropdownOptionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now())
+
+  @@unique([roleId, dropdownOptionId])
+  @@index([roleId])
+  @@index([dropdownOptionId])
 }
 
 model RolePermission {
@@ -635,6 +667,9 @@ model DropdownOption {
   isSystem  Boolean      @default(false)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+
+  roleVillages RbacRoleVillage[] @relation("RoleVillageOption")
+  roleAreas    RbacRoleArea[]    @relation("RoleAreaOption")
 
   @@unique([type, value])
   @@index([type, sortOrder])

@@ -21,7 +21,11 @@ import {
   uploadBufferToOneDrive,
 } from "../../services/one-drive.service.js";
 import { updatePolicySections } from "../policy/policy.service.js";
-import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
+import {
+  assertPolicyReadable,
+  loadMisScope,
+  type GeoScope,
+} from "../../services/mis-scope.service.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const uploadDrive = multer({
@@ -149,6 +153,7 @@ export function createUploadRouter(env: Env) {
         const errors: string[] = [];
 
         const dataRows = rows.slice(1);
+        const policyScope = await loadMisScope(req.userId!, req.permissions!, "policy");
 
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i]!;
@@ -160,7 +165,11 @@ export function createUploadRouter(env: Env) {
             }
 
             await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-              await applyRow(tx, body.updateMode, header, row);
+              await applyRow(tx, body.updateMode, header, row, {
+                userId: req.userId!,
+                permissions: req.permissions!,
+                scope: policyScope,
+              });
             });
             success++;
           } catch (err) {
@@ -275,12 +284,13 @@ export function createUploadRouter(env: Env) {
         let updatedAt: string | undefined;
 
         if (policyId) {
-          const scope = await loadMisScope(req.userId!, req.permissions!);
+          const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
             select: {
               id: true,
               village: true,
+              area: true,
               createdById: true,
               policyUrl: true,
               referenceNo: true,
@@ -367,12 +377,13 @@ export function createUploadRouter(env: Env) {
         let updatedAt: string | undefined;
 
         if (policyId) {
-          const scope = await loadMisScope(req.userId!, req.permissions!);
+          const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
           const existing = await prisma.policy.findUnique({
             where: { id: policyId },
             select: {
               id: true,
               village: true,
+              area: true,
               createdById: true,
               policyUrl: true,
               referenceNo: true,
@@ -463,11 +474,27 @@ function validateRow(mode: CsvUpdateMode, header: string[], row: string[]) {
   }
 }
 
+async function assertCsvPolicyInScope(
+  tx: Prisma.TransactionClient,
+  policyNo: string,
+  ctx: { userId: string; permissions: Set<string>; scope: GeoScope },
+): Promise<void> {
+  const policy = await tx.policy.findFirst({
+    where: { policyNo, deletedAt: null },
+    select: { village: true, area: true, createdById: true },
+  });
+  if (!policy) {
+    throw new Error(`policy ${policyNo} not found`);
+  }
+  assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
+}
+
 async function applyRow(
   tx: Prisma.TransactionClient,
   mode: CsvUpdateMode,
   header: string[],
   row: string[],
+  ctx?: { userId: string; permissions: Set<string>; scope: GeoScope },
 ) {
   if (mode === CsvUpdateMode.POD_ONLY) {
     const iNo = colIndex(header, "policyNo");
@@ -475,6 +502,7 @@ async function applyRow(
     const policyNo = row[iNo];
     const pod = row[iPod];
     if (!policyNo) throw new Error("policyNo empty");
+    if (ctx) await assertCsvPolicyInScope(tx, policyNo, ctx);
     await tx.policy.updateMany({ where: { policyNo }, data: { pod } });
     return;
   }
@@ -484,6 +512,7 @@ async function applyRow(
     const oldPolicyNo = row[iOld];
     const newPolicyNo = row[iNew];
     if (!oldPolicyNo || !newPolicyNo) throw new Error("oldPolicyNo/newPolicyNo required");
+    if (ctx) await assertCsvPolicyInScope(tx, oldPolicyNo, ctx);
     await tx.policy.updateMany({
       where: { policyNo: oldPolicyNo },
       data: { policyNo: newPolicyNo },
@@ -503,8 +532,21 @@ async function applyRow(
   if (iPod >= 0 && row[iPod]) data.pod = row[iPod];
   const existing = await tx.policy.findFirst({
     where: { OR: [{ policyNo }, { insuredParty: { mobile } }] },
+    select: { id: true, village: true, area: true, createdById: true },
   });
   if (existing) {
+    if (ctx) {
+      assertPolicyReadable(
+        {
+          village: existing.village,
+          area: existing.area,
+          createdById: existing.createdById,
+        },
+        ctx.userId,
+        ctx.permissions,
+        ctx.scope,
+      );
+    }
     await tx.policy.update({ where: { id: existing.id }, data });
   } else {
     throw new Error("FULL upsert requires existing policy in Phase 1 stub");

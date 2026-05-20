@@ -11,6 +11,13 @@ import {
   invalidateRolePermissionCache,
 } from "../../services/rbac.service.js";
 import { logRbacAudit } from "../../services/rbac-audit.service.js";
+import { assertRoleGeoRequired } from "../../services/mis-scope.service.js";
+import {
+  loadRoleGeoValues,
+  replaceRoleGeo,
+  validateGeoOptionIds,
+} from "../../services/role-geo.service.js";
+import { roleGeoPayload } from "./rbac-geo.js";
 
 /** Remote DB + large permission sets can exceed Prisma's default 5s interactive tx limit. */
 const RBAC_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
@@ -67,6 +74,27 @@ async function replaceRolePermissions(
   return updated.permVersion;
 }
 
+async function bumpRoleVersionAndRtv(tx: Prisma.TransactionClient, roleId: string): Promise<number> {
+  const updated = await tx.rbacRole.update({
+    where: { id: roleId },
+    data: { permVersion: { increment: 1 } },
+    select: { permVersion: true },
+  });
+  await bumpRtvForUsersWithRole(tx, roleId);
+  return updated.permVersion;
+}
+
+function geoDiff(
+  before: { villageOptionIds: string[]; areaOptionIds: string[] },
+  after: { villageOptionIds: string[]; areaOptionIds: string[] },
+) {
+  const villagesAdded = after.villageOptionIds.filter((id) => !before.villageOptionIds.includes(id));
+  const villagesRemoved = before.villageOptionIds.filter((id) => !after.villageOptionIds.includes(id));
+  const areasAdded = after.areaOptionIds.filter((id) => !before.areaOptionIds.includes(id));
+  const areasRemoved = before.areaOptionIds.filter((id) => !after.areaOptionIds.includes(id));
+  return { villagesAdded, villagesRemoved, areasAdded, areasRemoved };
+}
+
 export async function listPermissionsGrouped() {
   const rows = await prisma.permission.findMany({
     where: { key: { not: WILDCARD_PERMISSION } },
@@ -107,12 +135,20 @@ export async function getRoleById(id: string) {
   if (!role) {
     throw new AppError("NOT_FOUND", "Role not found", 404);
   }
-  return role;
+  const geo = await roleGeoPayload(role.id);
+  return { ...role, ...geo };
 }
 
 export async function createRole(
   actorId: string,
-  input: { name: string; slug?: string; description?: string; permissionKeys: string[] },
+  input: {
+    name: string;
+    slug?: string;
+    description?: string;
+    permissionKeys: string[];
+    villageOptionIds?: string[];
+    areaOptionIds?: string[];
+  },
 ) {
   const slug = input.slug?.trim() || slugify(input.name);
   if (!slug) {
@@ -125,6 +161,11 @@ export async function createRole(
 
   const keyMap = await permissionIdsFromKeys(input.permissionKeys);
   const resolved = resolvePermissionClosure(input.permissionKeys);
+  const geoIds = await validateGeoOptionIds(
+    input.villageOptionIds ?? [],
+    input.areaOptionIds ?? [],
+  );
+  assertRoleGeoRequired(resolved, geoIds.villageOptionIds, geoIds.areaOptionIds);
   const assignments = [...resolved].map((key) => ({
     permissionId: keyMap.get(key)!,
     effect: "ALLOW" as PermissionEffect,
@@ -140,12 +181,19 @@ export async function createRole(
       },
     });
     await replaceRolePermissions(tx, created.id, assignments);
+    await replaceRoleGeo(tx, created.id, geoIds.villageOptionIds, geoIds.areaOptionIds);
     await logRbacAudit(
       {
         action: "ROLE_CREATED",
         actorId,
         targetRoleId: created.id,
-        newSnapshot: { name: input.name, slug, permissionKeys: [...resolved] },
+        newSnapshot: {
+          name: input.name,
+          slug,
+          permissionKeys: [...resolved],
+          villageOptionIds: geoIds.villageOptionIds,
+          areaOptionIds: geoIds.areaOptionIds,
+        },
       },
       tx,
     );
@@ -163,6 +211,8 @@ export async function updateRole(
     name?: string;
     description?: string;
     permissionKeys?: string[];
+    villageOptionIds?: string[];
+    areaOptionIds?: string[];
     isActive?: boolean;
   },
 ) {
@@ -201,9 +251,31 @@ export async function updateRole(
       effect: "ALLOW" as PermissionEffect,
     }));
     oldPermissionKeys = [...(await getEffectivePermissions(roleId))].sort();
+    const existingGeo = await loadRoleGeoValues(roleId);
+    assertRoleGeoRequired(
+      newPermissionKeys,
+      existingGeo.villageOptionIds,
+      existingGeo.areaOptionIds,
+    );
   }
 
   let permVersion: number | undefined;
+  const geoTouched =
+    input.villageOptionIds !== undefined || input.areaOptionIds !== undefined;
+  let geoAudit: ReturnType<typeof geoDiff> | null = null;
+  let nextGeoIds: { villageOptionIds: string[]; areaOptionIds: string[] } | null = null;
+  if (geoTouched) {
+    const beforeGeo = await loadRoleGeoValues(roleId);
+    nextGeoIds = await validateGeoOptionIds(
+      input.villageOptionIds ?? beforeGeo.villageOptionIds,
+      input.areaOptionIds ?? beforeGeo.areaOptionIds,
+    );
+    const effectiveKeys = input.permissionKeys
+      ? [...resolvePermissionClosure(input.permissionKeys)]
+      : [...(await getEffectivePermissions(roleId))];
+    assertRoleGeoRequired(effectiveKeys, nextGeoIds.villageOptionIds, nextGeoIds.areaOptionIds);
+    geoAudit = geoDiff(beforeGeo, nextGeoIds);
+  }
 
   await prisma.$transaction(async (tx) => {
     if (input.name !== undefined || input.description !== undefined || input.isActive !== undefined) {
@@ -219,6 +291,13 @@ export async function updateRole(
 
     if (permissionAssignments) {
       permVersion = await replaceRolePermissions(tx, roleId, permissionAssignments);
+    }
+
+    if (geoTouched && nextGeoIds) {
+      await replaceRoleGeo(tx, roleId, nextGeoIds.villageOptionIds, nextGeoIds.areaOptionIds);
+      if (!permissionAssignments) {
+        permVersion = await bumpRoleVersionAndRtv(tx, roleId);
+      }
     }
 
     if (input.isActive !== undefined) {
@@ -250,6 +329,22 @@ export async function updateRole(
     });
   }
 
+  if (geoAudit) {
+    await logRbacAudit({
+      action: "ROLE_GEO_UPDATED",
+      actorId,
+      targetRoleId: roleId,
+      oldSnapshot: {
+        villagesRemoved: geoAudit.villagesRemoved,
+        areasRemoved: geoAudit.areasRemoved,
+      },
+      newSnapshot: {
+        villagesAdded: geoAudit.villagesAdded,
+        areasAdded: geoAudit.areasAdded,
+      },
+    });
+  }
+
   return getRoleById(roleId);
 }
 
@@ -262,6 +357,8 @@ export async function cloneRole(actorId: string, sourceRoleId: string, name: str
     name,
     description: source.description ? `Cloned from ${source.name}` : undefined,
     permissionKeys: keys,
+    villageOptionIds: source.villageOptionIds,
+    areaOptionIds: source.areaOptionIds,
   });
   await logRbacAudit({
     action: "ROLE_CLONED",
