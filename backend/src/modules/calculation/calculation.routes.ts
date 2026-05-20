@@ -133,6 +133,46 @@ export function createCalculationRouter(env: Env) {
   });
 
   /**
+   * Admin chart inspector: returns all saved chart versions for a policy type,
+   * including parsed age bands and supported sum insured columns for display.
+   */
+  r.get("/admin/chart-details", requirePermission("admin:charts"), async (req, res, next) => {
+    try {
+      const policyTypeId = z.string().min(1).parse(req.query.policyTypeId);
+      const rows = await prisma.policyChart.findMany({
+        where: { policyTypeId },
+        orderBy: [{ chartKind: "asc" }, { version: "desc" }],
+        select: {
+          id: true,
+          policyTypeId: true,
+          version: true,
+          effectiveFrom: true,
+          chartKind: true,
+          premiumMatrix: true,
+        },
+      });
+
+      res.json(
+        rows.map((c) => {
+          const m = c.premiumMatrix as unknown as Partial<PremiumMatrixJson> | null | undefined;
+          const siColumns = Array.isArray(m?.siColumns) ? m!.siColumns : [];
+          return {
+            id: c.id,
+            policyTypeId: c.policyTypeId,
+            version: c.version,
+            effectiveFrom: c.effectiveFrom,
+            chartKind: c.chartKind,
+            siColumns,
+            bands: matrixToBands(c.premiumMatrix),
+          };
+        }),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  /**
    * Single-shot snapshot used by the calculator + admin pages. One GET on
    * page open replaces a per-policy/charts fanout, and the admin PUT below
    * persists every change in one round trip.

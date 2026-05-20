@@ -47,6 +47,17 @@ import {
   type PolicyKey,
   type PremiumState,
 } from "@/lib/svkk/premium";
+import { svkkJson } from "@/lib/svkk/api";
+
+type SavedChartDetail = {
+  id: string;
+  policyTypeId: string;
+  version: number;
+  effectiveFrom: string;
+  chartKind: "COMBINED" | "HOLDER" | "MEMBER";
+  siColumns: number[];
+  bands: ChartBand[];
+};
 
 type AdminNew = {
   key: string;
@@ -117,6 +128,9 @@ export default function CalculatorAdminPage() {
     tone: "info",
     text: "Policy charts and discount settings are ready for configuration.",
   });
+  const [savedCharts, setSavedCharts] = useState<SavedChartDetail[] | null>(null);
+  const [savedChartsLoading, setSavedChartsLoading] = useState(false);
+  const [savedChartsErr, setSavedChartsErr] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -185,6 +199,33 @@ export default function CalculatorAdminPage() {
   const def = state.defs[policy];
   const chart = state.charts[policy];
   const mode: "same" | "different" = def?.mode ?? "same";
+  const policyTypeId = rs.typesByKey[policy]?.id ?? "";
+
+  async function loadSavedCharts() {
+    if (!policyTypeId) {
+      setSavedCharts([]);
+      return;
+    }
+    setSavedChartsLoading(true);
+    setSavedChartsErr("");
+    try {
+      const rows = await svkkJson<SavedChartDetail[]>(
+        `/calculation/admin/chart-details?policyTypeId=${encodeURIComponent(policyTypeId)}`,
+      );
+      setSavedCharts(rows);
+    } catch (e) {
+      setSavedChartsErr(e instanceof Error ? e.message : String(e));
+      setSavedCharts(null);
+    } finally {
+      setSavedChartsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void loadSavedCharts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, policyTypeId]);
 
   const summaries: { title: string; rows: ChartBand[]; kind: "common" | "holder" | "member" }[] =
     Array.isArray(chart)
@@ -380,6 +421,14 @@ export default function CalculatorAdminPage() {
                 )}
               </div>
               <ChartSummary summaries={summaries} />
+              <SavedChartsPanel
+                policyLabel={def?.label ?? policy}
+                policyTypeId={policyTypeId}
+                rows={savedCharts}
+                loading={savedChartsLoading}
+                error={savedChartsErr}
+                onRefresh={() => void loadSavedCharts()}
+              />
             </TabsContent>
 
             <TabsContent value="discounts" className="mt-4 space-y-5">
@@ -677,6 +726,125 @@ function ChartSummary({
           })}
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+function SavedChartsPanel({
+  policyLabel,
+  policyTypeId,
+  rows,
+  loading,
+  error,
+  onRefresh,
+}: {
+  policyLabel: string;
+  policyTypeId: string;
+  rows: SavedChartDetail[] | null;
+  loading: boolean;
+  error: string;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="rounded-[18px] border border-[#e1e9f2] bg-white p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-extrabold tracking-tight text-[#0b1728]">
+            Saved charts in database
+          </h3>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Shows every saved chart version for <span className="font-semibold">{policyLabel}</span>.
+          </p>
+          <p className="text-muted-foreground mt-0.5 text-[11px]">
+            PolicyType ID: <span className="font-mono">{policyTypeId || "—"}</span>
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCcw className="mr-2 size-4" />}
+          Refresh
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          Failed to load saved charts: {error}
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-3">
+        {rows == null ? (
+          <p className="text-muted-foreground text-sm">{loading ? "Loading…" : "No data loaded."}</p>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            No charts saved yet for this policy type. Upload a CSV and click Save changes.
+          </p>
+        ) : (
+          rows.map((c) => (
+            <div key={c.id} className="rounded-[14px] border border-border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-bold text-[#0b1728]">
+                  {c.chartKind} · v{c.version}
+                </div>
+                <div className="text-muted-foreground text-xs">
+                  Effective: {new Date(c.effectiveFrom).toLocaleString()}
+                </div>
+              </div>
+              <div className="text-muted-foreground mt-1 text-[11px] font-mono break-all">{c.id}</div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-lg border bg-white p-3">
+                  <div className="text-xs font-bold">Age bands</div>
+                  <div className="text-muted-foreground mt-1 text-xs">
+                    {c.bands.length
+                      ? c.bands.map((b) => `${b.min}-${b.max}`).join(", ")
+                      : "—"}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-white p-3">
+                  <div className="text-xs font-bold">Supported SI</div>
+                  <div className="text-muted-foreground mt-1 text-xs">
+                    {c.siColumns?.length ? c.siColumns.map((n) => `₹${Number(n).toLocaleString("en-IN")}`).join(", ") : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {c.bands.length && c.siColumns.length ? (
+                <div className="mt-3 rounded-lg border bg-white p-3">
+                  <div className="text-xs font-bold">Premium matrix preview</div>
+                  <div className="mt-2 overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[7rem]">Age</TableHead>
+                          {c.siColumns.map((si) => (
+                            <TableHead key={si} className="text-right min-w-[7rem]">
+                              ₹{Number(si).toLocaleString("en-IN")}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {c.bands.map((b, idx) => (
+                          <TableRow key={`${c.id}-${idx}`}>
+                            <TableCell className="font-medium">{b.min}-{b.max}</TableCell>
+                            {c.siColumns.map((si) => (
+                              <TableCell key={si} className="text-right tabular-nums">
+                                {typeof b.premiums?.[String(si)] === "number"
+                                  ? Number(b.premiums[String(si)]).toLocaleString("en-IN")
+                                  : "—"}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
