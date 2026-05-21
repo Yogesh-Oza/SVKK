@@ -19,7 +19,7 @@ export async function allocateCounter(
       update: {},
     });
     await client.$executeRaw`
-      SELECT id FROM Counter WHERE type = ${type} AND period = ${period} FOR UPDATE
+      SELECT id FROM counter WHERE type = ${type} AND period = ${period} FOR UPDATE
     `;
     const updated = await client.counter.update({
       where: { type_period: { type, period } },

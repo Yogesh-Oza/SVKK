@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
+import { sqlTable } from "../../lib/sql-tables.js";
 
 /**
  * Inclusive day bounds in UTC for `asOfDate` (calendar date, UTC).
@@ -96,10 +97,10 @@ export async function queryVillageAggregates(
       COUNT(DISTINCT p.id) AS totalPolicies,
       COUNT(DISTINCT m.id) AS totalMembers,
       COALESCE(SUM(py.expectedNetPremium), 0) AS sumExpectedPremium
-    FROM Policy p
-    INNER JOIN PolicyYear py ON py.policyId = p.id AND py.deletedAt IS NULL
+    FROM ${sqlTable("policy")} p
+    INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id AND py.deletedAt IS NULL
       AND ${yearActive}
-    LEFT JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL
+    LEFT JOIN ${sqlTable("member")} m ON m.policyYearId = py.id AND m.deletedAt IS NULL
     WHERE p.deletedAt IS NULL
       AND (${args.scopeOnP})
     GROUP BY p.village
@@ -123,9 +124,9 @@ export async function queryVillagePaymentTotals(
     SELECT
       p.village AS village,
       COALESCE(SUM(pay.amount), 0) AS totalPaid
-    FROM Payment pay
-    INNER JOIN PolicyYear py ON pay.policyYearId = py.id AND py.deletedAt IS NULL
-    INNER JOIN Policy p ON py.policyId = p.id AND p.deletedAt IS NULL
+    FROM ${sqlTable("payment")} pay
+    INNER JOIN ${sqlTable("policyYear")} py ON pay.policyYearId = py.id AND py.deletedAt IS NULL
+    INNER JOIN ${sqlTable("policy")} p ON py.policyId = p.id AND p.deletedAt IS NULL
     WHERE pay.deletedAt IS NULL
       AND pay.status = 'COMPLETED'
       AND (${args.scopeOnP})
@@ -155,8 +156,8 @@ export async function queryDashboardMonthlyPremium(
       YEAR(py.policyStart) AS y,
       MONTH(py.policyStart) AS m,
       COALESCE(SUM(py.expectedNetPremium), 0) AS premium
-    FROM PolicyYear py
-    INNER JOIN Policy p ON py.policyId = p.id AND p.deletedAt IS NULL
+    FROM ${sqlTable("policyYear")} py
+    INNER JOIN ${sqlTable("policy")} p ON py.policyId = p.id AND p.deletedAt IS NULL
     WHERE py.deletedAt IS NULL
       AND py.policyStart IS NOT NULL
       AND py.policyStart >= ${rangeStart}
@@ -192,9 +193,9 @@ export async function queryMemberAgeBuckets(
           WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 36 AND 45 THEN '36-45'
           ELSE '46+'
         END AS bucketLabel
-      FROM Member m
-      INNER JOIN PolicyYear py ON m.policyYearId = py.id AND m.deletedAt IS NULL AND py.deletedAt IS NULL
-      INNER JOIN Policy p ON py.policyId = p.id AND p.deletedAt IS NULL
+      FROM ${sqlTable("member")} m
+      INNER JOIN ${sqlTable("policyYear")} py ON m.policyYearId = py.id AND m.deletedAt IS NULL AND py.deletedAt IS NULL
+      INNER JOIN ${sqlTable("policy")} p ON py.policyId = p.id AND p.deletedAt IS NULL
       WHERE (${args.scopeOnP})
     ) t
     GROUP BY bucketLabel
@@ -397,7 +398,7 @@ function baseFromClause(
   requireMember: boolean,
 ): Prisma.Sql {
   const mJoin = includeMember
-    ? Prisma.sql`LEFT JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL`
+    ? Prisma.sql`LEFT JOIN ${sqlTable("member")} m ON m.policyYearId = py.id AND m.deletedAt IS NULL`
     : Prisma.empty;
   const mReq = requireMember ? Prisma.sql` AND m.id IS NOT NULL` : Prisma.empty;
   const yearActive = policyYearInReportScopeSql(
@@ -408,9 +409,9 @@ function baseFromClause(
     args.restrictPolicyYearToAsOf,
   );
   return Prisma.sql`
-    FROM Policy p
-    LEFT JOIN Category cat ON p.categoryId = cat.id
-    INNER JOIN PolicyYear py ON py.policyId = p.id
+    FROM ${sqlTable("policy")} p
+    LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+    INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id
       AND py.deletedAt IS NULL
       AND ${yearActive}
     ${mJoin}
@@ -450,9 +451,9 @@ export async function queryDistinctPolicyCategoryKeys(
 
   const rows = await prisma.$queryRaw<{ categoryKey: string | null }[]>(Prisma.sql`
     SELECT DISTINCT cat.\`key\` AS categoryKey
-    FROM Policy p
-    LEFT JOIN Category cat ON p.categoryId = cat.id
-    INNER JOIN PolicyYear py ON py.policyId = p.id
+    FROM ${sqlTable("policy")} p
+    LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+    INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id
       AND py.deletedAt IS NULL
       AND ${yearActive}
     WHERE p.deletedAt IS NULL
@@ -554,17 +555,17 @@ export async function queryPolicyMemberReport(
         MAX(COALESCE(py.yearPolicyHolderPremium, 0)) AS sPolH,
         MAX(COALESCE(py.gaamMahajanVkk, 0)) AS sGaam,
         MAX(COALESCE(p.refundChequeAmount, 0) / NULLIF(
-          (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
+          (SELECT COUNT(*) FROM ${sqlTable("policyYear")} x WHERE x.policyId = p.id AND x.deletedAt IS NULL
             AND ${yearActiveX}), 0)) AS refundOnce,
         MAX(COALESCE(p.cdAmount, 0) / NULLIF(
-          (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
+          (SELECT COUNT(*) FROM ${sqlTable("policyYear")} x WHERE x.policyId = p.id AND x.deletedAt IS NULL
             AND ${yearActiveX}), 0)) AS cdOnce
-      FROM Policy p
-      LEFT JOIN Category cat ON p.categoryId = cat.id
-      INNER JOIN PolicyYear py ON py.policyId = p.id
+      FROM ${sqlTable("policy")} p
+      LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+      INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id
         AND py.deletedAt IS NULL
         AND ${yearActive}
-      INNER JOIN Member m ON m.policyYearId = py.id AND m.deletedAt IS NULL
+      INNER JOIN ${sqlTable("member")} m ON m.policyYearId = py.id AND m.deletedAt IS NULL
       WHERE p.deletedAt IS NULL
         AND (${args.scopeOnP})
         ${catF}
@@ -608,14 +609,14 @@ export async function queryPolicyMemberReport(
         COALESCE(py.yearPolicyHolderPremium, 0) AS sPolH,
         COALESCE(py.gaamMahajanVkk, 0) AS sGaam,
         COALESCE(p.refundChequeAmount, 0) / NULLIF(
-          (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
+          (SELECT COUNT(*) FROM ${sqlTable("policyYear")} x WHERE x.policyId = p.id AND x.deletedAt IS NULL
             AND ${yearActiveX}), 0) AS refundOnce,
         COALESCE(p.cdAmount, 0) / NULLIF(
-          (SELECT COUNT(*) FROM PolicyYear x WHERE x.policyId = p.id AND x.deletedAt IS NULL
+          (SELECT COUNT(*) FROM ${sqlTable("policyYear")} x WHERE x.policyId = p.id AND x.deletedAt IS NULL
             AND ${yearActiveX}), 0) AS cdOnce
-      FROM Policy p
-      LEFT JOIN Category cat ON p.categoryId = cat.id
-      INNER JOIN PolicyYear py ON py.policyId = p.id
+      FROM ${sqlTable("policy")} p
+      LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+      INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id
         AND py.deletedAt IS NULL
         AND ${yearActive}
       WHERE p.deletedAt IS NULL
