@@ -61,10 +61,15 @@ const GROUP_BY_OPTIONS = [
   { value: "age" as const, label: "Age wise" },
 ];
 
-const CATEGORY_OPTIONS: PolicyFilterOption[] = ["A", "B", "C", "D", "STAFF"].map((c) => ({
-  value: c,
-  label: c,
-}));
+/** Fallback until /categories loads (keys are uppercase for MIS API categoryKeys). */
+const FALLBACK_CATEGORY_OPTIONS: PolicyFilterOption[] = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "STAFF",
+  "SVGA",
+].map((c) => ({ value: c, label: c }));
 
 const CREATED_MONTH_OPTIONS: PolicyFilterOption[] = [
   { value: "1", label: "January" },
@@ -401,6 +406,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
     if (c.length) setCategoryKeys(c);
   }, [searchParams]);
 
+  const categoryOptions = useMemo<PolicyFilterOption[]>(
+    () =>
+      ddOptions.categories.length > 0 ? ddOptions.categories : FALLBACK_CATEGORY_OPTIONS,
+    [ddOptions.categories],
+  );
+
   const villageOptions = useMemo<PolicyFilterOption[]>(
     () => (filterMeta?.villages ?? []).map((v) => ({ value: v, label: v })),
     [filterMeta?.villages],
@@ -676,7 +687,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
         <PolicyFilterMulti
           label="Category"
           placeholder="All categories"
-          options={CATEGORY_OPTIONS}
+          options={categoryOptions}
           selected={categoryKeys}
           onChange={setCategoryKeys}
           accentClassName="border-violet-200/90 from-violet-50/95 to-card dark:border-violet-900/50 dark:from-violet-950/35 dark:to-card"

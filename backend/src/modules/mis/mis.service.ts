@@ -339,7 +339,7 @@ export type PolicyMemberReportGroupBy =
   | "policy_grouping";
 
 /** Preferred section order; additional keys (e.g. asha_kiran_cat, e) are appended from data. */
-const PREFERRED_DRILL_CATEGORY_KEYS = ["a", "b", "c", "d", "staff"] as const;
+const PREFERRED_DRILL_CATEGORY_KEYS = ["a", "b", "c", "d", "staff", "svga"] as const;
 const DRILL_GROUPING_ORDER = ["SVKK", "NVKK", "RTY", "OTHER"] as const;
 
 function drillCategoryLabel(categoryKey: string): string {
