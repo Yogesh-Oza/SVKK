@@ -9,10 +9,13 @@ cp .env.example .env
 # Set DATABASE_URL, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET (32+ chars each)
 
 npm install
-npx prisma db push
-npm run db:seed
+npm run db:setup
 npm run dev
 ```
+
+(`db:setup` = schema push + seed + area/village dropdowns.)
+
+**Render production:** see [RENDER.md](./RENDER.md) — set **Release Command** to `npm run db:setup`.
 
 Server: `http://localhost:4000` — routes under `/api/v1`.
 
