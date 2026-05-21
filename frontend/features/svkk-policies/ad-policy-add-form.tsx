@@ -1392,7 +1392,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void setFieldValue("paymentTransactions", [
       ...values.paymentTransactions,
       {
-        mode: "ONLINE",
+        mode: "CHEQUE",
         mobileNumber: "",
         transactionNumber: "",
         bankName: "",

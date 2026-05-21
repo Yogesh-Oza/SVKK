@@ -162,7 +162,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     reasonDishonoured: "",
     paymentTransactions: [
       {
-        mode: "ONLINE",
+        mode: "CHEQUE",
         mobileNumber: "",
         transactionNumber: "",
         bankName: "",

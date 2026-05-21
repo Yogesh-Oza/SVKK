@@ -285,7 +285,8 @@ function mapPaymentMethodToForm(method: string | null | undefined): AdPolicyPaym
   if (m === "CHQ" || m === "CHEQUE") return "CHEQUE";
   if (m === "CASH") return "CASH";
   if (m === "UPI") return "UPI";
-  return "ONLINE";
+  if (m === "ONLINE" || m === "NEFT") return "ONLINE";
+  return "CHEQUE";
 }
 
 function mapPaymentStatusToForm(

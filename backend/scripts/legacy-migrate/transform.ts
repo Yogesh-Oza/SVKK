@@ -71,6 +71,17 @@ export function mapPolicyGrouping(
   return POLICY_GROUPING_MAP[k] ?? "OTHER";
 }
 
+/** Hint for PAYMENT_MODE resolver from legacy cheque/bank columns (no dedicated mode column). */
+export function inferLegacyPaymentModeHint(row: LegacyPolicyRow): string {
+  const chequeNo = row.policy_cheque_no?.trim().toLowerCase() ?? "";
+  if (chequeNo.includes("cash")) return "CASH";
+  if (chequeNo.includes("upi")) return "UPI";
+  if (chequeNo.includes("neft") || chequeNo.includes("online") || chequeNo.includes("rtgs")) {
+    return "ONLINE";
+  }
+  return "CHEQUE";
+}
+
 export function parseDecimalSafe(raw: string | null | undefined): Prisma.Decimal | null {
   if (raw == null) return null;
   const s = String(raw).trim().replace(/,/g, "");
@@ -280,14 +291,12 @@ export async function resolvePolicyDropdownFields(
   row: LegacyPolicyRow,
   resolver: DropdownResolver,
 ): Promise<ResolvedPolicyFields> {
-  const chequeMode =
-    row.policy_cheque_no?.trim().toLowerCase().includes("cash") ? "CASH" : null;
   const [area, village, city, holderRelationship, paymentMode] = await Promise.all([
     resolver.resolveArea(row.area),
     resolver.resolveVillage(row.village),
     resolver.resolveCity(row.city),
     resolver.resolveRelation(row.relation),
-    resolver.resolvePaymentMode(chequeMode),
+    resolver.resolvePaymentMode(inferLegacyPaymentModeHint(row)),
   ]);
   const grouping = mapPolicyGrouping(row.policy_grouping) ?? "OTHER";
   return {

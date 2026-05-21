@@ -40,7 +40,8 @@ export const PAYMENT_MODE_MAP: Record<string, string> = {
   upi: "UPI",
 };
 
-export const PAYMENT_MODE_FALLBACK = "CASH";
+/** Legacy policies are cheque-first; use when legacy text is missing. */
+export const PAYMENT_MODE_FALLBACK = "CHEQUE";
 
 /** Legacy cheque status → TRANSACTION_STATUS dropdown value */
 export const TRANSACTION_STATUS_MAP: Record<string, string> = {
@@ -59,7 +60,7 @@ export function paymentModeToPayMethod(mode: string | null | undefined): PayMeth
   if (u === "CHEQUE" || u === "CHQ") return "CHQ";
   if (u === "CASH") return "CASH";
   if (u === "ONLINE" || u === "NEFT") return "NEFT";
-  return "OTHER";
+  return "CHQ";
 }
 
 /** TRANSACTION_STATUS / legacy token → ChequeStatus */
