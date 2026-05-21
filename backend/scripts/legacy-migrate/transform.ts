@@ -326,8 +326,8 @@ export async function transformMemberRowAsync(
 ): Promise<TransformedMember> {
   const base = transformMemberRow(row);
   const relationship =
-    (await resolver.resolveRelation(row.relation)) ?? base.relationship;
-  const gender = await resolver.resolveGender(null);
+    (await resolver.resolveRelation(row.relation)) ?? base.relationship ?? "Unknown";
+  const gender = (await resolver.resolveGender(null)) ?? base.gender;
   return { ...base, relationship, gender };
 }
 

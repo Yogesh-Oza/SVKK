@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   paymentModeToPayMethod,
   PAYMENT_MODE_FALLBACK,
-} from "../scripts/legacy-migrate/config/dropdown-mappings.js";
-import { inferLegacyPaymentModeHint } from "../scripts/legacy-migrate/transform.js";
-import type { LegacyPolicyRow } from "../scripts/legacy-migrate/types.js";
+} from "./config/dropdown-mappings.js";
+import { inferLegacyPaymentModeHint } from "./transform.js";
+import type { LegacyPolicyRow } from "./types.js";
 
 function row(partial: Partial<LegacyPolicyRow>): LegacyPolicyRow {
   return { ref_no: "REF1", ...partial } as LegacyPolicyRow;

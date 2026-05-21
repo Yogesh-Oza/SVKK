@@ -10,4 +10,9 @@ google-cloud-vision.json
 *.log
 scripts/legacy-migrate/logs/
 scripts/legacy-migrate/.migration.lock
+# Stray tsc output (sources are .ts, run via tsx)
+scripts/legacy-migrate/**/*.js
+scripts/legacy-migrate/**/*.d.ts
+scripts/legacy-migrate/**/*.js.map
+scripts/legacy-migrate/**/*.d.ts.map
 .onedrive-token.json
