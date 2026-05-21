@@ -521,11 +521,9 @@ export function policyDetailToAdFormValues(
   return {
     ...base,
     policyNo: row.policyNo ?? "",
-    adProduct: resolveAdProductFormValue(
-      row.adProductVariant,
-      row.policyType?.name,
-      row.policyType?.key,
-    ),
+    adProduct:
+      row.policyType?.key?.trim() ||
+      resolveAdProductFormValue(row.adProductVariant, row.policyType?.name, row.policyType?.key),
     customerId: row.insuredParty.customerId ?? "",
     svkkPublicId: row.insuredParty.svkkPublicId ?? "",
     policyHolder: row.insuredParty.name ?? "",

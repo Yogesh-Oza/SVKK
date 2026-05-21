@@ -1,7 +1,4 @@
 import * as yup from "yup";
-import { AD_PRODUCT_OPTIONS } from "./ad-product-variant";
-
-const adProductValues = AD_PRODUCT_OPTIONS.map((o) => o.value) as unknown as [string, ...string[]];
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
@@ -22,10 +19,7 @@ const memberRowSchema = yup.object({
 export const adPolicyValidationSchema = yup.object({
   svkkPublicId: yup.string().trim().optional(),
   policyHolder: yup.string().trim().required("Holder name is required"),
-  adProduct: yup
-    .string()
-    .required("Select policy type")
-    .oneOf(adProductValues, "Select policy type"),
+  adProduct: yup.string().trim().required("Select policy type"),
   customerId: yup.string().trim().optional(),
   panNo: yup
     .string()

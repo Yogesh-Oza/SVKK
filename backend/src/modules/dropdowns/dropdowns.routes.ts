@@ -77,6 +77,19 @@ export function createDropdownsRouter(env: Env) {
     }
   });
 
+  /** Policy types for add/edit forms (same table as admin Policy Types). */
+  r.get("/policy-types", async (_req, res, next) => {
+    try {
+      const rows = await prisma.policyType.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, key: true, name: true },
+      });
+      res.json({ items: rows });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   /** Public read of the admin-managed Policy Group list (no admin permission required). */
   r.get("/policy-groupings", async (_req, res, next) => {
     try {

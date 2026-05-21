@@ -44,7 +44,8 @@ import { toast } from "sonner";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
-import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
+import { adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
+import { normalizeCategoryKey, resolveCategoryIdByKey } from "@/lib/svkk/category-display";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
@@ -98,8 +99,6 @@ const ADD_SECTIONS: ReadonlyArray<{ id: AddSectionId; label: string; ref: string
   { id: "courier", label: "Courier Details", ref: "section-courier" },
   { id: "remark", label: "Remark", ref: "section-remark" },
 ];
-
-const POLICY_CATEGORY_OPTIONS = ["A", "B", "C", "D", "STAFF", "SVGA"] as const;
 
 function ageFromDobOnAnchor(iso: string, anchorIso: string): string {
   if (!iso || !anchorIso) {
@@ -342,9 +341,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const villageOptions = ddOptions.VILLAGE;
   const cityOptions = ddOptions.CITY;
   const sumInsuredOptions = ddOptions.SUM_INSURED;
-  const categoryOptions = ddOptions.categories.length
-    ? ddOptions.categories
-    : POLICY_CATEGORY_OPTIONS.map((k) => ({ value: k, label: k }));
+  const categoryOptions = ddOptions.categories;
+  const policyTypeOptions = ddOptions.policyTypes;
+  const categoryItemsForSubmit = useMemo(
+    () =>
+      ddOptions.categories
+        .filter((c): c is typeof c & { id: string } => Boolean(c.id))
+        .map((c) => ({ id: c.id, key: c.value })),
+    [ddOptions.categories],
+  );
   const policyGroupOptions = ddOptions.policyGroupings.length
     ? ddOptions.policyGroupings
     : [
@@ -482,6 +487,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             values: submitValues,
             expectedUpdatedAt: editCtx.detail.updatedAt,
             yearLabel: y.yearLabel,
+            categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
           });
           void router.push(`/policies/${editCtx.policyId}`);
         } catch (e) {
@@ -503,6 +509,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           policyTypeId,
           policyChartId,
           idemKey: idemKeyRef.current,
+          categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
         });
         toast.success("Policy saved");
         // Auto Receipt: fetch the freshly saved policy and open the receipt
@@ -659,19 +666,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       .sort((a, b) => b.year.localeCompare(a.year));
   }, [fetchRows, fetchSvkkId]);
 
-  const loadAdPolicyType = useCallback(async () => {
-    const types = await svkkJson<PolicyTypeRow[]>("/calculation/reference/policy-types");
-    const ad = types.find((t) => t.key === "ad_policy") ?? types.find((t) => t.key === "asha_kiran");
-    if (!ad) {
-      throw new Error("No AD or Asha Kiran policy type in database. Run prisma seed.");
-    }
-    setPolicyTypeId(ad.id);
+  const loadChartsForPolicyTypeId = useCallback(async (typeId: string) => {
     const charts = await svkkJson<ChartRow[]>(
-      `/calculation/reference/charts?policyTypeId=${encodeURIComponent(ad.id)}`,
+      `/calculation/reference/charts?policyTypeId=${encodeURIComponent(typeId)}`,
     );
     const h = charts.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
     setPolicyChartId(h?.id ?? charts[0]?.id ?? "");
   }, []);
+
+  const syncPolicyTypeFromKey = useCallback(
+    async (typeKey: string) => {
+      const key = typeKey.trim();
+      if (!key) return;
+      const row =
+        policyTypeOptions.find((t) => t.value === key) ??
+        policyTypeOptions.find((t) => t.value.toLowerCase() === key.toLowerCase());
+      if (!row?.id) return;
+      setPolicyTypeId(row.id);
+      await loadChartsForPolicyTypeId(row.id);
+    },
+    [loadChartsForPolicyTypeId, policyTypeOptions],
+  );
 
   const loadPolicyDetailIntoForm = useCallback(
     async (id: string, modeNotice: string) => {
@@ -1185,19 +1200,26 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (missingUrl) {
       return;
     }
+    if (isEdit || policyTypeOptions.length === 0 || policyTypeId) {
+      return;
+    }
     void (async () => {
-      if (!isEdit) {
-        setLoadErr(null);
-      }
+      setLoadErr(null);
       try {
-        await loadAdPolicyType();
-      } catch (e) {
-        if (!isEdit) {
-          setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
+        const preferred =
+          policyTypeOptions.find((t) => t.value === "ad_policy") ??
+          policyTypeOptions.find((t) => t.value === "family_floater") ??
+          policyTypeOptions[0];
+        if (!preferred?.id) {
+          throw new Error("No policy types in database. Add them under Admin → Policy Types.");
         }
+        await formik.setFieldValue("adProduct", preferred.value);
+        await syncPolicyTypeFromKey(preferred.value);
+      } catch (e) {
+        setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
       }
     })();
-  }, [missingUrl, loadAdPolicyType, isEdit]);
+  }, [missingUrl, isEdit, policyTypeOptions, policyTypeId, syncPolicyTypeFromKey, formik]);
 
   useEffect(() => {
     if (!isEdit) {
@@ -1229,12 +1251,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     if (detail.policyType?.id) {
       setPolicyTypeId(detail.policyType.id);
+      void loadChartsForPolicyTypeId(detail.policyType.id);
     }
     const yearRow = pickPolicyYear(detail.years, editYearLabel);
     if (yearRow?.policyChart?.id) {
       setPolicyChartId(yearRow.policyChart.id);
     }
-  }, [isEdit, detail, editYearLabel]);
+  }, [isEdit, detail, editYearLabel, loadChartsForPolicyTypeId]);
 
   useEffect(() => {
     if (!isEdit || !detail) {
@@ -1518,10 +1541,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const personCount = Math.max(insuredCount, 1);
     const oneOrTwoLakhPremium = parseInr(values.twoLakhF);
     let holderPremiumCalc = net;
-    const category = values.cat.toUpperCase();
-    if (category === "C") holderPremiumCalc = 3000 * personCount;
-    else if (category === "B") holderPremiumCalc = oneOrTwoLakhPremium * 0.5;
-    else if (category === "A" || category === "D") holderPremiumCalc = net;
+    const category = normalizeCategoryKey(values.cat);
+    if (category === "c") holderPremiumCalc = 3000 * personCount;
+    else if (category === "b") holderPremiumCalc = oneOrTwoLakhPremium * 0.5;
+    else if (category === "a" || category === "d") holderPremiumCalc = net;
     const holderPremium = premiumManual.policyHolderPremium
       ? parseInr(values.policyHolderPremium)
       : holderPremiumCalc;
@@ -1899,15 +1922,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Select
                   key={`adProduct-${selectFieldsMountKey}`}
                   value={adProductSelectValue || "__none__"}
-                  onValueChange={(v) => void setFieldValue("adProduct", v === "__none__" ? "" : v)}
+                  onValueChange={(v) => {
+                    const key = v === "__none__" ? "" : v;
+                    void setFieldValue("adProduct", key);
+                    if (key) void syncPolicyTypeFromKey(key);
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select policy type" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Select policy type</SelectItem>
-                    {AD_PRODUCT_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
+                    {policyTypeOptions.map((o) => (
+                      <SelectItem key={o.id ?? o.value} value={o.value}>
                         {o.label}
                       </SelectItem>
                     ))}

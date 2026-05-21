@@ -49,6 +49,7 @@ export type SubmitAdPolicyParams = {
   policyTypeId: string;
   policyChartId: string;
   idemKey: string;
+  categoryId?: string;
 };
 
 /**
@@ -60,6 +61,7 @@ export async function submitAdPolicyRequest({
   policyTypeId,
   policyChartId,
   idemKey,
+  categoryId,
 }: SubmitAdPolicyParams): Promise<string> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -101,7 +103,8 @@ export async function submitAdPolicyRequest({
     svkkPublicId: values.svkkPublicId.trim() || null,
     insuranceCompany: values.company.trim() || null,
     tpa: values.tpa.trim() || null,
-    categoryText: values.cat.trim() || null,
+    categoryId: categoryId ?? undefined,
+    categoryText: categoryId ? undefined : values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
     holderGender: values.holderGender.trim() || null,
     holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,
@@ -212,6 +215,7 @@ export type SubmitAdPolicyPatchParams = {
   values: AdPolicyFormValues;
   expectedUpdatedAt: string;
   yearLabel: string;
+  categoryId?: string;
 };
 
 /**
@@ -222,6 +226,7 @@ export async function submitAdPolicyPatchRequest({
   values,
   expectedUpdatedAt,
   yearLabel,
+  categoryId,
 }: SubmitAdPolicyPatchParams): Promise<void> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -274,7 +279,8 @@ export async function submitAdPolicyPatchRequest({
     adProductVariant: variant,
     insuranceCompany: values.company.trim() || null,
     tpa: values.tpa.trim() || null,
-    categoryText: values.cat.trim() || null,
+    categoryId: categoryId ?? undefined,
+    categoryText: categoryId ? undefined : values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
     holderGender: values.holderGender.trim() || null,
     holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,

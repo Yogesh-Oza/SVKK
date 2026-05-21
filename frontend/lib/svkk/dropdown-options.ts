@@ -19,6 +19,8 @@ export type DropdownType = (typeof DROPDOWN_TYPES)[number];
 export type DropdownOption = {
   value: string;
   label: string;
+  /** Present for category rows (value = category key). */
+  id?: string;
 };
 
 export type DropdownOptionsMap = Record<DropdownType, DropdownOption[]>;

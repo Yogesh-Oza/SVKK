@@ -13,6 +13,7 @@ import {
 
 export type ExtraDropdowns = {
   categories: DropdownOption[];
+  policyTypes: DropdownOption[];
   policyGroupings: DropdownOption[];
 };
 
@@ -23,15 +24,18 @@ let cacheValue: DropdownOptionsState | null = null;
 const subscribers = new Set<(map: DropdownOptionsState) => void>();
 
 function emptyState(): DropdownOptionsState {
-  return { ...emptyDropdownOptionsMap(), categories: [], policyGroupings: [] };
+  return { ...emptyDropdownOptionsMap(), categories: [], policyTypes: [], policyGroupings: [] };
 }
 
 async function fetchAll(): Promise<DropdownOptionsState> {
-  const [generic, categoriesRes, groupingsRes] = await Promise.all([
+  const [generic, categoriesRes, policyTypesRes, groupingsRes] = await Promise.all([
     svkkJson<{ items: Partial<Record<DropdownType, DropdownOption[]>> }>("/dropdowns"),
-    svkkJson<{ items: Array<{ key: string; name: string }> }>("/categories").catch(() => ({
+    svkkJson<{ items: Array<{ id: string; key: string; name: string }> }>("/categories").catch(() => ({
       items: [],
     })),
+    svkkJson<{ items: Array<{ id: string; key: string; name: string }> }>(
+      "/dropdowns/policy-types",
+    ).catch(() => ({ items: [] })),
     svkkJson<{ items: Array<{ name: string }> }>("/dropdowns/policy-groupings").catch(() => ({
       items: [],
     })),
@@ -41,8 +45,14 @@ async function fetchAll(): Promise<DropdownOptionsState> {
     map[t] = generic.items?.[t] ?? [];
   }
   map.categories = (categoriesRes.items ?? []).map((c) => ({
-    value: (c.key ?? "").toUpperCase(),
+    id: c.id,
+    value: (c.key ?? "").trim(),
     label: c.name ?? c.key ?? "",
+  }));
+  map.policyTypes = (policyTypesRes.items ?? []).map((t) => ({
+    id: t.id,
+    value: (t.key ?? "").trim(),
+    label: t.name ?? t.key ?? "",
   }));
   map.policyGroupings = (groupingsRes.items ?? []).map((g) => ({ value: g.name, label: g.name }));
   return map;

@@ -8,7 +8,24 @@ export const AD_PRODUCT_MAP: Record<string, AdProductVariant> = {
 };
 
 export function toAdProductVariant(v: string): AdProductVariant | undefined {
-  return AD_PRODUCT_MAP[v];
+  const trimmed = v.trim();
+  if (!trimmed) return undefined;
+  const fromForm = AD_PRODUCT_MAP[trimmed];
+  if (fromForm) return fromForm;
+  return policyTypeKeyToAdVariant(trimmed);
+}
+
+/** Maps admin PolicyType.key (e.g. family_floater) to API AdProductVariant. */
+export function policyTypeKeyToAdVariant(key: string): AdProductVariant | undefined {
+  const k = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const map: Record<string, AdProductVariant> = {
+    family_floater: "FAMILY_FLOATER",
+    individual: "INDIVIDUAL",
+    asha_kiran: "ASHA_KIRAN",
+    senior_citizen: "SENIOR_CITIZEN",
+    ad_policy: "FAMILY_FLOATER",
+  };
+  return map[k];
 }
 
 const VARIANT_TO_FORM: Record<AdProductVariant, string> = {

@@ -14,6 +14,15 @@ export function buildCategoryByKeyMap(items: CategoryRef[]): Map<string, Categor
 }
 
 /** Display name from DB category row; resolves legacy categoryText key (e.g. "d" → "Category D"). */
+export function resolveCategoryIdByKey(
+  categoryKey: string | null | undefined,
+  items: Array<{ id: string; key: string }>,
+): string | undefined {
+  const k = normalizeCategoryKey(categoryKey);
+  if (!k) return undefined;
+  return items.find((c) => normalizeCategoryKey(c.key) === k)?.id;
+}
+
 export function resolveCategoryDisplayLabel(
   category: { key?: string | null; name?: string | null } | null | undefined,
   categoryText: string | null | undefined,
