@@ -1,14 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AppError } from "../../errors/app-error.js";
+
+const tx = {
+  rbacRoleVillage: { deleteMany: vi.fn() },
+  rbacRoleArea: { deleteMany: vi.fn() },
+  dropdownOption: { delete: vi.fn() },
+};
 
 vi.mock("../../lib/prisma.js", () => ({
   prisma: {
-    dropdownOption: {
-      findUnique: vi.fn(),
-      delete: vi.fn(),
-    },
-    rbacRoleVillage: { count: vi.fn() },
-    rbacRoleArea: { count: vi.fn() },
+    dropdownOption: { findUnique: vi.fn() },
+    $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<void>) => fn(tx)),
   },
 }));
 
@@ -18,35 +19,27 @@ import { deleteDropdownOption } from "./admin-dropdown.service.js";
 describe("deleteDropdownOption", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    tx.rbacRoleVillage.deleteMany.mockResolvedValue({ count: 0 });
+    tx.rbacRoleArea.deleteMany.mockResolvedValue({ count: 0 });
+    tx.dropdownOption.delete.mockResolvedValue({});
   });
 
-  it("rejects when option is linked to role geography", async () => {
+  it("removes role geography links then deletes the option", async () => {
     vi.mocked(prisma.dropdownOption.findUnique).mockResolvedValue({
       id: "opt1",
-      label: "Village A",
+      label: "DemoVillageAsystem",
       type: "VILLAGE",
     } as never);
-    vi.mocked(prisma.rbacRoleVillage.count).mockResolvedValue(2);
-    vi.mocked(prisma.rbacRoleArea.count).mockResolvedValue(0);
-
-    await expect(deleteDropdownOption("opt1")).rejects.toMatchObject({
-      code: "CONFLICT",
-      statusCode: 409,
-    } satisfies Partial<AppError>);
-    expect(prisma.dropdownOption.delete).not.toHaveBeenCalled();
-  });
-
-  it("deletes when no role references exist", async () => {
-    vi.mocked(prisma.dropdownOption.findUnique).mockResolvedValue({
-      id: "opt1",
-      label: "Village B",
-      type: "VILLAGE",
-    } as never);
-    vi.mocked(prisma.rbacRoleVillage.count).mockResolvedValue(0);
-    vi.mocked(prisma.rbacRoleArea.count).mockResolvedValue(0);
-    vi.mocked(prisma.dropdownOption.delete).mockResolvedValue({} as never);
+    tx.rbacRoleVillage.deleteMany.mockResolvedValue({ count: 2 });
 
     await deleteDropdownOption("opt1");
-    expect(prisma.dropdownOption.delete).toHaveBeenCalledWith({ where: { id: "opt1" } });
+
+    expect(tx.rbacRoleVillage.deleteMany).toHaveBeenCalledWith({
+      where: { dropdownOptionId: "opt1" },
+    });
+    expect(tx.rbacRoleArea.deleteMany).toHaveBeenCalledWith({
+      where: { dropdownOptionId: "opt1" },
+    });
+    expect(tx.dropdownOption.delete).toHaveBeenCalledWith({ where: { id: "opt1" } });
   });
 });
