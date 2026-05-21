@@ -6,16 +6,17 @@ const SETUP_HINT =
   "Ensure DATABASE_URL points to the app database (not the legacy import DB).";
 
 export function isMissingTableError(e: unknown): boolean {
-  return (
-    e instanceof Prisma.PrismaClientKnownRequestError &&
-    e.code === "P2021"
-  );
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (e.code === "P2021") return true;
+  // Raw SQL on MySQL when the table is missing (e.g. wrong casing vs @@map).
+  if (e.code === "P2010" && e.meta?.code === "1146") return true;
+  return false;
 }
 
 /** Fail fast with a clear message when Prisma tables were never created. */
 export async function assertDatabaseSchemaReady(): Promise<void> {
   try {
-    await prisma.$queryRaw`SELECT 1 FROM Permission LIMIT 1`;
+    await prisma.permission.findFirst({ select: { id: true } });
   } catch (e) {
     if (isMissingTableError(e)) {
       throw new Error(SETUP_HINT);
