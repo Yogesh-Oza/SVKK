@@ -1492,7 +1492,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         }, 0)
       : familyFloaterNet;
 
-    const autoGross = product === "SENIOR_CITIZEN" ? parseInr(values.grossPremium) : grossFromChart;
+    // Match Calculated Premium Summary gross (basic + rider per member), not basic-only sum.
+    const autoGross =
+      product === "SENIOR_CITIZEN"
+        ? parseInr(values.grossPremium)
+        : quote.rows.length > 0
+          ? quote.gross
+          : grossFromChart;
     let autoNet = parseInr(values.coPremium);
     if (product === "FAMILY_FLOATER") {
       autoNet = familyFloaterNet;
@@ -1548,7 +1554,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("excessShort", excessShort, false, true);
     setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
     setAutoField("diffAmt", differenceAmountPaidByHolder);
-  }, [freezeAutoCalculations, premiumManual, setFieldValue, values]);
+  }, [freezeAutoCalculations, premiumManual, quote, setFieldValue, values]);
 
   const adProductSelectValue = values.adProduct || editMappedValues?.adProduct || "";
   const monthSelectValue = values.month || editMappedValues?.month || "";
