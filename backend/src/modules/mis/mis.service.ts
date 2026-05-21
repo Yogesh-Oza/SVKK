@@ -5,6 +5,12 @@ import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { buildPolicyScopeSqlP } from "./mis.scope-sql.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
+  classifyPolicyRenewalBucket,
+  DASHBOARD_RENEWAL_PIE_KEYS,
+  renewalBucketLabel,
+  type RenewalBucketRow,
+} from "../policy/renewal-pending.js";
+import {
   asOfDayBoundsUTC,
   reportPeriodBoundsUTC,
   queryDashboardMonthlyPremium,
@@ -163,6 +169,49 @@ export async function getDashboardMetrics(
     totalPaidCompleted: paid,
     paymentGap: expected - paid,
   };
+}
+
+/** Renewal KPI buckets by latest policy-year end date (for dashboard pie → policies list). */
+export async function getDashboardRenewalBuckets(
+  userId: string,
+  permissions: Set<string>,
+  scope: MisScope,
+  asOfDate: Date,
+  filterVillage: string | undefined,
+): Promise<{ asOfDate: string; buckets: RenewalBucketRow[] }> {
+  const pWhere = buildPolicyReadWhere(scope, filterVillage, userId, permissions);
+  const rows = await prisma.policy.findMany({
+    where: pWhere,
+    select: {
+      years: {
+        where: { deletedAt: null },
+        select: { policyEnd: true },
+      },
+    },
+  });
+
+  const counts = new Map<string, number>();
+  for (const key of DASHBOARD_RENEWAL_PIE_KEYS) {
+    counts.set(key, 0);
+  }
+
+  for (const row of rows) {
+    const key = classifyPolicyRenewalBucket(
+      row.years.map((y) => y.policyEnd),
+      asOfDate,
+    );
+    if (counts.has(key)) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const buckets: RenewalBucketRow[] = DASHBOARD_RENEWAL_PIE_KEYS.map((key) => ({
+    key,
+    label: renewalBucketLabel(key),
+    count: counts.get(key) ?? 0,
+  }));
+
+  return { asOfDate: asOfDate.toISOString(), buckets };
 }
 
 function friendlyProductLabel(raw: string): string {

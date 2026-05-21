@@ -18,10 +18,22 @@ export type DashboardMetrics = {
   paymentGap: number;
 };
 
+export type RenewalBucketPayload = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type DashboardRenewalPayload = {
+  asOfDate: string;
+  buckets: RenewalBucketPayload[];
+};
+
 export type DashboardChartsPayload = {
   asOfDate: string;
   monthly: Array<{ year: number; month: number; monthLabel: string; premium: number }>;
   productMix: Array<{ label: string; premium: number; percent: number }>;
+  renewal?: DashboardRenewalPayload;
 };
 
 type CardDef = {

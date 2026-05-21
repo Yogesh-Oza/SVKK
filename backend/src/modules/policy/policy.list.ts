@@ -6,6 +6,11 @@ import {
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { prisma } from "../../lib/prisma.js";
+import {
+  renewalBucketPolicyWhere,
+  renewalPendingPolicyWhere,
+  type RenewalBucketKey,
+} from "./renewal-pending.js";
 
 export type PolicyListQuery = {
   search?: string;
@@ -34,6 +39,10 @@ export type PolicyListQuery = {
   /** Policy created-at range (YYYY-MM-DD, UTC calendar day bounds). */
   dateFrom?: string;
   dateTo?: string;
+  /** Latest policy year end on/before renewalAsOf (default dateTo or today). */
+  renewalPending?: boolean;
+  renewalAsOf?: string;
+  renewalBucket?: RenewalBucketKey;
   /** Offset pagination (mutually exclusive with cursor in route) */
   page?: number;
   pageSize?: number;
@@ -322,6 +331,16 @@ export function buildPolicyListWhere(
 
   const createdAtFilter = createdAtRangeFilter(q.dateFrom, q.dateTo);
   if (createdAtFilter) extraParts.push(createdAtFilter);
+
+  const renewalAsOf =
+    q.renewalAsOf?.trim() || q.dateTo?.trim() || new Date().toISOString().slice(0, 10);
+  if (q.renewalBucket) {
+    const bucketWhere = renewalBucketPolicyWhere(q.renewalBucket, renewalAsOf);
+    if (bucketWhere) extraParts.push(bucketWhere);
+  } else if (q.renewalPending) {
+    const pendingWhere = renewalPendingPolicyWhere(renewalAsOf);
+    if (pendingWhere) extraParts.push(pendingWhere);
+  }
 
   const and: Prisma.PolicyWhereInput[] = [scopeWhere];
   if (searchWhere) and.push(searchWhere);

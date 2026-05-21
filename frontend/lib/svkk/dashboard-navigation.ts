@@ -46,6 +46,18 @@ export function policiesQueryFromRange(
   return misQueryFromRange(range, extra);
 }
 
+/** Policies list with pending-renewal filter (policy end on/before range to-date). */
+export function policiesPendingRenewalQuery(
+  range: DashboardDateRange,
+  renewalBucket?: string,
+): Record<string, string | string[] | undefined> {
+  const base = policiesQueryFromRange(range);
+  if (renewalBucket) {
+    return { ...base, renewalBucket, renewalAsOf: range.dateTo };
+  }
+  return { ...base, renewalPending: "true", renewalAsOf: range.dateTo };
+}
+
 export function productVariantFromLabel(label: string): string | undefined {
   return PRODUCT_TO_VARIANT[label] ?? undefined;
 }

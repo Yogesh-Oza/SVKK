@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { PieSlice } from "@/features/svkk-dashboard/aggregate-mis-rows";
 import type { DashboardChartsPayload } from "@/features/svkk-dashboard/dashboard-metric-cards";
+import { RenewalPendingPie } from "@/features/svkk-dashboard/renewal-pending-pie";
 import {
   buildDashboardHref,
   misQueryFromRange,
@@ -225,6 +226,7 @@ export function PremiumTrendAndBreakdown({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <RenewalPendingPie range={range} renewal={charts?.renewal} />
         <PiePanel
           title="Premium by product"
           description="Share of co premium by policy type. Click a slice for policies or MIS."

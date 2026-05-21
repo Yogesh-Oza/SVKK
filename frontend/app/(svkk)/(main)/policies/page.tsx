@@ -243,6 +243,8 @@ export default function SvkkPoliciesPage() {
   const [areas, setAreas] = useState<string[]>([]);
   const [sumInsureds, setSumInsureds] = useState<string[]>([]);
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
+  /** "" = all; "pending" = renewal due by to-date; otherwise renewal bucket key */
+  const [renewalFilter, setRenewalFilter] = useState("");
   const [sort, setSort] = useState("createdAt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -286,6 +288,10 @@ export default function SvkkPoliciesPage() {
     if (v.length) setVillages(v);
     const variants = searchParams.getAll("adProductVariants");
     if (variants.length) setAdVariants(variants);
+    const rp = searchParams.get("renewalPending");
+    const rb = searchParams.get("renewalBucket");
+    if (rb) setRenewalFilter(rb);
+    else if (rp === "true") setRenewalFilter("pending");
   }, [searchParams]);
 
   useEffect(() => {
@@ -315,6 +321,7 @@ export default function SvkkPoliciesPage() {
         areas,
         sumInsureds,
         policyGroupings,
+        renewalFilter,
       }),
     [
       dateFrom,
@@ -327,6 +334,7 @@ export default function SvkkPoliciesPage() {
       areas,
       sumInsureds,
       policyGroupings,
+      renewalFilter,
     ],
   );
   const prevFiltersKey = useRef(filtersKey);
@@ -353,6 +361,13 @@ export default function SvkkPoliciesPage() {
     areas.forEach((a) => q.append("areas", a));
     sumInsureds.forEach((s) => q.append("sumInsureds", s));
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
+    if (renewalFilter === "pending") {
+      q.set("renewalPending", "true");
+      if (dateTo) q.set("renewalAsOf", dateTo);
+    } else if (renewalFilter) {
+      q.set("renewalBucket", renewalFilter);
+      if (dateTo) q.set("renewalAsOf", dateTo);
+    }
     return q.toString();
   }, [
     page,
@@ -369,6 +384,7 @@ export default function SvkkPoliciesPage() {
     areas,
     sumInsureds,
     policyGroupings,
+    renewalFilter,
   ]);
 
   /** Same filters and sort as the table; omit paging so export returns all matching rows. */
@@ -487,6 +503,7 @@ export default function SvkkPoliciesPage() {
     if (areas.length) n++;
     if (sumInsureds.length) n++;
     if (policyGroupings.length) n++;
+    if (renewalFilter) n++;
     return n;
   }, [
     searchApplied,
@@ -500,6 +517,7 @@ export default function SvkkPoliciesPage() {
     areas,
     sumInsureds,
     policyGroupings,
+    renewalFilter,
   ]);
 
   const categoryOptions = useMemo<PolicyFilterOption[]>(
@@ -1038,6 +1056,30 @@ export default function SvkkPoliciesPage() {
                     onChange={(e) => setDateTo(e.target.value)}
                     className="h-10 bg-background/90"
                   />
+                  {renewalFilter ? (
+                    <p className="text-muted-foreground mt-1.5 text-[11px] leading-snug">
+                      Renewal filter uses policy end date on or before this date.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-xl border-2 border-amber-200/90 bg-gradient-to-br from-amber-50/95 to-card p-3 shadow-sm dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card sm:col-span-2">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                    Renewal status
+                  </Label>
+                  <Select value={renewalFilter || "__all__"} onValueChange={(v) => setRenewalFilter(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-10 bg-background/90">
+                      <SelectValue placeholder="All policies" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All policies</SelectItem>
+                      <SelectItem value="pending">Pending renewal (ended by to-date)</SelectItem>
+                      <SelectItem value="expired">Expired — renewal due</SelectItem>
+                      <SelectItem value="due_2">Ends within 2 days</SelectItem>
+                      <SelectItem value="due_8">Ends in 3–8 days</SelectItem>
+                      <SelectItem value="due_30">Ends in 9–30 days</SelectItem>
+                      <SelectItem value="due_60">Ends in 31–60 days</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <PolicyFilterMulti
                   label="Year"
@@ -1136,6 +1178,7 @@ export default function SvkkPoliciesPage() {
                     setAreas([]);
                     setSumInsureds([]);
                     setPolicyGroupings([]);
+                    setRenewalFilter("");
                     setSort("createdAt");
                     setPage(1);
                   }}

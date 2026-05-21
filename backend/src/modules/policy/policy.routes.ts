@@ -95,6 +95,14 @@ const policyListFiltersSchema = z.object({
   chequeStatus: z.nativeEnum(ChequeStatus).optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  renewalPending: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+  renewalAsOf: z.string().optional(),
+  renewalBucket: z
+    .enum(["expired", "due_2", "due_8", "due_30", "due_60", "active", "no_end_date", "pending_all"])
+    .optional(),
   sort: z.string().optional(),
 });
 
@@ -137,6 +145,9 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
     chequeStatus: q.chequeStatus,
     dateFrom: q.dateFrom?.trim() || undefined,
     dateTo: q.dateTo?.trim() || undefined,
+    renewalPending: q.renewalPending,
+    renewalAsOf: q.renewalAsOf?.trim() || undefined,
+    renewalBucket: q.renewalBucket,
     sort: q.sort,
   };
 }

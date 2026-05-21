@@ -18,6 +18,7 @@ import {
 import {
   getDashboardCharts,
   getDashboardMetrics,
+  getDashboardRenewalBuckets,
   getPolicyMemberReport,
   getPolicyMemberReportDetail,
   getVillageReport,
@@ -216,14 +217,11 @@ export function createMisRouter(_env: Env) {
         const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
-        const charts = await getDashboardCharts(
-          req.userId!,
-          req.permissions!,
-          scope,
-          asOf,
-          q.village,
-        );
-        res.json(charts);
+        const [charts, renewal] = await Promise.all([
+          getDashboardCharts(req.userId!, req.permissions!, scope, asOf, q.village),
+          getDashboardRenewalBuckets(req.userId!, req.permissions!, scope, asOf, q.village),
+        ]);
+        res.json({ ...charts, renewal });
       } catch (e) {
         next(e);
       }
