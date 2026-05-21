@@ -24,6 +24,7 @@ export type PolicyListQuery = {
   categoryId?: string;
   categoryIds?: string[];
   categoryKey?: string;
+  categoryKeys?: string[];
   policyTypeId?: string;
   adProductVariant?: AdProductVariant;
   adProductVariants?: AdProductVariant[];
@@ -246,9 +247,24 @@ export function buildPolicyListWhere(
 
   const categoryIds =
     q.categoryIds != null && q.categoryIds.length > 0 ? q.categoryIds : q.categoryId ? [q.categoryId] : undefined;
-  const categoryKeyPart: Prisma.PolicyWhereInput | undefined = q.categoryKey
-    ? { category: { is: { key: q.categoryKey } } }
-    : undefined;
+  const categoryKeys = [
+    ...new Set(
+      [
+        ...(q.categoryKeys ?? []),
+        ...(q.categoryKey?.trim() ? [q.categoryKey.trim()] : []),
+      ].map((k) => k.trim()).filter(Boolean),
+    ),
+  ];
+  let categoryFilter: Prisma.PolicyWhereInput | undefined;
+  if (categoryIds?.length === 1) {
+    categoryFilter = { categoryId: categoryIds[0] };
+  } else if (categoryIds && categoryIds.length > 1) {
+    categoryFilter = { categoryId: { in: categoryIds } };
+  } else if (categoryKeys.length === 1) {
+    categoryFilter = { category: { is: { key: categoryKeys[0] } } };
+  } else if (categoryKeys.length > 1) {
+    categoryFilter = { category: { is: { key: { in: categoryKeys } } } };
+  }
 
   const adVariants =
     q.adProductVariants != null && q.adProductVariants.length > 0
@@ -290,12 +306,7 @@ export function buildPolicyListWhere(
         : undefined;
 
   const extraParts: Prisma.PolicyWhereInput[] = [];
-  if (categoryIds?.length === 1) {
-    extraParts.push({ categoryId: categoryIds[0] });
-  } else if (categoryIds && categoryIds.length > 1) {
-    extraParts.push({ categoryId: { in: categoryIds } });
-  }
-  if (categoryKeyPart) extraParts.push(categoryKeyPart);
+  if (categoryFilter) extraParts.push(categoryFilter);
   if (q.policyTypeId) extraParts.push({ policyTypeId: q.policyTypeId });
   if (adVariantPart) extraParts.push(adVariantPart);
 

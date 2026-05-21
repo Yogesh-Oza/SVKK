@@ -274,6 +274,7 @@ export default function SvkkPoliciesPage() {
     kind: YearActionKind;
   } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const listFetchGenerationRef = useRef(0);
 
   const missingUrl = !getSvkkApiBase();
 
@@ -288,11 +289,20 @@ export default function SvkkPoliciesPage() {
     if (v.length) setVillages(v);
     const variants = searchParams.getAll("adProductVariants");
     if (variants.length) setAdVariants(variants);
+    const cats = searchParams.getAll("categoryIds");
+    if (cats.length) setCategoryIds(cats);
     const rp = searchParams.get("renewalPending");
     const rb = searchParams.get("renewalBucket");
     if (rb) setRenewalFilter(rb);
     else if (rp === "true") setRenewalFilter("pending");
   }, [searchParams]);
+
+  const categoryKeysForQuery = useMemo(() => {
+    const keys = categoryIds
+      .map((id) => categories.find((c) => c.id === id)?.key?.trim())
+      .filter((k): k is string => Boolean(k));
+    return [...new Set(keys)];
+  }, [categoryIds, categories]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -357,6 +367,7 @@ export default function SvkkPoliciesPage() {
     periodYears.forEach((y) => q.append("periodYearTexts", y));
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
     categoryIds.forEach((id) => q.append("categoryIds", id));
+    categoryKeysForQuery.forEach((k) => q.append("categoryKeys", k));
     adVariants.forEach((a) => q.append("adProductVariants", a));
     areas.forEach((a) => q.append("areas", a));
     sumInsureds.forEach((s) => q.append("sumInsureds", s));
@@ -380,6 +391,7 @@ export default function SvkkPoliciesPage() {
     periodYears,
     periodMonths,
     categoryIds,
+    categoryKeysForQuery,
     adVariants,
     areas,
     sumInsureds,
@@ -427,18 +439,23 @@ export default function SvkkPoliciesPage() {
   }, [exportQueryString]);
 
   const load = useCallback(async () => {
+    const generation = ++listFetchGenerationRef.current;
     setLoading(true);
     try {
       setErr(null);
       const res = await svkkJson<PageListRes>(`/policies?${queryString}`);
+      if (generation !== listFetchGenerationRef.current) return;
       setRows(res.items);
       setTotalPages(res.totalPages);
       setTotal(res.total);
       setRowSelection({});
     } catch (e) {
+      if (generation !== listFetchGenerationRef.current) return;
       setErr(e instanceof Error ? e.message : "Failed to load policies");
     } finally {
-      setLoading(false);
+      if (generation === listFetchGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }, [queryString]);
 
@@ -469,6 +486,9 @@ export default function SvkkPoliciesPage() {
   useEffect(() => {
     if (missingUrl) return;
     void load();
+    return () => {
+      listFetchGenerationRef.current += 1;
+    };
   }, [missingUrl, load]);
 
   useEffect(() => {
