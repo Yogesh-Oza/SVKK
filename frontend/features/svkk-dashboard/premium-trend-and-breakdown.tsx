@@ -14,6 +14,7 @@ import type { DashboardChartsPayload } from "@/features/svkk-dashboard/dashboard
 import { RenewalPendingPie } from "@/features/svkk-dashboard/renewal-pending-pie";
 import {
   buildDashboardHref,
+  misQueryFromPolicyStartMonth,
   misQueryFromRange,
   policiesQueryFromRange,
   productVariantFromLabel,
@@ -170,19 +171,11 @@ export function PremiumTrendAndBreakdown({
 
   return (
     <div className="space-y-4">
-      <Card
-        className="cursor-pointer transition-shadow hover:shadow-md"
-        onClick={() => goMis({ groupBy: "village" })}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") goMis({ groupBy: "village" });
-        }}
-      >
+      <Card className="transition-shadow">
         <CardHeader>
           <CardTitle className="text-base">Premium by policy start month</CardTitle>
           <CardDescription>
-            Co premium by policy-year start month (12 months ending at to-date). Click to open MIS.
+            Co premium by policy-year start month (12 months ending at to-date). Click a bar to open MIS for that month.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -212,10 +205,18 @@ export function PremiumTrendAndBreakdown({
                   radius={[4, 4, 0, 0]}
                   maxBarSize={28}
                   className="cursor-pointer"
-                  onClick={(data) => {
+                  onClick={(data, _index, event) => {
+                    event?.stopPropagation();
                     const payload = data as { monthNum?: number; year?: number };
-                    if (payload.monthNum) {
-                      goMis({ groupBy: "village", months: String(payload.monthNum) });
+                    if (payload.monthNum && payload.year) {
+                      router.push(
+                        buildDashboardHref({
+                          pathname: "/mis",
+                          query: misQueryFromPolicyStartMonth(payload.year, payload.monthNum, {
+                            groupBy: "village",
+                          }),
+                        }),
+                      );
                     }
                   }}
                 />

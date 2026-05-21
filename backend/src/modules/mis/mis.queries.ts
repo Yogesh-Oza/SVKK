@@ -244,6 +244,8 @@ type PolicyMemberReportParams = {
   sumInsureds: string[];
   months: number[];
   years: number[];
+  policyStartMonths: number[];
+  policyStartYears: number[];
   createdFrom: Date | null;
   createdTo: Date | null;
   fiscalLabels: string[];
@@ -359,6 +361,20 @@ function monthsYearsFilterSql(months: number[], years: number[]): Prisma.Sql {
   return Prisma.empty;
 }
 
+/** Filter by calendar month/year of `PolicyYear.policyStart` (dashboard premium chart drill-down). */
+function policyStartMonthYearFilterSql(months: number[], years: number[]): Prisma.Sql {
+  if (months.length && years.length) {
+    return Prisma.sql` AND py.policyStart IS NOT NULL AND YEAR(py.policyStart) IN (${Prisma.join(years)}) AND MONTH(py.policyStart) IN (${Prisma.join(months)})`;
+  }
+  if (months.length) {
+    return Prisma.sql` AND py.policyStart IS NOT NULL AND MONTH(py.policyStart) IN (${Prisma.join(months)})`;
+  }
+  if (years.length) {
+    return Prisma.sql` AND py.policyStart IS NOT NULL AND YEAR(py.policyStart) IN (${Prisma.join(years)})`;
+  }
+  return Prisma.empty;
+}
+
 function createdAtRangeFilterSql(createdFrom: Date | null, createdTo: Date | null): Prisma.Sql {
   if (createdFrom && createdTo) {
     return Prisma.sql` AND p.createdAt >= ${createdFrom} AND p.createdAt <= ${createdTo}`;
@@ -391,6 +407,7 @@ function baseFromClause(
     areaF: Prisma.Sql;
     sumF: Prisma.Sql;
     myF: Prisma.Sql;
+    psF: Prisma.Sql;
     createdF: Prisma.Sql;
     fiscF: Prisma.Sql;
   },
@@ -423,6 +440,7 @@ function baseFromClause(
       ${filters.areaF}
       ${filters.sumF}
       ${filters.myF}
+      ${filters.psF}
       ${filters.createdF}
       ${filters.fiscF}
       ${mReq}
@@ -446,6 +464,7 @@ export async function queryDistinctPolicyCategoryKeys(
   const areaF = areasFilterSql(args.areas);
   const sumF = sumInsuredsFilterSql(args.sumInsureds);
   const myF = monthsYearsFilterSql(args.months, args.years);
+  const psF = policyStartMonthYearFilterSql(args.policyStartMonths, args.policyStartYears);
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
 
@@ -463,6 +482,7 @@ export async function queryDistinctPolicyCategoryKeys(
       ${areaF}
       ${sumF}
       ${myF}
+      ${psF}
       ${createdF}
       ${fiscF}
   `);
@@ -493,9 +513,10 @@ export async function queryPolicyMemberReport(
   const areaF = areasFilterSql(args.areas);
   const sumF = sumInsuredsFilterSql(args.sumInsureds);
   const myF = monthsYearsFilterSql(args.months, args.years);
+  const psF = policyStartMonthYearFilterSql(args.policyStartMonths, args.policyStartYears);
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
-  const filters = { catF, pgF, villF, areaF, sumF, myF, createdF, fiscF };
+  const filters = { catF, pgF, villF, areaF, sumF, myF, psF, createdF, fiscF };
   const fArgs = {
     scopeOnP: args.scopeOnP,
     start,
@@ -574,6 +595,7 @@ export async function queryPolicyMemberReport(
         ${areaF}
         ${sumF}
         ${myF}
+        ${psF}
         ${createdF}
         ${fiscF}
       GROUP BY ${dim}, p.id, p.adProductVariant, py.id, m.id
@@ -627,6 +649,7 @@ export async function queryPolicyMemberReport(
         ${areaF}
         ${sumF}
         ${myF}
+        ${psF}
         ${createdF}
         ${fiscF}
     ) t

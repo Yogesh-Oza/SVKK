@@ -5,13 +5,22 @@
 export const migrationVersion = "v1";
 export const CURRENT_VERSION = migrationVersion;
 
+/** Legacy policy_table.policy_type → Prisma PolicyType.key on the new DB */
 export const POLICY_TYPE_MAP: Record<string, { policyTypeKey: string }> = {
-  "family-floater": { policyTypeKey: "ad_policy" },
-  "family-floating": { policyTypeKey: "ad_policy" },
-  "familiy-floating": { policyTypeKey: "ad_policy" },
-  individual: { policyTypeKey: "ad_policy" },
+  "family-floater": { policyTypeKey: "family_floater" },
+  "family-floating": { policyTypeKey: "family_floater" },
+  "familiy-floating": { policyTypeKey: "family_floater" },
+  "family floater": { policyTypeKey: "family_floater" },
+  family_floater: { policyTypeKey: "family_floater" },
+  "family floater policy": { policyTypeKey: "family_floater" },
+  individual: { policyTypeKey: "individual" },
   "asha-kiran": { policyTypeKey: "asha_kiran" },
   "asha kiran": { policyTypeKey: "asha_kiran" },
+  asha_kiran: { policyTypeKey: "asha_kiran" },
+  "senior-citizen": { policyTypeKey: "senior_citizen" },
+  "senior citizen": { policyTypeKey: "senior_citizen" },
+  senior_citizen: { policyTypeKey: "senior_citizen" },
+  "": { policyTypeKey: "individual" },
 };
 
 /** Category letter from legacy `cat` → Prisma Category.key */
@@ -21,6 +30,8 @@ export const CATEGORY_LETTER_MAP: Record<string, string> = {
   c: "c",
   d: "d",
   e: "e",
+  staff: "staff",
+  svga: "svga",
   ashakiran: "asha_kiran_cat",
   "asha kiran": "asha_kiran_cat",
 };

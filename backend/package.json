@@ -20,6 +20,10 @@
     "user:create": "tsx scripts/create-user.ts",
     "legacy-migrate": "tsx scripts/legacy-migrate/run.ts",
     "legacy-migrate:rollback": "tsx scripts/legacy-migrate/rollback-run.ts",
+    "legacy-migrate:compare-policy-types": "tsx scripts/legacy-migrate/compare-policy-types.ts",
+    "legacy-migrate:fix-policy-types": "tsx scripts/legacy-migrate/fix-policy-types.ts",
+    "legacy-migrate:compare-categories": "tsx scripts/legacy-migrate/compare-categories.ts",
+    "legacy-migrate:fix-categories": "tsx scripts/legacy-migrate/fix-categories.ts",
     "test": "vitest run",
     "lint": "eslint src --ext .ts"
   },

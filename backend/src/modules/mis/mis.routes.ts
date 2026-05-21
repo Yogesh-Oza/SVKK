@@ -88,6 +88,9 @@ const policyMemberReportQuerySchema = z.object({
   fiscalLabels: stringArrayQuery,
   /** @deprecated use fiscalLabels[] */
   fiscalLabel: z.string().optional(),
+  /** Calendar month of `PolicyYear.policyStart` (dashboard chart drill-down). */
+  policyStartMonth: z.coerce.number().int().min(1).max(12).optional(),
+  policyStartYear: z.coerce.number().int().min(2000).max(2100).optional(),
 });
 
 function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQuerySchema>) {
@@ -114,6 +117,8 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
     ...(q.fiscalLabels ?? []),
     ...(q.fiscalLabel?.trim() ? [q.fiscalLabel.trim()] : []),
   ];
+  const policyStartMonths = q.policyStartMonth != null ? [q.policyStartMonth] : [];
+  const policyStartYears = q.policyStartYear != null ? [q.policyStartYear] : [];
   return {
     dateFrom,
     dateTo,
@@ -126,6 +131,8 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
     months: [...new Set(months)],
     years: [...new Set(years)],
     fiscalLabels: [...new Set(fiscalLabels)],
+    policyStartMonths: [...new Set(policyStartMonths)],
+    policyStartYears: [...new Set(policyStartYears)],
   };
 }
 
@@ -300,6 +307,8 @@ export function createMisRouter(_env: Env) {
             sumInsureds: normalized.sumInsureds,
             months: normalized.months,
             years: normalized.years,
+            policyStartMonths: normalized.policyStartMonths,
+            policyStartYears: normalized.policyStartYears,
             fiscalLabels: normalized.fiscalLabels,
           },
         );
@@ -337,6 +346,8 @@ export function createMisRouter(_env: Env) {
             sumInsureds: normalized.sumInsureds,
             months: normalized.months,
             years: normalized.years,
+            policyStartMonths: normalized.policyStartMonths,
+            policyStartYears: normalized.policyStartYears,
             fiscalLabels: normalized.fiscalLabels,
           },
         );

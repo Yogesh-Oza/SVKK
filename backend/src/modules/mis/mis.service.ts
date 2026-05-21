@@ -278,6 +278,8 @@ export async function getDashboardCharts(
     sumInsureds: [],
     months: [],
     years: [],
+    policyStartMonths: [],
+    policyStartYears: [],
     createdFrom: null,
     createdTo: null,
     fiscalLabels: [],
@@ -436,16 +438,29 @@ export async function getPolicyMemberReport(
     policyGroupings: string[];
     months: number[];
     years: number[];
+    policyStartMonths: number[];
+    policyStartYears: number[];
     fiscalLabels: string[];
   },
 ) {
   const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, undefined);
   const { start, end, ageAsOf } = reportPeriodBoundsUTC(input.dateFrom, input.dateTo);
-  const createdFrom = input.dateFrom ? asOfDayBoundsUTC(input.dateFrom).start : null;
-  const createdTo =
-    input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
-  // Without a from-date, match policy register: count all policy years, use to-date only for age.
-  const restrictPolicyYearToAsOf = input.dateFrom != null;
+  const usePolicyStartFilter =
+    input.policyStartMonths.length > 0 && input.policyStartYears.length > 0;
+  // Report period dates are for policy-year overlap; do not treat them as policy created-at when
+  // drilling down from the dashboard policy-start chart.
+  const createdFrom = usePolicyStartFilter
+    ? null
+    : input.dateFrom
+      ? asOfDayBoundsUTC(input.dateFrom).start
+      : null;
+  const createdTo = usePolicyStartFilter
+    ? null
+    : input.dateFrom && input.dateTo
+      ? asOfDayBoundsUTC(input.dateTo).end
+      : null;
+  // Dashboard policy-start drill-down: match chart (policyStart month), not overlap window only.
+  const restrictPolicyYearToAsOf = input.dateFrom != null && !usePolicyStartFilter;
   const rows = await queryPolicyMemberReport(prisma, {
     scopeOnP,
     periodStart: start,
@@ -458,11 +473,13 @@ export async function getPolicyMemberReport(
     villages: input.villages,
     areas: input.areas,
     sumInsureds: input.sumInsureds,
-    months: input.months,
-    years: input.years,
+    months: usePolicyStartFilter ? [] : input.months,
+    years: usePolicyStartFilter ? [] : input.years,
+    policyStartMonths: input.policyStartMonths,
+    policyStartYears: input.policyStartYears,
     createdFrom,
     createdTo,
-    fiscalLabels: input.fiscalLabels,
+    fiscalLabels: usePolicyStartFilter ? [] : input.fiscalLabels,
     restrictPolicyYearToAsOf,
   });
   const orderedRows =
@@ -507,6 +524,8 @@ export async function getPolicyMemberReportDetail(
     sumInsureds: string[];
     months: number[];
     years: number[];
+    policyStartMonths: number[];
+    policyStartYears: number[];
     fiscalLabels: string[];
   },
 ) {
@@ -521,10 +540,19 @@ export async function getPolicyMemberReportDetail(
 
   const scopeOnP = buildPolicyScopeSqlP(permissions, userId, scope, undefined);
   const { start, end, ageAsOf } = reportPeriodBoundsUTC(input.dateFrom, input.dateTo);
-  const createdFrom = input.dateFrom ? asOfDayBoundsUTC(input.dateFrom).start : null;
-  const createdTo =
-    input.dateFrom && input.dateTo ? asOfDayBoundsUTC(input.dateTo).end : null;
-  const restrictPolicyYearToAsOf = input.dateFrom != null;
+  const usePolicyStartFilter =
+    input.policyStartMonths.length > 0 && input.policyStartYears.length > 0;
+  const createdFrom = usePolicyStartFilter
+    ? null
+    : input.dateFrom
+      ? asOfDayBoundsUTC(input.dateFrom).start
+      : null;
+  const createdTo = usePolicyStartFilter
+    ? null
+    : input.dateFrom && input.dateTo
+      ? asOfDayBoundsUTC(input.dateTo).end
+      : null;
+  const restrictPolicyYearToAsOf = input.dateFrom != null && !usePolicyStartFilter;
 
   const baseQuery = {
     scopeOnP,
@@ -537,11 +565,13 @@ export async function getPolicyMemberReportDetail(
     villages: village ? [village] : [],
     areas: area ? [area] : [],
     sumInsureds: input.sumInsureds,
-    months: input.months,
-    years: input.years,
+    months: usePolicyStartFilter ? [] : input.months,
+    years: usePolicyStartFilter ? [] : input.years,
+    policyStartMonths: input.policyStartMonths,
+    policyStartYears: input.policyStartYears,
     createdFrom,
     createdTo,
-    fiscalLabels: input.fiscalLabels,
+    fiscalLabels: usePolicyStartFilter ? [] : input.fiscalLabels,
     restrictPolicyYearToAsOf,
   };
 

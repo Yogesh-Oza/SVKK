@@ -80,6 +80,8 @@ export const CATEGORY_TEXT_MAP: Record<string, string> = {
   c: "c",
   d: "d",
   e: "e",
+  staff: "staff",
+  svga: "svga",
   ashakiran: "asha_kiran_cat",
 };
 

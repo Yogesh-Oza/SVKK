@@ -68,6 +68,8 @@ describe("MIS commission gating", () => {
     policyGroupings: [],
     months: [],
     years: [],
+    policyStartMonths: [],
+    policyStartYears: [],
     fiscalLabels: [],
   };
 

@@ -351,6 +351,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
   const [months, setMonths] = useState<string[]>([]);
   const [fiscalYears, setFiscalYears] = useState<string[]>([]);
+  const [policyStartMonth, setPolicyStartMonth] = useState("");
+  const [policyStartYear, setPolicyStartYear] = useState("");
   const [filterText, setFilterText] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<PolicyMemberRow[]>([]);
@@ -389,6 +391,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
     if (v.length) setVillages(v);
     const m = searchParams.getAll("months");
     if (m.length) setMonths(m);
+    const fy = searchParams.getAll("fiscalLabels");
+    if (fy.length) setFiscalYears(fy);
+    const psm = searchParams.get("policyStartMonth");
+    const psy = searchParams.get("policyStartYear");
+    if (psm) setPolicyStartMonth(psm);
+    if (psy) setPolicyStartYear(psy);
     const c = searchParams.getAll("categoryKeys");
     if (c.length) setCategoryKeys(c);
   }, [searchParams]);
@@ -459,6 +467,12 @@ export function PolicyMemberReportSection({ onError }: Props) {
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
     months.forEach((m) => q.append("months", m));
     fiscalYears.forEach((y) => q.append("fiscalLabels", y));
+    if (policyStartMonth) {
+      q.set("policyStartMonth", policyStartMonth);
+    }
+    if (policyStartYear) {
+      q.set("policyStartYear", policyStartYear);
+    }
     return q;
   }, [
     areas,
@@ -469,6 +483,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
     groupBy,
     months,
     policyGroupings,
+    policyStartMonth,
+    policyStartYear,
     sumInsureds,
     villages,
   ]);
@@ -482,6 +498,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
     groupBy,
     months,
     policyGroupings,
+    policyStartMonth,
+    policyStartYear,
     sumInsureds,
     villages,
   ]);
@@ -565,6 +583,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
     setPolicyGroupings([]);
     setMonths([]);
     setFiscalYears([]);
+    setPolicyStartMonth("");
+    setPolicyStartYear("");
     setFilterText("");
     setSorting([]);
   }, []);
@@ -581,6 +601,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
       policyGroupings.length > 0 ||
       months.length > 0 ||
       fiscalYears.length > 0 ||
+      policyStartMonth !== "" ||
+      policyStartYear !== "" ||
       filterText.trim() !== "" ||
       sorting.length > 0,
     [
@@ -593,6 +615,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
       groupBy,
       months,
       policyGroupings,
+      policyStartMonth,
+      policyStartYear,
       sorting.length,
       sumInsureds,
       villages,
@@ -717,7 +741,13 @@ export function PolicyMemberReportSection({ onError }: Props) {
           placeholder="All months"
           options={CREATED_MONTH_OPTIONS}
           selected={months}
-          onChange={setMonths}
+          onChange={(next) => {
+            setMonths(next);
+            if (policyStartMonth || policyStartYear) {
+              setPolicyStartMonth("");
+              setPolicyStartYear("");
+            }
+          }}
           accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
         />
         <PolicyFilterMulti

@@ -1481,15 +1481,21 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         }, 0)
       : familyFloaterNet;
 
-    // Match Calculated Premium Summary gross (basic + rider per member), not basic-only sum.
-    const autoGross =
-      product === "SENIOR_CITIZEN"
-        ? parseInr(values.grossPremium)
-        : quote.rows.length > 0
-          ? quote.gross
+    const quoteReady = quote.rows.length > 0 && quote.rows.every((row) => !row.error);
+    const calculatedNetPremium = quoteReady ? quote.net : null;
+
+    // Premium Details Gross Premium = Calculated Premium Summary net (member-wise quote).
+    const autoGrossPremium =
+      calculatedNetPremium != null
+        ? calculatedNetPremium
+        : product === "SENIOR_CITIZEN"
+          ? parseInr(values.grossPremium)
           : grossFromChart;
+
     let autoNet = parseInr(values.coPremium);
-    if (product === "FAMILY_FLOATER") {
+    if (calculatedNetPremium != null) {
+      autoNet = calculatedNetPremium;
+    } else if (product === "FAMILY_FLOATER") {
       autoNet = familyFloaterNet;
     } else if (product === "ASHA_KIRAN") {
       autoNet = ashaKiranNet;
@@ -1497,7 +1503,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       autoNet = grossFromChart;
     }
 
-    const gross = premiumManual.grossPremium ? parseInr(values.grossPremium) : autoGross;
+    const gross = premiumManual.grossPremium ? parseInr(values.grossPremium) : autoGrossPremium;
     const net = premiumManual.coPremium ? parseInr(values.coPremium) : autoNet;
     const taxPercent = parseInr(values.taxPercent);
     const taxAmountCalc = gross * (taxPercent / 100);

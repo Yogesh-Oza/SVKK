@@ -46,10 +46,14 @@ export function trimPolicyNo(raw: string | null | undefined): string | null {
 
 export function mapPolicyTypeKey(policyTypeRaw: string | null | undefined): string | null {
   if (policyTypeRaw == null) return null;
-  const k = policyTypeRaw.trim().toLowerCase().replace(/\s+/g, "-");
-  const entry = POLICY_TYPE_MAP[k] ?? POLICY_TYPE_MAP[policyTypeRaw.trim().toLowerCase()];
+  const trimmed = policyTypeRaw.trim();
+  if (!trimmed) {
+    return POLICY_TYPE_MAP[""]?.policyTypeKey ?? null;
+  }
+  const k = trimmed.toLowerCase().replace(/\s+/g, "-");
+  const entry = POLICY_TYPE_MAP[k] ?? POLICY_TYPE_MAP[trimmed.toLowerCase()];
   if (entry) return entry.policyTypeKey;
-  const fuzzy = Object.keys(POLICY_TYPE_MAP).find((x) => k.includes(x) || x.includes(k));
+  const fuzzy = Object.keys(POLICY_TYPE_MAP).find((x) => x && (k.includes(x) || x.includes(k)));
   return fuzzy ? POLICY_TYPE_MAP[fuzzy]!.policyTypeKey : null;
 }
 

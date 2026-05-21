@@ -95,4 +95,4 @@ npm run legacy-migrate -- --unlock-stale --confirm
 
 ## PolicyType / charts
 
-Each mapped `PolicyType` needs a **HOLDER** `PolicyChart` v1 (`ad_policy`, `asha_kiran` from seed).
+Each mapped `PolicyType` needs a **HOLDER** `PolicyChart` v1 (`family_floater`, `individual`, `asha_kiran`, `senior_citizen` on target DB).
