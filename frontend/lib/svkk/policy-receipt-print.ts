@@ -273,7 +273,7 @@ export function buildReceiptDocumentHtml(
   const transactionDetail =
     (pay0?.transactionDetail ?? "").trim() || chNo || (y0?.utrRef ?? "").trim() || "—";
   const txnDateStr = displayDate(pay0?.transactionDate ?? pay0?.createdAt);
-  const cat = p.category?.key ?? p.category?.name ?? "—";
+  const cat = p.category?.name ?? p.category?.key ?? "—";
   const amountNum = Number(String(recvRaw).replace(/[^\d.-]/g, "")) || 0;
   const amountInWords = amountToWordsIndian(amountNum);
 

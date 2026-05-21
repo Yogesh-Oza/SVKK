@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildPolicySnapshotFields, latestRemarkForSnapshot } from "./policy-list-snapshot";
+import { buildCategoryByKeyMap } from "@/lib/svkk/category-display";
+import {
+  buildPolicySnapshotFields,
+  categoryLabelForSnapshot,
+  latestRemarkForSnapshot,
+  policyTypeLabelForSnapshot,
+} from "./policy-list-snapshot";
 
 describe("policy-list-snapshot", () => {
   it("uses latest year policy number", () => {
@@ -19,6 +25,88 @@ describe("policy-list-snapshot", () => {
     });
     expect(fields.find((f) => f.label === "Policy no.")?.value).toBe("PO-NEW");
     expect(fields.find((f) => f.label === "Year")?.value).toBe("2026");
+  });
+
+  it("prefers ad product variant over policy type name for list label", () => {
+    const label = policyTypeLabelForSnapshot({
+      policyNo: null,
+      village: null,
+      area: null,
+      remarks: null,
+      adProductVariant: "FAMILY_FLOATER",
+      insuredParty: { name: "H", customerId: null },
+      policyType: { name: "Asha Kiran" },
+      category: null,
+      years: [],
+    });
+    expect(label).toBe("Family-Floater");
+  });
+
+  it("falls back to categoryText when category relation is missing", () => {
+    expect(
+      categoryLabelForSnapshot({
+        policyNo: null,
+        village: null,
+        area: null,
+        remarks: null,
+        insuredParty: { name: "H", customerId: null },
+        policyType: { name: "AD" },
+        category: null,
+        categoryText: "D",
+        years: [],
+      }),
+    ).toBe("D");
+    const byKey = buildCategoryByKeyMap([{ key: "d", name: "Category D" }]);
+    expect(
+      categoryLabelForSnapshot(
+        {
+          policyNo: null,
+          village: null,
+          area: null,
+          remarks: null,
+          insuredParty: { name: "H", customerId: null },
+          policyType: { name: "AD" },
+          category: null,
+          categoryText: "d",
+          years: [],
+        },
+        byKey,
+      ),
+    ).toBe("Category D");
+    const fields = buildPolicySnapshotFields({
+      policyNo: null,
+      periodMonthText: "May",
+      periodYearText: "2026-27",
+      village: "Manafara",
+      area: "Borivali-West",
+      remarks: null,
+      insuredParty: { name: "H", email: null, customerId: "ME1" },
+      policyType: { name: "Asha Kiran" },
+      category: null,
+      categoryText: "D",
+      adProductVariant: "FAMILY_FLOATER",
+      years: [{ yearLabel: "2026-27", policyNo: null }],
+    });
+    expect(fields.find((f) => f.label === "Category")?.value).toBe("D");
+    const fieldsNamed = buildPolicySnapshotFields(
+      {
+        policyNo: null,
+        periodMonthText: "May",
+        periodYearText: "2026-27",
+        village: "Manafara",
+        area: "Borivali-West",
+        remarks: null,
+        insuredParty: { name: "H", email: null, customerId: "ME1" },
+        policyType: { name: "Asha Kiran" },
+        category: null,
+        categoryText: "d",
+        adProductVariant: "FAMILY_FLOATER",
+        years: [{ yearLabel: "2026-27", policyNo: null }],
+      },
+      buildCategoryByKeyMap([{ key: "d", name: "Category D" }]),
+    );
+    expect(fieldsNamed.find((f) => f.label === "Category")?.value).toBe("Category D");
+    expect(fields.find((f) => f.label === "Policy type")?.value).toBe("Family-Floater");
   });
 
   it("prefers policy change remark over general", () => {

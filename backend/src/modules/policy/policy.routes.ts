@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
+import { loadCategoryByKeyMap, resolveCategoryRef } from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   createPolicyWithYear,
@@ -444,10 +445,12 @@ export function createPolicyRouter(env: Env) {
           res.setHeader("X-Export-Truncated", "true");
         }
       }
+      const categoryByKey = await loadCategoryByKeyMap();
       const csv = buildPoliciesExportCsv(
         rows,
         req.permissions!,
         preferredYearLabelsFromFilter(listFilter),
+        categoryByKey,
       );
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');
@@ -528,8 +531,11 @@ export function createPolicyRouter(env: Env) {
           (y as unknown as { vkkCommission?: null }).vkkCommission = null;
         }
       }
+      const categoryByKey = await loadCategoryByKeyMap();
+      const category = resolveCategoryRef(row.category, row.categoryText, categoryByKey);
       res.json({
         ...row,
+        category,
         insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
       });
     } catch (e) {

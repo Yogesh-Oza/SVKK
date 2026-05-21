@@ -1,5 +1,9 @@
 import { parseRemarks } from "@/features/svkk-policies/ad-policy-detail-to-form";
 import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
+import {
+  resolveCategoryDisplayLabel,
+  type CategoryRef,
+} from "@/lib/svkk/category-display";
 
 export type PolicyListSnapshotSource = {
   policyNo: string | null;
@@ -18,6 +22,7 @@ export type PolicyListSnapshotSource = {
   };
   policyType: { name: string };
   category: { key: string; name: string } | null;
+  categoryText?: string | null;
   years: Array<{ yearLabel: string; policyNo: string | null }>;
 };
 
@@ -37,6 +42,7 @@ export function latestRemarkForSnapshot(remarks: string | null | undefined): str
   return remarks.trim();
 }
 
+/** Same label rules as policy detail view (prefers AD product variant over policy type name). */
 export function policyTypeLabelForSnapshot(row: PolicyListSnapshotSource): string {
   if (row.adProductVariant) {
     return adProductFormValueFromApi(row.adProductVariant) || row.policyType.name;
@@ -44,9 +50,20 @@ export function policyTypeLabelForSnapshot(row: PolicyListSnapshotSource): strin
   return row.policyType.name;
 }
 
+/** Resolves category name from DB (admin categories); falls back to key/text. */
+export function categoryLabelForSnapshot(
+  row: PolicyListSnapshotSource,
+  categoryByKey?: Map<string, CategoryRef>,
+): string {
+  return resolveCategoryDisplayLabel(row.category, row.categoryText, categoryByKey);
+}
+
 export type PolicySnapshotField = { label: string; value: string; mono?: boolean };
 
-export function buildPolicySnapshotFields(row: PolicyListSnapshotSource): PolicySnapshotField[] {
+export function buildPolicySnapshotFields(
+  row: PolicyListSnapshotSource,
+  categoryByKey?: Map<string, CategoryRef>,
+): PolicySnapshotField[] {
   const latestYear = row.years[0];
   return [
     { label: "Policy no.", value: display(latestYear?.policyNo ?? row.policyNo), mono: true },
@@ -61,12 +78,18 @@ export function buildPolicySnapshotFields(row: PolicyListSnapshotSource): Policy
     { label: "Latest remark", value: latestRemarkForSnapshot(row.remarks) },
     { label: "Grouping", value: display(row.policyGrouping) },
     { label: "Policy type", value: display(policyTypeLabelForSnapshot(row)) },
-    { label: "Category", value: display(row.category?.name ?? row.category?.key) },
+    { label: "Category", value: display(categoryLabelForSnapshot(row, categoryByKey)) },
   ];
 }
 
-export function PolicyListSnapshotPanel({ row }: { row: PolicyListSnapshotSource }) {
-  const fields = buildPolicySnapshotFields(row);
+export function PolicyListSnapshotPanel({
+  row,
+  categoryByKey,
+}: {
+  row: PolicyListSnapshotSource;
+  categoryByKey?: Map<string, CategoryRef>;
+}) {
+  const fields = buildPolicySnapshotFields(row, categoryByKey);
   return (
     <div className="ring-primary/15 max-w-full rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
       <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">

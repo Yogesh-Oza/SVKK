@@ -1,3 +1,6 @@
+"use client";
+
+import { useMemo } from "react";
 import { parsePolicyUrls, parseRemarks } from "@/features/svkk-policies/ad-policy-detail-to-form";
 import {
   resolvePolicyPaymentDisplays,
@@ -13,6 +16,11 @@ import {
   yesNoLabel,
 } from "@/features/svkk-policies/policy-detail-view-helpers";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import {
+  buildCategoryByKeyMap,
+  resolveCategoryDisplayLabel,
+} from "@/lib/svkk/category-display";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canSeeCommission } from "@/lib/svkk/permissions";
 
 export type PolicyDetailViewRow = {
@@ -233,11 +241,26 @@ export function PolicyDetailViewBody({
   policyTypeLabel: string;
 }) {
   const { user } = useSvkkAuth();
+  const { options } = useDropdownOptions();
+  const categoryByKey = useMemo(
+    () =>
+      buildCategoryByKeyMap(
+        options.categories.map((c) => ({
+          key: c.value,
+          name: c.label,
+        })),
+      ),
+    [options.categories],
+  );
   const allowCommission = user?.permissions ? canSeeCommission(user.permissions) : false;
   const fmt = (v: unknown) => displayVal(formatNumIn(v) || dStr(v));
   const fmtDate = (iso: string | null | undefined) => displayVal(iso ? formatDateIso(iso) : "");
   const fmtDob = (iso: string | null | undefined) => displayVal(iso ? formatDateDmy(iso) : "");
-  const categoryLabel = row.category?.name ?? row.category?.key ?? row.categoryText ?? "";
+  const categoryLabel = resolveCategoryDisplayLabel(
+    row.category,
+    row.categoryText,
+    categoryByKey,
+  );
   const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
   const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
 

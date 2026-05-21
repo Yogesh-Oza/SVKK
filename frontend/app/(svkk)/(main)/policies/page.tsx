@@ -47,7 +47,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PoliciesColumnHeader } from "@/features/svkk-policies/policies-column-header";
-import { PolicyListSnapshotPanel } from "@/features/svkk-policies/policy-list-snapshot";
+import {
+  categoryLabelForSnapshot,
+  PolicyListSnapshotPanel,
+  policyTypeLabelForSnapshot,
+} from "@/features/svkk-policies/policy-list-snapshot";
+import { buildCategoryByKeyMap } from "@/lib/svkk/category-display";
 import {
   PolicyFilterMulti,
   type PolicyFilterOption,
@@ -136,6 +141,7 @@ type ListPolicy = {
   };
   policyType: { id: string; name: string };
   category: { id: string; key: string; name: string } | null;
+  categoryText?: string | null;
   years: ListPolicyYear[];
 };
 
@@ -544,6 +550,11 @@ export default function SvkkPoliciesPage() {
     () => categories.map((c) => ({ value: c.id, label: `${c.key} — ${c.name}` })),
     [categories],
   );
+
+  const categoryByKey = useMemo(
+    () => buildCategoryByKeyMap(categories.map((c) => ({ id: c.id, key: c.key, name: c.name }))),
+    [categories],
+  );
   const yearOptions = useMemo<PolicyFilterOption[]>(
     () => (meta?.periodYearTexts ?? []).map((v) => ({ value: v, label: v })),
     [meta?.periodYearTexts],
@@ -746,7 +757,7 @@ export default function SvkkPoliciesPage() {
       },
       {
         id: "category",
-        accessorFn: (r) => r.category?.name ?? r.category?.key ?? "",
+        accessorFn: (r) => categoryLabelForSnapshot(r, categoryByKey),
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
@@ -758,10 +769,10 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => {
-          const cat = row.original.category?.name ?? row.original.category?.key;
+          const cat = categoryLabelForSnapshot(row.original, categoryByKey);
           return (
-            <span className={cn(policyTableMuted, "max-w-[140px] truncate")} title={cat ?? undefined}>
-              {cat?.trim() || "—"}
+            <span className={cn(policyTableMuted, "max-w-[140px] truncate")} title={cat || undefined}>
+              {cat.trim() || "—"}
             </span>
           );
         },
@@ -807,7 +818,7 @@ export default function SvkkPoliciesPage() {
       },
       {
         id: "policyType",
-        accessorFn: (r) => r.policyType.name,
+        accessorFn: (r) => policyTypeLabelForSnapshot(r),
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
@@ -819,7 +830,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => {
-          const n = row.original.policyType.name;
+          const n = policyTypeLabelForSnapshot(row.original);
           return (
             <span className={cn(policyTableMuted, "max-w-[160px] truncate")} title={n}>
               {n}
@@ -926,7 +937,7 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [applySort, canDel, canEdit, expandedSvkkId, receiptBusyId, sort]);
+  }, [applySort, canDel, canEdit, categoryByKey, expandedSvkkId, receiptBusyId, sort]);
 
   const table = useReactTable({
     data: rows,
@@ -1415,7 +1426,7 @@ export default function SvkkPoliciesPage() {
                               ))}
                             </div>
                             {rowYearAction?.svkkPublicId === original.svkkPublicId ? null : (
-                              <PolicyListSnapshotPanel row={original} />
+                              <PolicyListSnapshotPanel row={original} categoryByKey={categoryByKey} />
                             )}
                           </motion.div>
                         </TableCell>

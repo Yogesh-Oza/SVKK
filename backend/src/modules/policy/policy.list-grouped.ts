@@ -1,4 +1,9 @@
 import { Prisma } from "@prisma/client";
+import {
+  loadCategoryByKeyMap,
+  resolveCategoryRef,
+  type CategoryRef,
+} from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   buildPolicyListWhere,
@@ -42,6 +47,7 @@ export type PolicyListGroupedItem = {
   adProductVariant: string | null;
   policyType: { id: string; name: string };
   category: { id: string; key: string; name: string } | null;
+  categoryText: string | null;
   years: PolicyListYearEntry[];
 };
 
@@ -95,7 +101,11 @@ function toYearEntry(p: PolicyRow): PolicyListYearEntry | null {
   };
 }
 
-function buildGroupedItem(partyId: string, policies: PolicyRow[]): PolicyListGroupedItem | null {
+function buildGroupedItem(
+  partyId: string,
+  policies: PolicyRow[],
+  categoryByKey: Map<string, CategoryRef>,
+): PolicyListGroupedItem | null {
   if (policies.length === 0) return null;
   const primary = pickPrimaryPolicy(policies);
   const party = primary.insuredParty;
@@ -129,7 +139,8 @@ function buildGroupedItem(partyId: string, policies: PolicyRow[]): PolicyListGro
     personsInsuredCount: primary.personsInsuredCount,
     adProductVariant: primary.adProductVariant,
     policyType: { id: primary.policyType.id, name: primary.policyType.name },
-    category: primary.category,
+    category: resolveCategoryRef(primary.category, primary.categoryText, categoryByKey),
+    categoryText: primary.categoryText,
     years,
   };
 }
@@ -248,13 +259,14 @@ function groupPoliciesByParty(policies: PolicyRow[]): Map<string, PolicyRow[]> {
 function assembleGroupedPage(
   partyIds: string[],
   policies: PolicyRow[],
+  categoryByKey: Map<string, CategoryRef>,
 ): PolicyListGroupedItem[] {
   const byParty = groupPoliciesByParty(policies);
   const items: PolicyListGroupedItem[] = [];
   for (const partyId of partyIds) {
     const group = byParty.get(partyId);
     if (!group) continue;
-    const item = buildGroupedItem(partyId, group);
+    const item = buildGroupedItem(partyId, group, categoryByKey);
     if (item) items.push(item);
   }
   return items;
@@ -262,6 +274,7 @@ function assembleGroupedPage(
 
 export async function queryPolicyListGrouped(args: PolicyListArgs) {
   const where = args.where;
+  const categoryByKey = await loadCategoryByKeyMap();
   if (args.usePage) {
     const skip = (args.page! - 1) * args.pageSize;
     const [total, partyIds] = await Promise.all([
@@ -270,7 +283,7 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
     ]);
     const policies = await fetchPoliciesForParties(where, partyIds);
     return {
-      items: assembleGroupedPage(partyIds, policies),
+      items: assembleGroupedPage(partyIds, policies, categoryByKey),
       total,
       page: args.page!,
       pageSize: args.pageSize,
@@ -283,13 +296,13 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
   if (partyIds.length > args.limit) {
     const lastPartyId = partyIds.pop()!;
     const lastPolicies = await fetchPoliciesForParties(where, [lastPartyId]);
-    const lastGroup = buildGroupedItem(lastPartyId, lastPolicies);
+    const lastGroup = buildGroupedItem(lastPartyId, lastPolicies, categoryByKey);
     nextCursor = lastGroup?.primaryPolicyId;
   }
   const pagePartyIds = partyIds.slice(0, args.limit);
   const policies = await fetchPoliciesForParties(where, pagePartyIds);
   return {
-    items: assembleGroupedPage(pagePartyIds, policies),
+    items: assembleGroupedPage(pagePartyIds, policies, categoryByKey),
     nextCursor,
   };
 }

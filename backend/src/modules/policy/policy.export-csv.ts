@@ -1,5 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { maskInsuredParty } from "../../domain/pii.js";
+import {
+  formatCategoryLabel,
+  type CategoryRef,
+} from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import { parsePolicyListOrderBy, POLICY_LIST_EXPORT_MAX_ROWS } from "./policy.list.js";
 
@@ -212,6 +216,7 @@ function rowToBaseCells(
   r: PolicyExportRow,
   party: Record<string, unknown> | null,
   year: PolicyExportRow["years"][number] | undefined,
+  categoryByKey: Map<string, CategoryRef>,
 ): string[] {
   return [
     String(party?.svkkPublicId ?? ""),
@@ -227,7 +232,11 @@ function rowToBaseCells(
     r.holderGender ?? "",
     r.holderAge != null ? String(r.holderAge) : "",
     r.holderRelationship ?? "",
-    r.category ? `${r.category.key} — ${r.category.name}` : r.categoryText ?? "",
+    formatCategoryLabel(
+      r.category ? { id: "", key: r.category.key, name: r.category.name } : null,
+      r.categoryText,
+      categoryByKey,
+    ),
     r.policyType?.name ?? "",
     r.adProductVariant ?? "",
     r.policyGrouping ?? "",
@@ -301,6 +310,7 @@ export function buildPoliciesExportCsv(
   rows: PolicyExportRow[],
   permissions: Set<string>,
   preferredYearLabels: string[] = [],
+  categoryByKey: Map<string, CategoryRef> = new Map(),
 ): string {
   let maxMemberSlots = 0;
   for (const r of rows) {
@@ -315,7 +325,10 @@ export function buildPoliciesExportCsv(
   for (const r of rows) {
     const party = maskInsuredParty(permissions, r.insuredParty as Record<string, unknown>);
     const year = pickExportPolicyYear(r.years, preferredYearLabels);
-    const cells = [...rowToBaseCells(r, party, year), ...rowToMemberCells(year, maxMemberSlots)];
+    const cells = [
+      ...rowToBaseCells(r, party, year, categoryByKey),
+      ...rowToMemberCells(year, maxMemberSlots),
+    ];
     lines.push(cells.map(csvCell).join(","));
   }
 
