@@ -1,5 +1,61 @@
 import type { AdPolicyFormValues, AdPolicyPaymentTransactionForm } from "./ad-policy-form-values";
 
+const PAYMENT_CARRY_FORWARD_KEYS = [
+  "paymentMode",
+  "onlineTransactionRef",
+  "policyChequeNo",
+  "bank",
+  "accountNo",
+  "branch",
+  "nameAsPerCheque",
+  "ifsc",
+  "notOver",
+  "chequeDate",
+  "chequeStatus",
+  "reasonDishonoured",
+] as const satisfies readonly (keyof AdPolicyFormValues)[];
+
+export type PaymentDetailsCarryForward = Pick<
+  AdPolicyFormValues,
+  (typeof PAYMENT_CARRY_FORWARD_KEYS)[number] | "paymentTransactions"
+>;
+
+/** Copy all payment / bank fields from a loaded policy into a new renewal year. */
+export function clonePaymentDetailsForCarryForward(
+  carried: AdPolicyFormValues,
+): PaymentDetailsCarryForward {
+  const flat = Object.fromEntries(
+    PAYMENT_CARRY_FORWARD_KEYS.map((key) => [key, carried[key]]),
+  ) as Pick<AdPolicyFormValues, (typeof PAYMENT_CARRY_FORWARD_KEYS)[number]>;
+
+  const paymentTransactions =
+    carried.paymentTransactions.length > 0
+      ? carried.paymentTransactions.map((row) => ({ ...row }))
+      : [{ ...getEmptyPaymentTransaction() }];
+
+  return { ...flat, paymentTransactions };
+}
+
+function getEmptyPaymentTransaction(): AdPolicyPaymentTransactionForm {
+  return {
+    mode: "CHEQUE",
+    mobileNumber: "",
+    transactionNumber: "",
+    bankName: "",
+    branch: "",
+    accountNumber: "",
+    nameAsPerCheque: "",
+    ifscCode: "",
+    notOver: "",
+    transactionDate: "",
+    transactionStatus: "",
+    dishonourReason: "",
+    returnCharges: "",
+    otherCharges: "",
+    amountReceived: "",
+  };
+}
+
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
   if (!t) return undefined;

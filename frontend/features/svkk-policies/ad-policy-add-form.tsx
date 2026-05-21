@@ -48,6 +48,7 @@ import { AD_PRODUCT_OPTIONS, adProductFormValueFromApi, toAdProductVariant } fro
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
+import { clonePaymentDetailsForCarryForward } from "./ad-policy-payments";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
 import {
   pickPolicyYear,
@@ -859,7 +860,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             ? " (reference number kept from prior policy — auto-generator unavailable)"
             : " (reference number year shifted; verify before submitting)";
       }
-      const initialForReset = getAdPolicyInitialValues();
+      const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
       setPremiumManual(preservedTwoLakhF ? { twoLakhF: true } : {});
       setAgeManual({});
       await formik.setValues({
@@ -886,20 +887,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         excessShort: "",
         differenceAmountPaidByHolder: "",
         diffAmt: "",
-        // Payment & Bank Details: fully manual, never auto-carried from prior year.
-        paymentMode: initialForReset.paymentMode,
-        onlineTransactionRef: "",
-        policyChequeNo: "",
-        bank: "",
-        accountNo: "",
-        branch: "",
-        nameAsPerCheque: "",
-        ifsc: "",
-        notOver: "",
-        chequeDate: "",
-        chequeStatus: "",
-        reasonDishonoured: "",
-        paymentTransactions: initialForReset.paymentTransactions,
+        ...paymentDetails,
         loanStatus: "",
         loanAmt: "",
         loanNo: "",
@@ -946,7 +934,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       seededGroupRef.current = seededGroup;
       const effectiveGroupForKey = carriedGroupRaw || seededGroup;
       lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
-      const summary = `Copied ${previousYear} → ${shiftedYear}. Premium (1L/2L) and basic premiums kept; payment, bank, year totals, loan, courier and remarks cleared for the new year.${autoIdNotice}`;
+      const txnCount = paymentDetails.paymentTransactions.length;
+      const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, premiums (1L/2L), and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, loan, courier and remarks cleared.${autoIdNotice}`;
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
         id: loadingToastId,
