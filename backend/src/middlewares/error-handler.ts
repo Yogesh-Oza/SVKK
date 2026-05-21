@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/app-error.js";
 import { ZodError } from "zod";
 
@@ -11,7 +12,9 @@ export function errorHandler(
   const traceId = req.traceId ?? "unknown";
 
   if (err instanceof AppError) {
-    req.log?.warn({ err, code: err.code }, err.message);
+    const logFn =
+      err.code === "INVALID_TOKEN" ? req.log?.debug.bind(req.log) : req.log?.warn.bind(req.log);
+    logFn?.({ err, code: err.code }, err.message);
     return res.status(err.statusCode).json({
       success: false,
       code: err.code,
@@ -37,6 +40,16 @@ export function errorHandler(
       success: false,
       code: "INVALID_JSON",
       message: "Request body must be valid JSON",
+      traceId,
+    });
+  }
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+    req.log?.warn({ err, meta: err.meta }, "foreign key constraint");
+    return res.status(409).json({
+      success: false,
+      code: "CONFLICT",
+      message: "Cannot delete or update: this record is still in use.",
       traceId,
     });
   }
