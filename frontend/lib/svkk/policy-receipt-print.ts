@@ -294,6 +294,8 @@ export function buildReceiptDocumentHtml(
     ["Date", dateStr],
     ["SVKK ID", p.insuredParty.svkkPublicId],
     ["Customer ID", p.insuredParty.customerId ?? "—"],
+    ["Policy No.", (p.policyNo ?? "").trim() || "—"],
+    ["Previous Policy No.", (p.previousPolicyNo ?? "").trim() || "—"],
     ["Policy Holder Name", p.insuredParty.name],
     ["Area", p.area ?? "—"],
     ["Phone No.", phoneNo],

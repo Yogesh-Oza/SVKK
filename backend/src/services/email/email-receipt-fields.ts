@@ -19,6 +19,7 @@ export type ReceiptFieldInput = {
   customerId?: string;
   policyHolderName?: string;
   policyNo?: string;
+  previousPolicyNo?: string;
   area?: string;
   phoneNo?: string;
   emailId?: string;
@@ -49,8 +50,9 @@ export function buildReceiptFieldsHtml(fields: ReceiptFieldInput): string {
     row("Date", fields.receiptDate ?? ""),
     row("SVKK ID", fields.svkkId ?? ""),
     row("Customer ID", fields.customerId ?? ""),
-    row("Policy Holder Name", fields.policyHolderName ?? ""),
     row("Policy No.", fields.policyNo ?? ""),
+    row("Previous Policy No.", fields.previousPolicyNo ?? ""),
+    row("Policy Holder Name", fields.policyHolderName ?? ""),
     row("Area", fields.area ?? ""),
     row("Phone No.", fields.phoneNo ?? ""),
     row("Email ID", fields.emailId ?? ""),

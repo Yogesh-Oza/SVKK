@@ -90,6 +90,7 @@ export function createReceiptRouter(env: Env) {
           receiptNo: no,
           referenceNo: policy.referenceNo ?? "",
           policyNo: policy.policyNo ?? "",
+          previousPolicyNo: policy.previousPolicyNo ?? "",
           policyHolderName: policy.insuredParty?.name ?? "",
           svkkId: policy.insuredParty?.svkkPublicId ?? "",
           policyType: policy.adProductVariant?.replaceAll("_", "-") || policy.policyType?.name || "",
@@ -143,6 +144,7 @@ async function buildReceiptPdf(input: {
   receiptNo: string;
   referenceNo: string;
   policyNo: string;
+  previousPolicyNo: string;
   policyHolderName: string;
   svkkId: string;
   policyType: string;
@@ -203,6 +205,8 @@ async function buildReceiptPdf(input: {
     ["Date", dateStr],
     ["SVKK ID", input.svkkId || "—"],
     ["Customer ID", input.customerId || "—"],
+    ["Policy No.", input.policyNo || "—"],
+    ["Previous Policy No.", input.previousPolicyNo || "—"],
     ["Policy Holder Name", input.policyHolderName || "—"],
     ["Area", input.area || "—"],
     ["Phone No.", input.phoneNo || "—"],

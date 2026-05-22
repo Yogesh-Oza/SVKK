@@ -63,6 +63,7 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
     where: { id: policyId },
     select: {
       policyNo: true,
+      previousPolicyNo: true,
       village: true,
       area: true,
       contactPhone: true,
@@ -89,6 +90,7 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
     customerId: ip?.customerId ?? "",
     policyHolderName: holderName,
     policyNo: policy?.policyNo ?? "",
+    previousPolicyNo: policy?.previousPolicyNo ?? "",
     area: policy?.area ?? "",
     phoneNo: policy?.contactPhone ?? "",
     emailId: ip?.email ?? "",
