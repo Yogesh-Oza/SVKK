@@ -1,9 +1,11 @@
 import { svkkJson } from "@/lib/svkk/api";
+import { applyDisplayYearLabels } from "./policy-year-display";
 
 /** One fiscal-year policy row linked by insured party SVKK public id. */
 export type PolicyListYearSibling = {
   policyId: string;
   yearLabel: string;
+  displayYearLabel?: string;
   referenceNo: string | null;
   policyNo: string | null;
   vkkPremium: unknown;
@@ -29,7 +31,7 @@ export function toYearSiblingsFromListItems(
 ): PolicyListYearSibling[] {
   const id = svkkPublicId.trim();
   if (!id) return [];
-  return items
+  const rows = items
     .filter((p) => p.insuredParty.svkkPublicId === id)
     .map((p) => {
       const yearLabel = yearLabelFromPolicyRow(p);
@@ -45,6 +47,7 @@ export function toYearSiblingsFromListItems(
     })
     .filter((x) => x.yearLabel)
     .sort((a, b) => b.yearLabel.localeCompare(a.yearLabel));
+  return applyDisplayYearLabels(rows);
 }
 
 export function singleRowYearSibling(row: PolicyListRowMinimal): PolicyListYearSibling[] {

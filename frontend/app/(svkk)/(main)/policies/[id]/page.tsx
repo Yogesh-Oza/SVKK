@@ -31,6 +31,7 @@ import {
   singleRowYearSibling,
   type PolicyListYearSibling,
 } from "@/features/svkk-policies/policy-year-siblings";
+import { yearChipLabel } from "@/features/svkk-policies/policy-year-display";
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -230,11 +231,11 @@ export default function SvkkPolicyDetailPage() {
           <p className="text-muted-foreground text-sm font-medium">Select year</p>
           <div className="flex max-w-md flex-col gap-2">
             {yearTabs.map((tab) => {
-              const active = tab.yearLabel === activeYearLabel;
+              const active = tab.policyId === id;
               const premium = formatInrRupee(tab.vkkPremium);
               return (
                 <Button
-                  key={`${tab.policyId}-${tab.yearLabel}`}
+                  key={tab.policyId}
                   type="button"
                   variant={active ? "default" : "outline"}
                   size="sm"
@@ -244,7 +245,7 @@ export default function SvkkPolicyDetailPage() {
                   )}
                   onClick={() => selectYear(tab)}
                 >
-                  <span className="text-base font-bold tabular-nums">{tab.yearLabel}</span>
+                  <span className="text-base font-bold tabular-nums">{yearChipLabel(tab)}</span>
                   <span
                     className={cn(
                       "text-xs font-normal",

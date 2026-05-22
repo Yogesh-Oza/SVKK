@@ -52,6 +52,7 @@ import {
   PolicyListSnapshotPanel,
   policyTypeLabelForSnapshot,
 } from "@/features/svkk-policies/policy-list-snapshot";
+import { yearChipLabel, yearQuickActionsTitle } from "@/features/svkk-policies/policy-year-display";
 import { buildCategoryByKeyMap } from "@/lib/svkk/category-display";
 import {
   PolicyFilterMulti,
@@ -111,6 +112,7 @@ import { toast } from "sonner";
 type ListPolicyYear = {
   policyId: string;
   yearLabel: string;
+  displayYearLabel?: string;
   referenceNo: string | null;
   policyNo: string | null;
   vkkPremium: unknown;
@@ -1384,11 +1386,12 @@ export default function SvkkPoliciesPage() {
                             className="border-primary/10 bg-linear-to-b from-muted/20 to-transparent space-y-4 border-t p-4 sm:p-5"
                           >
                             <p className="text-foreground text-sm font-semibold tracking-tight">
-                              {rowYearAction?.svkkPublicId === original.svkkPublicId
-                                ? rowYearAction.kind === "edit"
-                                  ? "Select a year to edit"
-                                  : "Select a year to generate receipt"
-                                : `Year-wise quick actions (${original.years.length} year${original.years.length === 1 ? "" : "s"})`}
+                              {yearQuickActionsTitle(
+                                original.years,
+                                rowYearAction?.svkkPublicId === original.svkkPublicId
+                                  ? rowYearAction.kind
+                                  : null,
+                              )}
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {original.years.map((y) => (
@@ -1421,7 +1424,7 @@ export default function SvkkPoliciesPage() {
                                     router.push(`/policies/${y.policyId}?year=${encodeURIComponent(y.yearLabel)}`);
                                   }}
                                 >
-                                  {y.yearLabel} · {formatInrRupee(y.vkkPremium) ?? "—"}
+                                  {yearChipLabel(y)} · {formatInrRupee(y.vkkPremium) ?? "—"}
                                 </Button>
                               ))}
                             </div>

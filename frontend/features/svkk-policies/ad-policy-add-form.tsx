@@ -50,6 +50,7 @@ import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
 import { clonePaymentDetailsForCarryForward } from "./ad-policy-payments";
+import { applyDisplayYearLabels, yearChipLabel } from "./policy-year-display";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
 import {
   pickPolicyYear,
@@ -75,10 +76,11 @@ type AddSectionId =
   | "remark";
 type PolicyListRow = {
   id: string;
+  referenceNo?: string | null;
   insuredParty: { svkkPublicId: string; name: string; customerId: string | null };
   adProductVariant?: string | null;
   periodYearText?: string | null;
-  years: Array<{ yearLabel: string }>;
+  years: Array<{ yearLabel: string; vkkPremium?: unknown }>;
 };
 type FetchSuggestion = {
   id: string;
@@ -660,10 +662,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (!fetchSvkkId.trim()) {
       return [];
     }
-    return fetchRows
-      .map((row) => ({ id: row.id, year: row.periodYearText ?? row.years[0]?.yearLabel ?? "" }))
-      .filter((row) => row.year)
-      .sort((a, b) => b.year.localeCompare(a.year));
+    const base = fetchRows
+      .map((row) => ({
+        id: row.id,
+        yearLabel: row.periodYearText ?? row.years[0]?.yearLabel ?? "",
+        referenceNo: row.referenceNo ?? null,
+        vkkPremium: row.years[0]?.vkkPremium,
+      }))
+      .filter((row) => row.yearLabel)
+      .sort((a, b) => b.yearLabel.localeCompare(a.yearLabel));
+    return applyDisplayYearLabels(
+      base.map((row) => ({
+        policyId: row.id,
+        yearLabel: row.yearLabel,
+        referenceNo: row.referenceNo,
+      })),
+    ).map((row) => ({
+      id: row.policyId,
+      year: yearChipLabel(row),
+      yearLabel: row.yearLabel,
+      vkkPremium: base.find((b) => b.id === row.policyId)?.vkkPremium,
+    }));
   }, [fetchRows, fetchSvkkId]);
 
   const loadChartsForPolicyTypeId = useCallback(async (typeId: string) => {
@@ -1736,7 +1755,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               {matchedYearRows.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-sm">{matchedYearRows.length} year-wise policies found for this SVKK ID.</p>
+                  <p className="text-sm">
+                    {(() => {
+                      const distinct = new Set(matchedYearRows.map((r) => r.yearLabel)).size;
+                      const n = matchedYearRows.length;
+                      return distinct === n
+                        ? `${n} year-wise polic${n === 1 ? "y" : "ies"} found for this SVKK ID.`
+                        : `${n} policies found for this SVKK ID (${distinct} distinct year label${distinct === 1 ? "" : "s"}).`;
+                    })()}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {matchedYearRows.map((row) => (
                       <Button

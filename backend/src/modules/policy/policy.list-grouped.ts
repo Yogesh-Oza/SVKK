@@ -12,10 +12,13 @@ import {
   type PolicyListQuery,
 } from "./policy.list.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
+import { applyDisplayYearLabels } from "./policy-year-display.js";
 
 export type PolicyListYearEntry = {
   policyId: string;
   yearLabel: string;
+  /** Set when multiple policies share the same yearLabel under one SVKK ID. */
+  displayYearLabel?: string;
   referenceNo: string | null;
   policyNo: string | null;
   vkkPremium: Prisma.Decimal | null;
@@ -109,10 +112,12 @@ function buildGroupedItem(
   if (policies.length === 0) return null;
   const primary = pickPrimaryPolicy(policies);
   const party = primary.insuredParty;
-  const years = policies
-    .map(toYearEntry)
-    .filter((y): y is PolicyListYearEntry => y != null)
-    .sort((a, b) => compareYearLabelsDesc(a.yearLabel, b.yearLabel));
+  const years = applyDisplayYearLabels(
+    policies
+      .map(toYearEntry)
+      .filter((y): y is PolicyListYearEntry => y != null)
+      .sort((a, b) => compareYearLabelsDesc(a.yearLabel, b.yearLabel)),
+  );
   if (years.length === 0) return null;
 
   return {

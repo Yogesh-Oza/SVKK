@@ -35,6 +35,7 @@ export type PolicyDetailViewRow = {
   tpa: string | null;
   periodYearText: string | null;
   periodMonthText: string | null;
+  policyGroup?: string | null;
   policyGrouping: string | null;
   policyUrl: string | null;
   policyUrl2: string | null;
