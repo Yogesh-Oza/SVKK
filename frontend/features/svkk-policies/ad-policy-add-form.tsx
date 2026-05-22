@@ -1222,6 +1222,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (isEdit || policyTypeOptions.length === 0 || policyTypeId) {
       return;
     }
+    let cancelled = false;
     void (async () => {
       setLoadErr(null);
       try {
@@ -1232,13 +1233,21 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         if (!preferred?.id) {
           throw new Error("No policy types in database. Add them under Admin → Policy Types.");
         }
-        await formik.setFieldValue("adProduct", preferred.value);
+        if (cancelled) {
+          return;
+        }
+        await setFieldValue("adProduct", preferred.value);
         await syncPolicyTypeFromKey(preferred.value);
       } catch (e) {
-        setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
+        if (!cancelled) {
+          setLoadErr(e instanceof Error ? e.message : "Failed to load policy type");
+        }
       }
     })();
-  }, [missingUrl, isEdit, policyTypeOptions, policyTypeId, syncPolicyTypeFromKey, formik]);
+    return () => {
+      cancelled = true;
+    };
+  }, [missingUrl, isEdit, policyTypeOptions, policyTypeId, syncPolicyTypeFromKey, setFieldValue]);
 
   useEffect(() => {
     if (!isEdit) {
@@ -1593,7 +1602,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("diffAmt", differenceAmountPaidByHolder);
   }, [freezeAutoCalculations, premiumManual, quote, setFieldValue, values]);
 
-  const adProductSelectValue = values.adProduct || editMappedValues?.adProduct || "";
+  const adProductSelectValue = useMemo(() => {
+    const raw = (values.adProduct || editMappedValues?.adProduct || "").trim();
+    if (!raw) {
+      return "__none__";
+    }
+    return policyTypeOptions.some((o) => o.value === raw) ? raw : "__none__";
+  }, [values.adProduct, editMappedValues?.adProduct, policyTypeOptions]);
   const monthSelectValue = values.month || editMappedValues?.month || "";
 
   if (missingUrl) {
@@ -1948,7 +1963,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <RequiredLabel>Policy Type</RequiredLabel>
                 <Select
                   key={`adProduct-${selectFieldsMountKey}`}
-                  value={adProductSelectValue || "__none__"}
+                  value={adProductSelectValue}
                   onValueChange={(v) => {
                     const key = v === "__none__" ? "" : v;
                     void setFieldValue("adProduct", key);

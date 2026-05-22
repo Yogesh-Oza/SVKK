@@ -44,9 +44,15 @@ export const POLICY_GROUPING_MAP: Record<string, "SVKK" | "NVKK" | "RTY" | "OTHE
 };
 
 export const defaultChunkSize = 500;
+/** Policies per single DB transaction during --apply (fewer round trips). */
+export const defaultApplyBatchSize = 25;
 export const defaultProgressEveryN = 200;
+export const defaultApplyProgressEveryN = 50;
 export const defaultDbRetries = 3;
 export const defaultRetryDelayMs = 400;
+/** Per-policy transaction timeout (ms); batches use a higher cap. */
+export const applyTransactionTimeoutMs = 120_000;
+export const applyBatchTransactionTimeoutMs = 300_000;
 
 /** IANA timezone for legacy date-only columns before storing UTC midnight */
 export const dateInputTimeZone = "Asia/Kolkata";

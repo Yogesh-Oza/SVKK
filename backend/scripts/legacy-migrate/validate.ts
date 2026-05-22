@@ -1,8 +1,46 @@
 import type { PrismaClient } from "@prisma/client";
 import { PolicyChartKind } from "@prisma/client";
 import { normalizeLegacyText } from "./normalize.js";
-import { transformPolicyRow, trimPolicyNo } from "./transform.js";
+import { mapPolicyTypeKey, transformPolicyRow, trimPolicyNo } from "./transform.js";
 import type { LegacyPolicyRow } from "./types.js";
+
+/** Admin "Single chart" uploads use COMBINED; HOLDER_MEMBER types use HOLDER (same as policy.service). */
+const MIGRATION_PRIMARY_CHART_KINDS: PolicyChartKind[] = [
+  PolicyChartKind.HOLDER,
+  PolicyChartKind.COMBINED,
+];
+
+async function resolveMigrationChartId(
+  prisma: PrismaClient,
+  policyTypeId: string,
+): Promise<string | null> {
+  for (const chartKind of MIGRATION_PRIMARY_CHART_KINDS) {
+    const chart = await prisma.policyChart.findFirst({
+      where: { policyTypeId, version: 1, chartKind },
+      select: { id: true },
+    });
+    if (chart) return chart.id;
+  }
+  return null;
+}
+
+function buildPrimaryChartByPolicyTypeId(
+  charts: { id: string; policyTypeId: string; chartKind: PolicyChartKind }[],
+): Map<string, string> {
+  const slots = new Map<string, Partial<Record<PolicyChartKind, string>>>();
+  for (const c of charts) {
+    const row = slots.get(c.policyTypeId) ?? {};
+    row[c.chartKind] = c.id;
+    slots.set(c.policyTypeId, row);
+  }
+  const out = new Map<string, string>();
+  for (const [policyTypeId, row] of slots) {
+    const id =
+      row[PolicyChartKind.HOLDER] ?? row[PolicyChartKind.COMBINED] ?? null;
+    if (id) out.set(policyTypeId, id);
+  }
+  return out;
+}
 
 export interface ResolvedTargets {
   policyTypeId: string;
@@ -27,18 +65,12 @@ export async function resolveTargets(
     };
   }
 
-  const chart = await prisma.policyChart.findFirst({
-    where: {
-      policyTypeId: policyType.id,
-      version: 1,
-      chartKind: PolicyChartKind.HOLDER,
-    },
-  });
-  if (!chart) {
+  const chartId = await resolveMigrationChartId(prisma, policyType.id);
+  if (!chartId) {
     return {
       ok: false,
       code: "missingChart",
-      reason: `No HOLDER PolicyChart v1 for policyTypeId=${policyType.id}`,
+      reason: `No HOLDER or COMBINED PolicyChart v1 for policyTypeId=${policyType.id}`,
     };
   }
 
@@ -53,7 +85,7 @@ export async function resolveTargets(
     data: {
       policyTypeId: policyType.id,
       categoryId,
-      holderChartId: chart.id,
+      holderChartId: chartId,
     },
   };
 }
@@ -80,12 +112,83 @@ export interface DuplicateCheckResult {
   reason?: string;
 }
 
+export type PolicyNoConflictEntry = {
+  id: string;
+  referenceNo: string | null;
+};
+
+/** `${policyTypeId}:${policyNo}` → existing policy (for chunk prefetch). */
+export type PolicyNoConflictMap = Map<string, PolicyNoConflictEntry>;
+
+export async function prefetchPolicyNoConflicts(
+  prisma: PrismaClient,
+  rows: LegacyPolicyRow[],
+  lookups: MigrationLookups,
+): Promise<PolicyNoConflictMap> {
+  const byType = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const policyNo = trimPolicyNo(row.policy_no);
+    if (!policyNo) continue;
+    const policyTypeKey = mapPolicyTypeKey(row.policy_type);
+    if (!policyTypeKey) continue;
+    const pt = lookups.policyTypes.get(policyTypeKey);
+    if (!pt) continue;
+    const set = byType.get(pt.id) ?? new Set();
+    set.add(policyNo);
+    byType.set(pt.id, set);
+  }
+
+  const map: PolicyNoConflictMap = new Map();
+  for (const [policyTypeId, policyNos] of byType) {
+    if (policyNos.size === 0) continue;
+    const existing = await prisma.policy.findMany({
+      where: {
+        policyTypeId,
+        policyNo: { in: [...policyNos] },
+        deletedAt: null,
+      },
+      select: { id: true, policyNo: true, referenceNo: true },
+    });
+    for (const p of existing) {
+      if (!p.policyNo) continue;
+      map.set(`${policyTypeId}:${p.policyNo}`, {
+        id: p.id,
+        referenceNo: p.referenceNo,
+      });
+    }
+  }
+  return map;
+}
+
+export function checkBusinessDuplicatesFast(
+  row: LegacyPolicyRow,
+  policyTypeId: string,
+  conflictMap: PolicyNoConflictMap,
+  excludeReferenceNo?: string,
+): DuplicateCheckResult {
+  const policyNo = trimPolicyNo(row.policy_no);
+  if (policyNo) {
+    const existing = conflictMap.get(`${policyTypeId}:${policyNo}`);
+    if (existing && existing.referenceNo !== excludeReferenceNo) {
+      return {
+        duplicate: true,
+        code: "DUPLICATE_POLICY_NO",
+        reason: `policyNo=${policyNo} already exists on policy ${existing.id}`,
+      };
+    }
+  }
+  return { duplicate: false };
+}
+
 export async function buildMigrationLookups(prisma: PrismaClient): Promise<MigrationLookups> {
   const [types, charts, cats, groupings] = await Promise.all([
     prisma.policyType.findMany({ select: { id: true, key: true } }),
     prisma.policyChart.findMany({
-      where: { version: 1, chartKind: PolicyChartKind.HOLDER },
-      select: { id: true, policyTypeId: true },
+      where: {
+        version: 1,
+        chartKind: { in: MIGRATION_PRIMARY_CHART_KINDS },
+      },
+      select: { id: true, policyTypeId: true, chartKind: true },
     }),
     prisma.category.findMany({ select: { id: true, key: true } }),
     prisma.policyGroupingOption.findMany({ select: { name: true } }),
@@ -96,7 +199,7 @@ export async function buildMigrationLookups(prisma: PrismaClient): Promise<Migra
   }
   return {
     policyTypes: new Map(types.map((t) => [t.key, t])),
-    holderChartByPolicyTypeId: new Map(charts.map((c) => [c.policyTypeId, c.id])),
+    holderChartByPolicyTypeId: buildPrimaryChartByPolicyTypeId(charts),
     categories: new Map(cats.map((c) => [c.key, c])),
     policyGroupings,
   };
@@ -191,7 +294,7 @@ export function validatePolicyRowWithLookups(
     return {
       ok: false,
       code: "missingChart",
-      reason: `No HOLDER PolicyChart v1 for policyTypeId=${pt.id}`,
+      reason: `No HOLDER or COMBINED PolicyChart v1 for policyTypeId=${pt.id}`,
     };
   }
 

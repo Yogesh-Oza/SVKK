@@ -32,8 +32,12 @@ Imports `policy_table` and `member` from the legacy `techuico_insurance`-style d
 npm run legacy-migrate -- --dry-run
 npm run legacy-migrate -- --dry-run --limit=100
 
-# Full apply
+# Full apply (batched transactions; default 25 policies per commit)
 npm run legacy-migrate -- --apply
+npm run legacy-migrate -- --apply --apply-batch-size=50
+
+# Slower but runs overlap-date duplicate queries per row
+npm run legacy-migrate -- --apply --strict-duplicates
 
 # Masters only
 npm run legacy-migrate -- --apply --masters-only
@@ -68,6 +72,8 @@ npm run legacy-migrate -- --unlock-stale --confirm
 | `--reconcile --run-id=` | Compare legacy vs migrated totals |
 | `--fail-fast` | Stop on first error (default: queue failures) |
 | `--chunk-size`, `--limit` | Throughput |
+| `--apply-batch-size=25` | Policies per DB transaction during `--apply` (default 25) |
+| `--strict-duplicates` | Per-row overlap checks (slower; default skips overlap query) |
 | `--unlock-stale --confirm` | Mark stale `running` runs inactive |
 | `--force-new-run --confirm` | Emergency: deactivate other active run |
 
@@ -92,7 +98,10 @@ npm run legacy-migrate -- --unlock-stale --confirm
 3. Kill mid-run → `--resume` continues
 4. Second `--apply` while first running → rejected
 5. Spot-check `ref_no` in UI (dropdown values, payments)
+6. **InsuredParty linkage:** `npm run legacy-migrate:compare-parties` (per-ref `svvk_id`, holder, premium)
+
+Wrong-party remediation: see [MIGRATION_REMEDIATION.md](./MIGRATION_REMEDIATION.md).
 
 ## PolicyType / charts
 
-Each mapped `PolicyType` needs a **HOLDER** `PolicyChart` v1 (`family_floater`, `individual`, `asha_kiran`, `senior_citizen` on target DB).
+Each mapped `PolicyType` needs a **HOLDER** or **COMBINED** `PolicyChart` v1 (admin “Single chart” uploads save as COMBINED).

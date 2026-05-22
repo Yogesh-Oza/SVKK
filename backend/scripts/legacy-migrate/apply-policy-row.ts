@@ -1,6 +1,11 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  applyBatchTransactionTimeoutMs,
+  applyTransactionTimeoutMs,
+} from "./config/migration.js";
 import { applyPaymentAndChequeForPolicy } from "./apply-payment-from-policy-row.js";
 import type { DropdownResolver } from "./dropdown-resolver.js";
+import { resolveInsuredPartyForLegacyRow } from "./insured-party-resolve.js";
 import {
   mergeResolvedPolicyFields,
   resolvePolicyDropdownFields,
@@ -50,7 +55,53 @@ export async function applyLegacyPolicyRowWithRetries(
     try {
       return await prisma.$transaction(
         async (tx) => applyLegacyPolicyRowTx(tx, row, members, targets, options),
-        { timeout: 120_000 },
+        { timeout: applyTransactionTimeoutMs },
+      );
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries && isTransientPrismaError(e)) {
+        await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+export interface ApplyBatchItem {
+  row: LegacyPolicyRow;
+  members: LegacyMemberRow[];
+  targets: ResolvedTargets;
+  resolved: ResolvedPolicyFields;
+}
+
+/** Apply multiple policies in one transaction (much faster over remote DB). */
+export async function applyLegacyPolicyBatchWithRetries(
+  prisma: PrismaClient,
+  items: ApplyBatchItem[],
+  retries: number,
+  retryDelayMs: number,
+  options: Omit<ApplyRowOptions, "resolved">,
+): Promise<ApplyRowResult[]> {
+  if (items.length === 0) return [];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const results: ApplyRowResult[] = [];
+          for (const item of items) {
+            results.push(
+              await applyLegacyPolicyRowTx(tx, item.row, item.members, item.targets, {
+                ...options,
+                resolved: item.resolved,
+              }),
+            );
+          }
+          return results;
+        },
+        { timeout: applyBatchTransactionTimeoutMs },
       );
     } catch (e) {
       lastErr = e;
@@ -83,78 +134,9 @@ async function applyLegacyPolicyRowTx(
     (await resolvePolicyDropdownFields(row, options.resolver));
   mergeResolvedPolicyFields(t.policyData, resolved);
 
-  let party =
-    t.customerId != null
-      ? await tx.insuredParty.findUnique({ where: { customerId: t.customerId } })
-      : null;
-  if (!party) {
-    party = await tx.insuredParty.findUnique({ where: { mobile: t.mobile } });
-  }
-
-  let partyCreated = false;
-  if (party) {
-    if (party.svkkPublicId !== t.svkkPublicId) {
-      warnings.push("SVKK_MISMATCH_KEEP_EXISTING");
-    }
-    if (party.mobile !== t.mobile && party.customerId && t.customerId && party.customerId !== t.customerId) {
-      warnings.push("PHONE_COLLISION");
-    }
-    await tx.insuredParty.update({
-      where: { id: party.id },
-      data: {
-        name: t.partyName,
-        email: t.email ?? undefined,
-        customerId: t.customerId ?? party.customerId ?? undefined,
-        pan: t.pan ?? party.pan,
-        dateOfBirth: t.holderDob ?? party.dateOfBirth,
-        migratedRunId: options.migrationRunId,
-      },
-    });
-    party = await tx.insuredParty.findUniqueOrThrow({ where: { id: party.id } });
-  } else {
-    try {
-      party = await tx.insuredParty.create({
-        data: {
-          mobile: t.mobile,
-          customerId: t.customerId ?? undefined,
-          svkkPublicId: t.svkkPublicId,
-          name: t.partyName,
-          email: t.email ?? undefined,
-          pan: t.pan ?? undefined,
-          dateOfBirth: t.holderDob ?? undefined,
-          createdInMigrationRunId: options.migrationRunId,
-          migratedRunId: options.migrationRunId,
-        },
-      });
-      partyCreated = true;
-    } catch (e) {
-      if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
-        party = await tx.insuredParty.findFirst({
-          where: { OR: [{ mobile: t.mobile }, { svkkPublicId: t.svkkPublicId }] },
-        });
-        if (!party) throw e;
-        warnings.push("PARTY_DEDUPED_ON_UNIQUE_VIOLATION");
-        await tx.insuredParty.update({
-          where: { id: party.id },
-          data: {
-            name: t.partyName,
-            email: t.email ?? undefined,
-            customerId: t.customerId ?? party.customerId ?? undefined,
-            pan: t.pan ?? party.pan,
-            dateOfBirth: t.holderDob ?? party.dateOfBirth,
-            migratedRunId: options.migrationRunId,
-          },
-        });
-        party = await tx.insuredParty.findUniqueOrThrow({ where: { id: party.id } });
-      } else {
-        throw e;
-      }
-    }
-  }
-
-  if (partyCreated) {
-    void partyCreated;
-  }
+  const partyResult = await resolveInsuredPartyForLegacyRow(tx, t, options.migrationRunId);
+  const party = partyResult.party;
+  warnings.push(...partyResult.warnings);
 
   const policyScalar = buildPolicyScalar(t.policyData as Record<string, unknown>);
   const policy = await tx.policy.upsert({

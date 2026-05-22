@@ -5,10 +5,16 @@ import "dotenv/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MigrationPhase, MigrationRunMode, MigrationRunStatus, PrismaClient } from "@prisma/client";
-import { applyLegacyPolicyRowWithRetries } from "./apply-policy-row.js";
+import {
+  applyLegacyPolicyBatchWithRetries,
+  applyLegacyPolicyRowWithRetries,
+  type ApplyBatchItem,
+} from "./apply-policy-row.js";
 import { saveCheckpoint, loadCheckpointRefNo } from "./checkpoint.js";
 import {
   CURRENT_VERSION,
+  defaultApplyBatchSize,
+  defaultApplyProgressEveryN,
   defaultChunkSize,
   defaultDbRetries,
   defaultProgressEveryN,
@@ -27,7 +33,13 @@ import {
 import { JsonlLogger } from "./logger.js";
 import { acquireMigrationLock } from "./lock.js";
 import { migrateMasters } from "./migrate-masters.js";
-import { enqueueFailedRow, resolveFailedRow, writeMigrationLog } from "./migration-db-log.js";
+import {
+  enqueueFailedRow,
+  MigrationLogBuffer,
+  resolveFailedRow,
+  resolveFailedRows,
+  writeMigrationLog,
+} from "./migration-db-log.js";
 import { persistReconciliationAudit, runReconciliation } from "./reconcile.js";
 import {
   assertNoConflictingActiveRun,
@@ -35,12 +47,20 @@ import {
   forceDeactivateRun,
   unlockStaleRuns,
 } from "./run-migration-guard.js";
-import { resolvePolicyDropdownFields, transformPolicyRow } from "./transform.js";
+import {
+  resolvePolicyDropdownFields,
+  transformPolicyRow,
+  type ResolvedPolicyFields,
+} from "./transform.js";
 import type { DryRunMetrics, LegacyMemberRow, LegacyPolicyRow, MigrationLogLine } from "./types.js";
 import {
   buildMigrationLookups,
   checkBusinessDuplicates,
+  checkBusinessDuplicatesFast,
+  prefetchPolicyNoConflicts,
   validatePolicyRowWithLookups,
+  type PolicyNoConflictMap,
+  type ResolvedTargets,
 } from "./validate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,6 +105,166 @@ function countValidationFailure(
 ) {
   metrics.wouldSkip += 1;
   metrics[code] += 1;
+}
+
+type PendingApplyRow = {
+  row: LegacyPolicyRow;
+  members: LegacyMemberRow[];
+  targets: ResolvedTargets;
+  resolved: ResolvedPolicyFields;
+  refNo: string;
+  logBase: { refNo: string; warnings: string[]; migrationRunId: string };
+  usedSyntheticMobile: boolean;
+};
+
+async function flushPendingApplyBatch(options: {
+  prisma: PrismaClient;
+  pending: PendingApplyRow[];
+  migrationRunId: string;
+  resolver: DropdownResolver;
+  logger: JsonlLogger;
+  metrics: DryRunMetrics;
+  migrationLogBuffer: MigrationLogBuffer;
+  verbose: boolean;
+  failFast: boolean;
+}): Promise<void> {
+  if (options.pending.length === 0) return;
+
+  const batch = options.pending.splice(0, options.pending.length);
+  const items: ApplyBatchItem[] = batch.map((b) => ({
+    row: b.row,
+    members: b.members,
+    targets: b.targets,
+    resolved: b.resolved,
+  }));
+
+  const applyOne = async (single: PendingApplyRow): Promise<void> => {
+    try {
+      const result = await applyLegacyPolicyRowWithRetries(
+        options.prisma,
+        single.row,
+        single.members,
+        single.targets,
+        defaultDbRetries,
+        defaultRetryDelayMs,
+        {
+          migrationRunId: options.migrationRunId,
+          resolver: options.resolver,
+          resolved: single.resolved,
+        },
+      );
+      recordApplySuccess(options, single, result);
+    } catch (e) {
+      await recordApplyFailure(options, single, e, options.verbose);
+      if (options.failFast) throw e;
+    }
+  };
+
+  try {
+    const results = await applyLegacyPolicyBatchWithRetries(
+      options.prisma,
+      items,
+      defaultDbRetries,
+      defaultRetryDelayMs,
+      { migrationRunId: options.migrationRunId, resolver: options.resolver },
+    );
+    const succeededRefNos: string[] = [];
+    for (let i = 0; i < batch.length; i++) {
+      recordApplySuccess(options, batch[i]!, results[i]!);
+      succeededRefNos.push(batch[i]!.refNo);
+    }
+    await resolveFailedRows(
+      options.prisma,
+      options.migrationRunId,
+      succeededRefNos,
+      MigrationPhase.policies,
+    );
+  } catch {
+    for (const single of batch) {
+      await applyOne(single);
+    }
+  }
+}
+
+function recordApplySuccess(
+  options: {
+    logger: JsonlLogger;
+    metrics: DryRunMetrics;
+    migrationLogBuffer: MigrationLogBuffer;
+    migrationRunId: string;
+  },
+  row: PendingApplyRow,
+  result: Awaited<ReturnType<typeof applyLegacyPolicyRowWithRetries>>,
+): void {
+  options.metrics.wouldSucceed += 1;
+  options.metrics.memberDobSentinelCount += result.memberDobSentinelCount;
+  if (result.paymentCreated) options.metrics.paymentsCreated += 1;
+  if (result.chequeCreated) options.metrics.chequesCreated += 1;
+  if (result.receiptCreated) options.metrics.receiptsCreated += 1;
+
+  const warnings = [
+    ...new Set([
+      ...result.warnings,
+      ...(row.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : []),
+    ]),
+  ];
+  options.logger.write({
+    ...row.logBase,
+    status: "SUCCESS",
+    errorType: null,
+    reason: null,
+    warnings,
+  });
+  void options.migrationLogBuffer.queueAndMaybeFlush({
+    refNo: row.refNo,
+    entity: "policy",
+    status: "SUCCESS",
+    errorType: null,
+    reason: null,
+    warnings,
+  });
+}
+
+async function recordApplyFailure(
+  options: {
+    prisma: PrismaClient;
+    logger: JsonlLogger;
+    metrics: DryRunMetrics;
+    migrationLogBuffer: MigrationLogBuffer;
+    migrationRunId: string;
+    failFast: boolean;
+  },
+  row: PendingApplyRow,
+  e: unknown,
+  verbose: boolean,
+): Promise<void> {
+  options.metrics.wouldFail += 1;
+  const reason = e instanceof Error ? e.message : String(e);
+  options.logger.write({
+    ...row.logBase,
+    status: "FAILED",
+    errorType: "DB_ERROR",
+    reason,
+    warnings: [],
+    ...(verbose ? { rawData: row.row as unknown as Record<string, unknown> } : {}),
+  });
+  await options.migrationLogBuffer.queueAndMaybeFlush({
+    refNo: row.refNo,
+    entity: "policy",
+    status: "FAILED",
+    errorType: "DB_ERROR",
+    reason,
+    warnings: [],
+    rawJson: verbose ? (row.row as unknown as Record<string, unknown>) : undefined,
+  });
+  await enqueueFailedRow(
+    options.prisma,
+    options.migrationRunId,
+    row.refNo,
+    MigrationPhase.policies,
+    "DB_ERROR",
+    reason,
+  );
 }
 
 function legacyUrlFromBaseDatabaseUrl(databaseUrl: string, legacyDbName: string): string {
@@ -157,6 +337,9 @@ async function processPolicyChunks(options: {
   apply: boolean;
   dryRun: boolean;
   chunkSize: number;
+  applyBatchSize: number;
+  strictDuplicates: boolean;
+  migrationLogBuffer: MigrationLogBuffer | null;
   limit: number | null;
   afterRefNo: string | null;
   skipMasters: boolean;
@@ -175,6 +358,9 @@ async function processPolicyChunks(options: {
     apply,
     dryRun,
     chunkSize,
+    applyBatchSize,
+    strictDuplicates,
+    migrationLogBuffer,
     limit,
     lookups,
     resolver,
@@ -187,7 +373,23 @@ async function processPolicyChunks(options: {
   let processed = 0;
   let lastRefNo = options.afterRefNo;
   let stopAll = false;
-  const progressEvery = apply ? 10 : defaultProgressEveryN;
+  const progressEvery = apply ? defaultApplyProgressEveryN : defaultProgressEveryN;
+  const pendingApply: PendingApplyRow[] = [];
+
+  const flushPending = async () => {
+    if (!apply || !migrationLogBuffer || pendingApply.length === 0) return;
+    await flushPendingApplyBatch({
+      prisma,
+      pending: pendingApply,
+      migrationRunId,
+      resolver,
+      logger,
+      metrics,
+      migrationLogBuffer,
+      verbose,
+      failFast,
+    });
+  };
 
   while (!stopAll && !options.interruptRef.value) {
     const chunk = await fetchPolicyChunkKeyset(pool, lastRefNo, chunkSize);
@@ -203,6 +405,10 @@ async function processPolicyChunks(options: {
       list.push(m);
       membersByRef.set(r, list);
     }
+
+    const policyNoConflicts: PolicyNoConflictMap | null = apply
+      ? await prefetchPolicyNoConflicts(prisma, chunk, lookups)
+      : null;
 
     for (const row of chunk) {
       if (options.interruptRef.value) {
@@ -246,8 +452,8 @@ async function processPolicyChunks(options: {
           warnings: [],
           ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
         });
-        if (apply) {
-          await writeMigrationLog(prisma, migrationRunId, {
+        if (apply && migrationLogBuffer) {
+          await migrationLogBuffer.queueAndMaybeFlush({
             refNo,
             entity: "policy",
             status: "SKIPPED",
@@ -282,13 +488,20 @@ async function processPolicyChunks(options: {
       if (t.usedSyntheticMobile) metrics.missingMobile += 1;
 
       if (apply) {
-        const dup = await checkBusinessDuplicates(
-          prisma,
-          row,
-          validation.targets.policyTypeId,
-          t.mobile,
-          refNo,
-        );
+        const dup = strictDuplicates
+          ? await checkBusinessDuplicates(
+              prisma,
+              row,
+              validation.targets.policyTypeId,
+              t.mobile,
+              refNo,
+            )
+          : checkBusinessDuplicatesFast(
+              row,
+              validation.targets.policyTypeId,
+              policyNoConflicts!,
+              refNo,
+            );
         if (dup.code === "DUPLICATE_POLICY_NO") {
           metrics.wouldSkip += 1;
           logger.write({
@@ -298,14 +511,16 @@ async function processPolicyChunks(options: {
             reason: dup.reason ?? "duplicate",
             warnings: [],
           });
-          await writeMigrationLog(prisma, migrationRunId, {
-            refNo,
-            entity: "policy",
-            status: "SKIPPED",
-            errorType: "SKIPPED_REASON",
-            reason: dup.reason,
-            warnings: [],
-          });
+          if (migrationLogBuffer) {
+            await migrationLogBuffer.queueAndMaybeFlush({
+              refNo,
+              entity: "policy",
+              status: "SKIPPED",
+              errorType: "SKIPPED_REASON",
+              reason: dup.reason,
+              warnings: [],
+            });
+          }
           continue;
         }
         if (dup.code === "OVERLAPPING_DATES") {
@@ -333,77 +548,36 @@ async function processPolicyChunks(options: {
           warnings: t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [],
         });
       } else {
-        try {
-          const result = await applyLegacyPolicyRowWithRetries(
-            prisma,
-            row,
-            members,
-            validation.targets,
-            defaultDbRetries,
-            defaultRetryDelayMs,
-            { migrationRunId, resolver, resolved },
-          );
-          metrics.wouldSucceed += 1;
-          metrics.memberDobSentinelCount += result.memberDobSentinelCount;
-          if (result.paymentCreated) metrics.paymentsCreated += 1;
-          if (result.chequeCreated) metrics.chequesCreated += 1;
-          if (result.receiptCreated) metrics.receiptsCreated += 1;
-
-          const warnings = [
-            ...new Set([...result.warnings, ...(t.usedSyntheticMobile ? ["SYNTHETIC_MOBILE"] : [])]),
-          ];
-          logger.write({
-            ...logBase,
-            status: "SUCCESS",
-            errorType: null,
-            reason: null,
-            warnings,
-          });
-          await writeMigrationLog(prisma, migrationRunId, {
-            refNo,
-            entity: "policy",
-            status: "SUCCESS",
-            errorType: null,
-            reason: null,
-            warnings,
-          });
-          await resolveFailedRow(prisma, migrationRunId, refNo, MigrationPhase.policies);
-        } catch (e) {
-          metrics.wouldFail += 1;
-          const reason = e instanceof Error ? e.message : String(e);
-          logger.write({
-            ...logBase,
-            status: "FAILED",
-            errorType: "DB_ERROR",
-            reason,
-            warnings: [],
-            ...(verbose ? { rawData: row as unknown as Record<string, unknown> } : {}),
-          });
-          await writeMigrationLog(prisma, migrationRunId, {
-            refNo,
-            entity: "policy",
-            status: "FAILED",
-            errorType: "DB_ERROR",
-            reason,
-            warnings: [],
-            rawJson: verbose ? (row as unknown as Record<string, unknown>) : undefined,
-          });
-          await enqueueFailedRow(prisma, migrationRunId, refNo, MigrationPhase.policies, "DB_ERROR", reason);
-          if (failFast) throw e;
+        pendingApply.push({
+          row,
+          members,
+          targets: validation.targets,
+          resolved,
+          refNo,
+          logBase,
+          usedSyntheticMobile: t.usedSyntheticMobile,
+        });
+        if (pendingApply.length >= applyBatchSize) {
+          await flushPending();
         }
       }
 
       if (processed % progressEvery === 0) {
         console.error(`Progress: processed ${processed} rows (last ref_no=${lastRefNo})`);
-        if (apply && lastRefNo) {
-          await saveCheckpoint(prisma, migrationRunId, MigrationPhase.policies, lastRefNo, processed);
-        }
       }
+    }
+
+    await flushPending();
+
+    if (apply && lastRefNo) {
+      await saveCheckpoint(prisma, migrationRunId, MigrationPhase.policies, lastRefNo, processed);
     }
 
     if (stopAll) break;
     if (chunk.length < chunkSize) break;
   }
+
+  await flushPending();
 
   if (apply && lastRefNo) {
     await saveCheckpoint(prisma, migrationRunId, MigrationPhase.policies, lastRefNo, processed);
@@ -491,6 +665,9 @@ async function main() {
   }
 
   const chunkSize = Number(argValue("chunk-size", String(defaultChunkSize))) || defaultChunkSize;
+  const applyBatchSize =
+    Number(argValue("apply-batch-size", String(defaultApplyBatchSize))) || defaultApplyBatchSize;
+  const strictDuplicates = argFlag("strict-duplicates");
   const limitRows = argValue("limit", undefined);
   const limit = limitRows ? Number(limitRows) : null;
   const logDir = argValue("log-dir", path.join(__dirname, "logs")) ?? path.join(__dirname, "logs");
@@ -608,6 +785,8 @@ async function main() {
         totalPolicyRows: metrics.totalPolicyRows,
         logFile: logPath,
         chunkSize,
+        applyBatchSize: apply ? applyBatchSize : undefined,
+        strictDuplicates: apply ? strictDuplicates : undefined,
         limit,
         resume: Boolean(resumeRunId),
       },
@@ -615,6 +794,8 @@ async function main() {
       2,
     ),
   );
+
+  const migrationLogBuffer = apply ? new MigrationLogBuffer(prisma, migrationRunId) : null;
 
   try {
     const lookups = await buildMigrationLookups(prisma);
@@ -652,6 +833,9 @@ async function main() {
       apply,
       dryRun,
       chunkSize,
+      applyBatchSize,
+      strictDuplicates,
+      migrationLogBuffer,
       limit,
       afterRefNo,
       skipMasters,
@@ -663,6 +847,10 @@ async function main() {
       failFast,
       interruptRef,
     });
+
+    if (migrationLogBuffer) {
+      await migrationLogBuffer.flush();
+    }
 
     metrics.unmatchedCreated += resolver.getDropdownsCreatedCount();
 

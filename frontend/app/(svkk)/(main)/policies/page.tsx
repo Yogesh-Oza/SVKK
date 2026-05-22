@@ -58,9 +58,11 @@ import {
   PolicyFilterMulti,
   type PolicyFilterOption,
 } from "@/features/svkk-policies/policy-filter-multi";
+import { policyTypeKeyToAdVariant } from "@/features/svkk-policies/ad-product-variant";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canDeletePolicy, canUpdatePolicy, hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
@@ -167,12 +169,6 @@ type FiltersMeta = {
 type CategoryItem = { id: string; key: string; name: string };
 type YearActionKind = "edit" | "receipt";
 
-const AD_VARIANT_OPTIONS: PolicyFilterOption[] = [
-  { value: "FAMILY_FLOATER", label: "Family Floater" },
-  { value: "INDIVIDUAL", label: "Individual" },
-  { value: "ASHA_KIRAN", label: "Asha Kiran" },
-];
-
 /** Unified table body typography: one weight/color for all data cells except policy no. */
 const policyTableMuted = "font-sans text-sm font-normal text-muted-foreground tabular-nums antialiased";
 
@@ -237,6 +233,7 @@ export default function SvkkPoliciesPage() {
   const canEdit = canUpdatePolicy(perms);
   const canCsvUpload = hasPermission(perms, "upload:csv");
   const receiptImageUrls = useReceiptSettings();
+  const { options: ddOptions } = useDropdownOptions();
 
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
@@ -247,7 +244,7 @@ export default function SvkkPoliciesPage() {
   const [periodYears, setPeriodYears] = useState<string[]>([]);
   const [periodMonths, setPeriodMonths] = useState<string[]>([]);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
-  const [adVariants, setAdVariants] = useState<string[]>([]);
+  const [policyTypeIds, setPolicyTypeIds] = useState<string[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
   const [sumInsureds, setSumInsureds] = useState<string[]>([]);
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
@@ -295,8 +292,22 @@ export default function SvkkPoliciesPage() {
     if (dt) setDateTo(dt);
     const v = searchParams.getAll("villages");
     if (v.length) setVillages(v);
-    const variants = searchParams.getAll("adProductVariants");
-    if (variants.length) setAdVariants(variants);
+    const typeIds = searchParams.getAll("policyTypeIds");
+    if (typeIds.length) {
+      setPolicyTypeIds(typeIds);
+    } else {
+      const variants = searchParams.getAll("adProductVariants");
+      if (variants.length) {
+        const mapped = ddOptions.policyTypes
+          .filter((t): t is typeof t & { id: string } => Boolean(t.id))
+          .filter((t) => {
+            const variant = policyTypeKeyToAdVariant(t.value);
+            return variant != null && variants.includes(variant);
+          })
+          .map((t) => t.id);
+        if (mapped.length) setPolicyTypeIds(mapped);
+      }
+    }
     const cats = searchParams.getAll("categoryIds");
     if (cats.length) setCategoryIds(cats);
     const rp = searchParams.get("renewalPending");
@@ -304,6 +315,22 @@ export default function SvkkPoliciesPage() {
     if (rb) setRenewalFilter(rb);
     else if (rp === "true") setRenewalFilter("pending");
   }, [searchParams]);
+
+  /** Map dashboard `adProductVariants` links once policy types have loaded from the API. */
+  useEffect(() => {
+    if (!urlHydrated.current) return;
+    if (policyTypeIds.length || searchParams.getAll("policyTypeIds").length) return;
+    const variants = searchParams.getAll("adProductVariants");
+    if (!variants.length || !ddOptions.policyTypes.length) return;
+    const mapped = ddOptions.policyTypes
+      .filter((t): t is typeof t & { id: string } => Boolean(t.id))
+      .filter((t) => {
+        const variant = policyTypeKeyToAdVariant(t.value);
+        return variant != null && variants.includes(variant);
+      })
+      .map((t) => t.id);
+    if (mapped.length) setPolicyTypeIds(mapped);
+  }, [searchParams, ddOptions.policyTypes, policyTypeIds.length]);
 
   const categoryKeysForQuery = useMemo(() => {
     const keys = categoryIds
@@ -335,7 +362,7 @@ export default function SvkkPoliciesPage() {
         periodYears,
         periodMonths,
         categoryIds,
-        adVariants,
+        policyTypeIds,
         areas,
         sumInsureds,
         policyGroupings,
@@ -348,7 +375,7 @@ export default function SvkkPoliciesPage() {
       periodYears,
       periodMonths,
       categoryIds,
-      adVariants,
+      policyTypeIds,
       areas,
       sumInsureds,
       policyGroupings,
@@ -376,7 +403,7 @@ export default function SvkkPoliciesPage() {
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
     categoryIds.forEach((id) => q.append("categoryIds", id));
     categoryKeysForQuery.forEach((k) => q.append("categoryKeys", k));
-    adVariants.forEach((a) => q.append("adProductVariants", a));
+    policyTypeIds.forEach((id) => q.append("policyTypeIds", id));
     areas.forEach((a) => q.append("areas", a));
     sumInsureds.forEach((s) => q.append("sumInsureds", s));
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
@@ -400,7 +427,7 @@ export default function SvkkPoliciesPage() {
     periodMonths,
     categoryIds,
     categoryKeysForQuery,
-    adVariants,
+    policyTypeIds,
     areas,
     sumInsureds,
     policyGroupings,
@@ -527,7 +554,7 @@ export default function SvkkPoliciesPage() {
     if (periodYears.length) n++;
     if (periodMonths.length) n++;
     if (categoryIds.length) n++;
-    if (adVariants.length) n++;
+    if (policyTypeIds.length) n++;
     if (areas.length) n++;
     if (sumInsureds.length) n++;
     if (policyGroupings.length) n++;
@@ -541,7 +568,7 @@ export default function SvkkPoliciesPage() {
     periodYears,
     periodMonths,
     categoryIds,
-    adVariants,
+    policyTypeIds,
     areas,
     sumInsureds,
     policyGroupings,
@@ -580,6 +607,13 @@ export default function SvkkPoliciesPage() {
   const groupingOptions = useMemo<PolicyFilterOption[]>(
     () => (meta?.policyGroupings ?? []).map((g) => ({ value: g, label: g })),
     [meta?.policyGroupings],
+  );
+  const policyTypeFilterOptions = useMemo<PolicyFilterOption[]>(
+    () =>
+      ddOptions.policyTypes
+        .filter((t): t is typeof t & { id: string } => Boolean(t.id))
+        .map((t) => ({ value: t.id, label: t.label || t.value })),
+    [ddOptions.policyTypes],
   );
 
   async function bulkDelete() {
@@ -1133,9 +1167,9 @@ export default function SvkkPoliciesPage() {
                 <PolicyFilterMulti
                   label="Policy type (product)"
                   placeholder="All types"
-                  options={AD_VARIANT_OPTIONS}
-                  selected={adVariants}
-                  onChange={setAdVariants}
+                  options={policyTypeFilterOptions}
+                  selected={policyTypeIds}
+                  onChange={setPolicyTypeIds}
                   accentClassName="border-rose-200/90 from-rose-50/95 to-card dark:border-rose-900/50 dark:from-rose-950/35 dark:to-card"
                 />
                 <PolicyFilterMulti
@@ -1207,7 +1241,7 @@ export default function SvkkPoliciesPage() {
                     setPeriodYears([]);
                     setPeriodMonths([]);
                     setCategoryIds([]);
-                    setAdVariants([]);
+                    setPolicyTypeIds([]);
                     setAreas([]);
                     setSumInsureds([]);
                     setPolicyGroupings([]);
@@ -1457,7 +1491,7 @@ export default function SvkkPoliciesPage() {
                         setPeriodYears([]);
                         setPeriodMonths([]);
                         setCategoryIds([]);
-                        setAdVariants([]);
+                        setPolicyTypeIds([]);
                         setAreas([]);
                         setSumInsureds([]);
                         setPolicyGroupings([]);

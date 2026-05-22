@@ -26,6 +26,7 @@ export type PolicyListQuery = {
   categoryKey?: string;
   categoryKeys?: string[];
   policyTypeId?: string;
+  policyTypeIds?: string[];
   adProductVariant?: AdProductVariant;
   adProductVariants?: AdProductVariant[];
   month?: number;
@@ -307,7 +308,17 @@ export function buildPolicyListWhere(
 
   const extraParts: Prisma.PolicyWhereInput[] = [];
   if (categoryFilter) extraParts.push(categoryFilter);
-  if (q.policyTypeId) extraParts.push({ policyTypeId: q.policyTypeId });
+  const policyTypeIdList =
+    q.policyTypeIds != null && q.policyTypeIds.length > 0
+      ? q.policyTypeIds
+      : q.policyTypeId
+        ? [q.policyTypeId]
+        : undefined;
+  if (policyTypeIdList?.length === 1) {
+    extraParts.push({ policyTypeId: policyTypeIdList[0] });
+  } else if (policyTypeIdList && policyTypeIdList.length > 1) {
+    extraParts.push({ policyTypeId: { in: policyTypeIdList } });
+  }
   if (adVariantPart) extraParts.push(adVariantPart);
 
   if (fiscalYearLabels.length > 0) {

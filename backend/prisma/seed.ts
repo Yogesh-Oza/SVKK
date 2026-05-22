@@ -176,6 +176,30 @@ async function main() {
   await upsertPolicyChart(ad.id, 1, PolicyChartKind.HOLDER, holderMatrix);
   await upsertPolicyChart(ad.id, 1, PolicyChartKind.MEMBER, memberMatrix);
 
+  // Legacy migration expects standalone PolicyType keys (see scripts/legacy-migrate/README.md).
+  const legacyMigrateTypes: { key: string; name: string }[] = [
+    { key: "family_floater", name: "Family Floater" },
+    { key: "individual", name: "Individual" },
+    { key: "senior_citizen", name: "Senior Citizen" },
+  ];
+  for (const lt of legacyMigrateTypes) {
+    const pt = await prisma.policyType.upsert({
+      where: { key: lt.key },
+      update: {
+        chartMode: ChartMode.SINGLE,
+        discountConfig: AD_POLICY_DISCOUNT,
+      },
+      create: {
+        key: lt.key,
+        name: lt.name,
+        chartMode: ChartMode.SINGLE,
+        description: `Legacy ${lt.name} policies (migration target)`,
+        discountConfig: AD_POLICY_DISCOUNT,
+      },
+    });
+    await upsertPolicyChart(pt.id, 1, PolicyChartKind.HOLDER, holderMatrix);
+  }
+
   const catSeed: { key: string; name: string; type: CategoryType }[] = [
     { key: "a", name: "Category A", type: CategoryType.GOV },
     { key: "b", name: "Category B", type: CategoryType.GOV },
