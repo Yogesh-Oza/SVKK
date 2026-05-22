@@ -33,6 +33,12 @@ function ageAtDate(dob: string, anchor: string): number | undefined {
   return Math.floor(diff / (365.2425 * 24 * 60 * 60 * 1000));
 }
 
+/** Form "Group" uses policyGroup; legacy rows and ID generation use policyGrouping. */
+function resolvePolicyGrouping(values: AdPolicyFormValues): string | null {
+  const g = values.policyGroup.trim() || values.policyGrouping.trim();
+  return g || null;
+}
+
 function buildCombinedRemarks(values: AdPolicyFormValues): string | null {
   const parts: string[] = [];
   if (values.generalRemark.trim()) {
@@ -116,14 +122,14 @@ export async function submitAdPolicyRequest({
     area: values.area.trim() || null,
     referenceNo: values.refNo.trim(),
     mobileSecondary: values.mobileSecond.trim() || null,
-    policyGrouping: values.policyGrouping || null,
+    policyGrouping: resolvePolicyGrouping(values),
     policyUrl: values.urls.length ? JSON.stringify(values.urls) : null,
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
     previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
-    policyGroup: values.policyGroup.trim() || null,
+    policyGroup: resolvePolicyGrouping(values),
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
     refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,
@@ -292,14 +298,14 @@ export async function submitAdPolicyPatchRequest({
     area: values.area.trim() || null,
     referenceNo: values.refNo.trim(),
     mobileSecondary: values.mobileSecond.trim() || null,
-    policyGrouping: values.policyGrouping || null,
+    policyGrouping: resolvePolicyGrouping(values),
     policyUrl: values.urls.length ? JSON.stringify(values.urls) : null,
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
     previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
-    policyGroup: values.policyGroup.trim() || null,
+    policyGroup: resolvePolicyGrouping(values),
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
     refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,

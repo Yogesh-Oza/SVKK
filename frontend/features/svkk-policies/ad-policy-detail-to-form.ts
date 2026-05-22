@@ -580,7 +580,7 @@ export function policyDetailToAdFormValues(
     loanAmt: decStr(row.loanAmount),
     previousPolicyNo: row.previousPolicyNo ?? "",
     previousEndDate: isoToDateInput(row.previousEndDate ?? ""),
-    policyGroup: row.policyGroup ?? "",
+    policyGroup: row.policyGroup?.trim() || row.policyGrouping?.trim() || "",
     nomineeName: row.nomineeName ?? "",
     nomineeRelation: row.nomineeRelation ?? "",
     nomineePhoneNumber: row.contactPhone ?? "",
@@ -613,7 +613,7 @@ export function policyDetailToAdFormValues(
     refNo: row.referenceNo ?? "",
     year: row.periodYearText ?? "",
     month: resolveMonthFormValue(row, y),
-    policyGrouping: groupingFromApi(row.policyGrouping),
+    policyGrouping: groupingFromApi(row.policyGrouping ?? row.policyGroup),
     urls: parsePolicyUrls(row.policyUrl),
     url2: row.policyUrl2 ?? "",
   };

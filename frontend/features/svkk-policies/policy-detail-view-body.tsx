@@ -307,7 +307,7 @@ export function PolicyDetailViewBody({
               { label: "Year", value: displayVal(activeYearLabel || row.periodYearText) },
               { label: "Village", value: displayVal(row.village) },
               { label: "Area", value: displayVal(row.area) },
-              { label: "Group", value: displayVal(row.policyGrouping) },
+              { label: "Group", value: displayVal(row.policyGroup ?? row.policyGrouping) },
               { label: "Policy URL", value: <PolicyUrlLinks policyUrl={row.policyUrl} /> },
               { label: "URL", value: <PolicyUrl2Link url={row.policyUrl2} /> },
             ]}

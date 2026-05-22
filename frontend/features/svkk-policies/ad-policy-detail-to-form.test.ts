@@ -64,5 +64,45 @@ describe("policyDetailToAdFormValues", () => {
     expect(values.cat).toBe("d");
     expect(values.svkkPublicId).toBe("RTYMAR0021");
     expect(values.refNo).toBe("RTY2025MAR0021");
+    expect(values.policyGroup).toBe("RTY");
+    expect(values.policyGrouping).toBe("RTY");
+  });
+
+  it("maps policyGrouping into policyGroup when policyGroup column is empty", () => {
+    const values = policyDetailToAdFormValues({
+      id: "p2",
+      policyNo: null,
+      referenceNo: null,
+      village: "V",
+      area: null,
+      remarks: null,
+      adProductVariant: null,
+      insuranceCompany: null,
+      tpa: null,
+      categoryText: null,
+      holderRelationship: null,
+      holderGender: null,
+      holderAge: null,
+      personsInsuredCount: 1,
+      policyGrouping: "NVKK",
+      policyGroup: null,
+      periodYearText: "2026",
+      periodMonthText: null,
+      insuredParty: {
+        svkkPublicId: "x",
+        name: "H",
+        customerId: null,
+        mobile: null,
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+      },
+      policyType: { id: "t1", name: "AD", key: "ad" },
+      category: null,
+      years: [{ id: "y1", yearLabel: "2026", sumInsured: "100000", vkkPremium: "1", members: [] }],
+    } as Parameters<typeof policyDetailToAdFormValues>[0]);
+
+    expect(values.policyGroup).toBe("NVKK");
   });
 });
