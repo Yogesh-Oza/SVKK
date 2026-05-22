@@ -34,6 +34,37 @@ function utcDayEnd(d: Date): Date {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Same SVKK (insured party): exclude this policy from renewal-due filters when another
+ * policy on the party has coverage ending after `horizonEnd` (e.g. carry-forward renewal).
+ */
+function excludeWhenSvkkHasLaterCoverage(horizonEnd: Date): Prisma.PolicyWhereInput {
+  return {
+    NOT: {
+      insuredParty: {
+        policies: {
+          some: {
+            deletedAt: null,
+            years: {
+              some: {
+                deletedAt: null,
+                policyEnd: { not: null, gt: horizonEnd },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function withSvkkRenewalSupersession(
+  base: Prisma.PolicyWhereInput,
+  horizonEnd: Date,
+): Prisma.PolicyWhereInput {
+  return { AND: [base, excludeWhenSvkkHasLaterCoverage(horizonEnd)] };
+}
+
+/**
  * Policy is pending renewal as-of a date when no policy year extends past that day
  * and at least one year has a known end date on or before that day.
  */
@@ -41,28 +72,31 @@ export function renewalPendingPolicyWhere(asOfIso: string): Prisma.PolicyWhereIn
   const bounds = utcDayBoundsFromIsoDate(asOfIso);
   if (!bounds) return undefined;
   const asOfEnd = bounds.end;
-  return {
-    AND: [
-      {
-        years: {
-          some: {
-            deletedAt: null,
-            policyEnd: { not: null, lte: asOfEnd },
-          },
-        },
-      },
-      {
-        NOT: {
+  return withSvkkRenewalSupersession(
+    {
+      AND: [
+        {
           years: {
             some: {
               deletedAt: null,
-              policyEnd: { gt: asOfEnd },
+              policyEnd: { not: null, lte: asOfEnd },
             },
           },
         },
-      },
-    ],
-  };
+        {
+          NOT: {
+            years: {
+              some: {
+                deletedAt: null,
+                policyEnd: { gt: asOfEnd },
+              },
+            },
+          },
+        },
+      ],
+    },
+    asOfEnd,
+  );
 }
 
 export type RenewalBucketKey =
@@ -183,16 +217,33 @@ export function renewalBucketPolicyWhere(
       return renewalPendingPolicyWhere(asOfIso);
     case "expired": {
       const expiredEnd = new Date(today.getTime() - 1);
-      return maxEndInRangeWhere(new Date(0), expiredEnd);
+      return withSvkkRenewalSupersession(maxEndInRangeWhere(new Date(0), expiredEnd), expiredEnd);
     }
-    case "due_2":
-      return maxEndInRangeWhere(today, utcDayEnd(addUtcDays(today, 2)));
-    case "due_8":
-      return maxEndInRangeWhere(utcDayStart(addUtcDays(today, 3)), utcDayEnd(addUtcDays(today, 8)));
-    case "due_30":
-      return maxEndInRangeWhere(utcDayStart(addUtcDays(today, 9)), utcDayEnd(addUtcDays(today, 30)));
-    case "due_60":
-      return maxEndInRangeWhere(utcDayStart(addUtcDays(today, 31)), utcDayEnd(addUtcDays(today, 60)));
+    case "due_2": {
+      const horizon = utcDayEnd(addUtcDays(today, 2));
+      return withSvkkRenewalSupersession(maxEndInRangeWhere(today, horizon), horizon);
+    }
+    case "due_8": {
+      const horizon = utcDayEnd(addUtcDays(today, 8));
+      return withSvkkRenewalSupersession(
+        maxEndInRangeWhere(utcDayStart(addUtcDays(today, 3)), horizon),
+        horizon,
+      );
+    }
+    case "due_30": {
+      const horizon = utcDayEnd(addUtcDays(today, 30));
+      return withSvkkRenewalSupersession(
+        maxEndInRangeWhere(utcDayStart(addUtcDays(today, 9)), horizon),
+        horizon,
+      );
+    }
+    case "due_60": {
+      const horizon = utcDayEnd(addUtcDays(today, 60));
+      return withSvkkRenewalSupersession(
+        maxEndInRangeWhere(utcDayStart(addUtcDays(today, 31)), horizon),
+        horizon,
+      );
+    }
     case "active":
       return activeAfterHorizonWhere(today);
     case "no_end_date":
