@@ -12,6 +12,8 @@ import {
   buildPolicyCsvSampleDemoRow,
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
+  POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+  POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
 import { csvCell } from "./policy-csv-utils.js";
 
@@ -273,9 +275,14 @@ export function buildPolicyCsvHeaderLine(): string {
 }
 
 export function buildPolicyCsvSample(): string {
+  const sampleHeaders = buildPolicyCsvHeaders(
+    POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+    POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
+  );
   const demo = buildPolicyCsvSampleDemoRow();
-  const cells = POLICY_CSV_HEADERS.map((h) => demo[h] ?? "");
-  return `\uFEFF${buildPolicyCsvHeaderLine()}\r\n${cells.map(csvCell).join(",")}\r\n`;
+  const headerLine = sampleHeaders.map(csvCell).join(",");
+  const cells = sampleHeaders.map((h) => demo[h] ?? "");
+  return `\uFEFF${headerLine}\r\n${cells.map(csvCell).join(",")}\r\n`;
 }
 
 export function buildLegacyPoliciesCsv(

@@ -8,6 +8,10 @@ import { getCsvField } from "./policy-csv-parse.js";
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
 export const POLICY_CSV_MAX_PAYMENT_SLOTS = 8;
 
+/** Sample CSV template: fewer columns so the file is easy to read (export keeps full limits). */
+export const POLICY_CSV_SAMPLE_MEMBER_SLOTS = 2;
+export const POLICY_CSV_SAMPLE_PAYMENT_SLOTS = 2;
+
 export const MEMBER_SLOT_FIELD_LABELS = [
   "Name",
   "DOB",
@@ -374,8 +378,8 @@ export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
     "ref no": "DEMO-REF-001",
     Village: "Demo Village",
     Category: "A",
-    "Person Count*": "3",
-    "Persons insured": "3",
+    "Person Count*": "2",
+    "Persons insured": "2",
   };
 
   const demoMembers = [
@@ -396,15 +400,6 @@ export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
       phone: "9876543211",
       age: "30",
       joining: "2021-05-01",
-    },
-    {
-      name: "Demo Member Three",
-      dob: "2015-03-10",
-      relationship: "Son",
-      gender: "M",
-      phone: "9876543212",
-      age: "11",
-      joining: "2015-04-01",
     },
   ];
 
