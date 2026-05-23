@@ -31,6 +31,7 @@ import {
 } from "./policy.list.js";
 import {
   buildPoliciesExportCsv,
+  buildPolicyCsvSample,
   queryPolicyListForExport,
 } from "./policy.export-csv.js";
 import { queryPolicyListGrouped } from "./policy.list-grouped.js";
@@ -429,6 +430,16 @@ export function createPolicyRouter(env: Env) {
           totalPages: out.totalPages,
         });
       }
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/export-sample.csv", requirePermission("policy:read"), async (_req, res, next) => {
+    try {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="policies-import-sample.csv"');
+      res.send(buildPolicyCsvSample());
     } catch (e) {
       next(e);
     }

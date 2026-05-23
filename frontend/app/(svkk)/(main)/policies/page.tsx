@@ -473,6 +473,21 @@ export default function SvkkPoliciesPage() {
     }
   }, [exportQueryString]);
 
+  const downloadPolicyCsvSample = useCallback(async () => {
+    try {
+      const res = await backendApi.get("/policies/export-sample.csv", { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "policies-import-sample.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sample download failed");
+    }
+  }, []);
+
   const load = useCallback(async () => {
     const generation = ++listFetchGenerationRef.current;
     setLoading(true);
@@ -504,7 +519,7 @@ export default function SvkkPoliciesPage() {
     try {
       const fd = new FormData();
       fd.append("file", uploadFile);
-      fd.append("updateMode", "POLICY_ONLY");
+      fd.append("updateMode", "FULL");
       fd.append("dryRun", "false");
       fd.append("force", "false");
       await backendApi.post("/upload/csv", fd);
@@ -1071,6 +1086,17 @@ export default function SvkkPoliciesPage() {
                           className="text-muted-foreground file:text-foreground w-full cursor-pointer text-sm file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-medium"
                         />
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 gap-1.5"
+                        disabled={!canCsvUpload}
+                        onClick={() => void downloadPolicyCsvSample()}
+                      >
+                        <Download className="size-3.5" />
+                        Sample CSV
+                      </Button>
                       <Button
                         type="button"
                         size="sm"

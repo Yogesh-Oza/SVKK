@@ -140,6 +140,40 @@ function minimalRow(overrides: Partial<PolicyExportRow> = {}): PolicyExportRow {
             ageAtEntry: 16,
             deletedAt: null,
           },
+          {
+            id: "m2",
+            policyYearId: "y1",
+            name: "Member Two",
+            dob: new Date("2012-02-20T00:00:00.000Z"),
+            relationship: "Daughter",
+            gender: "F",
+            riderAmount: null as unknown as import("@prisma/client").Prisma.Decimal,
+            sumInsured: null,
+            cumulativeBonus: null,
+            dateOfJoining: null,
+            memberPhone: null,
+            addOnsAmount: null,
+            basicPremium: null,
+            ageAtEntry: 14,
+            deletedAt: null,
+          },
+          {
+            id: "m3",
+            policyYearId: "y1",
+            name: "Member Three",
+            dob: new Date("2015-03-10T00:00:00.000Z"),
+            relationship: "Son",
+            gender: "M",
+            riderAmount: null as unknown as import("@prisma/client").Prisma.Decimal,
+            sumInsured: null,
+            cumulativeBonus: null,
+            dateOfJoining: new Date("2015-04-01T00:00:00.000Z"),
+            memberPhone: "9998887777",
+            addOnsAmount: null,
+            basicPremium: null,
+            ageAtEntry: 11,
+            deletedAt: null,
+          },
         ],
         payments: [],
       },
@@ -169,13 +203,15 @@ describe("pickExportPolicyYear", () => {
 });
 
 describe("buildPoliciesExportCsv", () => {
-  it("includes member columns at the end", () => {
+  it("uses legacy spreadsheet column order", () => {
     const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
     const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
-    expect(headerLine).toContain("Member 1 Name");
-    expect(headerLine).toContain("Member 1 DOB");
-    expect(headerLine?.indexOf("Member 1 Name")).toBeGreaterThan(headerLine!.indexOf("Updated at"));
-    expect(dataLine).toContain("Member One");
-    expect(dataLine).toContain("2010-01-15");
+    expect(headerLine).toMatch(/^year,month,grouping,/);
+    expect(headerLine).toContain("Member 3 Name");
+    expect(headerLine).toContain("ref no");
+    expect(headerLine).not.toContain("Member 1 Name");
+    expect(dataLine).toContain("Member Three");
+    expect(dataLine).toContain("2015-03-10");
+    expect(dataLine).toContain("REF-1");
   });
 });

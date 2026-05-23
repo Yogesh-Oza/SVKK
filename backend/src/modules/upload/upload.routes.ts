@@ -21,6 +21,12 @@ import {
   uploadBufferToOneDrive,
 } from "../../services/one-drive.service.js";
 import { updatePolicySections } from "../policy/policy.service.js";
+import { isLegacyPolicyCsvFormat } from "../policy/policy-csv-format.js";
+import {
+  applyLegacyPolicyCsvRow,
+  validateLegacyPolicyCsvRow,
+} from "../policy/policy-csv-import.js";
+import { parseCsv } from "../policy/policy-csv-parse.js";
 import {
   assertPolicyReadable,
   loadMisScope,
@@ -51,18 +57,6 @@ function appendPolicyUrl(existing: string | null | undefined, newUrl: string): s
   const urls = parsePolicyUrls(existing);
   if (!urls.includes(newUrl)) urls.push(newUrl);
   return JSON.stringify(urls.slice(0, MAX_POLICY_URLS));
-}
-
-function parseCsvLine(line: string): string[] {
-  return line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-}
-
-function parseCsv(content: string): string[][] {
-  return content
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map(parseCsvLine);
 }
 
 export function createUploadRouter(env: Env) {
@@ -154,22 +148,35 @@ export function createUploadRouter(env: Env) {
 
         const dataRows = rows.slice(1);
         const policyScope = await loadMisScope(req.userId!, req.permissions!, "policy");
+        const legacyFormat = isLegacyPolicyCsvFormat(header);
 
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i]!;
           try {
             if (body.dryRun) {
-              validateRow(body.updateMode, header, row);
+              if (legacyFormat) {
+                validateLegacyPolicyCsvRow(header, row);
+              } else {
+                validateRow(body.updateMode, header, row);
+              }
               success++;
               continue;
             }
 
             await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-              await applyRow(tx, body.updateMode, header, row, {
-                userId: req.userId!,
-                permissions: req.permissions!,
-                scope: policyScope,
-              });
+              if (legacyFormat) {
+                await applyLegacyPolicyCsvRow(tx, header, row, {
+                  userId: req.userId!,
+                  permissions: req.permissions!,
+                  scope: policyScope,
+                });
+              } else {
+                await applyRow(tx, body.updateMode, header, row, {
+                  userId: req.userId!,
+                  permissions: req.permissions!,
+                  scope: policyScope,
+                });
+              }
             });
             success++;
           } catch (err) {
