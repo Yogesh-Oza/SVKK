@@ -31,6 +31,7 @@ const listQuerySchema = z.object({
   search: z.string().optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  emailOutcome: z.enum(["sent", "failed"]).optional(),
 });
 
 function parseDateBound(raw: string | undefined, endOfDay: boolean): Date | undefined {
@@ -232,6 +233,7 @@ export function createLogsRouter(env: Env) {
           search: q.search,
           dateFrom: parseDateBound(q.dateFrom, false),
           dateTo: parseDateBound(q.dateTo, true),
+          emailOutcome: q.emailOutcome,
         },
         req.roleSlug!,
       );

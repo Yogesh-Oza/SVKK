@@ -4,6 +4,7 @@ import type { Env } from "../../config/env.js";
 import { AppError } from "../../errors/app-error.js";
 import { EMAIL_TEMPLATE_CATALOG, type EmailTemplateId } from "../../services/email/email-template-catalog.js";
 import { isEmailConfigured, sendEmail } from "../../services/email/email.service.js";
+import { writeEmailActivityLog } from "../../services/email/email-activity-log.service.js";
 import {
   listEmailTemplatesForAdmin,
   renderEmailTemplateDraft,
@@ -55,13 +56,6 @@ export function createEmailTemplatesRouter(env: Env) {
     requirePermission("admin:settings"),
     async (req, res, next) => {
       try {
-        if (!isEmailConfigured(env)) {
-          throw new AppError(
-            "SMTP_NOT_CONFIGURED",
-            "SMTP is not configured. Set SMTP_HOST and SMTP_FROM in backend/.env and restart the server.",
-            503,
-          );
-        }
         const templateId = templateIdSchema.parse(req.params.templateId);
         const body = z
           .object({
@@ -71,10 +65,35 @@ export function createEmailTemplatesRouter(env: Env) {
           })
           .parse(req.body);
         const rendered = renderEmailTemplateDraft(templateId, body.subject, body.body);
+        const testSubject = `[SVKK Test] ${rendered.subject}`;
+        const activity = {
+          userId: req.userId,
+          templateId,
+          source: "email_template_test",
+          entityType: "EmailTemplate",
+          entityId: templateId,
+        };
+
+        if (!isEmailConfigured(env)) {
+          await writeEmailActivityLog({
+            context: activity,
+            to: body.to,
+            subject: testSubject,
+            action: "EMAIL_SKIPPED",
+            reason: "smtp_not_configured",
+          });
+          throw new AppError(
+            "SMTP_NOT_CONFIGURED",
+            "SMTP is not configured. Set SMTP_HOST and SMTP_FROM in backend/.env and restart the server.",
+            503,
+          );
+        }
+
         const sent = await sendEmail(env, req.log, {
           to: body.to,
-          subject: `[SVKK Test] ${rendered.subject}`,
+          subject: testSubject,
           html: rendered.html,
+          activity,
         });
         if (!sent) {
           throw new AppError("EMAIL_SEND_FAILED", "Failed to send test email. Check SMTP settings and server logs.", 502);

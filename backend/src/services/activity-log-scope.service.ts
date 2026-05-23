@@ -11,6 +11,8 @@ export type ActivityLogQuery = {
   search?: string;
   dateFrom?: Date;
   dateTo?: Date;
+  /** When set with module email, filters sent vs failed/skipped outcomes. */
+  emailOutcome?: "sent" | "failed";
 };
 
 /**
@@ -21,11 +23,20 @@ export function buildActivityLogWhere(
   readerRoleSlug: string,
 ): Prisma.ActivityLogWhereInput {
   const parts: Prisma.ActivityLogWhereInput[] = [];
-  if (q.module) {
-    parts.push({ module: q.module });
-  }
-  if (q.action) {
-    parts.push({ action: q.action });
+  if (q.emailOutcome === "sent") {
+    parts.push({ module: "email", action: "EMAIL_SENT" });
+  } else if (q.emailOutcome === "failed") {
+    parts.push({
+      module: "email",
+      action: { in: ["EMAIL_FAILED", "EMAIL_SKIPPED"] },
+    });
+  } else {
+    if (q.module) {
+      parts.push({ module: q.module });
+    }
+    if (q.action) {
+      parts.push({ action: q.action });
+    }
   }
   if (q.entityId) {
     parts.push({ entityId: q.entityId });

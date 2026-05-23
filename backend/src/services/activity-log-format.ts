@@ -106,6 +106,9 @@ const ACTION_LABELS: Record<string, string> = {
   ROLE_CLONED: "Cloned role",
   ROLE_SOFT_DELETED: "Deleted role",
   USER_ROLE_CHANGED: "Changed user role",
+  EMAIL_SENT: "Sent email",
+  EMAIL_FAILED: "Failed to send email",
+  EMAIL_SKIPPED: "Email not sent",
 };
 
 export function formatActivityLogSummary(row: ActivityLogRow): string {
@@ -151,6 +154,33 @@ export function formatActivityLogSummary(row: ActivityLogRow): string {
       }
       return `${base}${dry}`;
     }
+    case "EMAIL_SENT":
+    case "EMAIL_FAILED":
+    case "EMAIL_SKIPPED": {
+      const parts: string[] = [];
+      const to = pickStr(after?.to);
+      const holder = pickStr(after?.holderName);
+      const policyNo = pickStr(after?.policyNo);
+      const templateId = pickStr(after?.templateId);
+      if (to) parts.push(`to ${to}`);
+      if (templateId) parts.push(templateId.replace(/_/g, " "));
+      if (holder) parts.push(holder);
+      if (policyNo && policyNo !== "—") parts.push(`policy ${policyNo}`);
+      const suffix = parts.length ? `: ${parts.join(" · ")}` : "";
+      if (row.action === "EMAIL_SKIPPED" && after?.reason) {
+        const reasonLabel =
+          after.reason === "smtp_not_configured"
+            ? "SMTP not configured"
+            : after.reason === "no_recipient" || after.reason === "empty_recipient"
+              ? "no recipient"
+              : String(after.reason);
+        return `${base} (${reasonLabel})${suffix}`;
+      }
+      if (row.action === "EMAIL_FAILED" && after?.errorMessage) {
+        return `${base}${suffix} — ${String(after.errorMessage).slice(0, 120)}`;
+      }
+      return `${base}${suffix}`;
+    }
     default:
       return base;
   }
@@ -187,6 +217,19 @@ export function formatActivityLogDetails(
     if (after?.rowCount !== undefined) lines.push(`Rows: ${String(after.rowCount)}`);
   }
 
+  if (row.module === "email") {
+    const to = pickStr(after?.to);
+    const subject = pickStr(after?.subject);
+    const templateId = pickStr(after?.templateId);
+    const source = pickStr(after?.source);
+    if (to) lines.push(`Recipient: ${to}`);
+    if (subject) lines.push(`Subject: ${subject}`);
+    if (templateId) lines.push(`Template: ${templateId}`);
+    if (source) lines.push(`Trigger: ${source.replace(/_/g, " ")}`);
+    if (after?.reason) lines.push(`Reason: ${String(after.reason).replace(/_/g, " ")}`);
+    if (after?.errorMessage) lines.push(`Error: ${String(after.errorMessage)}`);
+  }
+
   return lines;
 }
 
@@ -201,6 +244,10 @@ export function formatEntityLabel(
     const ctx = policyContext(asRecord(row.afterData) ?? asRecord(row.beforeData));
     if (ctx.ref) return `Policy ${ctx.ref}`;
     return "Policy";
+  }
+  if (row.entityType === "EmailTemplate") {
+    const tpl = pickStr(asRecord(row.afterData)?.templateId) ?? row.entityId;
+    return `Email template ${tpl.replace(/_/g, " ")}`;
   }
   return row.entityType;
 }

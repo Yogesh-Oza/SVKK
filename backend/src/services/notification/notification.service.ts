@@ -3,6 +3,7 @@ import type { Env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import type { AppLogger } from "../../utils/logger.js";
 import { sendEmail, isEmailConfigured } from "../email/email.service.js";
+import { writeEmailActivityLog } from "../email/email-activity-log.service.js";
 import { renderEmailTemplate } from "../email/email-template.service.js";
 import type { EmailTemplateId } from "../email/email-template-catalog.js";
 import { buildReceiptFieldsHtml } from "../email/email-receipt-fields.js";
@@ -153,10 +154,41 @@ async function emailHolderIfPossible(
   templateId: EmailTemplateId,
   to: string | null | undefined,
   vars: Record<string, string>,
+  activity: {
+    userId?: string | null;
+    policyId: string;
+    source: string;
+  },
 ): Promise<boolean> {
-  if (!to?.trim()) return false;
+  const ctx = {
+    userId: activity.userId,
+    templateId,
+    source: activity.source,
+    entityType: "Policy",
+    entityId: activity.policyId,
+    holderName: vars.holderName,
+    policyNo: vars.policyNo,
+    referenceNo: vars.referenceNo,
+    svkkPublicId: vars.svkkPublicId,
+  };
+  if (!to?.trim()) {
+    const rendered = await renderEmailTemplate(templateId, vars);
+    await writeEmailActivityLog({
+      context: ctx,
+      to: "",
+      subject: rendered.subject,
+      action: "EMAIL_SKIPPED",
+      reason: "no_recipient",
+    });
+    return false;
+  }
   const rendered = await renderEmailTemplate(templateId, vars);
-  return sendEmail(env, log, { to: to.trim(), subject: rendered.subject, html: rendered.html });
+  return sendEmail(env, log, {
+    to: to.trim(),
+    subject: rendered.subject,
+    html: rendered.html,
+    activity: ctx,
+  });
 }
 
 export async function notifyPolicyCreated(
@@ -176,6 +208,7 @@ export async function notifyPolicyCreated(
     "mediclaim_new_policy_ack",
     p.insuredParty.email,
     vars,
+    { userId: input.actorUserId, policyId: p.id, source: "policy_created" },
   );
 
   await createStaffNotification({
@@ -215,6 +248,7 @@ export async function notifyPolicyNumberOrDocumentUpdated(
     "policy_number_updated",
     p.insuredParty.email,
     vars,
+    { userId: input.actorUserId, policyId: p.id, source: "policy_number_updated" },
   );
 
   const parts: string[] = [];

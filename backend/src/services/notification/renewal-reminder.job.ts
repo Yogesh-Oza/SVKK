@@ -3,6 +3,7 @@ import type { Env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import type { AppLogger } from "../../utils/logger.js";
 import { sendEmail, isEmailConfigured } from "../email/email.service.js";
+import { writeEmailActivityLog } from "../email/email-activity-log.service.js";
 import { renderEmailTemplate } from "../email/email-template.service.js";
 import {
   RENEWAL_OFFSET_DAYS,
@@ -80,6 +81,36 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
           to: email,
           subject: rendered.subject,
           html: rendered.html,
+          activity: {
+            userId: null,
+            templateId,
+            source: "renewal_reminder",
+            entityType: "Policy",
+            entityId: p.id,
+            holderName: p.insuredParty.name,
+            policyNo: p.policyNo ?? undefined,
+            referenceNo: p.referenceNo ?? undefined,
+            svkkPublicId: p.insuredParty.svkkPublicId,
+          },
+        });
+      } else {
+        const rendered = await renderEmailTemplate(templateId, vars);
+        await writeEmailActivityLog({
+          context: {
+            userId: null,
+            templateId,
+            source: "renewal_reminder",
+            entityType: "Policy",
+            entityId: p.id,
+            holderName: p.insuredParty.name,
+            policyNo: p.policyNo ?? undefined,
+            referenceNo: p.referenceNo ?? undefined,
+            svkkPublicId: p.insuredParty.svkkPublicId,
+          },
+          to: "",
+          subject: rendered.subject,
+          action: "EMAIL_SKIPPED",
+          reason: "no_recipient",
         });
       }
 

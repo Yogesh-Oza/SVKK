@@ -38,6 +38,42 @@ describe("formatActivityLogSummary", () => {
     expect(s).toContain("village");
   });
 
+  it("formats email sent with recipient and template", () => {
+    const s = formatActivityLogSummary({
+      id: "4",
+      module: "email",
+      action: "EMAIL_SENT",
+      entityType: "Policy",
+      entityId: "p1",
+      beforeData: null,
+      afterData: {
+        to: "holder@example.com",
+        templateId: "mediclaim_new_policy_ack",
+        holderName: "Ram Patil",
+        policyNo: "AD-100",
+      },
+      createdAt: new Date(),
+    });
+    expect(s).toContain("Sent email");
+    expect(s).toContain("holder@example.com");
+    expect(s).toContain("Ram Patil");
+  });
+
+  it("formats email skipped with reason", () => {
+    const s = formatActivityLogSummary({
+      id: "5",
+      module: "email",
+      action: "EMAIL_SKIPPED",
+      entityType: "Policy",
+      entityId: "p1",
+      beforeData: null,
+      afterData: { reason: "no_recipient", subject: "Hello" },
+      createdAt: new Date(),
+    });
+    expect(s).toContain("Email not sent");
+    expect(s).toContain("no recipient");
+  });
+
   it("formats csv import counts", () => {
     const s = formatActivityLogSummary({
       id: "3",

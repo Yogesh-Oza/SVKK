@@ -43,7 +43,7 @@ import {
   ClipboardList,
   Filter,
   History,
-  Loader2,
+  Mail,
   RotateCcw,
   Search,
   User,
@@ -106,6 +106,7 @@ type LogsFilters = {
   roleSlug: string;
   dateFrom: string;
   dateTo: string;
+  emailOutcome: "" | "sent" | "failed";
 };
 
 const EMPTY_FILTERS: LogsFilters = {
@@ -118,11 +119,13 @@ const EMPTY_FILTERS: LogsFilters = {
   roleSlug: "",
   dateFrom: "",
   dateTo: "",
+  emailOutcome: "",
 };
 
 const MODULE_COLORS: Record<string, string> = {
   policy: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
   upload: "bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  email: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
 };
 
 function moduleBadgeClass(module: string): string {
@@ -134,8 +137,12 @@ function buildQuery(filters: LogsFilters, cursor?: string): string {
   p.set("limit", "30");
   if (cursor) p.set("cursor", cursor);
   if (filters.search.trim()) p.set("search", filters.search.trim());
-  if (filters.module) p.set("module", filters.module);
-  if (filters.action) p.set("action", filters.action);
+  if (filters.emailOutcome) {
+    p.set("emailOutcome", filters.emailOutcome);
+  } else {
+    if (filters.module) p.set("module", filters.module);
+    if (filters.action) p.set("action", filters.action);
+  }
   if (filters.entityType) p.set("entityType", filters.entityType);
   if (filters.entityId.trim()) p.set("entityId", filters.entityId.trim());
   if (filters.userId) p.set("userId", filters.userId);
@@ -191,6 +198,7 @@ export function ActivityLogsView() {
     if (applied.roleSlug) n++;
     if (applied.dateFrom) n++;
     if (applied.dateTo) n++;
+    if (applied.emailOutcome) n++;
     return n;
   }, [applied]);
 
@@ -267,6 +275,15 @@ export function ActivityLogsView() {
     setApplied(EMPTY_FILTERS);
   };
 
+  const applyEmailQuickFilter = (kind: "all" | "sent" | "failed") => {
+    const next: LogsFilters =
+      kind === "all"
+        ? { ...EMPTY_FILTERS, module: "email" }
+        : { ...EMPTY_FILTERS, emailOutcome: kind };
+    setFilters(next);
+    setApplied(next);
+  };
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -332,8 +349,8 @@ export function ActivityLogsView() {
         <motion.div className="space-y-1" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <h1 className="text-3xl font-bold tracking-tight">Activity logs</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Audit trail of policy changes, uploads, and imports. Use filters to narrow by module,
-            action, date, or search by holder name and reference.
+            Audit trail of policy changes, uploads, imports, and emails. Use filters to narrow by
+            module, action, date, or search by holder name, recipient, and reference.
           </p>
         </motion.div>
         <Badge variant="outline" className="w-fit gap-1.5 py-1.5">
@@ -582,6 +599,35 @@ export function ActivityLogsView() {
                 <RotateCcw className="size-4" />
                 Reset
               </Button>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    applied.module === "email" && !applied.emailOutcome ? "secondary" : "outline"
+                  }
+                  onClick={() => applyEmailQuickFilter("all")}
+                >
+                  <Mail className="size-3.5" />
+                  All emails
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={applied.emailOutcome === "sent" ? "secondary" : "outline"}
+                  onClick={() => applyEmailQuickFilter("sent")}
+                >
+                  Sent
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={applied.emailOutcome === "failed" ? "secondary" : "outline"}
+                  onClick={() => applyEmailQuickFilter("failed")}
+                >
+                  Failed / skipped
+                </Button>
+              </div>
             </CardFooter>
           </CollapsibleContent>
         </Collapsible>
