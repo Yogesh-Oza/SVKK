@@ -22,6 +22,8 @@ type EmailTemplate = {
 
 type TemplateDraft = { subject: string; body: string };
 
+const TEST_EMAIL_STORAGE_KEY = "svkk-email-template-test-to";
+
 export default function EmailTemplatesPage() {
   const { user } = useSvkkAuth();
   const canEdit = user ? hasPermission(user.permissions, "admin:settings") : false;
@@ -29,7 +31,21 @@ export default function EmailTemplatesPage() {
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [sendingTestId, setSendingTestId] = useState<string | null>(null);
+  const [testEmail, setTestEmail] = useState("");
   const [drafts, setDrafts] = useState<Record<string, TemplateDraft>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(TEST_EMAIL_STORAGE_KEY)?.trim();
+    if (stored) {
+      setTestEmail(stored);
+      return;
+    }
+    if (user?.email) {
+      setTestEmail(user.email);
+    }
+  }, [user?.email]);
 
   const load = useCallback(async () => {
     if (!canEdit) return;
@@ -82,6 +98,40 @@ export default function EmailTemplatesPage() {
     toast.message("Restored default content — click Save to apply.");
   }
 
+  function handleTestEmailChange(email: string) {
+    setTestEmail(email);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(TEST_EMAIL_STORAGE_KEY, email.trim());
+      } catch {
+        /* ignore quota / private mode */
+      }
+    }
+  }
+
+  async function sendTest(templateId: string) {
+    const draft = drafts[templateId];
+    const to = testEmail.trim();
+    if (!draft || !to) return;
+    setSendingTestId(templateId);
+    try {
+      await backendApi.post(`/email-templates/${templateId}/send-test`, {
+        to,
+        subject: draft.subject,
+        body: draft.body,
+      });
+      toast.success(`Test email sent to ${to}`);
+    } catch (e) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? String((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "")
+          : "";
+      toast.error(msg || (e instanceof Error ? e.message : "Failed to send test email"));
+    } finally {
+      setSendingTestId(null);
+    }
+  }
+
   if (!canEdit) {
     return <p className="text-muted-foreground text-sm">You do not have permission to edit email templates.</p>;
   }
@@ -121,6 +171,10 @@ export default function EmailTemplatesPage() {
           }
           onSave={(id) => void save(id)}
           onReset={resetToDefault}
+          testEmail={testEmail}
+          onTestEmailChange={handleTestEmailChange}
+          sendingTestId={sendingTestId}
+          onSendTest={(id) => void sendTest(id)}
         />
       )}
     </div>

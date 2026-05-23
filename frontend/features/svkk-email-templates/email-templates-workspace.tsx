@@ -72,6 +72,10 @@ type EmailTemplatesWorkspaceProps = {
   onBodyChange: (id: string, body: string) => void;
   onSave: (id: string) => void;
   onReset: (id: string) => void;
+  testEmail: string;
+  onTestEmailChange: (email: string) => void;
+  sendingTestId: string | null;
+  onSendTest: (id: string) => void;
 };
 
 export function EmailTemplatesWorkspace({
@@ -84,6 +88,10 @@ export function EmailTemplatesWorkspace({
   onBodyChange,
   onSave,
   onReset,
+  testEmail,
+  onTestEmailChange,
+  sendingTestId,
+  onSendTest,
 }: EmailTemplatesWorkspaceProps) {
   const groups = useMemo(() => groupTemplates(templates), [templates]);
   const active = templates.find((t) => t.id === selectedId) ?? templates[0];
@@ -187,6 +195,10 @@ export function EmailTemplatesWorkspace({
             onBodyChange={(body) => onBodyChange(active.id, body)}
             onSave={() => onSave(active.id)}
             onReset={() => onReset(active.id)}
+            testEmail={testEmail}
+            onTestEmailChange={onTestEmailChange}
+            sendingTest={sendingTestId === active.id}
+            onSendTest={() => onSendTest(active.id)}
           />
         </CardContent>
       </Card>

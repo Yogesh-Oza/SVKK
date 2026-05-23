@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buildPreviewHtml, isMediclaimTemplateId } from "@/lib/svkk/email-template-layout";
-import { Bold, Link2, Loader2, RotateCcw, Save } from "lucide-react";
+import { Bold, Link2, Loader2, Mail, RotateCcw, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type EmailTemplateEditorProps = {
@@ -27,6 +27,10 @@ type EmailTemplateEditorProps = {
   onBodyChange: (body: string) => void;
   onSave: () => void;
   onReset?: () => void;
+  testEmail: string;
+  onTestEmailChange: (email: string) => void;
+  sendingTest: boolean;
+  onSendTest: () => void;
 };
 
 function insertAtCursor(el: HTMLElement, html: string) {
@@ -57,6 +61,10 @@ export function EmailTemplateEditor({
   onBodyChange,
   onSave,
   onReset,
+  testEmail,
+  onTestEmailChange,
+  sendingTest,
+  onSendTest,
 }: EmailTemplateEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
@@ -212,6 +220,43 @@ export function EmailTemplateEditor({
           </div>
         </TabsContent>
       </Tabs>
+
+      <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Send test email</p>
+          <p className="text-muted-foreground text-xs">
+            Sends the current subject and body (including unsaved edits) with sample placeholder data — same as
+            Preview email.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Label htmlFor={`${templateId}-test-email`}>Send to</Label>
+            <Input
+              id={`${templateId}-test-email`}
+              type="email"
+              value={testEmail}
+              onChange={(e) => onTestEmailChange(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0 cursor-pointer"
+            disabled={sendingTest || !testEmail.trim()}
+            onClick={onSendTest}
+          >
+            {sendingTest ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Mail className="mr-2 size-4" />
+            )}
+            Send test mail
+          </Button>
+        </div>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" className="cursor-pointer" disabled={saving} onClick={onSave}>

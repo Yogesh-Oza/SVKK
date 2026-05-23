@@ -6,11 +6,26 @@ import {
   getTemplateDefinition,
 } from "./email-template-catalog.js";
 import { extractEmailBody, wrapEmailBodyForTemplate } from "./email-layout.js";
+import { EMAIL_TEMPLATE_SAMPLE_VARS } from "./email-template-sample-vars.js";
 
 export type RenderedEmail = { subject: string; html: string };
 
 function renderPlaceholders(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
+}
+
+/** Render unsaved admin draft with sample placeholder data (preview / send-test). */
+export function renderEmailTemplateDraft(
+  templateId: EmailTemplateId,
+  subject: string,
+  body: string,
+  vars: Record<string, string> = EMAIL_TEMPLATE_SAMPLE_VARS,
+): RenderedEmail {
+  const html = wrapEmailBodyForTemplate(templateId, body.trim());
+  return {
+    subject: renderPlaceholders(subject.trim(), vars),
+    html: renderPlaceholders(html, vars),
+  };
 }
 
 export async function getEmailTemplateContent(
