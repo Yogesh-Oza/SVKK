@@ -6,7 +6,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { resolveNotificationNavigation } from "@/lib/svkk/notification-navigation";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { Bell, CheckCheck, ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -23,7 +23,7 @@ type NotificationItem = {
   createdAt: string;
 };
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 
 export default function SvkkNotificationsPage() {
   const { user } = useSvkkAuth();
@@ -32,43 +32,55 @@ export default function SvkkNotificationsPage() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchPage = useCallback(async (cursor?: string, append = false) => {
-    const qs = new URLSearchParams({ limit: String(PAGE_SIZE) });
-    if (cursor) qs.set("cursor", cursor);
+  const fetchPage = useCallback(async (pageNum: number) => {
+    const qs = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      page: String(pageNum),
+    });
     const data = await svkkJson<{
       notifications: NotificationItem[];
       unreadCount: number;
       totalCount: number;
-      nextCursor?: string;
+      page: number;
+      pageSize: number;
+      totalPages: number;
     }>(`/notifications?${qs.toString()}`);
-    setItems((prev) => (append ? [...prev, ...(data.notifications ?? [])] : data.notifications ?? []));
+    setItems(data.notifications ?? []);
     setUnreadCount(data.unreadCount ?? 0);
     setTotalCount(data.totalCount ?? 0);
-    setNextCursor(data.nextCursor);
+    setPage(data.page ?? pageNum);
+    setTotalPages(data.totalPages ?? 1);
   }, []);
 
-  const load = useCallback(async () => {
-    if (!canSee) return;
-    setLoading(true);
-    try {
-      await fetchPage();
-    } catch {
-      setItems([]);
-      setUnreadCount(0);
-      setTotalCount(0);
-      setNextCursor(undefined);
-    } finally {
-      setLoading(false);
-    }
-  }, [canSee, fetchPage]);
+  const load = useCallback(
+    async (pageNum: number) => {
+      if (!canSee) return;
+      setLoading(true);
+      try {
+        await fetchPage(pageNum);
+      } catch {
+        setItems([]);
+        setUnreadCount(0);
+        setTotalCount(0);
+        setPage(1);
+        setTotalPages(1);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [canSee, fetchPage],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(page);
+  }, [page, load]);
+
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
 
   async function markRead(id: string) {
     await svkkJson(`/notifications/${id}/read`, { method: "POST" });
@@ -83,28 +95,15 @@ export default function SvkkNotificationsPage() {
   }
 
   async function deleteAll() {
-    if (
-      !window.confirm(
-        `Delete all ${totalCount} notifications? This cannot be undone.`,
-      )
-    ) {
+    if (!window.confirm(`Delete all ${totalCount} notifications? This cannot be undone.`)) {
       return;
     }
     await svkkJson("/notifications/delete-all", { method: "POST" });
     setItems([]);
     setUnreadCount(0);
     setTotalCount(0);
-    setNextCursor(undefined);
-  }
-
-  async function loadMore() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      await fetchPage(nextCursor, true);
-    } finally {
-      setLoadingMore(false);
-    }
+    setPage(1);
+    setTotalPages(1);
   }
 
   function openNotification(n: NotificationItem) {
@@ -167,10 +166,11 @@ export default function SvkkNotificationsPage() {
             All notifications
           </CardTitle>
           <CardDescription>
-            Click a row to open the policy in SVKK or an external document link.{" "}
+            Click a row to open the policy in SVKK or an external document link.
             {!loading && totalCount > 0 ? (
-              <span>
-                Showing {items.length} of {totalCount}
+              <span className="ml-1">
+                Showing {rangeStart}–{rangeEnd} of {totalCount}
+                {totalPages > 1 ? ` · Page ${page} of ${totalPages}` : ""}
               </span>
             ) : null}
           </CardDescription>
@@ -210,23 +210,30 @@ export default function SvkkNotificationsPage() {
                   </li>
                 ))}
               </ul>
-              {nextCursor ? (
-                <div className="mt-4 flex justify-center">
+              {totalPages > 1 ? (
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={loadingMore}
-                    onClick={() => void loadMore()}
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
                   >
-                    {loadingMore ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Loading…
-                      </>
-                    ) : (
-                      "Load more"
-                    )}
+                    <ChevronLeft className="mr-1 size-4" />
+                    Previous
+                  </Button>
+                  <span className="text-muted-foreground px-2 text-sm">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                    <ChevronRight className="ml-1 size-4" />
                   </Button>
                 </div>
               ) : null}
