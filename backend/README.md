@@ -28,4 +28,4 @@ Server: `http://localhost:4000` — routes under `/api/v1`.
 
 ## Health
 
-`GET /health` — no version prefix.
+`GET /` or `GET /health` — no auth, no `/api/v1` prefix. Returns `{ ok: true, service: "svkk-api", timestamp: "..." }`.

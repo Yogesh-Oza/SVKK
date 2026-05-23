@@ -34,7 +34,14 @@ export function createApp(env: Env, rootLog: AppLogger) {
       credentials: true,
     }),
   );
-  app.get("/health", (_req, res) => res.json({ ok: true }));
+  const healthPayload = () => ({
+    ok: true,
+    service: "svkk-api",
+    timestamp: new Date().toISOString(),
+  });
+
+  app.get("/", (_req, res) => res.json(healthPayload()));
+  app.get("/health", (_req, res) => res.json(healthPayload()));
 
   const v1 = express.Router();
   v1.use(traceIdMiddleware(rootLog));
