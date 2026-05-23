@@ -77,8 +77,24 @@ export function EmailTemplateEditor({
 
   const syncBodyFromEditor = useCallback(() => {
     if (!editorRef.current) return;
-    onBodyChange(editorRef.current.innerHTML);
-  }, [onBodyChange]);
+    const html = editorRef.current.innerHTML;
+    // Radix unmounts/hides the edit panel on tab switch; blur can fire with empty DOM.
+    if (!html.trim() && body.trim()) return;
+    onBodyChange(html);
+  }, [onBodyChange, body]);
+
+  const handleTabChange = useCallback(
+    (next: "edit" | "preview") => {
+      if (tab === "edit" && editorRef.current) {
+        const html = editorRef.current.innerHTML;
+        if (html.trim()) {
+          onBodyChange(html);
+        }
+      }
+      setTab(next);
+    },
+    [tab, onBodyChange],
+  );
 
   useEffect(() => {
     setTab("edit");
@@ -86,8 +102,13 @@ export function EmailTemplateEditor({
 
   useEffect(() => {
     if (tab !== "edit" || !editorRef.current) return;
-    if (editorRef.current.innerHTML !== body) {
-      editorRef.current.innerHTML = body;
+    const el = editorRef.current;
+    if (body.trim() && !el.innerHTML.trim()) {
+      el.innerHTML = body;
+      return;
+    }
+    if (el.innerHTML !== body) {
+      el.innerHTML = body;
     }
   }, [body, tab, templateId]);
 
@@ -124,7 +145,7 @@ export function EmailTemplateEditor({
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "edit" | "preview")}>
+      <Tabs value={tab} onValueChange={(v) => handleTabChange(v as "edit" | "preview")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <TabsList>
             <TabsTrigger value="edit">Edit content</TabsTrigger>
@@ -184,7 +205,7 @@ export function EmailTemplateEditor({
           ) : null}
         </div>
 
-        <TabsContent value="edit" className="mt-3 space-y-2">
+        <TabsContent value="edit" forceMount className="mt-3 space-y-2 data-[state=inactive]:hidden">
           <p className="text-muted-foreground text-xs">
             {mediclaim
               ? "Mediclaim layout: branded header and TEAM MEDICLAIM signature are fixed. Edit the message and use Insert variable for dynamic fields."
