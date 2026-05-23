@@ -50,3 +50,25 @@ export function parseCsv(content: string): string[][] {
   if (cur.trim()) lines.push(cur);
   return lines.map(parseCsvLine);
 }
+
+export function rowToHeaderMap(header: string[], row: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (let i = 0; i < header.length; i++) {
+    const key = header[i]?.trim() ?? "";
+    if (!key) continue;
+    map.set(key, row[i] ?? "");
+  }
+  return map;
+}
+
+export function getCsvField(map: Map<string, string>, ...names: string[]): string {
+  for (const name of names) {
+    const direct = map.get(name);
+    if (direct !== undefined) return direct.trim();
+    const lower = name.toLowerCase();
+    for (const [k, v] of map) {
+      if (k.trim().toLowerCase() === lower) return v.trim();
+    }
+  }
+  return "";
+}

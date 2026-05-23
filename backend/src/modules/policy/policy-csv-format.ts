@@ -4,9 +4,21 @@ import {
   type CategoryRef,
 } from "../../lib/category-display.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
+import {
+  buildAllMemberSlotCells,
+  buildAllPaymentSlotCells,
+  buildExtendedMemberHeaders,
+  buildExtendedPaymentHeaders,
+  buildPolicyCsvSampleDemoRow,
+  POLICY_CSV_MAX_MEMBER_SLOTS,
+  POLICY_CSV_MAX_PAYMENT_SLOTS,
+} from "./policy-csv-slots.js";
+import { csvCell } from "./policy-csv-utils.js";
 
-/** Column order matches `policies-export-23 05 2026.xlsx`. */
-export const POLICY_CSV_HEADERS = [
+export { csvCell } from "./policy-csv-utils.js";
+
+/** Base 95 columns from `policies-export-23 05 2026.xlsx` (includes Member 3 + payment 1). */
+export const POLICY_CSV_LEGACY_HEADERS = [
   "year",
   "month",
   "grouping",
@@ -104,7 +116,21 @@ export const POLICY_CSV_HEADERS = [
   "url",
 ] as const;
 
-export type PolicyCsvHeader = (typeof POLICY_CSV_HEADERS)[number];
+export type PolicyCsvLegacyHeader = (typeof POLICY_CSV_LEGACY_HEADERS)[number];
+
+/** Legacy + extra member slots (1,2,4..12) + extra payments (2..8). */
+export function buildPolicyCsvHeaders(
+  maxMembers = POLICY_CSV_MAX_MEMBER_SLOTS,
+  maxPayments = POLICY_CSV_MAX_PAYMENT_SLOTS,
+): string[] {
+  return [
+    ...POLICY_CSV_LEGACY_HEADERS,
+    ...buildExtendedMemberHeaders(maxMembers),
+    ...buildExtendedPaymentHeaders(maxPayments),
+  ];
+}
+
+export const POLICY_CSV_HEADERS = buildPolicyCsvHeaders();
 
 export function normalizeCsvHeader(h: string): string {
   return h.trim().toLowerCase();
@@ -113,22 +139,6 @@ export function normalizeCsvHeader(h: string): string {
 export function isLegacyPolicyCsvFormat(header: string[]): boolean {
   const h = header.map(normalizeCsvHeader);
   return h.includes("ref no") && h.includes("svkk id") && h.includes("policy no");
-}
-
-export function csvCell(value: unknown): string {
-  if (value == null) return "";
-  const s =
-    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-      ? String(value)
-      : value instanceof Date
-        ? value.toISOString()
-        : typeof value === "object" && value !== null && "toString" in value
-          ? String((value as { toString: () => string }).toString())
-          : String(value);
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
 }
 
 export function fmtCsvDate(d: Date | null | undefined): string {
@@ -155,60 +165,9 @@ function formatPolicyUrl(raw: string | null | undefined): string {
   return t.length > 200 ? `${t.slice(0, 197)}…` : t;
 }
 
-type YearPayments = PolicyExportRow["years"][number]["payments"];
-type ChequePayment = YearPayments[number];
-
-function pickChequePayment(payments: YearPayments): ChequePayment | undefined {
-  return (
-    payments.find((p) => p.method === "CHQ" && p.cheque) ??
-    payments.find((p) => p.cheque) ??
-    payments[0]
-  );
-}
-
-function memberField(
-  member: PolicyExportRow["years"][number]["members"][number] | undefined,
-  field:
-    | "name"
-    | "dob"
-    | "relationship"
-    | "gender"
-    | "sumInsured"
-    | "basicPremium"
-    | "cumulativeBonus"
-    | "memberPhone"
-    | "ageAtEntry"
-    | "dateOfJoining",
-): string {
-  if (!member) return "";
-  switch (field) {
-    case "name":
-    case "relationship":
-    case "gender":
-    case "memberPhone":
-      return member[field] ?? "";
-    case "dob":
-    case "dateOfJoining":
-      return fmtCsvDate(member[field]);
-    case "sumInsured":
-    case "basicPremium":
-    case "cumulativeBonus":
-      return fmtCsvDecimal(member[field]);
-    case "ageAtEntry":
-      return member.ageAtEntry != null ? String(member.ageAtEntry) : "";
-    default:
-      return "";
-  }
-}
-
 function cdAccountStatusLabel(used: boolean | null | undefined): string {
   if (used == null) return "";
   return used ? "Yes" : "No";
-}
-
-/** Third insured person slot in the legacy spreadsheet (index 2). */
-function pickMember3(year: PolicyExportRow["years"][number] | undefined) {
-  return year?.members[2];
 }
 
 export function buildLegacyPolicyCsvCells(
@@ -217,16 +176,15 @@ export function buildLegacyPolicyCsvCells(
   year: PolicyExportRow["years"][number] | undefined,
   categoryByKey: Map<string, CategoryRef>,
 ): string[] {
-  const chequePay = year ? pickChequePayment(year.payments) : undefined;
-  const cheque = chequePay?.cheque;
-  const member3 = pickMember3(year);
+  const members = year?.members ?? [];
+  const payments = year?.payments ?? [];
   const category = formatCategoryLabel(
     r.category ? { id: "", key: r.category.key, name: r.category.name } : null,
     r.categoryText,
     categoryByKey,
   );
 
-  const byHeader: Record<PolicyCsvHeader, string> = {
+  const byHeader: Record<string, string> = {
     year: r.periodYearText ?? year?.yearLabel ?? "",
     month: r.periodMonthText ?? "",
     grouping: r.policyGrouping ?? "",
@@ -254,19 +212,6 @@ export function buildLegacyPolicyCsvCells(
     "holder cumulative bonus": fmtCsvDecimal(year?.holderCumulativeBonus),
     "holder joining year": year?.holderJoiningYear ?? "",
     "holder basic premium": fmtCsvDecimal(year?.holderBasicPremium),
-    "mode of payment": year?.paymentMode ?? "",
-    policy_cheque_no: cheque?.number ?? "",
-    bank: cheque?.bankName ?? chequePay?.bankName ?? "",
-    account_no: cheque?.accountNo ?? chequePay?.accountNumber ?? "",
-    branch: cheque?.branch ?? chequePay?.branchName ?? "",
-    name_as_per_cheque: cheque?.nameAsPerCheque ?? chequePay?.nameAsPerCheque ?? "",
-    ifsc: cheque?.ifsc ?? chequePay?.ifscCode ?? "",
-    not_over: cheque?.notOver ?? chequePay?.notOver ?? "",
-    cheque_date: fmtCsvDate(cheque?.chequeDate ?? chequePay?.transactionDate),
-    cheque_status: cheque?.status ?? chequePay?.status ?? "",
-    reason_dishonoured: cheque?.reason ?? chequePay?.dishonourReason ?? "",
-    "return charge": fmtCsvDecimal(chequePay?.returnCharges),
-    "other carges": fmtCsvDecimal(chequePay?.otherCharges),
     "Gross premium": fmtCsvDecimal(year?.grossPremium),
     "Tax %": fmtCsvDecimal(year?.taxPercent),
     "Tax amount": fmtCsvDecimal(year?.taxAmount),
@@ -290,16 +235,6 @@ export function buildLegacyPolicyCsvCells(
     "Refund Cheque Amount": fmtCsvDecimal(r.refundChequeAmount),
     "Refund Cheque Number": r.refundChequeNo ?? "",
     "Refund Cheque Date": fmtCsvDate(r.refundChequeDate),
-    "Member 3 Name": memberField(member3, "name"),
-    "Member 3 DOB": memberField(member3, "dob"),
-    "Member 3 Relationship": memberField(member3, "relationship"),
-    "Member 3 Gender": memberField(member3, "gender"),
-    "Member 3 Sum insured": memberField(member3, "sumInsured"),
-    "Member 3 Basic premium": memberField(member3, "basicPremium"),
-    "Member 3 Cumulative bonus": memberField(member3, "cumulativeBonus"),
-    "Member 3 Phone": memberField(member3, "memberPhone"),
-    "Member 3 Age at entry": memberField(member3, "ageAtEntry"),
-    member_date_of_joining1: memberField(member3, "dateOfJoining"),
     nominee_name: r.nomineeName ?? "",
     nominee_relation: r.nomineeRelation ?? "",
     "nominee mobile": "",
@@ -326,9 +261,11 @@ export function buildLegacyPolicyCsvCells(
     "Updated at": r.updatedAt.toISOString(),
     "policy url": formatPolicyUrl(r.policyUrl),
     url: r.policyUrl2 ?? "",
+    ...buildAllMemberSlotCells(members),
+    ...buildAllPaymentSlotCells(payments, year?.paymentMode),
   };
 
-  return POLICY_CSV_HEADERS.map((h) => byHeader[h]);
+  return POLICY_CSV_HEADERS.map((h) => byHeader[h] ?? "");
 }
 
 export function buildPolicyCsvHeaderLine(): string {
@@ -336,7 +273,9 @@ export function buildPolicyCsvHeaderLine(): string {
 }
 
 export function buildPolicyCsvSample(): string {
-  return `\uFEFF${buildPolicyCsvHeaderLine()}\r\n`;
+  const demo = buildPolicyCsvSampleDemoRow();
+  const cells = POLICY_CSV_HEADERS.map((h) => demo[h] ?? "");
+  return `\uFEFF${buildPolicyCsvHeaderLine()}\r\n${cells.map(csvCell).join(",")}\r\n`;
 }
 
 export function buildLegacyPoliciesCsv(
@@ -356,26 +295,4 @@ export function buildLegacyPoliciesCsv(
     lines.push(cells.map(csvCell).join(","));
   }
   return `\uFEFF${lines.join("\r\n")}`;
-}
-
-export function rowToHeaderMap(header: string[], row: string[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (let i = 0; i < header.length; i++) {
-    const key = header[i]?.trim() ?? "";
-    if (!key) continue;
-    map.set(key, row[i] ?? "");
-  }
-  return map;
-}
-
-export function getCsvField(map: Map<string, string>, ...names: string[]): string {
-  for (const name of names) {
-    const direct = map.get(name);
-    if (direct !== undefined) return direct.trim();
-    const lower = name.toLowerCase();
-    for (const [k, v] of map) {
-      if (k.trim().toLowerCase() === lower) return v.trim();
-    }
-  }
-  return "";
 }

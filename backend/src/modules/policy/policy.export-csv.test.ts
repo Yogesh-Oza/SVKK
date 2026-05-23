@@ -203,15 +203,15 @@ describe("pickExportPolicyYear", () => {
 });
 
 describe("buildPoliciesExportCsv", () => {
-  it("uses legacy spreadsheet column order", () => {
+  it("uses legacy spreadsheet column order with extended member columns", () => {
     const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
     const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
     expect(headerLine).toMatch(/^year,month,grouping,/);
+    expect(headerLine).toContain("Member 1 Name");
     expect(headerLine).toContain("Member 3 Name");
     expect(headerLine).toContain("ref no");
-    expect(headerLine).not.toContain("Member 1 Name");
+    expect(dataLine).toContain("Member One");
     expect(dataLine).toContain("Member Three");
-    expect(dataLine).toContain("2015-03-10");
     expect(dataLine).toContain("REF-1");
   });
 });

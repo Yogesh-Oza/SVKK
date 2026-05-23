@@ -1,9 +1,23 @@
 import type { Prisma } from "@prisma/client";
-import { Prisma as PrismaNamespace } from "@prisma/client";
+import {
+  ChequeStatus,
+  PayMethod,
+  PaymentStatus,
+  Prisma as PrismaNamespace,
+} from "@prisma/client";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 import { assertPolicyReadable } from "../../services/mis-scope.service.js";
 import { normalizeMobile } from "../../domain/phone.js";
-import { getCsvField, rowToHeaderMap } from "./policy-csv-format.js";
+import {
+  assertUniqueTransactionNumbersInBatch,
+  normalizeTxnNumber,
+} from "./policy-payment.helpers.js";
+import type { PaymentReplaceRow, PolicyMemberReplaceRow } from "./policy.schemas.js";
+import {
+  collectMembersFromCsvMap,
+  collectPaymentsFromCsvMap,
+} from "./policy-csv-slots.js";
+import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
 
 function parseOptionalDate(raw: string): Date | undefined {
   const t = raw.trim();
@@ -40,6 +54,112 @@ function parseCdAccount(raw: string): boolean | undefined {
   return undefined;
 }
 
+async function replaceYearMembersFromCsv(
+  tx: Prisma.TransactionClient,
+  policyYearId: string,
+  members: PolicyMemberReplaceRow[],
+): Promise<void> {
+  await tx.member.updateMany({
+    where: { policyYearId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  if (!members.length) return;
+  await tx.member.createMany({
+    data: members.map((m) => ({
+      policyYearId,
+      name: m.name,
+      dob: m.dob,
+      relationship: m.relationship,
+      gender: m.gender,
+      riderAmount: m.riderAmount ?? 0,
+      sumInsured: m.sumInsured ?? undefined,
+      cumulativeBonus: m.cumulativeBonus ?? undefined,
+      dateOfJoining: m.dateOfJoining ?? undefined,
+      memberPhone: m.memberPhone ?? undefined,
+      addOnsAmount: m.addOnsAmount ?? undefined,
+      basicPremium: m.basicPremium ?? undefined,
+      ageAtEntry: m.ageAtEntry ?? undefined,
+    })),
+  });
+}
+
+async function insertPaymentsForYearCsv(
+  tx: Prisma.TransactionClient,
+  policyYearId: string,
+  payments: PaymentReplaceRow[],
+): Promise<void> {
+  assertUniqueTransactionNumbersInBatch(payments);
+  for (const paymentRow of payments) {
+    const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);
+    const mappedStatus =
+      paymentRow.status === ChequeStatus.DISHONOURED
+        ? PaymentStatus.FAILED
+        : paymentRow.status === ChequeStatus.CLEARED
+          ? PaymentStatus.COMPLETED
+          : PaymentStatus.PENDING;
+    let chequeId: string | undefined;
+    if (paymentRow.method === PayMethod.CHQ && paymentRow.bankName && txnNumber) {
+      const ch = await tx.cheque.create({
+        data: {
+          number: txnNumber,
+          bankName: paymentRow.bankName,
+          ifsc: paymentRow.ifscCode ?? undefined,
+          status:
+            paymentRow.status === ChequeStatus.DISHONOURED
+              ? ChequeStatus.DISHONOURED
+              : paymentRow.status === ChequeStatus.CLEARED
+                ? ChequeStatus.CLEARED
+                : ChequeStatus.PENDING,
+          reason:
+            paymentRow.status === ChequeStatus.DISHONOURED
+              ? paymentRow.dishonourReason ?? "Dishonoured"
+              : undefined,
+          accountNo: paymentRow.accountNumber ?? undefined,
+          branch: paymentRow.branchName ?? undefined,
+          nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+          notOver: paymentRow.notOver ?? undefined,
+          chequeDate: paymentRow.transactionDate ?? undefined,
+        },
+      });
+      chequeId = ch.id;
+    }
+    await tx.payment.create({
+      data: {
+        policyYearId,
+        amount: paymentRow.amount,
+        method: paymentRow.method,
+        status: mappedStatus,
+        chequeId: chequeId ?? null,
+        transactionNumber: txnNumber,
+        transactionDate: paymentRow.transactionDate ?? undefined,
+        bankName: paymentRow.bankName ?? undefined,
+        branchName: paymentRow.branchName ?? undefined,
+        accountNumber: paymentRow.accountNumber ?? undefined,
+        nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+        ifscCode: paymentRow.ifscCode ?? undefined,
+        notOver: paymentRow.notOver ?? undefined,
+        dishonourReason: paymentRow.dishonourReason ?? undefined,
+        returnCharges: paymentRow.returnCharges ?? undefined,
+        otherCharges: paymentRow.otherCharges ?? undefined,
+      },
+    });
+  }
+}
+
+async function replaceYearPaymentsFromCsv(
+  tx: Prisma.TransactionClient,
+  policyYearId: string,
+  payments: PaymentReplaceRow[],
+): Promise<void> {
+  await tx.payment.updateMany({
+    where: { policyYearId, deletedAt: null },
+    data: { deletedAt: new Date(), transactionNumber: null },
+  });
+  if (payments.length > 0) {
+    await insertPaymentsForYearCsv(tx, policyYearId, payments);
+  }
+}
+
 export async function applyLegacyPolicyCsvRow(
   tx: Prisma.TransactionClient,
   header: string[],
@@ -69,7 +189,14 @@ export async function applyLegacyPolicyCsvRow(
       years: {
         where: { deletedAt: null },
         orderBy: { yearLabel: "desc" },
-        include: { members: { where: { deletedAt: null }, orderBy: { name: "asc" } } },
+        include: {
+          members: { where: { deletedAt: null }, orderBy: { name: "asc" } },
+          payments: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" },
+            include: { cheque: true },
+          },
+        },
       },
     },
   });
@@ -83,7 +210,7 @@ export async function applyLegacyPolicyCsvRow(
   assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
 
   const yearLabel = getCsvField(map, "year") || policy.years[0]?.yearLabel;
-  let year = yearLabel
+  const year = yearLabel
     ? policy.years.find((y) => y.yearLabel === yearLabel) ?? policy.years[0]
     : policy.years[0];
 
@@ -240,28 +367,14 @@ export async function applyLegacyPolicyCsvRow(
       await tx.policyYear.update({ where: { id: year.id }, data: yearUpdate });
     }
 
-    const member3Name = getCsvField(map, "Member 3 Name");
-    if (member3Name) {
-      const existing = year.members[2];
-      const memberData = {
-        name: member3Name,
-        dob: parseOptionalDate(getCsvField(map, "Member 3 DOB")) ?? new Date("1970-01-01"),
-        relationship: getCsvField(map, "Member 3 Relationship") || "Other",
-        gender: getCsvField(map, "Member 3 Gender") || "Other",
-        sumInsured: parseOptionalDecimal(getCsvField(map, "Member 3 Sum insured")),
-        basicPremium: parseOptionalDecimal(getCsvField(map, "Member 3 Basic premium")),
-        cumulativeBonus: parseOptionalDecimal(getCsvField(map, "Member 3 Cumulative bonus")),
-        memberPhone: getCsvField(map, "Member 3 Phone") || null,
-        ageAtEntry: parseOptionalInt(getCsvField(map, "Member 3 Age at entry")),
-        dateOfJoining: parseOptionalDate(getCsvField(map, "member_date_of_joining1")),
-      };
-      if (existing) {
-        await tx.member.update({ where: { id: existing.id }, data: memberData });
-      } else {
-        await tx.member.create({
-          data: { policyYearId: year.id, riderAmount: new PrismaNamespace.Decimal(0), ...memberData },
-        });
-      }
+    const membersFromCsv = collectMembersFromCsvMap(map);
+    if (membersFromCsv.length > 0) {
+      await replaceYearMembersFromCsv(tx, year.id, membersFromCsv);
+    }
+
+    const paymentsFromCsv = collectPaymentsFromCsvMap(map);
+    if (paymentsFromCsv.length > 0) {
+      await replaceYearPaymentsFromCsv(tx, year.id, paymentsFromCsv);
     }
   }
 }
@@ -274,4 +387,6 @@ export function validateLegacyPolicyCsvRow(header: string[], row: string[]): voi
   if (!refNo && !svkkId && !policyNo) {
     throw new Error("ref no, SVKK ID, or policy no required");
   }
+  collectMembersFromCsvMap(map);
+  collectPaymentsFromCsvMap(map);
 }
