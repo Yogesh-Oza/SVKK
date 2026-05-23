@@ -95,6 +95,29 @@ export function resolveNotificationLinks(
   const policyDocumentUrl = extractPolicyDocumentUrl(policy) ?? "";
   const appPolicyUrl = buildPolicyAppPageUrl(env, policy.id);
   const staffLinkUrl =
-    policyDocumentUrl && isHttpUrl(policyDocumentUrl) ? policyDocumentUrl : appPolicyUrl;
+    policyDocumentUrl && isHttpUrl(policyDocumentUrl) ? policyDocumentUrl : `/policies/${policy.id}`;
   return { policyDocumentUrl, policyDocumentUrls, staffLinkUrl, appPolicyUrl };
+}
+
+/** Rewrite stored app URLs to a relative path so clients never open stale localhost hosts. */
+export function normalizeNotificationLinkUrl(
+  linkUrl: string | null | undefined,
+  policyId: string | null | undefined,
+): string | null {
+  const link = linkUrl?.trim() ?? "";
+  const pid = policyId?.trim() ?? "";
+  if (!link) {
+    return pid ? `/policies/${pid}` : null;
+  }
+  if (link.startsWith("/")) return link;
+  try {
+    const u = new URL(link);
+    if (/\/policies\/[^/]+$/.test(u.pathname)) {
+      const fromPath = u.pathname.match(/\/policies\/([^/]+)$/)?.[1];
+      return `/policies/${fromPath ?? pid}`;
+    }
+  } catch {
+    if (link.includes("/policies/") && pid) return `/policies/${pid}`;
+  }
+  return link;
 }

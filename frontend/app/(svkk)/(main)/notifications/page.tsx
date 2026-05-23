@@ -3,9 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { svkkJson } from "@/lib/svkk/api";
+import { resolveNotificationNavigation } from "@/lib/svkk/notification-navigation";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { Bell, CheckCheck, ExternalLink } from "lucide-react";
+import { Bell, CheckCheck, ExternalLink, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -22,30 +23,48 @@ type NotificationItem = {
   createdAt: string;
 };
 
+const PAGE_SIZE = 25;
+
 export default function SvkkNotificationsPage() {
   const { user } = useSvkkAuth();
   const router = useRouter();
   const canSee = user ? hasPermission(user.permissions, "notifications:read") : false;
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const fetchPage = useCallback(async (cursor?: string, append = false) => {
+    const qs = new URLSearchParams({ limit: String(PAGE_SIZE) });
+    if (cursor) qs.set("cursor", cursor);
+    const data = await svkkJson<{
+      notifications: NotificationItem[];
+      unreadCount: number;
+      totalCount: number;
+      nextCursor?: string;
+    }>(`/notifications?${qs.toString()}`);
+    setItems((prev) => (append ? [...prev, ...(data.notifications ?? [])] : data.notifications ?? []));
+    setUnreadCount(data.unreadCount ?? 0);
+    setTotalCount(data.totalCount ?? 0);
+    setNextCursor(data.nextCursor);
+  }, []);
 
   const load = useCallback(async () => {
     if (!canSee) return;
     setLoading(true);
     try {
-      const data = await svkkJson<{ notifications: NotificationItem[]; unreadCount: number }>(
-        "/notifications?limit=100",
-      );
-      setItems(data.notifications ?? []);
-      setUnreadCount(data.unreadCount ?? 0);
+      await fetchPage();
     } catch {
       setItems([]);
       setUnreadCount(0);
+      setTotalCount(0);
+      setNextCursor(undefined);
     } finally {
       setLoading(false);
     }
-  }, [canSee]);
+  }, [canSee, fetchPage]);
 
   useEffect(() => {
     void load();
@@ -63,12 +82,39 @@ export default function SvkkNotificationsPage() {
     setUnreadCount(0);
   }
 
+  async function deleteAll() {
+    if (
+      !window.confirm(
+        `Delete all ${totalCount} notifications? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    await svkkJson("/notifications/delete-all", { method: "POST" });
+    setItems([]);
+    setUnreadCount(0);
+    setTotalCount(0);
+    setNextCursor(undefined);
+  }
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchPage(nextCursor, true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   function openNotification(n: NotificationItem) {
     void markRead(n.id);
-    if (n.linkUrl?.startsWith("http")) {
-      window.open(n.linkUrl, "_blank", "noopener,noreferrer");
-    } else if (n.policyId) {
-      router.push(`/policies/${n.policyId}`);
+    const nav = resolveNotificationNavigation({ linkUrl: n.linkUrl, policyId: n.policyId });
+    if (!nav) return;
+    if (nav.kind === "external") {
+      window.open(nav.url, "_blank", "noopener,noreferrer");
+    } else {
+      router.push(nav.path);
     }
   }
 
@@ -86,12 +132,32 @@ export default function SvkkNotificationsPage() {
             templates from Email templates (admin).
           </p>
         </div>
-        {unreadCount > 0 ? (
-          <Button type="button" variant="outline" size="sm" className="cursor-pointer" onClick={() => void markAllRead()}>
-            <CheckCheck className="mr-2 size-4" />
-            Mark all read ({unreadCount})
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {unreadCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => void markAllRead()}
+            >
+              <CheckCheck className="mr-2 size-4" />
+              Mark all read ({unreadCount})
+            </Button>
+          ) : null}
+          {totalCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => void deleteAll()}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete all
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <Card>
@@ -100,7 +166,14 @@ export default function SvkkNotificationsPage() {
             <Bell className="size-5" />
             All notifications
           </CardTitle>
-          <CardDescription>Click a row to open the policy or document link.</CardDescription>
+          <CardDescription>
+            Click a row to open the policy in SVKK or an external document link.{" "}
+            {!loading && totalCount > 0 ? (
+              <span>
+                Showing {items.length} of {totalCount}
+              </span>
+            ) : null}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -108,34 +181,56 @@ export default function SvkkNotificationsPage() {
           ) : items.length === 0 ? (
             <p className="text-muted-foreground py-8 text-center text-sm">No notifications yet.</p>
           ) : (
-            <ul className="divide-y">
-              {items.map((n) => (
-                <li key={n.id}>
-                  <button
+            <>
+              <ul className="divide-y">
+                {items.map((n) => (
+                  <li key={n.id}>
+                    <button
+                      type="button"
+                      className="hover:bg-muted/50 flex w-full gap-3 rounded-lg px-2 py-3 text-left transition-colors cursor-pointer"
+                      onClick={() => openNotification(n)}
+                    >
+                      {!n.isRead ? (
+                        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                      ) : (
+                        <span className="mt-2 h-2 w-2 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{n.title}</p>
+                        <p className="text-muted-foreground text-sm">{n.body}</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          {new Date(n.createdAt).toLocaleString("en-IN")}
+                          {n.emailSent ? " · Email sent" : ""}
+                        </p>
+                      </div>
+                      {(n.policyId || n.linkUrl) && (
+                        <ExternalLink className="text-muted-foreground mt-1 size-4 shrink-0" />
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {nextCursor ? (
+                <div className="mt-4 flex justify-center">
+                  <Button
                     type="button"
-                    className="hover:bg-muted/50 flex w-full gap-3 rounded-lg px-2 py-3 text-left transition-colors cursor-pointer"
-                    onClick={() => openNotification(n)}
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
                   >
-                    {!n.isRead ? (
-                      <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Loading…
+                      </>
                     ) : (
-                      <span className="mt-2 h-2 w-2 shrink-0" />
+                      "Load more"
                     )}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{n.title}</p>
-                      <p className="text-muted-foreground text-sm">{n.body}</p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {new Date(n.createdAt).toLocaleString("en-IN")}
-                        {n.emailSent ? " · Email sent" : ""}
-                      </p>
-                    </div>
-                    {(n.policyId || n.linkUrl) && (
-                      <ExternalLink className="text-muted-foreground mt-1 size-4 shrink-0" />
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </CardContent>
       </Card>

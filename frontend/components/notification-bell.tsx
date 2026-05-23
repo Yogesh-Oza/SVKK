@@ -7,6 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { svkkJson } from "@/lib/svkk/api";
+import { resolveNotificationNavigation } from "@/lib/svkk/notification-navigation";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -84,12 +85,12 @@ export function NotificationBell() {
       }
     }
     setOpen(false);
-    if (n.linkUrl?.startsWith("http")) {
-      window.open(n.linkUrl, "_blank", "noopener,noreferrer");
-    } else if (n.policyId) {
-      router.push(`/policies/${n.policyId}`);
-    } else if (n.linkUrl) {
-      router.push(n.linkUrl);
+    const nav = resolveNotificationNavigation({ linkUrl: n.linkUrl, policyId: n.policyId });
+    if (!nav) return;
+    if (nav.kind === "external") {
+      window.open(nav.url, "_blank", "noopener,noreferrer");
+    } else {
+      router.push(nav.path);
     }
   };
 
