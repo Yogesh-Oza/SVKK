@@ -908,6 +908,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         policyStart: "",
         policyEnd: "",
         refNo: nextReferenceNo,
+        // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
+        basicPremiumPs: "",
+        members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
         twoLakhF: "",
         grossPremium: "",
         taxAmount: "",
