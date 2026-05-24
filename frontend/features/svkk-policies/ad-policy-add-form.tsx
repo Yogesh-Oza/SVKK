@@ -2525,8 +2525,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           <CardHeader>
             <CardTitle>Payment &amp; Bank Details</CardTitle>
             <CardDescription>
-              Mode of Payment, Transaction Number, Bank Name, Branch, Account Number, Name as per Cheque, IFSC Code,
-              Not over, Transaction Date, Transaction Status, Dishonour Reason, Return Charges, Amount Received.
+              Mode of Payment, transaction details, bank fields (Cheque/Online), Transaction Date, Transaction Status,
+              Return Charges, Other Charges, and Amount Received for every payment mode.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -2652,52 +2652,49 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         />
                       </div>
 
+                      <div className="space-y-1">
+                        <Label>Transaction Status</Label>
+                        <DropdownCombobox
+                          value={transaction.transactionStatus}
+                          onChange={(v) =>
+                            void setFieldValue(
+                              `paymentTransactions[${index}].transactionStatus`,
+                              v,
+                            )
+                          }
+                          options={transactionStatusOptions}
+                          placeholder="Transaction Status"
+                          searchPlaceholder="Search status"
+                        />
+                      </div>
+
                       {(transaction.mode === "ONLINE" || transaction.mode === "CHEQUE") ? (
                         <div className="space-y-1">
-                          <Label>Transaction Status</Label>
-                          <DropdownCombobox
-                            value={transaction.transactionStatus}
-                            onChange={(v) =>
-                              void setFieldValue(
-                                `paymentTransactions[${index}].transactionStatus`,
-                                v,
-                              )
-                            }
-                            options={transactionStatusOptions}
-                            placeholder="Transaction Status"
-                            searchPlaceholder="Search status"
+                          <Label>Dishonour Reason</Label>
+                          <Input
+                            name={`paymentTransactions[${index}].dishonourReason`}
+                            value={transaction.dishonourReason}
+                            onChange={handleChange}
                           />
                         </div>
                       ) : null}
 
-                      {(transaction.mode === "ONLINE" || transaction.mode === "CHEQUE") ? (
-                        <>
-                          <div className="space-y-1">
-                            <Label>Dishonour Reason</Label>
-                            <Input
-                              name={`paymentTransactions[${index}].dishonourReason`}
-                              value={transaction.dishonourReason}
-                              onChange={handleChange}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label>Return Charges - (amount)</Label>
-                            <Input
-                              name={`paymentTransactions[${index}].returnCharges`}
-                              value={transaction.returnCharges}
-                              onChange={handleChange}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label>Other Charges</Label>
-                            <Input
-                              name={`paymentTransactions[${index}].otherCharges`}
-                              value={transaction.otherCharges}
-                              onChange={handleChange}
-                            />
-                          </div>
-                        </>
-                      ) : null}
+                      <div className="space-y-1">
+                        <Label>Return Charges - (amount)</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].returnCharges`}
+                          value={transaction.returnCharges}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Other Charges</Label>
+                        <Input
+                          name={`paymentTransactions[${index}].otherCharges`}
+                          value={transaction.otherCharges}
+                          onChange={handleChange}
+                        />
+                      </div>
 
                       <div className="space-y-1">
                         <Label>Amount Received</Label>
