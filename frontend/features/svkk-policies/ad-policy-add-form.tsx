@@ -384,6 +384,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
   const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
+  /** UI-only: set after successful Carry Forward / Renew. */
+  const [carriedForwardNotice, setCarriedForwardNotice] = useState<string | null>(null);
   /** Remounts Policy Type / Month selects after edit hydration (Radix Select stale value fix). */
   const [selectFieldsMountKey, setSelectFieldsMountKey] = useState(0);
   /** Edit form waits until Formik is reset from API detail (avoids empty Select on first paint). */
@@ -714,6 +716,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         const nextValues = policyDetailToAdFormValues(row);
         // Lock auto-calc before setValues so premium fields are not overwritten mid-load.
         setFetchedPolicyForUpdate(row);
+        setCarriedForwardNotice(null);
         setPremiumManual({});
         setAgeManual({});
         await formik.setValues(nextValues);
@@ -969,6 +972,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
       const txnCount = paymentDetails.paymentTransactions.length;
       const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, 1L/2L premium, loan, courier and remarks cleared.${autoIdNotice}`;
+      setCarriedForwardNotice(`${previousYear} → ${shiftedYear}`);
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
         id: loadingToastId,
@@ -1920,7 +1924,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </>
         ) : null}
 
-        <div className="flex flex-wrap gap-2 border-b border-border pb-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           {ADD_SECTIONS.map((section) => (
             <Button
               key={section.id}
@@ -1933,6 +1937,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               {section.label}
             </Button>
           ))}
+          {carriedForwardNotice ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className="text-amber-900 border-amber-200 bg-amber-50 ml-auto flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium"
+                  role="status"
+                  aria-label={`Policy carried forward: ${carriedForwardNotice}`}
+                >
+                  <RefreshCcw className="size-3.5 shrink-0" aria-hidden />
+                  <span>Carried forward ({carriedForwardNotice})</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-xs">
+                Fields were copied from the prior year for renewal. Review each section before saving.
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
 
         {activeSection === "policy_details" ? (
