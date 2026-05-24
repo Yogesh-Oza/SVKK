@@ -869,8 +869,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         formik.values.year?.trim() ||
         undefined;
       const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
-      const preservedTwoLakhF =
-        carriedValues.twoLakhF?.trim() || formik.values.twoLakhF?.trim() || "";
       const shiftedYear = nextYearLabel(carriedValues.year);
       const previousYear = carriedValues.year || "—";
       // Baseline: shift the year token inside the prior Reference No so we never
@@ -895,7 +893,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             : " (reference number year shifted; verify before submitting)";
       }
       const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
-      setPremiumManual(preservedTwoLakhF ? { twoLakhF: true } : {});
+      setPremiumManual({});
       setAgeManual({});
       await formik.setValues({
         ...carriedValues,
@@ -906,7 +904,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         policyStart: "",
         policyEnd: "",
         refNo: nextReferenceNo,
-        twoLakhF: preservedTwoLakhF,
+        twoLakhF: "",
         grossPremium: "",
         taxAmount: "",
         svkkPremiumCalc: "",
@@ -969,7 +967,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       const effectiveGroupForKey = carriedGroupRaw || seededGroup;
       lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
       const txnCount = paymentDetails.paymentTransactions.length;
-      const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, premiums (1L/2L), and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, loan, courier and remarks cleared.${autoIdNotice}`;
+      const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, 1L/2L premium, loan, courier and remarks cleared.${autoIdNotice}`;
       setFetchNotice(summary);
       toast.success(`Carried forward to ${shiftedYear}`, {
         id: loadingToastId,

@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +10,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
+import { PolicyProfileView } from "@/features/svkk-policies/policy-profile-view";
+import type { PolicyDetailViewRow } from "@/features/svkk-policies/policy-detail-view-body";
+import {
+  fetchPolicyYearSiblings,
+  singleRowYearSibling,
+  type PolicyListYearSibling,
+} from "@/features/svkk-policies/policy-year-siblings";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -18,27 +24,18 @@ import {
   canDeletePolicy,
   canUpdatePolicy,
 } from "@/lib/svkk/permissions";
+import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
+import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
+import { resolveReceiptImagesForPrint } from "@/lib/svkk/receipt-image-resolve";
 import {
-  PolicyDetailViewBody,
-  type PolicyDetailViewRow,
-} from "@/features/svkk-policies/policy-detail-view-body";
-import {
-  displayVal,
-  formatViewDateDmy,
-} from "@/features/svkk-policies/policy-detail-view-helpers";
-import {
-  fetchPolicyYearSiblings,
-  singleRowYearSibling,
-  type PolicyListYearSibling,
-} from "@/features/svkk-policies/policy-year-siblings";
-import { yearChipLabel } from "@/features/svkk-policies/policy-year-display";
-import { Pencil } from "lucide-react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+  buildReceiptFilename,
+  downloadReceiptPreviewAsPdf,
+  printReceiptPreview,
+} from "@/lib/svkk/receipt-pdf";
+import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 type PolicyDetail = PolicyDetailViewRow & {
   id: string;
@@ -46,18 +43,19 @@ type PolicyDetail = PolicyDetailViewRow & {
   createdAt?: string | null;
 };
 
-function formatInrRupee(v: unknown): string | null {
-  const s =
-    v == null || v === ""
-      ? ""
-      : typeof v === "object" && v !== null && "toString" in v
-        ? (v as { toString: () => string }).toString()
-        : String(v);
-  const cleaned = s.replace(/,/g, "").trim();
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  const formatted = Number.isFinite(n) ? n.toLocaleString("en-IN") : cleaned;
-  return `₹ ${formatted}`;
+function prioritizeYear(
+  p: PolicyDetailForReceipt,
+  selectedYearLabel?: string,
+): PolicyDetailForReceipt {
+  if (!selectedYearLabel) return p;
+  const idx = p.years.findIndex((y) => y.yearLabel === selectedYearLabel);
+  if (idx <= 0) return p;
+  const picked = p.years[idx];
+  if (!picked) return p;
+  return {
+    ...p,
+    years: [picked, ...p.years.filter((_, i) => i !== idx)],
+  };
 }
 
 async function loadPolicyById(policyId: string): Promise<PolicyDetail> {
@@ -69,6 +67,9 @@ export default function SvkkPolicyDetailPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useSvkkAuth();
+  const receiptImageUrls = useReceiptSettings();
+  const printIframeRef = useRef<HTMLIFrameElement | null>(null);
+
   const id = String(params.id);
   const selectedYearLabel = searchParams.get("year")?.trim() ?? "";
 
@@ -80,6 +81,7 @@ export default function SvkkPolicyDetailPage() {
   const [switchingYear, setSwitchingYear] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [receiptBusy, setReceiptBusy] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
   const perms = user?.permissions ?? [];
@@ -176,6 +178,16 @@ export default function SvkkPolicyDetailPage() {
     [router],
   );
 
+  const buildReceiptHtml = useCallback(
+    async (yearLabel: string) => {
+      if (!row) return null;
+      const payload = prioritizeYear(row as unknown as PolicyDetailForReceipt, yearLabel);
+      const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+      return buildReceiptDocumentHtml(payload, { embedded: true, ...resolved });
+    },
+    [row, receiptImageUrls],
+  );
+
   async function deletePolicy() {
     setDeleteBusy(true);
     try {
@@ -189,6 +201,85 @@ export default function SvkkPolicyDetailPage() {
       setDeleteBusy(false);
     }
   }
+
+  async function mountPrintIframe(html: string): Promise<boolean> {
+    printIframeRef.current?.remove();
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("title", "Receipt Preview Frame");
+    iframe.style.cssText =
+      "position:fixed;left:-99999px;top:0;width:794px;height:1200px;border:0;visibility:hidden;";
+    document.body.appendChild(iframe);
+    printIframeRef.current = iframe;
+
+    await new Promise<void>((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error("Receipt iframe failed to load"));
+      iframe.srcdoc = html;
+    });
+
+    return printReceiptPreview();
+  }
+
+  async function handleDownloadReceipt() {
+    if (!row) return;
+    setReceiptBusy(true);
+    const tId = toast.loading("Preparing PDF…");
+    try {
+      const yearLabel =
+        selectedYearLabel || row.periodYearText?.trim() || row.years[0]?.yearLabel || "";
+      const html = await buildReceiptHtml(yearLabel);
+      if (!html) {
+        toast.error("Could not generate receipt", { id: tId });
+        return;
+      }
+      const filename = buildReceiptFilename([
+        "receipt",
+        row.insuredParty?.svkkPublicId || row.policyNo,
+        yearLabel || row.periodYearText,
+      ]);
+      const ok = await downloadReceiptPreviewAsPdf(filename, html);
+      if (ok) {
+        toast.success("PDF downloaded", { id: tId });
+      } else {
+        toast.error("Could not generate PDF", { id: tId });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "PDF failed", { id: tId });
+    } finally {
+      setReceiptBusy(false);
+    }
+  }
+
+  async function handlePrintReceipt() {
+    if (!row) return;
+    setReceiptBusy(true);
+    const tId = toast.loading("Preparing print…");
+    try {
+      const yearLabel =
+        selectedYearLabel || row.periodYearText?.trim() || row.years[0]?.yearLabel || "";
+      const html = await buildReceiptHtml(yearLabel);
+      if (!html) {
+        toast.error("Could not generate receipt", { id: tId });
+        return;
+      }
+      const ok = await mountPrintIframe(html);
+      if (ok) {
+        toast.dismiss(tId);
+      } else {
+        toast.error("Receipt not ready to print", { id: tId });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Print failed", { id: tId });
+    } finally {
+      setReceiptBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      printIframeRef.current?.remove();
+    };
+  }, []);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -210,119 +301,30 @@ export default function SvkkPolicyDetailPage() {
     ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
     : row.policyType.name;
 
+  const svkkId = row.insuredParty.svkkPublicId.trim();
+  const renewHref = svkkId
+    ? `/policies/new?svkk=${encodeURIComponent(svkkId)}`
+    : "/policies/new";
+
   return (
-    <div className="space-y-6 pb-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">View policy</h1>
-        {canEdit ? (
-          <Button asChild variant="default" size="sm" className="gap-1.5">
-            <Link
-              href={`/policies/${id}/edit?year=${encodeURIComponent(activeYearLabel)}`}
-            >
-              <Pencil className="size-3.5" />
-              Edit policy
-            </Link>
-          </Button>
-        ) : null}
-      </div>
-
-      {yearTabs.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-muted-foreground text-sm font-medium">Select year</p>
-          <div className="flex max-w-md flex-col gap-2">
-            {yearTabs.map((tab) => {
-              const active = tab.policyId === id;
-              const premium = formatInrRupee(tab.vkkPremium);
-              return (
-                <Button
-                  key={tab.policyId}
-                  type="button"
-                  variant={active ? "default" : "outline"}
-                  size="sm"
-                  className={cn(
-                    "h-auto w-full flex-col items-stretch gap-1 px-4 py-3 text-left",
-                    active && "ring-primary/30 ring-2",
-                  )}
-                  onClick={() => selectYear(tab)}
-                >
-                  <span className="text-base font-bold tabular-nums">{yearChipLabel(tab)}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-normal",
-                      active ? "text-primary-foreground/90" : "text-muted-foreground",
-                    )}
-                  >
-                    {[tab.referenceNo, premium].filter(Boolean).join(" · ") || "Open year record"}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-          <p className="text-muted-foreground text-xs">
-            Each year is a separate policy record for this SVKK ID. Choosing a year loads that
-            year&apos;s policy number, reference, premium, and members below.
-          </p>
-          <div className="border-primary/25 bg-primary/5 ring-primary/15 mt-3 max-w-3xl rounded-lg border p-4 shadow-sm ring-1">
-            <p className="text-foreground mb-3 text-sm font-semibold">This year&apos;s record</p>
-            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                  Policy generated date
-                </dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
-                  {displayVal(row.createdAt ? formatViewDateDmy(row.createdAt) : "")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">SVKK ID</dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold">
-                  {displayVal(row.insuredParty.svkkPublicId)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                  Reference no.
-                </dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
-                  {displayVal(row.referenceNo)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Month</dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold">
-                  {displayVal(row.periodMonthText)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Year</dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
-                  {displayVal(row.periodYearText ?? activeYearLabel)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                  Policy no.
-                </dt>
-                <dd className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
-                  {displayVal(row.policyNo)}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      ) : null}
-
-      <Card className={cn("overflow-hidden", switchingYear && "pointer-events-none opacity-60")}>
-        <CardContent className="p-4 sm:p-6">
-          <PolicyDetailViewBody
-            row={row}
-            y={y}
-            activeYearLabel={activeYearLabel}
-            policyTypeLabel={policyTypeLabel}
-          />
-
-        </CardContent>
-      </Card>
+    <div className="pb-10">
+      <PolicyProfileView
+        row={row}
+        y={y}
+        activeYearLabel={activeYearLabel}
+        policyTypeLabel={policyTypeLabel}
+        createdAt={row.createdAt}
+        yearTabs={yearTabs}
+        currentPolicyId={id}
+        onSelectYear={selectYear}
+        canEdit={canEdit}
+        editHref={`/policies/${id}/edit?year=${encodeURIComponent(activeYearLabel)}`}
+        renewHref={renewHref}
+        onDownload={() => void handleDownloadReceipt()}
+        onPrint={() => void handlePrintReceipt()}
+        receiptBusy={receiptBusy}
+        switchingYear={switchingYear}
+      />
 
       {canDel ? (
         <>
@@ -330,6 +332,7 @@ export default function SvkkPolicyDetailPage() {
             type="button"
             variant="destructive"
             size="sm"
+            className="mt-6"
             disabled={deleteBusy}
             onClick={() => setConfirmDeleteOpen(true)}
           >
