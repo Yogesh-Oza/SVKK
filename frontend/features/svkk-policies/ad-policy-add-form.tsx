@@ -893,7 +893,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             : " (reference number year shifted; verify before submitting)";
       }
       const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
-      setPremiumManual({});
+      // Keep Net Premium blank for manual entry; other premium fields may still auto-calc.
+      setPremiumManual({ coPremium: true, netPremiumCalc: true });
       setAgeManual({});
       await formik.setValues({
         ...carriedValues,
