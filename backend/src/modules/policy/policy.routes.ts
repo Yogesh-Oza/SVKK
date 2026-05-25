@@ -9,6 +9,7 @@ import {
   createPolicyWithYear,
   allocateNextPolicyPublicId,
   allocateNextPolicyReferenceNo,
+  policyYearPaymentsInclude,
   updatePolicySections,
   softDeletePolicy,
   type InsuredPartySectionPatch,
@@ -526,7 +527,7 @@ export function createPolicyRouter(env: Env) {
             include: {
               members: { where: { deletedAt: null } },
               policyChart: true,
-              payments: { where: { deletedAt: null }, include: { cheque: true } },
+              payments: policyYearPaymentsInclude,
               receipts: {
                 orderBy: { createdAt: "asc" },
                 take: 1,

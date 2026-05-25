@@ -40,6 +40,21 @@ export function clonePaymentDetailsForCarryForward(
   return { ...flat, paymentTransactions };
 }
 
+type PaymentWithCreatedAt = { createdAt?: string | Date | null; id?: string | null };
+
+/** Newest first for display; index 1 = latest payment. */
+export function sortPaymentRowsNewestFirst<T extends PaymentWithCreatedAt>(
+  payments: T[],
+): T[] {
+  return [...payments].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (ta !== tb) return tb - ta;
+    if (a.id && b.id) return b.id.localeCompare(a.id);
+    return 0;
+  });
+}
+
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
   if (!t) return undefined;
@@ -58,9 +73,11 @@ export function mapTransactionModeToPayMethod(
 }
 
 export function mapPaymentTransactionsToApi(values: AdPolicyFormValues) {
-  return values.paymentTransactions
-    .filter((row) => parseNum(row.amountReceived) != null)
-    .map((row) => ({
+  const rows = values.paymentTransactions.filter(
+    (row) => parseNum(row.amountReceived) != null,
+  );
+  // Form shows newest first; persist oldest-first so createdAt desc matches display on reload.
+  return [...rows].reverse().map((row) => ({
       amount: parseNum(row.amountReceived)!,
       method: mapTransactionModeToPayMethod(row.mode),
       status: row.transactionStatus || null,

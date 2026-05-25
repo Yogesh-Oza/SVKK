@@ -1518,7 +1518,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const addPaymentTransaction = () => {
     void formik.setValues({
       ...formik.values,
-      paymentTransactions: [...formik.values.paymentTransactions, getEmptyPaymentTransaction()],
+      paymentTransactions: [getEmptyPaymentTransaction(), ...formik.values.paymentTransactions],
     });
   };
 

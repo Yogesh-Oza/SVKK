@@ -194,6 +194,82 @@ describe("policyDetailToAdFormValues", () => {
     });
   });
 
+  it("sorts payment rows by createdAt descending when API returns mixed order", () => {
+    const values = policyDetailToAdFormValues({
+      id: "p-order",
+      updatedAt: "2026-01-01",
+      policyNo: "PN-1",
+      referenceNo: null,
+      village: "V",
+      area: null,
+      remarks: null,
+      adProductVariant: null,
+      insuranceCompany: null,
+      tpa: null,
+      categoryText: null,
+      holderRelationship: null,
+      holderGender: null,
+      holderAge: null,
+      personsInsuredCount: 1,
+      policyGrouping: null,
+      periodYearText: "2026-27",
+      periodMonthText: null,
+      insuredParty: {
+        svkkPublicId: "x",
+        name: "H",
+        customerId: null,
+        mobile: null,
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+      },
+      policyType: { id: "t1", name: "AD", key: "ad" },
+      category: null,
+      years: [
+        {
+          yearLabel: "2026-27",
+          sumInsured: "100000",
+          vkkPremium: "1",
+          members: [],
+          payments: [
+            {
+              id: "pay-3",
+              createdAt: "2026-05-29T00:00:00.000Z",
+              method: "UPI",
+              amount: "5000",
+              transactionNumber: "UPI-3",
+              accountNumber: "5000",
+              cheque: null,
+            },
+            {
+              id: "pay-2",
+              createdAt: "2026-05-26T00:00:00.000Z",
+              method: "CASH",
+              amount: "2000",
+              cheque: null,
+            },
+            {
+              id: "pay-1",
+              createdAt: "2026-05-25T00:00:00.000Z",
+              method: "CHQ",
+              amount: "1000",
+              transactionNumber: "CHQ-1",
+              cheque: { number: "CHQ-1", bankName: "SBI", status: "PENDING" },
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof policyDetailToAdFormValues>[0]);
+
+    expect(values.paymentTransactions).toHaveLength(3);
+    expect(values.paymentTransactions.map((t) => t.mode)).toEqual([
+      "UPI",
+      "CASH",
+      "CHEQUE",
+    ]);
+  });
+
   it("maps NEFT payment method back to Online in the form", () => {
     const values = policyDetailToAdFormValues({
       id: "p4",

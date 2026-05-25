@@ -4,6 +4,7 @@ import {
   clonePaymentDetailsForCarryForward,
   mapPaymentTransactionsToApi,
   mapTransactionModeToPayMethod,
+  sortPaymentRowsNewestFirst,
 } from "./ad-policy-payments";
 
 describe("clonePaymentDetailsForCarryForward", () => {
@@ -95,7 +96,15 @@ describe("mapPaymentTransactionsToApi", () => {
 
     const api = mapPaymentTransactionsToApi(values);
     expect(api).toHaveLength(2);
+    // Form is newest-first; API persists oldest-first for createdAt ordering.
     expect(api[0]).toMatchObject({
+      method: "UPI",
+      amount: 2000,
+      accountNumber: "9876543210",
+      returnCharges: null,
+      otherCharges: 25,
+    });
+    expect(api[1]).toMatchObject({
       method: "CHQ",
       amount: 8000,
       transactionNumber: "CHQ-100",
@@ -103,13 +112,6 @@ describe("mapPaymentTransactionsToApi", () => {
       status: "CLEARED",
       returnCharges: 150,
       otherCharges: 50,
-    });
-    expect(api[1]).toMatchObject({
-      method: "UPI",
-      amount: 2000,
-      accountNumber: "9876543210",
-      returnCharges: null,
-      otherCharges: 25,
     });
   });
 
@@ -136,5 +138,16 @@ describe("mapPaymentTransactionsToApi", () => {
       accountNumber: "1234567890",
       status: "DISHONOURED",
     });
+  });
+});
+
+describe("sortPaymentRowsNewestFirst", () => {
+  it("orders newest payment first regardless of API array order", () => {
+    const sorted = sortPaymentRowsNewestFirst([
+      { id: "b", createdAt: "2026-05-29T00:00:00.000Z", method: "UPI" },
+      { id: "a", createdAt: "2026-05-25T00:00:00.000Z", method: "CHQ" },
+      { id: "c", createdAt: "2026-05-26T00:00:00.000Z", method: "CASH" },
+    ]);
+    expect(sorted.map((p) => p.method)).toEqual(["UPI", "CASH", "CHQ"]);
   });
 });

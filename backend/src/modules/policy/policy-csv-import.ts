@@ -11,6 +11,7 @@ import { normalizeMobile } from "../../domain/phone.js";
 import {
   assertUniqueTransactionNumbersInBatch,
   normalizeTxnNumber,
+  prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
 import type { PaymentReplaceRow, PolicyMemberReplaceRow } from "./policy.schemas.js";
 import {
@@ -151,10 +152,7 @@ async function replaceYearPaymentsFromCsv(
   policyYearId: string,
   payments: PaymentReplaceRow[],
 ): Promise<void> {
-  await tx.payment.updateMany({
-    where: { policyYearId, deletedAt: null },
-    data: { deletedAt: new Date(), transactionNumber: null },
-  });
+  await prepareYearPaymentReplace(tx, policyYearId);
   if (payments.length > 0) {
     await insertPaymentsForYearCsv(tx, policyYearId, payments);
   }

@@ -1,4 +1,4 @@
-import type { InsuredParty, PolicyChart, Prisma, AdProductVariant } from "@prisma/client";
+import type { InsuredParty, PolicyChart, AdProductVariant } from "@prisma/client";
 import {
   CounterType,
   ChartMode,
@@ -6,6 +6,7 @@ import {
   ChequeStatus,
   PayMethod,
   PaymentStatus,
+  Prisma,
 } from "@prisma/client";
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -28,11 +29,19 @@ import {
 import {
   assertUniqueTransactionNumbersInBatch,
   normalizeTxnNumber,
+  prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
 type PolicyDbClient = Prisma.TransactionClient | typeof prisma;
+
+/** Newest payment first — Transaction 1 on profile = latest entry. */
+export const policyYearPaymentsInclude = {
+  where: { deletedAt: null },
+  orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+  include: { cheque: true },
+} satisfies Prisma.PaymentFindManyArgs;
 
 const policyDetailInclude = {
   insuredParty: true,
@@ -43,7 +52,7 @@ const policyDetailInclude = {
     orderBy: { yearLabel: "desc" as const },
     include: {
       members: { where: { deletedAt: null } },
-      payments: { where: { deletedAt: null }, include: { cheque: true } },
+      payments: policyYearPaymentsInclude,
     },
   },
 } satisfies Prisma.PolicyInclude;
@@ -408,7 +417,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         orderBy: { yearLabel: "desc" },
         include: {
           members: { where: { deletedAt: null } },
-          payments: { where: { deletedAt: null }, include: { cheque: true } },
+          payments: policyYearPaymentsInclude,
           receipts: { orderBy: { createdAt: "asc" }, take: 1 },
         },
       },
@@ -694,26 +703,41 @@ async function insertPaymentsForYear(
       });
       chequeId = ch.id;
     }
-    await tx.payment.create({
-      data: {
-        policyYearId,
-        amount: paymentRow.amount,
-        method: paymentRow.method,
-        status: mappedStatus,
-        chequeId: chequeId ?? null,
-        transactionNumber: txnNumber,
-        transactionDate: paymentRow.transactionDate ?? undefined,
-        bankName: paymentRow.bankName ?? undefined,
-        branchName: paymentRow.branchName ?? undefined,
-        accountNumber: paymentRow.accountNumber ?? undefined,
-        nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
-        ifscCode: paymentRow.ifscCode ?? undefined,
-        notOver: paymentRow.notOver ?? undefined,
-        dishonourReason: paymentRow.dishonourReason ?? undefined,
-        returnCharges: paymentRow.returnCharges ?? undefined,
-        otherCharges: paymentRow.otherCharges ?? undefined,
-      },
-    });
+    try {
+      await tx.payment.create({
+        data: {
+          policyYearId,
+          amount: paymentRow.amount,
+          method: paymentRow.method,
+          status: mappedStatus,
+          chequeId: chequeId ?? null,
+          transactionNumber: txnNumber,
+          transactionDate: paymentRow.transactionDate ?? undefined,
+          bankName: paymentRow.bankName ?? undefined,
+          branchName: paymentRow.branchName ?? undefined,
+          accountNumber: paymentRow.accountNumber ?? undefined,
+          nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+          ifscCode: paymentRow.ifscCode ?? undefined,
+          notOver: paymentRow.notOver ?? undefined,
+          dishonourReason: paymentRow.dishonourReason ?? undefined,
+          returnCharges: paymentRow.returnCharges ?? undefined,
+          otherCharges: paymentRow.otherCharges ?? undefined,
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002" &&
+        txnNumber
+      ) {
+        throw new AppError(
+          "VALIDATION",
+          `Transaction/cheque number "${txnNumber}" is already used on another policy. Use a unique number.`,
+          400,
+        );
+      }
+      throw err;
+    }
   }
 }
 
@@ -729,11 +753,7 @@ async function replaceYearPayments(
   if (!yearRow || yearRow.deletedAt) {
     throw new AppError("YEAR_NOT_FOUND", "Policy year not found for label", 400);
   }
-  // Clear transactionNumber so soft-deleted rows do not block re-insert (global unique index).
-  await tx.payment.updateMany({
-    where: { policyYearId: yearRow.id, deletedAt: null },
-    data: { deletedAt: new Date(), transactionNumber: null },
-  });
+  await prepareYearPaymentReplace(tx, yearRow.id);
   if (payments.length > 0) {
     await insertPaymentsForYear(tx, yearRow.id, payments);
   }

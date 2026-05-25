@@ -1,3 +1,5 @@
+import { sortPaymentRowsNewestFirst } from "./ad-policy-payments";
+
 /** Cheque row linked from a payment (GET /policies/:id). */
 export type PolicyChequeDetail = {
   number: string;
@@ -14,6 +16,8 @@ export type PolicyChequeDetail = {
 
 /** Payment row with optional cheque and inline bank fields. */
 export type PolicyPaymentBankSource = {
+  id?: string | null;
+  createdAt?: string | Date | null;
   method?: string | null;
   amount?: unknown;
   transactionNumber?: string | null;
@@ -206,7 +210,7 @@ export function resolvePolicyPaymentDisplays(
   year: PolicyYearBankSource | undefined,
   formatAmount: (v: unknown) => string = (v) => str(v),
 ): PolicyPaymentDisplayRow[] {
-  const payments = year?.payments?.filter(Boolean) ?? [];
+  const payments = sortPaymentRowsNewestFirst(year?.payments?.filter(Boolean) ?? []);
   if (payments.length > 0) {
     return payments.map((pay, i) => resolveOnePayment(pay, i + 1, formatAmount));
   }

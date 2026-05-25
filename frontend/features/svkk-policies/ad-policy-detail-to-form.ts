@@ -5,6 +5,7 @@ import type {
   AdPolicyPaymentTransactionForm,
 } from "./ad-policy-form-values";
 import { getAdPolicyInitialValues } from "./ad-policy-form-values";
+import { sortPaymentRowsNewestFirst } from "./ad-policy-payments";
 import {
   canonicalMonthName,
   POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER,
@@ -149,6 +150,8 @@ export type SvkkPolicyDetailForForm = {
     bankAccountLast4?: string | null;
     paymentMode?: string | null;
     payments?: Array<{
+      id?: string | null;
+      createdAt?: string | null;
       method: string;
       amount: Decimalish;
       transactionNumber?: string | null;
@@ -480,7 +483,7 @@ export function policyDetailToAdFormValues(
   }
 
   const paymentTransactions: AdPolicyFormValues["paymentTransactions"] = y.payments?.length
-    ? y.payments.map((p) => paymentRowFromApi(p))
+    ? sortPaymentRowsNewestFirst(y.payments).map((p) => paymentRowFromApi(p))
     : legacyPaymentTransactionsFromYear(y, {
         paymentMode,
         onlineTransactionRef,

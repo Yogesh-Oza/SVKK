@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import type { PaymentReplaceRow } from "./policy.schemas.js";
 
@@ -25,4 +26,27 @@ export function assertUniqueTransactionNumbersInBatch(
     }
     seen.add(tn);
   }
+}
+
+/**
+ * Soft-delete active payments for a year and clear transaction numbers on all deleted
+ * rows for that year. Required because `transactionNumber` is globally unique and older
+ * soft-deleted rows may still hold numbers from prior saves.
+ */
+export async function prepareYearPaymentReplace(
+  tx: Prisma.TransactionClient,
+  policyYearId: string,
+): Promise<void> {
+  await tx.payment.updateMany({
+    where: { policyYearId, deletedAt: null },
+    data: { deletedAt: new Date(), transactionNumber: null },
+  });
+  await tx.payment.updateMany({
+    where: {
+      policyYearId,
+      deletedAt: { not: null },
+      transactionNumber: { not: null },
+    },
+    data: { transactionNumber: null },
+  });
 }
