@@ -193,4 +193,68 @@ describe("policyDetailToAdFormValues", () => {
       transactionStatus: "PENDING",
     });
   });
+
+  it("maps NEFT payment method back to Online in the form", () => {
+    const values = policyDetailToAdFormValues({
+      id: "p4",
+      updatedAt: "2026-01-01",
+      policyNo: "PN-1",
+      referenceNo: null,
+      village: "V",
+      area: null,
+      remarks: null,
+      adProductVariant: null,
+      insuranceCompany: null,
+      tpa: null,
+      categoryText: null,
+      holderRelationship: null,
+      holderGender: null,
+      holderAge: null,
+      personsInsuredCount: 1,
+      policyGrouping: null,
+      periodYearText: "2026-27",
+      periodMonthText: null,
+      insuredParty: {
+        svkkPublicId: "x",
+        name: "H",
+        customerId: null,
+        mobile: null,
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+      },
+      policyType: { id: "t1", name: "AD", key: "ad" },
+      category: null,
+      years: [
+        {
+          yearLabel: "2026-27",
+          sumInsured: "100000",
+          vkkPremium: "1",
+          members: [],
+          payments: [
+            {
+              method: "NEFT",
+              amount: "4000",
+              transactionNumber: "test 2",
+              accountNumber: "1234567890",
+              bankName: "test 2",
+              status: "FAILED",
+              dishonourReason: "test 2",
+              cheque: null,
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof policyDetailToAdFormValues>[0]);
+
+    expect(values.paymentTransactions[0]).toMatchObject({
+      mode: "ONLINE",
+      transactionNumber: "test 2",
+      accountNumber: "1234567890",
+      amountReceived: "4000",
+      transactionStatus: "DISHONOURED",
+      dishonourReason: "test 2",
+    });
+  });
 });

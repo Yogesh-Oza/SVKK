@@ -27,6 +27,26 @@ describe("resolvePolicyPaymentDisplays", () => {
     expect(rows[0].fields.some((f) => f.label === "Amount Received" && f.value === "8000")).toBe(true);
   });
 
+  it("shows Online label for NEFT payments", () => {
+    const rows = resolvePolicyPaymentDisplays({
+      payments: [
+        {
+          method: "NEFT",
+          amount: 4000,
+          transactionNumber: "NEFT-1",
+          accountNumber: "1234567890",
+          bankName: "HDFC",
+          transactionDate: "2026-05-27T00:00:00.000Z",
+          status: "FAILED",
+          dishonourReason: "test",
+        },
+      ],
+    });
+    expect(rows[0].modeLabel).toBe("Online");
+    expect(rows[0].fields.some((f) => f.label === "Account no" && f.value === "1234567890")).toBe(true);
+    expect(rows[0].fields.some((f) => f.label === "Mobile no")).toBe(false);
+  });
+
   it("shows UPI fields for UPI payments", () => {
     const rows = resolvePolicyPaymentDisplays({
       payments: [

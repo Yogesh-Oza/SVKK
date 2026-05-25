@@ -47,12 +47,22 @@ function parseNum(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Form transaction mode → API/DB `PayMethod` (Prisma: NEFT, UPI, CHQ, CASH). */
+export function mapTransactionModeToPayMethod(
+  mode: AdPolicyPaymentTransactionForm["mode"],
+): "CHQ" | "CASH" | "UPI" | "NEFT" {
+  if (mode === "CHEQUE") return "CHQ";
+  if (mode === "CASH") return "CASH";
+  if (mode === "UPI") return "UPI";
+  return "NEFT";
+}
+
 export function mapPaymentTransactionsToApi(values: AdPolicyFormValues) {
   return values.paymentTransactions
     .filter((row) => parseNum(row.amountReceived) != null)
     .map((row) => ({
       amount: parseNum(row.amountReceived)!,
-      method: row.mode === "CHEQUE" ? "CHQ" : row.mode === "CASH" ? "CASH" : "UPI",
+      method: mapTransactionModeToPayMethod(row.mode),
       status: row.transactionStatus || null,
       transactionNumber: row.transactionNumber.trim() || null,
       transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
@@ -97,8 +107,16 @@ export function applyPrimaryPaymentModeToBody(
   const firstTxn = values.paymentTransactions[0];
   const mode = primaryTransactionMode(values);
 
-  if (mode === "ONLINE" || mode === "UPI") {
+  if (mode === "UPI") {
     body.paymentMode = "UPI";
+    body.utrRef =
+      values.onlineTransactionRef.trim() || firstTxn?.transactionNumber?.trim() || null;
+    const bank = firstTxn?.bankName?.trim();
+    if (bank) body.bankName = bank;
+    const amt = parseNum(firstTxn?.amountReceived ?? "");
+    if (amt != null) body.amountReceived = amt;
+  } else if (mode === "ONLINE") {
+    body.paymentMode = "NEFT";
     body.utrRef =
       values.onlineTransactionRef.trim() || firstTxn?.transactionNumber?.trim() || null;
     const bank = firstTxn?.bankName?.trim();

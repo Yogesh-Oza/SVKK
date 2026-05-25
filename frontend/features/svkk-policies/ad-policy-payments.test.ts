@@ -3,6 +3,7 @@ import { getAdPolicyInitialValues } from "./ad-policy-form-values";
 import {
   clonePaymentDetailsForCarryForward,
   mapPaymentTransactionsToApi,
+  mapTransactionModeToPayMethod,
 } from "./ad-policy-payments";
 
 describe("clonePaymentDetailsForCarryForward", () => {
@@ -48,6 +49,15 @@ describe("clonePaymentDetailsForCarryForward", () => {
     const out = clonePaymentDetailsForCarryForward(carried);
     expect(out.paymentTransactions).toHaveLength(1);
     expect(out.paymentTransactions[0].mode).toBe("CHEQUE");
+  });
+});
+
+describe("mapTransactionModeToPayMethod", () => {
+  it("maps Online to NEFT and keeps UPI separate", () => {
+    expect(mapTransactionModeToPayMethod("ONLINE")).toBe("NEFT");
+    expect(mapTransactionModeToPayMethod("UPI")).toBe("UPI");
+    expect(mapTransactionModeToPayMethod("CHEQUE")).toBe("CHQ");
+    expect(mapTransactionModeToPayMethod("CASH")).toBe("CASH");
   });
 });
 
@@ -100,6 +110,31 @@ describe("mapPaymentTransactionsToApi", () => {
       accountNumber: "9876543210",
       returnCharges: null,
       otherCharges: 25,
+    });
+  });
+
+  it("stores Online bank transfer as NEFT, not UPI", () => {
+    const values = getAdPolicyInitialValues();
+    values.paymentTransactions = [
+      {
+        ...values.paymentTransactions[0],
+        mode: "ONLINE",
+        transactionNumber: "NEFT-REF-1",
+        bankName: "HDFC",
+        accountNumber: "1234567890",
+        amountReceived: "4000",
+        transactionStatus: "DISHONOURED",
+        dishonourReason: "test",
+      },
+    ];
+
+    const api = mapPaymentTransactionsToApi(values);
+    expect(api).toHaveLength(1);
+    expect(api[0]).toMatchObject({
+      method: "NEFT",
+      transactionNumber: "NEFT-REF-1",
+      accountNumber: "1234567890",
+      status: "DISHONOURED",
     });
   });
 });
