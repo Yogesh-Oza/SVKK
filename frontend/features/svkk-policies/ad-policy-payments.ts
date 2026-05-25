@@ -1,4 +1,8 @@
-import type { AdPolicyFormValues, AdPolicyPaymentTransactionForm } from "./ad-policy-form-values";
+import {
+  getEmptyPaymentTransaction,
+  type AdPolicyFormValues,
+  type AdPolicyPaymentTransactionForm,
+} from "./ad-policy-form-values";
 
 const PAYMENT_CARRY_FORWARD_KEYS = [
   "paymentMode",
@@ -34,26 +38,6 @@ export function clonePaymentDetailsForCarryForward(
       : [{ ...getEmptyPaymentTransaction() }];
 
   return { ...flat, paymentTransactions };
-}
-
-function getEmptyPaymentTransaction(): AdPolicyPaymentTransactionForm {
-  return {
-    mode: "CHEQUE",
-    mobileNumber: "",
-    transactionNumber: "",
-    bankName: "",
-    branch: "",
-    accountNumber: "",
-    nameAsPerCheque: "",
-    ifscCode: "",
-    notOver: "",
-    transactionDate: "",
-    transactionStatus: "",
-    dishonourReason: "",
-    returnCharges: "",
-    otherCharges: "",
-    amountReceived: "",
-  };
 }
 
 function parseNum(s: string): number | undefined {

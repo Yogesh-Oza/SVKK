@@ -105,4 +105,92 @@ describe("policyDetailToAdFormValues", () => {
 
     expect(values.policyGroup).toBe("NVKK");
   });
+
+  it("maps multiple payment transactions from API detail", () => {
+    const values = policyDetailToAdFormValues({
+      id: "p3",
+      updatedAt: "2026-01-01",
+      policyNo: "PN-1",
+      referenceNo: null,
+      village: "V",
+      area: null,
+      remarks: null,
+      adProductVariant: null,
+      insuranceCompany: null,
+      tpa: null,
+      categoryText: null,
+      holderRelationship: null,
+      holderGender: null,
+      holderAge: null,
+      personsInsuredCount: 1,
+      policyGrouping: null,
+      periodYearText: "2026-27",
+      periodMonthText: null,
+      insuredParty: {
+        svkkPublicId: "x",
+        name: "H",
+        customerId: null,
+        mobile: null,
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+      },
+      policyType: { id: "t1", name: "AD", key: "ad" },
+      category: null,
+      years: [
+        {
+          yearLabel: "2026-27",
+          sumInsured: "100000",
+          vkkPremium: "1",
+          members: [],
+          payments: [
+            {
+              method: "CHQ",
+              amount: "5000",
+              transactionNumber: "CHQ-A",
+              bankName: "SBI",
+              returnCharges: "100",
+              otherCharges: "20",
+              status: "COMPLETED",
+              cheque: {
+                number: "CHQ-A",
+                bankName: "SBI",
+                status: "CLEARED",
+              },
+            },
+            {
+              method: "UPI",
+              amount: "1500",
+              transactionNumber: "UTR-B",
+              accountNumber: "9999888877",
+              returnCharges: "0",
+              otherCharges: "5",
+              status: "PENDING",
+              cheque: null,
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof policyDetailToAdFormValues>[0]);
+
+    expect(values.paymentTransactions).toHaveLength(2);
+    expect(values.paymentTransactions[0]).toMatchObject({
+      mode: "CHEQUE",
+      transactionNumber: "CHQ-A",
+      amountReceived: "5000",
+      returnCharges: "100",
+      otherCharges: "20",
+      transactionStatus: "CLEARED",
+    });
+    expect(values.paymentTransactions[1]).toMatchObject({
+      mode: "UPI",
+      mobileNumber: "9999888877",
+      transactionNumber: "UTR-B",
+      amountReceived: "1500",
+      returnCharges: "0",
+      otherCharges: "5",
+      transactionStatus: "PENDING",
+    });
+  });
 });

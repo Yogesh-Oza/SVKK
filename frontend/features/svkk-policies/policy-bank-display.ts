@@ -25,6 +25,8 @@ export type PolicyPaymentBankSource = {
   ifscCode?: string | null;
   notOver?: string | null;
   dishonourReason?: string | null;
+  returnCharges?: unknown;
+  otherCharges?: unknown;
   status?: string | null;
   cheque?: PolicyChequeDetail;
 };
@@ -116,6 +118,25 @@ function buildFields(
   return pairs.filter((p): p is PaymentDisplayField => p != null);
 }
 
+function sharedTransactionMetaFields(
+  pay: PolicyPaymentBankSource,
+  txnDate: string | null,
+  status: string,
+  reason: string,
+  options?: { statusLabel?: string; reasonLabel?: string; dateLabel?: string },
+): Array<PaymentDisplayField | null> {
+  const statusLabel = options?.statusLabel ?? "Transaction status";
+  const reasonLabel = options?.reasonLabel ?? "Dishonour reason";
+  const dateLabel = options?.dateLabel ?? "Transaction date";
+  return [
+    field(dateLabel, txnDate),
+    field(statusLabel, status),
+    status === "DISHONOURED" ? field(reasonLabel, reason) : null,
+    field("Return charges", pay.returnCharges),
+    field("Other charges", pay.otherCharges),
+  ];
+}
+
 function resolveOnePayment(
   pay: PolicyPaymentBankSource,
   index: number,
@@ -142,9 +163,11 @@ function resolveOnePayment(
         field("Name as per cheque", ch?.nameAsPerCheque ?? pay.nameAsPerCheque),
         field("IFSC code", ch?.ifsc ?? pay.ifscCode),
         field("Not over", ch?.notOver ?? pay.notOver),
-        field("Cheque date", txnDate),
-        field("Cheque status", status),
-        status === "DISHONOURED" ? field("Reason for dishonoured", reason) : null,
+        ...sharedTransactionMetaFields(pay, txnDate, status, reason, {
+          dateLabel: "Cheque date",
+          statusLabel: "Cheque status",
+          reasonLabel: "Reason for dishonoured",
+        }),
       ]),
     };
   }
@@ -154,7 +177,7 @@ function resolveOnePayment(
       index,
       modeLabel,
       amount,
-      fields: buildFields([field("Transaction date", txnDate)]),
+      fields: buildFields(sharedTransactionMetaFields(pay, txnDate, status, reason)),
     };
   }
 
@@ -171,10 +194,7 @@ function resolveOnePayment(
       field("Account no", mode === "UPI" ? null : pay.accountNumber ?? ch?.accountNo),
       field("Name as per cheque", pay.nameAsPerCheque ?? ch?.nameAsPerCheque),
       field("IFSC code", pay.ifscCode ?? ch?.ifsc),
-      field("Transaction date", txnDate),
-      field("Transaction status", status),
-      status === "DISHONOURED" ? field("Dishonour reason", reason) : null,
-      field("Return charges", pay.notOver),
+      ...sharedTransactionMetaFields(pay, txnDate, status, reason),
     ]),
   };
 }

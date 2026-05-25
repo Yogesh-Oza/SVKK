@@ -303,7 +303,7 @@ export default function SvkkPolicyDetailPage() {
 
   const svkkId = row.insuredParty.svkkPublicId.trim();
   const renewHref = svkkId
-    ? `/policies/new?svkk=${encodeURIComponent(svkkId)}`
+    ? `/policies/new?svkk=${encodeURIComponent(svkkId)}&year=${encodeURIComponent(activeYearLabel)}&renew=1`
     : "/policies/new";
 
   return (

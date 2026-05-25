@@ -136,6 +136,8 @@ export type PolicyDetailViewYear = {
     ifscCode?: string | null;
     notOver?: string | null;
     dishonourReason?: string | null;
+    returnCharges?: unknown;
+    otherCharges?: unknown;
     status?: string | null;
     cheque?: {
       number: string;

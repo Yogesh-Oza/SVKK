@@ -57,6 +57,62 @@ describe("resolvePolicyPaymentDisplays", () => {
     expect(rows[0].index).toBe(1);
     expect(rows[1].index).toBe(2);
   });
+
+  it("shows return and other charges for every payment mode", () => {
+    const rows = resolvePolicyPaymentDisplays({
+      payments: [
+        {
+          method: "CHQ",
+          amount: 5000,
+          transactionNumber: "CHQ-1",
+          bankName: "SBI",
+          returnCharges: 150,
+          otherCharges: 50,
+          status: "PENDING",
+        },
+        {
+          method: "UPI",
+          amount: 2000,
+          transactionNumber: "UTR-1",
+          accountNumber: "9876543210",
+          returnCharges: 25,
+          otherCharges: 10,
+          status: "COMPLETED",
+        },
+        {
+          method: "CASH",
+          amount: 1000,
+          transactionDate: "2026-03-01T00:00:00.000Z",
+          returnCharges: 0,
+          otherCharges: 5,
+          status: "COMPLETED",
+        },
+      ],
+    });
+
+    expect(rows).toHaveLength(3);
+    expect(rows[0].fields.find((f) => f.label === "Return charges")?.value).toBe("150");
+    expect(rows[0].fields.find((f) => f.label === "Other charges")?.value).toBe("50");
+    expect(rows[1].fields.find((f) => f.label === "Return charges")?.value).toBe("25");
+    expect(rows[1].fields.find((f) => f.label === "Other charges")?.value).toBe("10");
+    expect(rows[2].fields.find((f) => f.label === "Other charges")?.value).toBe("5");
+    expect(rows[2].fields.some((f) => f.label === "Transaction status" && f.value === "CLEARED")).toBe(true);
+  });
+
+  it("does not map return charges from not-over field", () => {
+    const rows = resolvePolicyPaymentDisplays({
+      payments: [
+        {
+          method: "UPI",
+          amount: 1000,
+          notOver: "9999",
+          returnCharges: 100,
+        },
+      ],
+    });
+    expect(rows[0].fields.find((f) => f.label === "Return charges")?.value).toBe("100");
+    expect(rows[0].fields.some((f) => f.label === "Return charges" && f.value === "9999")).toBe(false);
+  });
 });
 
 describe("resolvePolicyBankInfo", () => {

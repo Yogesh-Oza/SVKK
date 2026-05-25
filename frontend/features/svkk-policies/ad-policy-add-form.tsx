@@ -38,7 +38,7 @@ import {
 } from "@/lib/svkk/receipt-pdf";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import { ExternalLink, FilePlus, FilePenLine, Loader2, Minus, Plus, RefreshCcw, Sparkles, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
@@ -47,7 +47,11 @@ import type { AdMemberRow } from "./ad-member-types";
 import { adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
 import { normalizeCategoryKey, resolveCategoryIdByKey } from "@/lib/svkk/category-display";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
-import { getAdPolicyInitialValues, type AdPolicyFormValues } from "./ad-policy-form-values";
+import {
+  getAdPolicyInitialValues,
+  getEmptyPaymentTransaction,
+  type AdPolicyFormValues,
+} from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
 import { clonePaymentDetailsForCarryForward } from "./ad-policy-payments";
 import { applyDisplayYearLabels, yearChipLabel } from "./policy-year-display";
@@ -88,6 +92,28 @@ type FetchSuggestion = {
   holderName: string;
   customerId: string | null;
 };
+
+function pickRenewSourceRow(rows: PolicyListRow[], yearLabel?: string): PolicyListRow | null {
+  if (rows.length === 0) {
+    return null;
+  }
+  const normalizedYear = yearLabel?.trim();
+  if (normalizedYear) {
+    const match = rows.find(
+      (row) =>
+        (row.periodYearText ?? "").trim() === normalizedYear ||
+        row.years[0]?.yearLabel?.trim() === normalizedYear,
+    );
+    if (match) {
+      return match;
+    }
+  }
+  return [...rows].sort((a, b) => {
+    const ya = (a.periodYearText ?? a.years[0]?.yearLabel ?? "").trim();
+    const yb = (b.periodYearText ?? b.years[0]?.yearLabel ?? "").trim();
+    return yb.localeCompare(ya);
+  })[0]!;
+}
 
 const ADD_SECTIONS: ReadonlyArray<{ id: AddSectionId; label: string; ref: string }> = [
   { id: "policy_details", label: "Policy Details", ref: "section-policy-details" },
@@ -314,6 +340,7 @@ export type AdPolicyAddFormProps = {
 
 export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProps = {}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useSvkkAuth();
   const idPrefix = useId();
   const idemKeyRef = useRef(crypto.randomUUID());
@@ -325,6 +352,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   // Policy Group dropdown is empty (e.g. the prior policy never had one set).
   const seededGroupRef = useRef("");
   const detailHydrationKeyRef = useRef<string | null>(null);
+  const renewFromUrlInitRef = useRef(false);
   const missingUrl = !getSvkkApiBase();
   const isEdit = Boolean(policyId);
   const canDriveUpload = user?.permissions ? canUploadPolicyDrive(user.permissions) : false;
@@ -778,6 +806,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${query.toString()}`);
     const exactRows = (res.items ?? []).filter((item) => item.insuredParty.svkkPublicId === svkkId);
     setFetchRows(exactRows);
+    return exactRows;
   }, []);
 
   const selectFetchSuggestion = useCallback(
@@ -855,22 +884,28 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [],
   );
 
-  const carryForwardPolicy = useCallback(async () => {
-    if (!selectedFetchId) {
-      setFetchNotice("Select a prior-year policy first.");
-      toast.error("Select a prior-year policy first.");
-      return;
-    }
-    if (carryForwardBusy) return;
-    setCarryForwardBusy(true);
-    const loadingToastId = toast.loading("Carrying forward policy…");
-    try {
-      const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${selectedFetchId}`);
-      const yearForPick =
-        selectedFetch?.periodYearText?.trim() ||
-        matchedYearRows.find((r) => r.id === selectedFetchId)?.year ||
-        formik.values.year?.trim() ||
-        undefined;
+  const carryForwardPolicy = useCallback(
+    async (override?: { policyId?: string; yearLabel?: string }) => {
+      const policyIdToUse = override?.policyId ?? selectedFetchId;
+      if (!policyIdToUse) {
+        setFetchNotice("Select a prior-year policy first.");
+        toast.error("Select a prior-year policy first.");
+        return;
+      }
+      if (carryForwardBusy) return;
+      setSelectedFetchId(policyIdToUse);
+      setCarryForwardBusy(true);
+      const loadingToastId = toast.loading("Carrying forward policy…");
+      try {
+        const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${policyIdToUse}`);
+        const fetchMeta = fetchRows.find((item) => item.id === policyIdToUse);
+        const yearForPick =
+          override?.yearLabel?.trim() ||
+          fetchMeta?.periodYearText?.trim() ||
+          fetchMeta?.years[0]?.yearLabel?.trim() ||
+          matchedYearRows.find((r) => r.id === policyIdToUse)?.yearLabel ||
+          formik.values.year?.trim() ||
+          undefined;
       const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
       const shiftedYear = nextYearLabel(carriedValues.year);
       const previousYear = carriedValues.year || "—";
@@ -991,7 +1026,53 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     } finally {
       setCarryForwardBusy(false);
     }
-  }, [carryForwardBusy, formik, matchedYearRows, requestAutoIds, selectedFetch, selectedFetchId]);
+  }, [
+    carryForwardBusy,
+    fetchRows,
+    formik,
+    matchedYearRows,
+    requestAutoIds,
+    selectedFetchId,
+  ]);
+
+  useEffect(() => {
+    if (isEdit || missingUrl) {
+      return;
+    }
+    const svkkParam = searchParams.get("svkk")?.trim().toUpperCase();
+    if (!svkkParam || renewFromUrlInitRef.current) {
+      return;
+    }
+    renewFromUrlInitRef.current = true;
+    void (async () => {
+      setSuppressSuggestions(true);
+      setFetchSvkkId(svkkParam);
+      try {
+        const rows = await loadYearRowsBySvkkId(svkkParam);
+        if (rows.length === 0) {
+          setFetchNotice(`No policies found for SVKK ID ${svkkParam}.`);
+          return;
+        }
+        const yearParam = searchParams.get("year")?.trim();
+        const pick = pickRenewSourceRow(rows, yearParam);
+        if (!pick) {
+          return;
+        }
+        const pickYearLabel = pick.periodYearText ?? pick.years[0]?.yearLabel ?? yearParam ?? "";
+        setFetchHolderName(pick.insuredParty.name);
+        setSelectedFetchId(pick.id);
+        if (searchParams.get("renew") === "1") {
+          await carryForwardPolicy({ policyId: pick.id, yearLabel: pickYearLabel });
+          return;
+        }
+        setFetchNotice(
+          `${rows.length} year-wise polic${rows.length === 1 ? "y" : "ies"} found for this SVKK ID.`,
+        );
+      } catch (e) {
+        setFetchNotice(e instanceof Error ? e.message : "Failed to load policy for renew.");
+      }
+    })();
+  }, [carryForwardPolicy, isEdit, loadYearRowsBySvkkId, missingUrl, searchParams]);
 
   const selectYearPolicy = useCallback(
     async (id: string) => {
@@ -1435,26 +1516,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   };
 
   const addPaymentTransaction = () => {
-    void setFieldValue("paymentTransactions", [
-      ...values.paymentTransactions,
-      {
-        mode: "CHEQUE",
-        mobileNumber: "",
-        transactionNumber: "",
-        bankName: "",
-        branch: "",
-        accountNumber: "",
-        nameAsPerCheque: "",
-        ifscCode: "",
-        notOver: "",
-        transactionDate: "",
-        transactionStatus: "",
-        dishonourReason: "",
-        returnCharges: "",
-        otherCharges: "",
-        amountReceived: "",
-      },
-    ]);
+    void formik.setValues({
+      ...formik.values,
+      paymentTransactions: [...formik.values.paymentTransactions, getEmptyPaymentTransaction()],
+    });
   };
 
   const removePaymentTransaction = (index: number) => {

@@ -22,6 +22,26 @@ export type AdPolicyPaymentTransactionForm = {
   amountReceived: string;
 };
 
+export function getEmptyPaymentTransaction(): AdPolicyPaymentTransactionForm {
+  return {
+    mode: "CHEQUE",
+    mobileNumber: "",
+    transactionNumber: "",
+    bankName: "",
+    branch: "",
+    accountNumber: "",
+    nameAsPerCheque: "",
+    ifscCode: "",
+    notOver: "",
+    transactionDate: "",
+    transactionStatus: "",
+    dishonourReason: "",
+    returnCharges: "",
+    otherCharges: "",
+    amountReceived: "",
+  };
+}
+
 export type AdPolicyFormValues = {
   policyNo: string;
   adProduct: string;
@@ -160,25 +180,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     chequeDate: "",
     chequeStatus: "",
     reasonDishonoured: "",
-    paymentTransactions: [
-      {
-        mode: "CHEQUE",
-        mobileNumber: "",
-        transactionNumber: "",
-        bankName: "",
-        branch: "",
-        accountNumber: "",
-        nameAsPerCheque: "",
-        ifscCode: "",
-        notOver: "",
-        transactionDate: "",
-        transactionStatus: "",
-        dishonourReason: "",
-        returnCharges: "",
-        otherCharges: "",
-        amountReceived: "",
-      },
-    ],
+    paymentTransactions: [getEmptyPaymentTransaction()],
     vkkPremium: "",
     coPremium: "",
     grossPremium: "",
