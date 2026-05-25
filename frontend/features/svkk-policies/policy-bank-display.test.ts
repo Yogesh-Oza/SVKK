@@ -24,6 +24,7 @@ describe("resolvePolicyPaymentDisplays", () => {
     expect(rows[0].modeLabel).toBe("Cheque");
     expect(rows[0].fields.some((f) => f.label === "Policy cheque no" && f.value === "CHQ123")).toBe(true);
     expect(rows[0].fields.some((f) => f.label === "Bank name" && f.value === "HDFC")).toBe(true);
+    expect(rows[0].fields.some((f) => f.label === "Amount Received" && f.value === "8000")).toBe(true);
   });
 
   it("shows UPI fields for UPI payments", () => {
@@ -97,6 +98,8 @@ describe("resolvePolicyPaymentDisplays", () => {
     expect(rows[1].fields.find((f) => f.label === "Other charges")?.value).toBe("10");
     expect(rows[2].fields.find((f) => f.label === "Other charges")?.value).toBe("5");
     expect(rows[2].fields.some((f) => f.label === "Transaction status" && f.value === "CLEARED")).toBe(true);
+    expect(rows[1].fields.find((f) => f.label === "Amount Received")?.value).toBe("2000");
+    expect(rows[2].fields.find((f) => f.label === "Amount Received")?.value).toBe("1000");
   });
 
   it("does not map return charges from not-over field", () => {

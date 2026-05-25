@@ -123,6 +123,7 @@ function sharedTransactionMetaFields(
   txnDate: string | null,
   status: string,
   reason: string,
+  amountReceived: string,
   options?: { statusLabel?: string; reasonLabel?: string; dateLabel?: string },
 ): Array<PaymentDisplayField | null> {
   const statusLabel = options?.statusLabel ?? "Transaction status";
@@ -134,6 +135,7 @@ function sharedTransactionMetaFields(
     status === "DISHONOURED" ? field(reasonLabel, reason) : null,
     field("Return charges", pay.returnCharges),
     field("Other charges", pay.otherCharges),
+    field("Amount Received", amountReceived),
   ];
 }
 
@@ -163,7 +165,7 @@ function resolveOnePayment(
         field("Name as per cheque", ch?.nameAsPerCheque ?? pay.nameAsPerCheque),
         field("IFSC code", ch?.ifsc ?? pay.ifscCode),
         field("Not over", ch?.notOver ?? pay.notOver),
-        ...sharedTransactionMetaFields(pay, txnDate, status, reason, {
+        ...sharedTransactionMetaFields(pay, txnDate, status, reason, amount, {
           dateLabel: "Cheque date",
           statusLabel: "Cheque status",
           reasonLabel: "Reason for dishonoured",
@@ -177,7 +179,7 @@ function resolveOnePayment(
       index,
       modeLabel,
       amount,
-      fields: buildFields(sharedTransactionMetaFields(pay, txnDate, status, reason)),
+      fields: buildFields(sharedTransactionMetaFields(pay, txnDate, status, reason, amount)),
     };
   }
 
@@ -194,7 +196,7 @@ function resolveOnePayment(
       field("Account no", mode === "UPI" ? null : pay.accountNumber ?? ch?.accountNo),
       field("Name as per cheque", pay.nameAsPerCheque ?? ch?.nameAsPerCheque),
       field("IFSC code", pay.ifscCode ?? ch?.ifsc),
-      ...sharedTransactionMetaFields(pay, txnDate, status, reason),
+      ...sharedTransactionMetaFields(pay, txnDate, status, reason, amount),
     ]),
   };
 }
