@@ -32,11 +32,12 @@ import {
   relationshipOptions,
   rs,
   siList,
-  toIsoDate,
   type MemberInput,
   type PolicyKey,
   type PremiumState,
 } from "@/lib/svkk/premium";
+import { formatDateForFormInput } from "@/lib/svkk/form-date";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 
 type FormState = {
@@ -51,13 +52,24 @@ const DEFAULT_FORM: FormState = {
   policyType: "asha_kiran",
   memberCount: 3,
   sumInsured: 500000,
-  endDate: "14.10.2026",
+  endDate: "14-10-2026",
   members: [
-    { name: "Policy Holder", dob: "13.10.1987", relationship: "self", gender: "male", addOnRider: 0 },
-    { name: "Spouse", dob: "05.06.1990", relationship: "spouse", gender: "female", addOnRider: 0 },
-    { name: "Daughter", dob: "11.08.2014", relationship: "daughter", gender: "female", addOnRider: 0 },
+    { name: "Policy Holder", dob: "13-10-1987", relationship: "self", gender: "male", addOnRider: 0 },
+    { name: "Spouse", dob: "05-06-1990", relationship: "spouse", gender: "female", addOnRider: 0 },
+    { name: "Daughter", dob: "11-08-2014", relationship: "daughter", gender: "female", addOnRider: 0 },
   ],
 };
+
+function normalizeFormDates(f: FormState): FormState {
+  return {
+    ...f,
+    endDate: formatDateForFormInput(f.endDate) || f.endDate,
+    members: f.members.map((m) => ({
+      ...m,
+      dob: formatDateForFormInput(m.dob) || m.dob,
+    })),
+  };
+}
 
 function loadJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -99,7 +111,7 @@ export default function SvkkCalculatorPage() {
       } finally {
         if (!cancelled) {
           const storedForm = loadJson<FormState | null>(STORAGE_KEY_FORM, null);
-          if (storedForm) setForm(storedForm);
+          if (storedForm) setForm(normalizeFormDates(storedForm));
           setHydrated(true);
         }
       }
@@ -261,11 +273,10 @@ export default function SvkkCalculatorPage() {
               label="End Date of Policy"
               hint="Age is calculated from DOB and policy end date."
             >
-              <Input
-                type="date"
+              <PolicyDateInput
                 className="h-11"
-                value={toIsoDate(form.endDate)}
-                onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                value={form.endDate}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, endDate: v }))}
               />
             </FieldShell>
           </div>
@@ -304,11 +315,10 @@ export default function SvkkCalculatorPage() {
                       />
                     </CellShell>
                     <CellShell label="DOB">
-                      <Input
-                        type="date"
+                      <PolicyDateInput
                         className="h-10"
-                        value={toIsoDate(m.dob)}
-                        onChange={(e) => updateMember(i, { dob: e.target.value })}
+                        value={m.dob}
+                        onValueChange={(v) => updateMember(i, { dob: v })}
                       />
                     </CellShell>
                     <CellShell label="Relationship">

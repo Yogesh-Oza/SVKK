@@ -1,11 +1,5 @@
 import type { SidebarData } from "@/lib/types";
-import {
-  IconBrowserCheck,
-  IconNotification,
-  IconPalette,
-  IconSettings,
-  IconUserCog,
-} from "@tabler/icons-react";
+import { IconSettings } from "@tabler/icons-react";
 
 export const sidebarData: SidebarData = {
   navGroups: [
@@ -14,30 +8,8 @@ export const sidebarData: SidebarData = {
       items: [
         {
           title: "Settings",
+          url: "/settings",
           icon: IconSettings,
-          // badge: "Coming Soon",
-          items: [
-            {
-              title: "Profile",
-              url: "/settings",
-              icon: IconUserCog,
-            },
-            {
-              title: "Appearance",
-              url: "/settings/appearance",
-              icon: IconPalette,
-            },
-            {
-              title: "Notifications",
-              url: "/settings/notifications",
-              icon: IconNotification,
-            },
-            {
-              title: "Display",
-              url: "/settings/display",
-              icon: IconBrowserCheck,
-            },
-          ],
         },
       ],
     },

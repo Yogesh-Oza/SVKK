@@ -59,7 +59,13 @@ import {
   type PolicyFilterOption,
 } from "@/features/svkk-policies/policy-filter-multi";
 import { policyTypeKeyToAdVariant } from "@/features/svkk-policies/ad-product-variant";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import {
+  formatDateForFormInput,
+  todayFormDate,
+  toIsoDateParam,
+} from "@/lib/svkk/form-date";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
@@ -212,10 +218,6 @@ function parseInrAmount(v: unknown): number | null {
 }
 
 /** Indian-style grouping, e.g. ₹ 58,839 */
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function formatInrRupee(v: unknown): string | null {
   const n = parseInrAmount(v);
   if (n == null) return null;
@@ -239,7 +241,7 @@ export default function SvkkPoliciesPage() {
   const [searchApplied, setSearchApplied] = useState("");
   const prevSearchApplied = useRef(searchApplied);
   const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState(todayIsoDate);
+  const [dateTo, setDateTo] = useState(todayFormDate);
   const [villages, setVillages] = useState<string[]>([]);
   const [periodYears, setPeriodYears] = useState<string[]>([]);
   const [periodMonths, setPeriodMonths] = useState<string[]>([]);
@@ -288,8 +290,8 @@ export default function SvkkPoliciesPage() {
     urlHydrated.current = true;
     const df = searchParams.get("dateFrom");
     const dt = searchParams.get("dateTo");
-    if (df !== null) setDateFrom(df);
-    if (dt) setDateTo(dt);
+    if (df !== null) setDateFrom(formatDateForFormInput(df) || df);
+    if (dt) setDateTo(formatDateForFormInput(dt) || dt);
     const v = searchParams.getAll("villages");
     if (v.length) setVillages(v);
     const typeIds = searchParams.getAll("policyTypeIds");
@@ -396,8 +398,10 @@ export default function SvkkPoliciesPage() {
     q.set("pageSize", String(pageSize));
     q.set("sort", sort);
     if (searchApplied.trim()) q.set("search", searchApplied.trim());
-    if (dateFrom) q.set("dateFrom", dateFrom);
-    if (dateTo) q.set("dateTo", dateTo);
+    const dateFromParam = toIsoDateParam(dateFrom);
+    const dateToParam = toIsoDateParam(dateTo);
+    if (dateFromParam) q.set("dateFrom", dateFromParam);
+    if (dateToParam) q.set("dateTo", dateToParam);
     villages.forEach((v) => q.append("villages", v));
     periodYears.forEach((y) => q.append("periodYearTexts", y));
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
@@ -409,10 +413,10 @@ export default function SvkkPoliciesPage() {
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
     if (renewalFilter === "pending") {
       q.set("renewalPending", "true");
-      if (dateTo) q.set("renewalAsOf", dateTo);
+      if (dateToParam) q.set("renewalAsOf", dateToParam);
     } else if (renewalFilter) {
       q.set("renewalBucket", renewalFilter);
-      if (dateTo) q.set("renewalAsOf", dateTo);
+      if (dateToParam) q.set("renewalAsOf", dateToParam);
     }
     return q.toString();
   }, [
@@ -564,7 +568,7 @@ export default function SvkkPoliciesPage() {
     let n = 0;
     if (searchApplied.trim()) n++;
     if (dateFrom) n++;
-    if (dateTo !== todayIsoDate()) n++;
+    if (dateTo !== todayFormDate()) n++;
     if (villages.length) n++;
     if (periodYears.length) n++;
     if (periodMonths.length) n++;
@@ -1132,10 +1136,9 @@ export default function SvkkPoliciesPage() {
                   <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
                     From date
                   </Label>
-                  <Input
-                    type="date"
+                  <PolicyDateInput
                     value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
+                    onValueChange={setDateFrom}
                     className="h-10 bg-background/90"
                   />
                 </div>
@@ -1143,10 +1146,9 @@ export default function SvkkPoliciesPage() {
                   <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
                     To date
                   </Label>
-                  <Input
-                    type="date"
+                  <PolicyDateInput
                     value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
+                    onValueChange={setDateTo}
                     className="h-10 bg-background/90"
                   />
                   {renewalFilter ? (
@@ -1262,7 +1264,7 @@ export default function SvkkPoliciesPage() {
                     setSearchApplied("");
                     prevSearchApplied.current = "";
                     setDateFrom("");
-                    setDateTo(todayIsoDate());
+                    setDateTo(todayFormDate());
                     setVillages([]);
                     setPeriodYears([]);
                     setPeriodMonths([]);

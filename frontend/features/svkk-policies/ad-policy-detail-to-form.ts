@@ -10,6 +10,7 @@ import {
   canonicalMonthName,
   POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER,
 } from "@/lib/svkk/policy-period-months";
+import { formatDateForFormInput } from "@/lib/svkk/form-date";
 
 export function parsePolicyUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -33,14 +34,7 @@ function decStr(v: Decimalish): string {
 }
 
 function isoToDateInput(iso: string | null | undefined): string {
-  if (!iso) {
-    return "";
-  }
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
-    return "";
-  }
-  return d.toISOString().slice(0, 10);
+  return formatDateForFormInput(iso);
 }
 
 type ChequeApi = {

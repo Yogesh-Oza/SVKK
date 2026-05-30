@@ -1,13 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
-import {
-  BadgeCheck,
-  Bell,
-  ChevronDown,
-  LogOut,
-  User,
-} from "lucide-react";
+import { BadgeCheck, ChevronDown, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -98,15 +92,9 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem asChild>
-                <Link href="/settings/account">
+                <Link href="/settings">
                   <BadgeCheck />
-                  Account
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/notifications">
-                  <Bell />
-                  Notifications
+                  Profile
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>

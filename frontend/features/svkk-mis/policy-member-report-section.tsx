@@ -23,10 +23,16 @@ import {
   PolicyFilterMulti,
   type PolicyFilterOption,
 } from "@/features/svkk-policies/policy-filter-multi";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { formatInr } from "@/features/svkk-dashboard/currency";
 import { backendApi } from "@/lib/api/svkk-client";
 import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import {
+  formatDateForFormInput,
+  todayFormDate,
+  toIsoDateParam,
+} from "@/lib/svkk/form-date";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
@@ -46,10 +52,6 @@ import { PolicyMemberDrillDownSheet } from "@/features/svkk-mis/policy-member-dr
 import { ArrowUpDown, Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /** Wait after filter changes before hitting the MIS report API (table search stays instant). */
 const REPORT_FETCH_DEBOUNCE_MS = 400;
@@ -334,7 +336,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const searchParams = useSearchParams();
   const urlHydrated = useRef(false);
   const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState(todayIsoDate);
+  const [dateTo, setDateTo] = useState(todayFormDate);
   const [groupBy, setGroupBy] = useState<(typeof GROUP_BY_OPTIONS)[number]["value"]>("village");
   const [categoryKeys, setCategoryKeys] = useState<string[]>([]);
   const [villages, setVillages] = useState<string[]>([]);
@@ -374,8 +376,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
     const df = searchParams.get("dateFrom");
     const dt = searchParams.get("dateTo");
     const gb = searchParams.get("groupBy");
-    if (df !== null) setDateFrom(df);
-    if (dt) setDateTo(dt);
+    if (df !== null) setDateFrom(formatDateForFormInput(df) || df);
+    if (dt) setDateTo(formatDateForFormInput(dt) || dt);
     if (gb && VALID_GROUP_BY.has(gb as (typeof GROUP_BY_OPTIONS)[number]["value"])) {
       setGroupBy(gb as (typeof GROUP_BY_OPTIONS)[number]["value"]);
     }
@@ -455,11 +457,13 @@ export function PolicyMemberReportSection({ onError }: Props) {
 
   const buildQuery = useCallback(() => {
     const q = new URLSearchParams();
-    if (dateFrom) {
-      q.set("dateFrom", dateFrom);
+    const dateFromParam = toIsoDateParam(dateFrom);
+    const dateToParam = toIsoDateParam(dateTo);
+    if (dateFromParam) {
+      q.set("dateFrom", dateFromParam);
     }
-    if (dateTo) {
-      q.set("dateTo", dateTo);
+    if (dateToParam) {
+      q.set("dateTo", dateToParam);
     }
     q.set("groupBy", groupBy);
     categoryKeys.forEach((c) => q.append("categoryKeys", c));
@@ -576,7 +580,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
 
   const resetFilters = useCallback(() => {
     setDateFrom("");
-    setDateTo(todayIsoDate());
+    setDateTo(todayFormDate());
     setGroupBy("village");
     setCategoryKeys([]);
     setVillages([]);
@@ -594,7 +598,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const filtersActive = useMemo(
     () =>
       dateFrom !== "" ||
-      dateTo !== todayIsoDate() ||
+      dateTo !== todayFormDate() ||
       groupBy !== "village" ||
       categoryKeys.length > 0 ||
       villages.length > 0 ||
@@ -657,10 +661,9 @@ export function PolicyMemberReportSection({ onError }: Props) {
           <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
             From date
           </Label>
-          <Input
-            type="date"
+          <PolicyDateInput
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onValueChange={setDateFrom}
             className="h-10 bg-background/90"
           />
         </div>
@@ -668,10 +671,9 @@ export function PolicyMemberReportSection({ onError }: Props) {
           <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
             To date
           </Label>
-          <Input
-            type="date"
+          <PolicyDateInput
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onValueChange={setDateTo}
             className="h-10 bg-background/90"
           />
         </div>

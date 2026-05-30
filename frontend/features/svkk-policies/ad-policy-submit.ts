@@ -7,6 +7,7 @@ import {
 } from "./ad-policy-payments";
 import { toAdProductVariant } from "./ad-product-variant";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
+import { dateParse, toApiDateIso } from "@/lib/svkk/form-date";
 
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
@@ -21,9 +22,9 @@ function ageAtDate(dob: string, anchor: string): number | undefined {
   if (!dob || !anchor) {
     return undefined;
   }
-  const dobDate = new Date(dob);
-  const anchorDate = new Date(anchor);
-  if (Number.isNaN(dobDate.getTime()) || Number.isNaN(anchorDate.getTime())) {
+  const dobDate = dateParse(dob);
+  const anchorDate = dateParse(anchor);
+  if (!dobDate || !anchorDate) {
     return undefined;
   }
   const diff = anchorDate.getTime() - dobDate.getTime();
@@ -94,12 +95,12 @@ export async function submitAdPolicyRequest({
     email: values.email.trim() || null,
     pan: values.panNo.trim() || null,
     aadhaarNo: values.aadhaarNo.trim() || null,
-    dateOfBirth: values.dob ? new Date(values.dob).toISOString() : null,
+    dateOfBirth: toApiDateIso(values.dob),
     policyTypeId,
     policyChartId,
     yearLabel,
-    policyStart: values.policyStart ? new Date(values.policyStart).toISOString() : null,
-    policyEnd: values.policyEnd ? new Date(values.policyEnd).toISOString() : null,
+    policyStart: toApiDateIso(values.policyStart),
+    policyEnd: toApiDateIso(values.policyEnd),
     sumInsured: si,
     expectedNetPremium: co ?? null,
     policyNo: values.policyNo.trim() || null,
@@ -113,7 +114,7 @@ export async function submitAdPolicyRequest({
     categoryText: categoryId ? undefined : values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
     holderGender: values.holderGender.trim() || null,
-    holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,
+    holderJoiningDate: toApiDateIso(values.holderJoiningDate),
     holderAddOns: parseNum(values.holderAddOns) ?? null,
     holderAge:
       parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : ageAtDate(values.dob, ageAnchor) ?? null,
@@ -128,15 +129,15 @@ export async function submitAdPolicyRequest({
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
-    previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
+    previousEndDate: toApiDateIso(values.previousEndDate),
     policyGroup: resolvePolicyGrouping(values),
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
-    refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,
+    refundChequeDate: toApiDateIso(values.refundChequeDate),
     cdAccountUsed: values.cdAccountStatus === "YES" ? true : values.cdAccountStatus === "NO" ? false : null,
     cdAmount: parseNum(values.cdAmount) ?? null,
     courierStatus: values.notCourier || null,
-    courierDate: values.courierDate ? new Date(values.courierDate).toISOString() : null,
+    courierDate: toApiDateIso(values.courierDate),
     courierCompany: values.courierCompany.trim() || null,
     podNumber: values.podNumber.trim() || null,
     courierAddress: values.courierAddress.trim() || null,
@@ -175,12 +176,12 @@ export async function submitAdPolicyRequest({
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
     members: validMembers.map((m) => ({
       name: m.name.trim(),
-      dob: new Date(m.dob).toISOString(),
+      dob: toApiDateIso(m.dob)!,
       relationship: m.relationship.trim() || "Self",
       gender: m.gender || "M",
       sumInsured: parseNum(m.sumInsured) ?? null,
       cumulativeBonus: parseNum(m.cumulativeBonus) ?? null,
-      dateOfJoining: m.dateOfJoining ? new Date(m.dateOfJoining).toISOString() : null,
+      dateOfJoining: toApiDateIso(m.dateOfJoining),
       memberPhone: m.phNo.trim() || null,
       addOnsAmount: parseNum(m.addOnsAmount) ?? null,
       basicPremium: parseNum(m.basicPremium) ?? null,
@@ -258,26 +259,26 @@ export async function submitAdPolicyPatchRequest({
       email: values.email.trim() || null,
       pan: values.panNo.trim() || null,
       aadhaarNo: values.aadhaarNo.trim() || null,
-      dateOfBirth: values.dob ? new Date(values.dob).toISOString() : null,
+      dateOfBirth: toApiDateIso(values.dob),
       customerId: values.customerId.trim() || null,
       svkkPublicId: values.svkkPublicId.trim() || null,
     },
     members: validMembers.map((m) => ({
       name: m.name.trim(),
-      dob: new Date(m.dob).toISOString(),
+      dob: toApiDateIso(m.dob)!,
       relationship: m.relationship.trim() || "Self",
       gender: m.gender || "M",
       sumInsured: parseNum(m.sumInsured) ?? null,
       cumulativeBonus: parseNum(m.cumulativeBonus) ?? null,
-      dateOfJoining: m.dateOfJoining ? new Date(m.dateOfJoining).toISOString() : null,
+      dateOfJoining: toApiDateIso(m.dateOfJoining),
       memberPhone: m.phNo.trim() || null,
       addOnsAmount: parseNum(m.addOnsAmount) ?? null,
       basicPremium: parseNum(m.basicPremium) ?? null,
       ageAtEntry:
         parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : ageAtDate(m.dob, ageAnchor) ?? null,
     })),
-    policyStart: values.policyStart ? new Date(values.policyStart).toISOString() : null,
-    policyEnd: values.policyEnd ? new Date(values.policyEnd).toISOString() : null,
+    policyStart: toApiDateIso(values.policyStart),
+    policyEnd: toApiDateIso(values.policyEnd),
     sumInsured: si,
     expectedNetPremium: co ?? null,
     policyNo: values.policyNo.trim() || null,
@@ -289,7 +290,7 @@ export async function submitAdPolicyPatchRequest({
     categoryText: categoryId ? undefined : values.cat.trim() || null,
     holderRelationship: values.relation.trim() || null,
     holderGender: values.holderGender.trim() || null,
-    holderJoiningDate: values.holderJoiningDate ? new Date(values.holderJoiningDate).toISOString() : null,
+    holderJoiningDate: toApiDateIso(values.holderJoiningDate),
     holderAddOns: parseNum(values.holderAddOns) ?? null,
     holderAge:
       parseNum(values.age) != null ? Math.round(parseNum(values.age)!) : ageAtDate(values.dob, ageAnchor) ?? null,
@@ -304,15 +305,15 @@ export async function submitAdPolicyPatchRequest({
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
     previousPolicyNo: values.previousPolicyNo.trim() || null,
-    previousEndDate: values.previousEndDate ? new Date(values.previousEndDate).toISOString() : null,
+    previousEndDate: toApiDateIso(values.previousEndDate),
     policyGroup: resolvePolicyGrouping(values),
     refundChequeAmount: parseNum(values.refundChequeAmt) ?? null,
     refundChequeNo: values.refundChequeNo.trim() || null,
-    refundChequeDate: values.refundChequeDate ? new Date(values.refundChequeDate).toISOString() : null,
+    refundChequeDate: toApiDateIso(values.refundChequeDate),
     cdAccountUsed: values.cdAccountStatus === "YES" ? true : values.cdAccountStatus === "NO" ? false : null,
     cdAmount: parseNum(values.cdAmount) ?? null,
     courierStatus: values.notCourier || null,
-    courierDate: values.courierDate ? new Date(values.courierDate).toISOString() : null,
+    courierDate: toApiDateIso(values.courierDate),
     courierCompany: values.courierCompany.trim() || null,
     podNumber: values.podNumber.trim() || null,
     courierAddress: values.courierAddress.trim() || null,

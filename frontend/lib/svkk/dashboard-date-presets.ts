@@ -1,3 +1,5 @@
+import { toIsoDateParam } from "./form-date";
+
 export type DashboardDatePreset =
   | "today"
   | "yesterday"
@@ -64,12 +66,11 @@ export function resolveDashboardDateRange(
     }
     case "all":
       return { dateFrom: "", dateTo: today, label: "All policies" };
-    case "custom":
-      return {
-        dateFrom: customFrom?.trim() ?? "",
-        dateTo: customTo?.trim() || today,
-        label: "Custom range",
-      };
+    case "custom": {
+      const dateFrom = customFrom?.trim() ? toIsoDateParam(customFrom) : "";
+      const dateTo = toIsoDateParam(customTo) || today;
+      return { dateFrom, dateTo, label: "Custom range" };
+    }
     default:
       return { dateFrom: "", dateTo: today, label: "All policies" };
   }

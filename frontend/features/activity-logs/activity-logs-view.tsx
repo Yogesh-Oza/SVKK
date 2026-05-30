@@ -24,6 +24,7 @@ import {
   ActivityLogDetailSheet,
   type LogDetailPayload,
 } from "@/features/activity-logs/activity-log-detail-sheet";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import {
   Table,
   TableBody,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { toIsoDateParam } from "@/lib/svkk/form-date";
 import { svkkJson } from "@/lib/svkk/api";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
@@ -148,8 +150,8 @@ function buildQuery(filters: LogsFilters, cursor?: string): string {
   if (filters.entityId.trim()) p.set("entityId", filters.entityId.trim());
   if (filters.userId) p.set("userId", filters.userId);
   if (filters.roleSlug) p.set("roleSlug", filters.roleSlug);
-  if (filters.dateFrom) p.set("dateFrom", filters.dateFrom);
-  if (filters.dateTo) p.set("dateTo", filters.dateTo);
+  if (filters.dateFrom) p.set("dateFrom", toIsoDateParam(filters.dateFrom));
+  if (filters.dateTo) p.set("dateTo", toIsoDateParam(filters.dateTo));
   return `/logs?${p.toString()}`;
 }
 
@@ -570,11 +572,10 @@ export function ActivityLogsView() {
                 transition={{ delay: 0.19 }}
               >
                 <Label htmlFor="log-from">From date</Label>
-                <Input
+                <PolicyDateInput
                   id="log-from"
-                  type="date"
                   value={filters.dateFrom}
-                  onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
+                  onValueChange={(dateFrom) => setFilters((f) => ({ ...f, dateFrom }))}
                 />
               </motion.div>
               <motion.div
@@ -584,11 +585,10 @@ export function ActivityLogsView() {
                 transition={{ delay: 0.21 }}
               >
                 <Label htmlFor="log-to">To date</Label>
-                <Input
+                <PolicyDateInput
                   id="log-to"
-                  type="date"
                   value={filters.dateTo}
-                  onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
+                  onValueChange={(dateTo) => setFilters((f) => ({ ...f, dateTo }))}
                 />
               </motion.div>
             </CardContent>

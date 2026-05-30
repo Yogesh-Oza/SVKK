@@ -17,6 +17,8 @@ import { DropdownCombobox } from "@/components/svkk/dropdown-combobox";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { canSeeCommission } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { dateParse } from "@/lib/svkk/form-date";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import {
   fetchPremiumSnapshot,
@@ -132,9 +134,9 @@ function ageFromDobOnAnchor(iso: string, anchorIso: string): string {
   if (!iso || !anchorIso) {
     return "";
   }
-  const dob = new Date(iso);
-  const anchor = new Date(anchorIso);
-  if (Number.isNaN(dob.getTime()) || Number.isNaN(anchor.getTime()) || anchor.getTime() < dob.getTime()) {
+  const dob = dateParse(iso);
+  const anchor = dateParse(anchorIso);
+  if (!dob || !anchor || anchor.getTime() < dob.getTime()) {
     return "";
   }
   const years = Math.floor((anchor.getTime() - dob.getTime()) / (365.2425 * 24 * 60 * 60 * 1000));
@@ -2074,12 +2076,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Policy Start Date</Label>
-                <Input name="policyStart" type="date" value={values.policyStart} onChange={handleChange} onBlur={handleBlur} />
+                <PolicyDateInput name="policyStart" value={values.policyStart} onValueChange={(v) => void setFieldValue("policyStart", v)} onBlur={handleBlur} />
                 <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Policy End Date</Label>
-                <Input name="policyEnd" type="date" value={values.policyEnd} onChange={handleChange} onBlur={handleBlur} />
+                <PolicyDateInput name="policyEnd" value={values.policyEnd} onValueChange={(v) => void setFieldValue("policyEnd", v)} onBlur={handleBlur} />
                 <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
@@ -2088,11 +2090,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Previous End Date (Age anchor)</Label>
-                <Input
+                <PolicyDateInput
                   name="previousEndDate"
-                  type="date"
                   value={values.previousEndDate}
-                  onChange={handleChange}
+                  onValueChange={(v) => void setFieldValue("previousEndDate", v)}
                   onBlur={handleBlur}
                 />
               </div>
@@ -2323,12 +2324,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor={`${idPrefix}-dob`}>DOB</Label>
-                    <Input
+                    <PolicyDateInput
                       id={`${idPrefix}-dob`}
                       name="dob"
-                      type="date"
                       value={values.dob}
-                      onChange={handleChange}
+                      onValueChange={(v) => void setFieldValue("dob", v)}
                       onBlur={handleBlur}
                     />
                     <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
@@ -2418,11 +2418,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-2">
                     <Label>Joining Date</Label>
-                    <Input
+                    <PolicyDateInput
                       name="holderJoiningDate"
-                      type="date"
                       value={values.holderJoiningDate}
-                      onChange={handleChange}
+                      onValueChange={(v) => void setFieldValue("holderJoiningDate", v)}
                       onBlur={handleBlur}
                     />
                   </div>
@@ -2489,12 +2488,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-1">
                     <Label>Date of Birth</Label>
-                    <Input
-                      type="date"
+                    <PolicyDateInput
                       name={`members[${i}].dob`}
                       value={m.dob}
-                      onChange={(e) => {
-                        const d = e.target.value;
+                      onValueChange={(d) => {
                         void setFieldValue(`members[${i}].dob`, d);
                         if (!freezeAutoCalculations && !ageManual[`members[${i}].age`]) {
                           void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
@@ -2518,11 +2515,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   </div>
                   <div className="space-y-1">
                     <Label>Joining Date</Label>
-                    <Input
-                      type="date"
+                    <PolicyDateInput
                       name={`members[${i}].dateOfJoining`}
                       value={m.dateOfJoining}
-                      onChange={handleChange}
+                      onValueChange={(v) => void setFieldValue(`members[${i}].dateOfJoining`, v)}
                       onBlur={handleBlur}
                     />
                   </div>
@@ -2733,11 +2729,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
                       <div className="space-y-1">
                         <Label>Transaction Date</Label>
-                        <Input
-                          type="date"
+                        <PolicyDateInput
                           name={`paymentTransactions[${index}].transactionDate`}
                           value={transaction.transactionDate}
-                          onChange={handleChange}
+                          onValueChange={(v) =>
+                            void setFieldValue(`paymentTransactions[${index}].transactionDate`, v)
+                          }
                         />
                       </div>
 
@@ -2988,11 +2985,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>Refund Cheque Date</Label>
-              <Input
+              <PolicyDateInput
                 name="refundChequeDate"
-                type="date"
                 value={values.refundChequeDate}
-                onChange={handleChange}
+                onValueChange={(v) => void setFieldValue("refundChequeDate", v)}
                 onBlur={handleBlur}
               />
             </div>
@@ -3170,11 +3166,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Courier Date</Label>
-                <Input
+                <PolicyDateInput
                   name="courierDate"
-                  type="date"
                   value={values.courierDate}
-                  onChange={handleChange}
+                  onValueChange={(v) => void setFieldValue("courierDate", v)}
                   onBlur={handleBlur}
                 />
               </div>

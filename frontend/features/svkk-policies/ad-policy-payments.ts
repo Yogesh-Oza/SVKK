@@ -3,6 +3,7 @@ import {
   type AdPolicyFormValues,
   type AdPolicyPaymentTransactionForm,
 } from "./ad-policy-form-values";
+import { toApiDateIso } from "@/lib/svkk/form-date";
 
 const PAYMENT_CARRY_FORWARD_KEYS = [
   "paymentMode",
@@ -82,7 +83,7 @@ export function mapPaymentTransactionsToApi(values: AdPolicyFormValues) {
       method: mapTransactionModeToPayMethod(row.mode),
       status: row.transactionStatus || null,
       transactionNumber: row.transactionNumber.trim() || null,
-      transactionDate: row.transactionDate ? new Date(row.transactionDate).toISOString() : null,
+      transactionDate: toApiDateIso(row.transactionDate),
       bankName: row.bankName.trim() || null,
       branchName: row.branch.trim() || null,
       accountNumber:

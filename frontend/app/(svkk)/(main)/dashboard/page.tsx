@@ -18,10 +18,10 @@ import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
 import {
   resolveDashboardDateRange,
-  todayIsoDate,
   type DashboardDatePreset,
   type DashboardDateRange,
 } from "@/lib/svkk/dashboard-date-presets";
+import { todayFormDate } from "@/lib/svkk/form-date";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ export default function SvkkDashboardPage() {
   const { user } = useSvkkAuth();
   const [preset, setPreset] = useState<DashboardDatePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState(todayIsoDate());
+  const [customTo, setCustomTo] = useState(todayFormDate);
   const [dashboard, setDashboard] = useState<DashboardMetrics | null>(null);
   const [charts, setCharts] = useState<DashboardChartsPayload | null>(null);
   const [misTotals, setMisTotals] = useState<PolicyMemberRow | null>(null);

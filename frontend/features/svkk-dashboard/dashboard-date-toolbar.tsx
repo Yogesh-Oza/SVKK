@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import {
   DASHBOARD_DATE_PRESETS,
   type DashboardDatePreset,
@@ -67,22 +67,20 @@ export function DashboardDateToolbar({
             <Label htmlFor="dash-from" className="text-xs">
               From date
             </Label>
-            <Input
+            <PolicyDateInput
               id="dash-from"
-              type="date"
               value={customFrom}
-              onChange={(e) => onCustomFromChange(e.target.value)}
+              onValueChange={onCustomFromChange}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="dash-to" className="text-xs">
               To date
             </Label>
-            <Input
+            <PolicyDateInput
               id="dash-to"
-              type="date"
               value={customTo}
-              onChange={(e) => onCustomToChange(e.target.value)}
+              onValueChange={onCustomToChange}
             />
           </div>
         </div>
