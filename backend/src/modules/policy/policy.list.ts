@@ -133,7 +133,7 @@ function createdAtRangeFilter(dateFrom?: string, dateTo?: string): Prisma.Policy
   return undefined;
 }
 
-function expandPeriodMonthTextVariants(months: string[]): string[] {
+export function expandPeriodMonthTextVariants(months: string[]): string[] {
   const out = new Set<string>();
   for (const m of months) {
     const t = m.trim();

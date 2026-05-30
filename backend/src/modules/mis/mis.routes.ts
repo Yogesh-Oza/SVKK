@@ -79,12 +79,8 @@ const policyMemberReportQuerySchema = z.object({
   policyGroupings: stringArrayQuery,
   /** @deprecated use policyGroupings[] */
   policyGrouping: z.string().optional(),
-  months: intArrayQuery,
-  /** @deprecated use months[] */
-  month: z.coerce.number().int().min(1).max(12).optional(),
-  years: intArrayQuery,
-  /** @deprecated use years[] */
-  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  /** Policy SVKK Details month (`Policy.periodMonthText`, e.g. May). */
+  periodMonthTexts: stringArrayQuery,
   fiscalLabels: stringArrayQuery,
   /** @deprecated use fiscalLabels[] */
   fiscalLabel: z.string().optional(),
@@ -111,8 +107,7 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
     ...(q.policyGroupings ?? []),
     ...(q.policyGrouping?.trim() ? [q.policyGrouping.trim()] : []),
   ];
-  const months = [...(q.months ?? []), ...(q.month != null ? [q.month] : [])];
-  const years = [...(q.years ?? []), ...(q.year != null ? [q.year] : [])];
+  const periodMonthTexts = [...new Set(q.periodMonthTexts ?? [])];
   const fiscalLabels = [
     ...(q.fiscalLabels ?? []),
     ...(q.fiscalLabel?.trim() ? [q.fiscalLabel.trim()] : []),
@@ -128,8 +123,7 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
     groupBy: q.groupBy,
     categoryKeys: [...new Set(categoryKeys)],
     policyGroupings: [...new Set(policyGroupings)],
-    months: [...new Set(months)],
-    years: [...new Set(years)],
+    periodMonthTexts,
     fiscalLabels: [...new Set(fiscalLabels)],
     policyStartMonths: [...new Set(policyStartMonths)],
     policyStartYears: [...new Set(policyStartYears)],
@@ -305,8 +299,7 @@ export function createMisRouter(_env: Env) {
             categoryKeys: normalized.categoryKeys,
             policyGroupings: normalized.policyGroupings,
             sumInsureds: normalized.sumInsureds,
-            months: normalized.months,
-            years: normalized.years,
+            periodMonthTexts: normalized.periodMonthTexts,
             policyStartMonths: normalized.policyStartMonths,
             policyStartYears: normalized.policyStartYears,
             fiscalLabels: normalized.fiscalLabels,
@@ -344,8 +337,7 @@ export function createMisRouter(_env: Env) {
             categoryKeys: normalized.categoryKeys,
             policyGroupings: normalized.policyGroupings,
             sumInsureds: normalized.sumInsureds,
-            months: normalized.months,
-            years: normalized.years,
+            periodMonthTexts: normalized.periodMonthTexts,
             policyStartMonths: normalized.policyStartMonths,
             policyStartYears: normalized.policyStartYears,
             fiscalLabels: normalized.fiscalLabels,

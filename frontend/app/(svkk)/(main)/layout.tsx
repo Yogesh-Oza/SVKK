@@ -17,7 +17,7 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
         <SidebarConfigProvider>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset className="min-w-0 overflow-x-hidden">
+            <SidebarInset className="min-w-0 overflow-x-hidden bg-[#F9FAFB]">
               <Suspense>
                 <DashboardHeader />
               </Suspense>

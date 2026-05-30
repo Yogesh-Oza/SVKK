@@ -70,17 +70,18 @@ export default function AppSidebar({
       variant={config.variant}
       collapsible={config.collapsible}
       side={config.side}
+      className="border-r border-sidebar-border"
       {...props}
     >
-      <SidebarHeader>
+      <SidebarHeader className="border-b border-sidebar-border px-3 py-4">
         <SidebarLogo />
       </SidebarHeader>
-      <SidebarContent>
-        {navGroups.map((nav) => (
-          <NavGroup key={nav.title} {...nav} />
+      <SidebarContent className="px-2 py-3">
+        {navGroups.map((nav, idx) => (
+          <NavGroup key={nav.title} showTopSeparator={idx > 0} {...nav} />
         ))}
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border p-3">
         {user && (
           <NavUser
             user={{

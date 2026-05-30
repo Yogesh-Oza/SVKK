@@ -6,12 +6,11 @@ import {
   Bell,
   ChevronDown,
   LogOut,
-  Shield,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Badge } from "./ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -57,6 +56,8 @@ export function NavUser({
     }
   };
 
+  const displayName = user.name?.trim() || user.email?.split("@")[0] || "User";
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -64,31 +65,19 @@ export function NavUser({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="h-auto rounded-lg border border-white/20 bg-transparent px-3 py-3 hover:bg-white/10 data-[state=open]:bg-white/10"
             >
-              <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">
-                  {user.name
-                    .split(" ")
-                    .map((name) => name[0])
-                    .join("")}
+              <Avatar className="size-9 shrink-0 rounded-full border border-white/20">
+                <AvatarImage src={user.avatar} alt={displayName} />
+                <AvatarFallback className="rounded-full bg-white/10 text-white">
+                  <User className="size-5" strokeWidth={1.75} />
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs">{user.email}</span>
-                {user.role && (
-                  <Badge
-                    variant="secondary"
-                    className="mt-0.5 w-fit text-[10px] capitalize"
-                  >
-                    <Shield className="mr-0.5 size-2.5" />
-                    {user.role}
-                  </Badge>
-                )}
+              <div className="grid min-w-0 flex-1 text-left leading-tight">
+                <span className="truncate text-xs text-white/70">Welcome,</span>
+                <span className="truncate text-sm font-semibold text-white">{displayName}</span>
               </div>
-              <ChevronDown className="ml-auto size-4" />
+              <ChevronDown className="ml-auto size-4 shrink-0 text-white/70" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -98,29 +87,12 @@ export function NavUser({
             sideOffset={4}
           >
             <DropdownMenuLabel>
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">
-                    {user.name
-                      .split(" ")
-                      .map((name) => name[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs">{user.email}</span>
-                  {user.role && (
-                    <Badge
-                      variant="secondary"
-                      className="mt-1 w-fit text-[10px] capitalize"
-                    >
-                      <Shield className="mr-0.5 size-2.5" />
-                      {user.role}
-                    </Badge>
-                  )}
-                </div>
+              <div className="flex flex-col gap-0.5 px-1 py-1.5 text-left text-sm">
+                <span className="truncate font-semibold">{displayName}</span>
+                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+                {user.role ? (
+                  <span className="text-muted-foreground mt-1 text-xs capitalize">{user.role}</span>
+                ) : null}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

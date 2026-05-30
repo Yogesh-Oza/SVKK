@@ -46,6 +46,36 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { PolicyListYearSibling } from "@/features/svkk-policies/policy-year-siblings";
 import { yearChipLabel } from "@/features/svkk-policies/policy-year-display";
 
+/** Corporate blue palette aligned with insurance dashboard reference */
+const profileTheme = {
+  page: "rounded-xl bg-[#F9FAFB] p-4 sm:p-6",
+  heading: "text-[#1e3a8a]",
+  subtext: "text-[#6B7280]",
+  card: "rounded-xl border border-[#E5E7EB] bg-white shadow-sm",
+  cardTitle: "text-[#1e40af]",
+  iconCircle: "bg-[#EFF6FF] text-[#2563EB]",
+  icon: "text-[#2563EB]",
+  value: "text-[#1F2937] font-semibold",
+  valueMuted: "text-[#1F2937] font-medium",
+  label: "text-[#6B7280]",
+  accentValue: "text-[#2563EB] font-semibold",
+  moneyValue: "text-[#059669] font-semibold",
+  btnOutline:
+    "border-[#BFDBFE] bg-white text-[#2563EB] shadow-none hover:bg-[#EFF6FF] hover:text-[#1D4ED8]",
+  btnRenew:
+    "border-emerald-200 bg-white text-[#059669] shadow-none hover:bg-emerald-50 hover:text-emerald-700",
+  tabActive: "border-[#2563EB] text-[#2563EB] font-semibold",
+  tabInactive: "text-[#6B7280] hover:text-[#2563EB]",
+  sectionTitle: "text-[#1e40af] font-semibold",
+  tableHead: "bg-[#F3F4F6] text-[#6B7280]",
+};
+
+function paymentAmountLabel(amount: string): string {
+  const s = amount.replace(/,/g, "").trim();
+  if (!s || s === "0" || Number(s) === 0) return "";
+  return ` · ₹ ${amount}`;
+}
+
 function dStr(v: unknown): string {
   if (v == null || v === "") return "";
   if (typeof v === "string" || typeof v === "number") return String(v);
@@ -145,20 +175,31 @@ function SummaryStatCard({
   icon,
   label,
   value,
+  highlightValue,
+  iconVariant = "blue",
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
+  highlightValue?: boolean;
+  iconVariant?: "blue" | "green";
 }) {
+  const iconWrap =
+    iconVariant === "green" ? "bg-[#ECFDF5] text-[#059669]" : profileTheme.iconCircle;
   return (
-    <Card className="border-border/70 shadow-sm">
+    <Card className={cn(profileTheme.card, "border-none")}>
       <CardContent className="flex items-start gap-3 p-4">
-        <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+        <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-full", iconWrap)}>
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-muted-foreground text-xs font-medium">{label}</p>
-          <p className="text-foreground mt-0.5 text-sm font-semibold leading-snug break-words">
+          <p className={cn("text-xs font-medium", profileTheme.label)}>{label}</p>
+          <p
+            className={cn(
+              "mt-0.5 text-sm leading-snug wrap-break-word",
+              highlightValue ? profileTheme.accentValue : profileTheme.value,
+            )}
+          >
             {value}
           </p>
         </div>
@@ -172,22 +213,48 @@ function DetailField({
   label,
   value,
   valueClassName,
+  monetary,
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
   valueClassName?: string;
+  monetary?: boolean;
 }) {
   return (
     <div className="flex gap-3">
-      <div className="text-primary mt-0.5 shrink-0">{icon}</div>
+      <div className={cn("mt-0.5 shrink-0 [&>svg]:size-4", profileTheme.icon)}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-muted-foreground text-xs">{label}</p>
-        <p className={cn("text-foreground mt-0.5 text-sm font-medium break-words", valueClassName)}>
+        <p className={cn("text-xs", profileTheme.label)}>{label}</p>
+        <p
+          className={cn(
+            "mt-0.5 text-sm wrap-break-word",
+            profileTheme.valueMuted,
+            monetary && "tabular-nums",
+            valueClassName,
+          )}
+        >
           {value}
         </p>
       </div>
     </div>
+  );
+}
+
+function ProfileSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mt-8 border-t border-[#E5E7EB] pt-6">
+      <h3 className={cn("mb-4 text-sm", profileTheme.sectionTitle)}>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function SubsectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className={cn("mb-3 text-xs font-semibold uppercase tracking-wider", profileTheme.label)}>
+      {children}
+    </p>
   );
 }
 
@@ -202,7 +269,7 @@ function PolicyUrlLinks({ policyUrl }: { policyUrl: string | null }) {
           href={u}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary break-all text-sm underline"
+          className="text-[#2563EB] break-all text-sm underline"
         >
           Document {i + 1}
         </a>
@@ -284,30 +351,30 @@ export function PolicyProfileView({
       : displayVal(null);
 
   return (
-    <div className={cn("space-y-6", switchingYear && "pointer-events-none opacity-60")}>
+    <div className={cn(profileTheme.page, "space-y-6", switchingYear && "pointer-events-none opacity-60")}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-primary text-2xl font-bold tracking-tight">Policy Profile</h1>
-          <p className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-            <FileText className="size-4" />
+          <h1 className={cn("text-2xl font-bold tracking-tight sm:text-3xl", profileTheme.heading)}>Policy Profile</h1>
+          <p className={cn("mt-1 flex items-center gap-2 text-sm", profileTheme.subtext)}>
+            <FileText className={cn("size-4", profileTheme.icon)} />
             Policy Details &amp; Information
           </p>
           {createdAt ? (
-            <p className="text-muted-foreground mt-1 text-xs">
+            <p className={cn("mt-1 text-xs", profileTheme.subtext)}>
               Generated {displayVal(formatViewDateDmy(createdAt))}
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {canEdit ? (
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Button asChild variant="outline" size="sm" className={cn("gap-1.5", profileTheme.btnOutline)}>
               <Link href={editHref}>
                 <Pencil className="size-3.5" />
                 Edit Policy
               </Link>
             </Button>
           ) : null}
-          <Button asChild variant="outline" size="sm" className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+          <Button asChild variant="outline" size="sm" className={cn("gap-1.5", profileTheme.btnRenew)}>
             <Link href={renewHref}>
               <RefreshCw className="size-3.5" />
               Renew
@@ -317,7 +384,7 @@ export function PolicyProfileView({
             type="button"
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className={cn("gap-1.5", profileTheme.btnOutline)}
             disabled={receiptBusy}
             onClick={onDownload}
           >
@@ -328,7 +395,7 @@ export function PolicyProfileView({
             type="button"
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className={cn("gap-1.5", profileTheme.btnOutline)}
             disabled={receiptBusy}
             onClick={onPrint}
           >
@@ -340,7 +407,7 @@ export function PolicyProfileView({
 
       {yearTabs.length > 1 ? (
         <div className="space-y-2">
-          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Select year</p>
+          <p className={cn("text-xs font-medium uppercase tracking-wide", profileTheme.label)}>Select year</p>
           <div className="flex flex-wrap gap-2">
             {yearTabs.map((tabItem) => {
               const active = tabItem.policyId === currentPolicyId;
@@ -350,7 +417,12 @@ export function PolicyProfileView({
                   type="button"
                   variant={active ? "default" : "outline"}
                   size="sm"
-                  className={cn("h-auto px-3 py-2", active && "ring-primary/30 ring-2")}
+                  className={cn(
+                    "h-auto px-3 py-2",
+                    active
+                      ? "bg-[#2563EB] text-white hover:bg-[#1D4ED8]"
+                      : profileTheme.btnOutline,
+                  )}
                   onClick={() => onSelectYear(tabItem)}
                 >
                   <span className="font-semibold tabular-nums">{yearChipLabel(tabItem)}</span>
@@ -362,39 +434,21 @@ export function PolicyProfileView({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-        <SummaryStatCard
-          icon={<User className="size-4" />}
-          label="Customer ID"
-          value={displayVal(row.insuredParty.customerId)}
-        />
-        <SummaryStatCard
-          icon={<Shield className="size-4" />}
-          label="Policy No"
-          value={displayVal(row.policyNo)}
-        />
-        <SummaryStatCard
-          icon={<Umbrella className="size-4" />}
-          label="Policy Type"
-          value={displayVal(policyTypeLabel)}
-        />
-        <SummaryStatCard
-          icon={<Calendar className="size-4" />}
-          label="Policy Period"
-          value={periodLabel}
-        />
+        <SummaryStatCard icon={<User className="size-4" />} label="Customer ID" value={displayVal(row.insuredParty.customerId)} />
+        <SummaryStatCard icon={<Shield className="size-4" />} label="Policy No" value={displayVal(row.policyNo)} />
+        <SummaryStatCard icon={<Umbrella className="size-4" />} label="Policy Type" value={displayVal(policyTypeLabel)} />
+        <SummaryStatCard icon={<Calendar className="size-4" />} label="Policy Period" value={periodLabel} />
         <SummaryStatCard
           icon={<IndianRupee className="size-4" />}
           label="Sum Insured"
           value={displayVal(formatInr(y?.sumInsured) || fmt(y?.sumInsured))}
+          highlightValue
         />
-        <SummaryStatCard
-          icon={<Users className="size-4" />}
-          label="Person Count"
-          value={displayVal(row.personsInsuredCount)}
-        />
+        <SummaryStatCard icon={<Users className="size-4" />} label="Person Count" value={displayVal(row.personsInsuredCount)} />
         <SummaryStatCard
           icon={<ShieldCheck className="size-4" />}
           label="Status"
+          iconVariant="green"
           value={
             <Badge variant="outline" className={cn("font-medium", status.className)}>
               {status.label}
@@ -404,20 +458,25 @@ export function PolicyProfileView({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/70 shadow-sm">
+        <Card className={profileTheme.card}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-primary flex items-center gap-2 text-base">
-              <User className="size-4" />
+            <CardTitle className={cn("flex items-center gap-2 text-base", profileTheme.cardTitle)}>
+              <User className={cn("size-4", profileTheme.icon)} />
               Policy Holder Details
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex items-center gap-4">
-              <div className="bg-primary/10 text-primary flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-semibold">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div
+                className={cn(
+                  "flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-semibold",
+                  profileTheme.iconCircle,
+                )}
+              >
                 {holderInitials(row.insuredParty.name) || "PH"}
               </div>
               <div>
-                <p className="text-foreground text-lg font-semibold">{displayVal(row.insuredParty.name)}</p>
+                <p className={cn("text-lg font-semibold", profileTheme.value)}>{displayVal(row.insuredParty.name)}</p>
                 <Badge variant="outline" className="mt-1 border-emerald-200 bg-emerald-50 text-emerald-700">
                   Primary Policy Holder
                 </Badge>
@@ -434,10 +493,10 @@ export function PolicyProfileView({
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-sm">
+        <Card className={profileTheme.card}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-primary flex items-center gap-2 text-base">
-              <Shield className="size-4" />
+            <CardTitle className={cn("flex items-center gap-2 text-base", profileTheme.cardTitle)}>
+              <Shield className={cn("size-4", profileTheme.icon)} />
               SVKK Details
             </CardTitle>
           </CardHeader>
@@ -456,143 +515,94 @@ export function PolicyProfileView({
         </Card>
       </div>
 
-      <Card className="border-border/70 shadow-sm">
+      <Card className={profileTheme.card}>
         <CardContent className="p-4 sm:p-6">
           <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="mb-6 h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
-              {[
-                ["policy", "Policy Details"],
-                ["members", "Members"],
-                ["premium", "Premium"],
-                ["payment", "Payment"],
-                ["documents", "Documents"],
-                ["claims", "Claims"],
-              ].map(([id, label]) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  className="data-[state=active]:border-primary data-[state=active]:text-primary rounded-none border-b-2 border-transparent px-4 pb-2 shadow-none data-[state=active]:shadow-none"
-                >
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="border-b border-[#E5E7EB]">
+              <TabsList className="mb-0 h-auto w-full flex-wrap justify-start gap-0 bg-transparent p-0">
+                {[
+                  ["policy", "Policy Details"],
+                  ["members", "Members"],
+                  ["premium", "Premium"],
+                  ["payment", "Payment"],
+                  ["documents", "Documents"],
+                  ["claims", "Claims"],
+                ].map(([id, label]) => (
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    className={cn(
+                      "rounded-none border-b-2 border-transparent px-4 pb-3 pt-1 shadow-none data-[state=active]:shadow-none",
+                      profileTheme.tabInactive,
+                      "data-[state=active]:border-[#2563EB] data-[state=active]:bg-transparent data-[state=active]:text-[#2563EB] data-[state=active]:font-semibold",
+                    )}
+                  >
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
-            <TabsContent value="policy" className="mt-0">
+            <TabsContent value="policy" className="mt-6">
               <div className="grid gap-6 lg:grid-cols-2">
-                <DetailField
-                  icon={<Building2 className="size-5" />}
-                  label="Insurance Company"
-                  value={displayVal(row.insuranceCompany)}
-                />
-                <DetailField
-                  icon={<Handshake className="size-5" />}
-                  label="TPA"
-                  value={displayVal(row.tpa)}
-                />
-                <DetailField
-                  icon={<FileText className="size-5" />}
-                  label="Previous Policy No"
-                  value={displayVal(row.previousPolicyNo)}
-                />
-                <DetailField
-                  icon={<Calendar className="size-5" />}
-                  label="Previous End Date (Age Anchor)"
-                  value={fmtDate(row.previousEndDate)}
-                />
+                <DetailField icon={<Building2 className="size-5" />} label="Insurance Company" value={displayVal(row.insuranceCompany)} />
+                <DetailField icon={<Handshake className="size-5" />} label="TPA" value={displayVal(row.tpa)} />
+                <DetailField icon={<FileText className="size-5" />} label="Previous Policy No" value={displayVal(row.previousPolicyNo)} />
+                <DetailField icon={<Calendar className="size-5" />} label="Previous End Date (Age Anchor)" value={fmtDate(row.previousEndDate)} />
                 <DetailField
                   icon={<Award className="size-5" />}
                   label="Cumulative Bonus"
                   value={fmt(y?.holderCumulativeBonus)}
-                  valueClassName="text-emerald-600"
+                  valueClassName={profileTheme.moneyValue}
+                  monetary
                 />
                 <DetailField icon={<Calendar className="size-5" />} label="Joining Date" value={displayVal(holderJoiningDisplay)} />
-                <DetailField icon={<IndianRupee className="size-5" />} label="Add-ons (Amount rs)" value={fmt(row.holderAddOns)} />
-                <DetailField icon={<IndianRupee className="size-5" />} label="Basic Premium" value={fmt(y?.holderBasicPremium)} />
+                <DetailField icon={<IndianRupee className="size-5" />} label="Add-ons (Amount rs)" value={fmt(row.holderAddOns)} monetary />
+                <DetailField icon={<IndianRupee className="size-5" />} label="Basic Premium" value={fmt(y?.holderBasicPremium)} monetary />
               </div>
-              <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Contact Details</p>
+              <ProfileSection title="Contact Details">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailField
-                    icon={<Building2 className="size-4" />}
-                    label="Address Line 1: House/Flat No, Building Name"
-                    value={displayVal(row.addressLine1)}
-                  />
-                  <DetailField
-                    icon={<Building2 className="size-4" />}
-                    label="Address Line 2: Street/Road Name"
-                    value={displayVal(row.addressLine2)}
-                  />
-                  <DetailField
-                    icon={<Building2 className="size-4" />}
-                    label="Address Line 3: Landmark / Locality"
-                    value={displayVal(row.addressLine3)}
-                  />
-                  <DetailField
-                    icon={<Building2 className="size-4" />}
-                    label="Address Line 4: Additional Details (optional)"
-                    value={displayVal(row.addressLine4)}
-                  />
+                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 1: House/Flat No, Building Name" value={displayVal(row.addressLine1)} />
+                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 2: Street/Road Name" value={displayVal(row.addressLine2)} />
+                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 3: Landmark / Locality" value={displayVal(row.addressLine3)} />
+                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 4: Additional Details (optional)" value={displayVal(row.addressLine4)} />
                   <DetailField icon={<Building2 className="size-4" />} label="Area" value={displayVal(row.area)} />
                   <DetailField icon={<Building2 className="size-4" />} label="City" value={displayVal(row.city)} />
                   <DetailField icon={<Building2 className="size-4" />} label="PIN Code" value={displayVal(row.pincode)} />
-                  <DetailField
-                    icon={<User className="size-4" />}
-                    label="Primary Mobile Number"
-                    value={displayVal(row.insuredParty.mobile)}
-                  />
-                  <DetailField
-                    icon={<User className="size-4" />}
-                    label="Secondary Mobile Number"
-                    value={displayVal(row.mobileSecondary)}
-                  />
+                  <DetailField icon={<User className="size-4" />} label="Primary Mobile Number" value={displayVal(row.insuredParty.mobile)} />
+                  <DetailField icon={<User className="size-4" />} label="Secondary Mobile Number" value={displayVal(row.mobileSecondary)} />
                   <DetailField icon={<User className="size-4" />} label="WhatsApp Number" value={displayVal(row.whatsappNo)} />
                   <DetailField icon={<User className="size-4" />} label="Email ID" value={displayVal(row.insuredParty.email)} />
                 </div>
-              </div>
-              <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Nominee Details</p>
+              </ProfileSection>
+              <ProfileSection title="Nominee Details">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <DetailField icon={<User className="size-4" />} label="Nominee Name" value={displayVal(row.nomineeName)} />
                   <DetailField icon={<User className="size-4" />} label="Nominee Relation" value={displayVal(row.nomineeRelation)} />
-                  <DetailField
-                    icon={<User className="size-4" />}
-                    label="Nominee Phone number ( one number )"
-                    value={displayVal(row.contactPhone)}
-                  />
+                  <DetailField icon={<User className="size-4" />} label="Nominee Phone number ( one number )" value={displayVal(row.contactPhone)} />
                 </div>
-              </div>
-              <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Courier Details</p>
+              </ProfileSection>
+              <ProfileSection title="Courier Details">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailField
-                    icon={<FileText className="size-4" />}
-                    label="Courier Status (YES/NO)"
-                    value={yesNoLabel(row.courierStatus)}
-                  />
+                  <DetailField icon={<FileText className="size-4" />} label="Courier Status (YES/NO)" value={yesNoLabel(row.courierStatus)} />
                   <DetailField icon={<Calendar className="size-4" />} label="Courier Date" value={fmtDob(row.courierDate)} />
                   <DetailField icon={<FileText className="size-4" />} label="Courier Company" value={displayVal(row.courierCompany)} />
                   <DetailField icon={<FileText className="size-4" />} label="POD Number" value={displayVal(row.podNumber)} />
-                  <DetailField
-                    icon={<Building2 className="size-4" />}
-                    label="Courier Address"
-                    value={displayVal(row.courierAddress)}
-                  />
+                  <DetailField icon={<Building2 className="size-4" />} label="Courier Address" value={displayVal(row.courierAddress)} />
                 </div>
-              </div>
-              <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Remarks</p>
+              </ProfileSection>
+              <ProfileSection title="Remarks">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <DetailField icon={<FileText className="size-4" />} label="General Remark" value={displayVal(generalRemark)} />
                   <DetailField icon={<FileText className="size-4" />} label="Policy Change Remark" value={displayVal(policyChangeRemark)} />
                 </div>
-              </div>
+              </ProfileSection>
             </TabsContent>
 
-            <TabsContent value="members" className="mt-0">
-              <div className="overflow-x-auto rounded-lg border">
+            <TabsContent value="members" className="mt-6">
+              <div className={cn("overflow-x-auto rounded-xl border border-[#E5E7EB]", profileTheme.card)}>
                 <table className="w-full min-w-[960px] text-sm">
-                  <thead className="bg-muted/50">
+                  <thead className={profileTheme.tableHead}>
                     <tr>
                       {[
                         "Member name",
@@ -621,8 +631,11 @@ export function PolicyProfileView({
                         </td>
                       </tr>
                     ) : (
-                      (y?.members ?? []).map((m) => (
-                        <tr key={`${m.name}-${m.dob}`} className="border-t">
+                      (y?.members ?? []).map((m, idx) => (
+                        <tr
+                          key={`${m.name}-${m.dob}`}
+                          className={cn("border-t border-[#E5E7EB]", idx % 2 === 1 && "bg-[#F9FAFB]")}
+                        >
                           <td className="px-3 py-2">{displayVal(m.name)}</td>
                           <td className="px-3 py-2">{displayVal(m.relationship)}</td>
                           <td className="px-3 py-2">{fmtDate(m.dob)}</td>
@@ -642,101 +655,83 @@ export function PolicyProfileView({
               </div>
             </TabsContent>
 
-            <TabsContent value="premium" className="mt-0">
+            <TabsContent value="premium" className="mt-6">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <DetailField icon={<IndianRupee className="size-4" />} label="Gross Premium" value={fmt(y?.grossPremium)} />
-                <DetailField icon={<IndianRupee className="size-4" />} label="Taxes - %" value={fmt(y?.taxPercent)} />
-                <DetailField icon={<IndianRupee className="size-4" />} label="TAXES AMOUNT" value={fmt(y?.taxAmount)} />
-                <DetailField icon={<IndianRupee className="size-4" />} label="SVKK Premium" value={fmt(y?.svkkPremium ?? y?.vkkPremium)} />
-                <DetailField icon={<IndianRupee className="size-4" />} label="Net Premium" value={fmt(y?.expectedNetPremium ?? y?.netPremium)} />
+                <DetailField icon={<IndianRupee className="size-4" />} label="Gross Premium" value={fmt(y?.grossPremium)} monetary />
+                <DetailField icon={<IndianRupee className="size-4" />} label="Taxes - %" value={fmt(y?.taxPercent)} monetary />
+                <DetailField icon={<IndianRupee className="size-4" />} label="TAXES AMOUNT" value={fmt(y?.taxAmount)} monetary />
+                <DetailField icon={<IndianRupee className="size-4" />} label="SVKK Premium" value={fmt(y?.svkkPremium ?? y?.vkkPremium)} monetary />
+                <DetailField icon={<IndianRupee className="size-4" />} label="Net Premium" value={fmt(y?.expectedNetPremium ?? y?.netPremium)} monetary />
                 {allowCommission ? (
                   <>
-                    <DetailField icon={<IndianRupee className="size-4" />} label="Commission" value={fmt(y?.commissionAmount)} />
-                    <DetailField icon={<IndianRupee className="size-4" />} label="VKK Commission" value={fmt(y?.vkkCommission)} />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="Commission" value={fmt(y?.commissionAmount)} monetary />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="VKK Commission" value={fmt(y?.vkkCommission)} monetary />
                   </>
                 ) : null}
-                <DetailField icon={<IndianRupee className="size-4" />} label="Policy Holder Premium" value={fmt(y?.yearPolicyHolderPremium)} />
+                <DetailField icon={<IndianRupee className="size-4" />} label="Policy Holder Premium" value={fmt(y?.yearPolicyHolderPremium)} monetary />
                 <DetailField
                   icon={<IndianRupee className="size-4" />}
                   label="Premium (1 Lakh Individual / 2 Lakh Floater)"
                   value={fmt(y?.twoLacFloater ?? y?.premiumOneOrTwoLakh)}
+                  monetary
                 />
                 <DetailField
                   icon={<IndianRupee className="size-4" />}
                   label="Contribution (Gaam Mahajan / VKK)"
                   value={fmt(y?.gaamMahajanContribution ?? y?.gaamMahajanVkk)}
+                  monetary
                 />
-                <DetailField icon={<IndianRupee className="size-4" />} label="Excess / Short Amount" value={fmt(y?.excessShortAmount)} />
+                <DetailField icon={<IndianRupee className="size-4" />} label="Excess / Short Amount" value={fmt(y?.excessShortAmount)} monetary />
                 <DetailField
                   icon={<IndianRupee className="size-4" />}
                   label="Difference Amount Paid by Policyholder"
                   value={fmt(y?.differenceAmountPaidByHolder ?? y?.diffPaidByHolder)}
+                  monetary
                 />
               </div>
-              <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Loan / CD / Refund</p>
+              <ProfileSection title="Loan / CD / Refund">
                 <div className="space-y-6">
                   <div>
-                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Loan</p>
+                    <SubsectionLabel>Loan</SubsectionLabel>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField
-                        icon={<FileText className="size-4" />}
-                        label="Loan Taken (Yes/No)"
-                        value={yesNoLabel(row.loanStatus)}
-                      />
-                      <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} />
+                      <DetailField icon={<FileText className="size-4" />} label="Loan Taken (Yes/No)" value={yesNoLabel(row.loanStatus)} />
+                      <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} monetary />
                     </div>
                   </div>
-                  <div className="border-border/60 border-t pt-6">
-                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">CD</p>
+                  <div className="border-t border-[#E5E7EB] pt-6">
+                    <SubsectionLabel>CD</SubsectionLabel>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField
-                        icon={<FileText className="size-4" />}
-                        label="CD Account Used"
-                        value={yesNoLabel(row.cdAccountUsed)}
-                      />
-                      <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} />
+                      <DetailField icon={<FileText className="size-4" />} label="CD Account Used" value={yesNoLabel(row.cdAccountUsed)} />
+                      <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} monetary />
                     </div>
                   </div>
-                  <div className="border-border/60 border-t pt-6">
-                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Refund</p>
+                  <div className="border-t border-[#E5E7EB] pt-6">
+                    <SubsectionLabel>Refund</SubsectionLabel>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField
-                        icon={<IndianRupee className="size-4" />}
-                        label="Refund Cheque Amount"
-                        value={fmt(row.refundChequeAmount)}
-                      />
-                      <DetailField
-                        icon={<FileText className="size-4" />}
-                        label="Refund Cheque Number"
-                        value={displayVal(row.refundChequeNo)}
-                      />
-                      <DetailField
-                        icon={<Calendar className="size-4" />}
-                        label="Refund Cheque Date"
-                        value={displayVal(refundDateDisplay)}
-                      />
+                      <DetailField icon={<IndianRupee className="size-4" />} label="Refund Cheque Amount" value={fmt(row.refundChequeAmount)} monetary />
+                      <DetailField icon={<FileText className="size-4" />} label="Refund Cheque Number" value={displayVal(row.refundChequeNo)} />
+                      <DetailField icon={<Calendar className="size-4" />} label="Refund Cheque Date" value={displayVal(refundDateDisplay)} />
                     </div>
                   </div>
                 </div>
-              </div>
+              </ProfileSection>
             </TabsContent>
 
-            <TabsContent value="payment" className="mt-0">
+            <TabsContent value="payment" className="mt-6">
               {paymentDisplays.length === 0 ? (
-                <p className="text-muted-foreground text-sm">{displayVal(null)}</p>
+                <p className={cn("text-sm", profileTheme.subtext)}>{displayVal(null)}</p>
               ) : (
                 <div className="space-y-4">
                   {paymentDisplays.map((payment) => (
-                    <Card key={payment.index} className="border-border/70">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-semibold">
+                    <Card key={payment.index} className={profileTheme.card}>
+                      <CardHeader className="border-b border-[#E5E7EB] bg-[#F9FAFB] pb-2">
+                        <CardTitle className={cn("text-sm font-semibold", profileTheme.cardTitle)}>
                           Transaction {payment.index}
                           {payment.modeLabel ? ` · ${payment.modeLabel}` : ""}
-                          {payment.amount ? ` · ₹ ${payment.amount}` : ""}
+                          {paymentAmountLabel(payment.amount)}
                         </CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="pt-4">
                         <div className="grid gap-4 sm:grid-cols-2">
                           {payment.fields.map((field) => (
                             <DetailField
@@ -748,6 +743,7 @@ export function PolicyProfileView({
                                   ? displayVal(formatDateIso(field.value) || field.value)
                                   : displayVal(field.value)
                               }
+                              monetary={!field.label.toLowerCase().includes("date")}
                             />
                           ))}
                         </div>
@@ -758,7 +754,7 @@ export function PolicyProfileView({
               )}
             </TabsContent>
 
-            <TabsContent value="documents" className="mt-0">
+            <TabsContent value="documents" className="mt-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <DetailField icon={<FileText className="size-4" />} label="Aadhaar" value={displayVal(row.insuredParty.aadhaarNo)} />
                 <DetailField icon={<FileText className="size-4" />} label="PAN" value={displayVal(row.insuredParty.pan)} />
@@ -772,7 +768,7 @@ export function PolicyProfileView({
                         href={row.policyUrl2}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary break-all text-sm underline"
+                        className="text-[#2563EB] break-all text-sm underline"
                       >
                         {row.policyUrl2}
                       </a>
@@ -784,8 +780,8 @@ export function PolicyProfileView({
               </div>
             </TabsContent>
 
-            <TabsContent value="claims" className="mt-0">
-              <p className="text-muted-foreground text-sm">No claims linked to this policy yet.</p>
+            <TabsContent value="claims" className="mt-6">
+              <p className={cn("text-sm", profileTheme.subtext)}>No claims linked to this policy yet.</p>
             </TabsContent>
           </Tabs>
         </CardContent>

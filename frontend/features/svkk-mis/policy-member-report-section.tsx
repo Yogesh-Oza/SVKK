@@ -29,6 +29,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { hasPermission } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import {
   flexRender,
@@ -70,21 +71,6 @@ const FALLBACK_CATEGORY_OPTIONS: PolicyFilterOption[] = [
   "STAFF",
   "SVGA",
 ].map((c) => ({ value: c, label: c }));
-
-const CREATED_MONTH_OPTIONS: PolicyFilterOption[] = [
-  { value: "1", label: "January" },
-  { value: "2", label: "February" },
-  { value: "3", label: "March" },
-  { value: "4", label: "April" },
-  { value: "5", label: "May" },
-  { value: "6", label: "June" },
-  { value: "7", label: "July" },
-  { value: "8", label: "August" },
-  { value: "9", label: "September" },
-  { value: "10", label: "October" },
-  { value: "11", label: "November" },
-  { value: "12", label: "December" },
-];
 
 export const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "label",
@@ -151,6 +137,7 @@ type FiltersMeta = {
   sumInsuredValues: string[];
   policyGroupings: string[];
   periodYearTexts: string[];
+  periodMonthTexts: string[];
 };
 
 const DIM_HEADER: Record<ReportResponse["groupBy"], string> = {
@@ -354,7 +341,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [areas, setAreas] = useState<string[]>([]);
   const [sumInsureds, setSumInsureds] = useState<string[]>([]);
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
-  const [months, setMonths] = useState<string[]>([]);
+  const [periodMonths, setPeriodMonths] = useState<string[]>([]);
   const [fiscalYears, setFiscalYears] = useState<string[]>([]);
   const [policyStartMonth, setPolicyStartMonth] = useState("");
   const [policyStartYear, setPolicyStartYear] = useState("");
@@ -394,8 +381,8 @@ export function PolicyMemberReportSection({ onError }: Props) {
     }
     const v = searchParams.getAll("villages");
     if (v.length) setVillages(v);
-    const m = searchParams.getAll("months");
-    if (m.length) setMonths(m);
+    const pm = searchParams.getAll("periodMonthTexts");
+    if (pm.length) setPeriodMonths(pm);
     const fy = searchParams.getAll("fiscalLabels");
     if (fy.length) setFiscalYears(fy);
     const psm = searchParams.get("policyStartMonth");
@@ -431,6 +418,10 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const areaOptions = useMemo<PolicyFilterOption[]>(
     () => (filterMeta?.areas ?? []).map((a) => ({ value: a, label: a })),
     [filterMeta?.areas],
+  );
+  const monthOptions = useMemo(
+    () => monthFilterOptionsFromMeta(filterMeta?.periodMonthTexts ?? []),
+    [filterMeta?.periodMonthTexts],
   );
   const sumInsuredOptions = useMemo<PolicyFilterOption[]>(() => {
     if (ddOptions.SUM_INSURED.length) {
@@ -476,7 +467,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
     areas.forEach((a) => q.append("areas", a));
     sumInsureds.forEach((s) => q.append("sumInsureds", s));
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
-    months.forEach((m) => q.append("months", m));
+    periodMonths.forEach((m) => q.append("periodMonthTexts", m));
     fiscalYears.forEach((y) => q.append("fiscalLabels", y));
     if (policyStartMonth) {
       q.set("policyStartMonth", policyStartMonth);
@@ -492,7 +483,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
     dateTo,
     fiscalYears,
     groupBy,
-    months,
+    periodMonths,
     policyGroupings,
     policyStartMonth,
     policyStartYear,
@@ -507,7 +498,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
     dateTo,
     fiscalYears,
     groupBy,
-    months,
+    periodMonths,
     policyGroupings,
     policyStartMonth,
     policyStartYear,
@@ -592,7 +583,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
     setAreas([]);
     setSumInsureds([]);
     setPolicyGroupings([]);
-    setMonths([]);
+    setPeriodMonths([]);
     setFiscalYears([]);
     setPolicyStartMonth("");
     setPolicyStartYear("");
@@ -610,7 +601,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
       areas.length > 0 ||
       sumInsureds.length > 0 ||
       policyGroupings.length > 0 ||
-      months.length > 0 ||
+      periodMonths.length > 0 ||
       fiscalYears.length > 0 ||
       policyStartMonth !== "" ||
       policyStartYear !== "" ||
@@ -624,7 +615,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
       filterText,
       fiscalYears,
       groupBy,
-      months,
+      periodMonths,
       policyGroupings,
       policyStartMonth,
       policyStartYear,
@@ -748,18 +739,19 @@ export function PolicyMemberReportSection({ onError }: Props) {
           accentClassName="border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card"
         />
         <PolicyFilterMulti
-          label="Month (policy created)"
+          label="Month"
           placeholder="All months"
-          options={CREATED_MONTH_OPTIONS}
-          selected={months}
+          options={monthOptions}
+          selected={periodMonths}
           onChange={(next) => {
-            setMonths(next);
+            setPeriodMonths(next);
             if (policyStartMonth || policyStartYear) {
               setPolicyStartMonth("");
               setPolicyStartYear("");
             }
           }}
           accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
+          popoverContentClassName="max-h-[min(22rem,70vh)]"
         />
         <PolicyFilterMulti
           label="Year"

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { sqlTable } from "../../lib/sql-tables.js";
+import { expandPeriodMonthTextVariants } from "../policy/policy.list.js";
 
 /**
  * Inclusive day bounds in UTC for `asOfDate` (calendar date, UTC).
@@ -242,8 +243,7 @@ type PolicyMemberReportParams = {
   villages: string[];
   areas: string[];
   sumInsureds: string[];
-  months: number[];
-  years: number[];
+  periodMonthTexts: string[];
   policyStartMonths: number[];
   policyStartYears: number[];
   createdFrom: Date | null;
@@ -348,17 +348,15 @@ function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
   return Prisma.sql` AND py.sumInsured IN (${Prisma.join(amounts)})`;
 }
 
-function monthsYearsFilterSql(months: number[], years: number[]): Prisma.Sql {
-  if (months.length && years.length) {
-    return Prisma.sql` AND MONTH(p.createdAt) IN (${Prisma.join(months)}) AND YEAR(p.createdAt) IN (${Prisma.join(years)})`;
+function periodMonthTextsFilterSql(periodMonthTexts: string[]): Prisma.Sql {
+  if (!periodMonthTexts.length) {
+    return Prisma.empty;
   }
-  if (months.length) {
-    return Prisma.sql` AND MONTH(p.createdAt) IN (${Prisma.join(months)})`;
+  const variants = expandPeriodMonthTextVariants(periodMonthTexts);
+  if (!variants.length) {
+    return Prisma.empty;
   }
-  if (years.length) {
-    return Prisma.sql` AND YEAR(p.createdAt) IN (${Prisma.join(years)})`;
-  }
-  return Prisma.empty;
+  return Prisma.sql` AND p.periodMonthText IN (${Prisma.join(variants)})`;
 }
 
 /** Filter by calendar month/year of `PolicyYear.policyStart` (dashboard premium chart drill-down). */
@@ -406,7 +404,7 @@ function baseFromClause(
     villF: Prisma.Sql;
     areaF: Prisma.Sql;
     sumF: Prisma.Sql;
-    myF: Prisma.Sql;
+    periodMonthF: Prisma.Sql;
     psF: Prisma.Sql;
     createdF: Prisma.Sql;
     fiscF: Prisma.Sql;
@@ -439,7 +437,7 @@ function baseFromClause(
       ${filters.villF}
       ${filters.areaF}
       ${filters.sumF}
-      ${filters.myF}
+      ${filters.periodMonthF}
       ${filters.psF}
       ${filters.createdF}
       ${filters.fiscF}
@@ -463,7 +461,7 @@ export async function queryDistinctPolicyCategoryKeys(
   const villF = villagesFilterSql(args.villages);
   const areaF = areasFilterSql(args.areas);
   const sumF = sumInsuredsFilterSql(args.sumInsureds);
-  const myF = monthsYearsFilterSql(args.months, args.years);
+  const periodMonthF = periodMonthTextsFilterSql(args.periodMonthTexts);
   const psF = policyStartMonthYearFilterSql(args.policyStartMonths, args.policyStartYears);
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
@@ -481,7 +479,7 @@ export async function queryDistinctPolicyCategoryKeys(
       ${villF}
       ${areaF}
       ${sumF}
-      ${myF}
+      ${periodMonthF}
       ${psF}
       ${createdF}
       ${fiscF}
@@ -512,11 +510,11 @@ export async function queryPolicyMemberReport(
   const villF = villagesFilterSql(args.villages);
   const areaF = areasFilterSql(args.areas);
   const sumF = sumInsuredsFilterSql(args.sumInsureds);
-  const myF = monthsYearsFilterSql(args.months, args.years);
+  const periodMonthF = periodMonthTextsFilterSql(args.periodMonthTexts);
   const psF = policyStartMonthYearFilterSql(args.policyStartMonths, args.policyStartYears);
   const createdF = createdAtRangeFilterSql(args.createdFrom, args.createdTo);
   const fiscF = fiscalLabelsFilterSql(args.fiscalLabels);
-  const filters = { catF, pgF, villF, areaF, sumF, myF, psF, createdF, fiscF };
+  const filters = { catF, pgF, villF, areaF, sumF, periodMonthF, psF, createdF, fiscF };
   const fArgs = {
     scopeOnP: args.scopeOnP,
     start,
@@ -594,7 +592,7 @@ export async function queryPolicyMemberReport(
         ${villF}
         ${areaF}
         ${sumF}
-        ${myF}
+        ${periodMonthF}
         ${psF}
         ${createdF}
         ${fiscF}
@@ -648,7 +646,7 @@ export async function queryPolicyMemberReport(
         ${villF}
         ${areaF}
         ${sumF}
-        ${myF}
+        ${periodMonthF}
         ${psF}
         ${createdF}
         ${fiscF}

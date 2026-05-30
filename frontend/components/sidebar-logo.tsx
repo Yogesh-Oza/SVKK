@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { ShieldPlus } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 /**
- * SVKK + CRM shell branding (NextAuth / dashboard).
+ * SVKK + CRM shell branding — corporate navy sidebar style.
  */
 export function SidebarLogo() {
   const { state } = useSidebar();
@@ -17,20 +18,14 @@ export function SidebarLogo() {
         <SidebarMenuButton
           size="lg"
           asChild
-          className="group/logo relative overflow-hidden data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+          className="h-auto rounded-lg px-2 py-2 hover:bg-white/10 data-[state=open]:bg-white/10"
         >
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div
-              className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-400 ${
-                isCollapsed ? "size-8" : "h-9 w-9"
-              } text-xs font-bold`}
-            >
-              SV
-            </div>
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <ShieldPlus className={cnIconSize(isCollapsed)} strokeWidth={1.75} />
             {!isCollapsed && (
-              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">SVKK</span>
-                <span className="text-muted-foreground truncate text-xs">MediClaim · CRM</span>
+              <div className="grid min-w-0 flex-1 text-left leading-tight">
+                <span className="truncate text-base font-bold text-white">SVKK</span>
+                <span className="truncate text-sm font-normal text-white/75">MediClaim Insurance</span>
               </div>
             )}
           </Link>
@@ -38,4 +33,8 @@ export function SidebarLogo() {
       </SidebarMenuItem>
     </SidebarMenu>
   );
+}
+
+function cnIconSize(collapsed: boolean) {
+  return collapsed ? "size-7 shrink-0 text-white" : "size-8 shrink-0 text-white";
 }

@@ -276,8 +276,7 @@ export async function getDashboardCharts(
     villages: [],
     areas: [],
     sumInsureds: [],
-    months: [],
-    years: [],
+    periodMonthTexts: [],
     policyStartMonths: [],
     policyStartYears: [],
     createdFrom: null,
@@ -436,8 +435,7 @@ export async function getPolicyMemberReport(
     groupBy: PolicyMemberReportGroupBy;
     categoryKeys: string[];
     policyGroupings: string[];
-    months: number[];
-    years: number[];
+    periodMonthTexts: string[];
     policyStartMonths: number[];
     policyStartYears: number[];
     fiscalLabels: string[];
@@ -473,8 +471,7 @@ export async function getPolicyMemberReport(
     villages: input.villages,
     areas: input.areas,
     sumInsureds: input.sumInsureds,
-    months: usePolicyStartFilter ? [] : input.months,
-    years: usePolicyStartFilter ? [] : input.years,
+    periodMonthTexts: usePolicyStartFilter ? [] : input.periodMonthTexts,
     policyStartMonths: input.policyStartMonths,
     policyStartYears: input.policyStartYears,
     createdFrom,
@@ -522,8 +519,7 @@ export async function getPolicyMemberReportDetail(
     categoryKeys: string[];
     policyGroupings: string[];
     sumInsureds: string[];
-    months: number[];
-    years: number[];
+    periodMonthTexts: string[];
     policyStartMonths: number[];
     policyStartYears: number[];
     fiscalLabels: string[];
@@ -565,8 +561,7 @@ export async function getPolicyMemberReportDetail(
     villages: village ? [village] : [],
     areas: area ? [area] : [],
     sumInsureds: input.sumInsureds,
-    months: usePolicyStartFilter ? [] : input.months,
-    years: usePolicyStartFilter ? [] : input.years,
+    periodMonthTexts: usePolicyStartFilter ? [] : input.periodMonthTexts,
     policyStartMonths: input.policyStartMonths,
     policyStartYears: input.policyStartYears,
     createdFrom,

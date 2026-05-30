@@ -71,7 +71,6 @@ export function misQueryFromPolicyStartMonth(
     dateTo,
     policyStartYear: String(year),
     policyStartMonth: String(month),
-    months: String(month),
     // Fiscal year is shown in MIS UI only; API ignores it when policyStart* is set (chart parity).
     fiscalLabels: fiscalLabelForCalendarMonth(year, month),
     ...extra,

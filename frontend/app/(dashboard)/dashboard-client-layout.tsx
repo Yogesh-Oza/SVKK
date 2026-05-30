@@ -53,7 +53,7 @@ export default function DashboardClientLayout({
     <SidebarConfigProvider>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="bg-[#F9FAFB]">
           <Suspense>
             <DashboardHeader />
           </Suspense>
