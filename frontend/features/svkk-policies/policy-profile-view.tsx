@@ -525,6 +525,7 @@ export function PolicyProfileView({
                   ["members", "Members"],
                   ["premium", "Premium"],
                   ["payment", "Payment"],
+                  ["loan", "Loan / CD / Refund"],
                   ["documents", "Documents"],
                   ["claims", "Claims"],
                 ].map(([id, label]) => (
@@ -689,32 +690,33 @@ export function PolicyProfileView({
                   monetary
                 />
               </div>
-              <ProfileSection title="Loan / CD / Refund">
-                <div className="space-y-6">
-                  <div>
-                    <SubsectionLabel>Loan</SubsectionLabel>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField icon={<FileText className="size-4" />} label="Loan Taken (Yes/No)" value={yesNoLabel(row.loanStatus)} />
-                      <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} monetary />
-                    </div>
-                  </div>
-                  <div className="border-t border-[#E5E7EB] pt-6">
-                    <SubsectionLabel>CD</SubsectionLabel>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField icon={<FileText className="size-4" />} label="CD Account Used" value={yesNoLabel(row.cdAccountUsed)} />
-                      <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} monetary />
-                    </div>
-                  </div>
-                  <div className="border-t border-[#E5E7EB] pt-6">
-                    <SubsectionLabel>Refund</SubsectionLabel>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailField icon={<IndianRupee className="size-4" />} label="Refund Cheque Amount" value={fmt(row.refundChequeAmount)} monetary />
-                      <DetailField icon={<FileText className="size-4" />} label="Refund Cheque Number" value={displayVal(row.refundChequeNo)} />
-                      <DetailField icon={<Calendar className="size-4" />} label="Refund Cheque Date" value={displayVal(refundDateDisplay)} />
-                    </div>
+            </TabsContent>
+
+            <TabsContent value="loan" className="mt-6">
+              <div className="space-y-6">
+                <div>
+                  <SubsectionLabel>Loan</SubsectionLabel>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailField icon={<FileText className="size-4" />} label="Loan Taken (Yes/No)" value={yesNoLabel(row.loanStatus)} />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} monetary />
                   </div>
                 </div>
-              </ProfileSection>
+                <div className="border-t border-[#E5E7EB] pt-6">
+                  <SubsectionLabel>CD</SubsectionLabel>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailField icon={<FileText className="size-4" />} label="CD Account Used" value={yesNoLabel(row.cdAccountUsed)} />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} monetary />
+                  </div>
+                </div>
+                <div className="border-t border-[#E5E7EB] pt-6">
+                  <SubsectionLabel>Refund</SubsectionLabel>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailField icon={<IndianRupee className="size-4" />} label="Refund Cheque Amount" value={fmt(row.refundChequeAmount)} monetary />
+                    <DetailField icon={<FileText className="size-4" />} label="Refund Cheque Number" value={displayVal(row.refundChequeNo)} />
+                    <DetailField icon={<Calendar className="size-4" />} label="Refund Cheque Date" value={displayVal(refundDateDisplay)} />
+                  </div>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent value="payment" className="mt-6">

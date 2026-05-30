@@ -6,7 +6,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 /**
- * SVKK + CRM shell branding — corporate navy sidebar style.
+ * SVKK + CRM shell branding — light blue-tinted sidebar.
  */
 export function SidebarLogo() {
   const { state } = useSidebar();
@@ -18,14 +18,14 @@ export function SidebarLogo() {
         <SidebarMenuButton
           size="lg"
           asChild
-          className="h-auto rounded-lg px-2 py-2 hover:bg-white/10 data-[state=open]:bg-white/10"
+          className="h-auto rounded-lg px-2 py-2 hover:bg-sidebar-accent/15 data-[state=open]:bg-sidebar-accent/15"
         >
           <Link href="/dashboard" className="flex items-center gap-3">
             <ShieldPlus className={cnIconSize(isCollapsed)} strokeWidth={1.75} />
             {!isCollapsed && (
               <div className="grid min-w-0 flex-1 text-left leading-tight">
-                <span className="truncate text-base font-bold text-white">SVKK</span>
-                <span className="truncate text-sm font-normal text-white/75">MediClaim Insurance</span>
+                <span className="text-sidebar-foreground truncate text-base font-bold">SVKK</span>
+                <span className="text-sidebar-foreground/75 truncate text-sm font-bold">MediClaim Insurance</span>
               </div>
             )}
           </Link>
@@ -36,5 +36,7 @@ export function SidebarLogo() {
 }
 
 function cnIconSize(collapsed: boolean) {
-  return collapsed ? "size-7 shrink-0 text-white" : "size-8 shrink-0 text-white";
+  return collapsed
+    ? "size-7 shrink-0 text-sidebar-foreground"
+    : "size-8 shrink-0 text-sidebar-foreground";
 }

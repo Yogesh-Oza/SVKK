@@ -55,16 +55,16 @@ export function PolicyFilterMulti({
         accentClassName,
       )}
     >
-      <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">{label}</Label>
+      <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">{label}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant="outline"
-            className="border-input/80 bg-background/90 hover:bg-background h-10 w-full justify-between gap-2 px-3 font-normal shadow-sm"
+            className="border-input/80 bg-background/90 hover:bg-background h-10 w-full justify-between gap-2 px-3 font-bold shadow-sm"
             aria-expanded={open}
           >
-            <span className={cn("truncate text-left text-sm", sortedSelected.length === 0 && "text-muted-foreground")}>
+            <span className={cn("truncate text-left text-sm font-bold", sortedSelected.length === 0 && "text-muted-foreground")}>
               {summary}
             </span>
             <ChevronDown className="text-muted-foreground size-4 shrink-0 opacity-70" />

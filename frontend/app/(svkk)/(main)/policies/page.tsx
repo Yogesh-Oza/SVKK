@@ -175,8 +175,8 @@ type FiltersMeta = {
 type CategoryItem = { id: string; key: string; name: string };
 type YearActionKind = "edit" | "receipt";
 
-/** Unified table body typography: one weight/color for all data cells except policy no. */
-const policyTableMuted = "font-sans text-sm font-normal text-muted-foreground tabular-nums antialiased";
+/** Unified table body typography: bold data cells across the policy register. */
+const policyTableCell = "font-sans text-sm font-bold text-foreground tabular-nums antialiased";
 
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "createdAt", label: "Newest first" },
@@ -788,7 +788,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <span className={policyTableMuted}>{row.original.insuredParty.customerId ?? "—"}</span>
+          <span className={policyTableCell}>{row.original.insuredParty.customerId ?? "—"}</span>
         ),
       },
       {
@@ -805,7 +805,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <span className={cn(policyTableMuted, "max-w-[120px] truncate")}>
+          <span className={cn(policyTableCell, "max-w-[120px] truncate")}>
             {row.original.periodMonthText?.trim() || "—"}
           </span>
         ),
@@ -826,7 +826,7 @@ export default function SvkkPoliciesPage() {
         cell: ({ row }) => {
           const cat = categoryLabelForSnapshot(row.original, categoryByKey);
           return (
-            <span className={cn(policyTableMuted, "max-w-[140px] truncate")} title={cat || undefined}>
+            <span className={cn(policyTableCell, "max-w-[140px] truncate")} title={cat || undefined}>
               {cat.trim() || "—"}
             </span>
           );
@@ -848,7 +848,7 @@ export default function SvkkPoliciesPage() {
         cell: ({ row }) => {
           const id = row.original.insuredParty.svkkPublicId.trim() || "—";
           return (
-            <span className={cn(policyTableMuted, "max-w-[200px] truncate font-mono text-xs")} title={id !== "—" ? id : undefined}>
+            <span className={cn(policyTableCell, "max-w-[200px] truncate font-mono text-xs")} title={id !== "—" ? id : undefined}>
               {id}
             </span>
           );
@@ -868,7 +868,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <span className={cn(policyTableMuted, "max-w-[240px] truncate")}>{row.original.insuredParty.name}</span>
+          <span className={cn(policyTableCell, "max-w-[240px] truncate")}>{row.original.insuredParty.name}</span>
         ),
       },
       {
@@ -887,7 +887,7 @@ export default function SvkkPoliciesPage() {
         cell: ({ row }) => {
           const n = policyTypeLabelForSnapshot(row.original);
           return (
-            <span className={cn(policyTableMuted, "max-w-[160px] truncate")} title={n}>
+            <span className={cn(policyTableCell, "max-w-[160px] truncate")} title={n}>
               {n}
             </span>
           );
@@ -907,7 +907,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => (
-          <span className={policyTableMuted}>{row.original.village ?? "—"}</span>
+          <span className={policyTableCell}>{row.original.village ?? "—"}</span>
         ),
       },
       {
@@ -1077,8 +1077,8 @@ export default function SvkkPoliciesPage() {
             <CardContent className="space-y-5 pt-6">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="lg:col-span-2">
-                  <Label className="text-muted-foreground text-xs font-medium">Upload CSV</Label>
-                  <div className="border-primary/20 bg-muted/20 mt-2 rounded-xl border border-dashed p-3">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">Upload CSV</Label>
+                  <div className="border-primary/20 bg-muted/20 rounded-xl border border-dashed p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         <FileSpreadsheet className="text-muted-foreground size-5 shrink-0" />
@@ -1087,14 +1087,14 @@ export default function SvkkPoliciesPage() {
                           accept=".csv,text/csv"
                           disabled={!canCsvUpload}
                           onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                          className="text-muted-foreground file:text-foreground w-full cursor-pointer text-sm file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-medium"
+                          className="text-foreground w-full cursor-pointer text-sm font-bold file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-bold"
                         />
                       </div>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="shrink-0 gap-1.5"
+                        className="shrink-0 gap-1.5 font-bold"
                         disabled={!canCsvUpload}
                         onClick={() => void downloadPolicyCsvSample()}
                       >
@@ -1104,7 +1104,7 @@ export default function SvkkPoliciesPage() {
                       <Button
                         type="button"
                         size="sm"
-                        className="shrink-0 gap-1.5"
+                        className="shrink-0 gap-1.5 font-bold"
                         disabled={!canCsvUpload || !uploadFile || uploadBusy}
                         onClick={() => void uploadPoliciesCsv()}
                       >
@@ -1118,14 +1118,14 @@ export default function SvkkPoliciesPage() {
                   ) : null}
                 </div>
                 <div className="lg:col-span-2">
-                  <Label className="text-muted-foreground text-xs font-medium">Search</Label>
-                  <div className="relative mt-2">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">Search</Label>
+                  <div className="relative">
                     <Search className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
                     <Input
                       placeholder="Name, policy no., mobile, customer ID…"
                       value={searchDraft}
                       onChange={(e) => setSearchDraft(e.target.value)}
-                      className="h-10 border-dashed pl-9 shadow-none"
+                      className="h-10 border-dashed pl-9 font-bold shadow-none"
                     />
                   </div>
                 </div>
@@ -1133,23 +1133,23 @@ export default function SvkkPoliciesPage() {
               <Separator />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
-                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
                     From date
                   </Label>
                   <PolicyDateInput
                     value={dateFrom}
                     onValueChange={setDateFrom}
-                    className="h-10 bg-background/90"
+                    className="h-10 bg-background/90 font-bold"
                   />
                 </div>
                 <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
-                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
                     To date
                   </Label>
                   <PolicyDateInput
                     value={dateTo}
                     onValueChange={setDateTo}
-                    className="h-10 bg-background/90"
+                    className="h-10 bg-background/90 font-bold"
                   />
                   {renewalFilter ? (
                     <p className="text-muted-foreground mt-1.5 text-[11px] leading-snug">
@@ -1158,11 +1158,11 @@ export default function SvkkPoliciesPage() {
                   ) : null}
                 </div>
                 <div className="rounded-xl border-2 border-amber-200/90 bg-gradient-to-br from-amber-50/95 to-card p-3 shadow-sm dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card sm:col-span-2">
-                  <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
                     Renewal status
                   </Label>
                   <Select value={renewalFilter || "__all__"} onValueChange={(v) => setRenewalFilter(v === "__all__" ? "" : v)}>
-                    <SelectTrigger className="h-10 bg-background/90">
+                    <SelectTrigger className="h-10 bg-background/90 font-bold">
                       <SelectValue placeholder="All policies" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1433,7 +1433,7 @@ export default function SvkkPoliciesPage() {
                   <Fragment key={row.id}>
                     <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
+                        <TableCell key={cell.id} className="font-bold">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}
