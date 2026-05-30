@@ -60,7 +60,16 @@ function formatNumIn(v: unknown): string {
   if (!s) return "";
   const n = Number(s);
   if (!Number.isFinite(n)) return s;
+  if (n === 0) return "";
   return n.toLocaleString("en-IN");
+}
+
+function fmtAmount(v: unknown): string {
+  const formatted = formatNumIn(v);
+  if (formatted) return displayVal(formatted);
+  const s = dStr(v).replace(/,/g, "").trim();
+  if (!s || (Number.isFinite(Number(s)) && Number(s) === 0)) return displayVal(null);
+  return displayVal(s);
 }
 
 function formatInr(v: unknown): string {
@@ -251,7 +260,7 @@ export function PolicyProfileView({
   );
 
   const allowCommission = user?.permissions ? canSeeCommission(user.permissions) : false;
-  const fmt = (v: unknown) => displayVal(formatNumIn(v) || dStr(v));
+  const fmt = fmtAmount;
   const fmtDate = (iso: string | null | undefined) => displayVal(iso ? formatDateIso(iso) : "");
   const fmtDob = (iso: string | null | undefined) => displayVal(iso ? formatDateDmy(iso) : "");
   const categoryLabel = resolveCategoryDisplayLabel(row.category, row.categoryText, categoryByKey);
@@ -266,8 +275,8 @@ export function PolicyProfileView({
   const refundDateRaw = row.refundChequeDate ? formatDateIso(row.refundChequeDate) : "";
   const refundDateDisplay =
     refundDateRaw === "0000-01-01" || refundDateRaw.startsWith("0000-00")
-      ? "0000-00-00"
-      : refundDateRaw;
+      ? ""
+      : formatDateDmy(row.refundChequeDate);
 
   const periodLabel =
     y?.policyStart && y?.policyEnd
@@ -504,23 +513,71 @@ export function PolicyProfileView({
               <div className="border-border/60 mt-8 border-t pt-6">
                 <p className="text-foreground mb-4 text-sm font-semibold">Contact Details</p>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 1" value={displayVal(row.addressLine1)} />
-                  <DetailField icon={<Building2 className="size-4" />} label="Address Line 2" value={displayVal(row.addressLine2)} />
+                  <DetailField
+                    icon={<Building2 className="size-4" />}
+                    label="Address Line 1: House/Flat No, Building Name"
+                    value={displayVal(row.addressLine1)}
+                  />
+                  <DetailField
+                    icon={<Building2 className="size-4" />}
+                    label="Address Line 2: Street/Road Name"
+                    value={displayVal(row.addressLine2)}
+                  />
+                  <DetailField
+                    icon={<Building2 className="size-4" />}
+                    label="Address Line 3: Landmark / Locality"
+                    value={displayVal(row.addressLine3)}
+                  />
+                  <DetailField
+                    icon={<Building2 className="size-4" />}
+                    label="Address Line 4: Additional Details (optional)"
+                    value={displayVal(row.addressLine4)}
+                  />
+                  <DetailField icon={<Building2 className="size-4" />} label="Area" value={displayVal(row.area)} />
                   <DetailField icon={<Building2 className="size-4" />} label="City" value={displayVal(row.city)} />
                   <DetailField icon={<Building2 className="size-4" />} label="PIN Code" value={displayVal(row.pincode)} />
-                  <DetailField icon={<User className="size-4" />} label="Primary Mobile" value={displayVal(row.insuredParty.mobile)} />
-                  <DetailField icon={<User className="size-4" />} label="Email" value={displayVal(row.insuredParty.email)} />
+                  <DetailField
+                    icon={<User className="size-4" />}
+                    label="Primary Mobile Number"
+                    value={displayVal(row.insuredParty.mobile)}
+                  />
+                  <DetailField
+                    icon={<User className="size-4" />}
+                    label="Secondary Mobile Number"
+                    value={displayVal(row.mobileSecondary)}
+                  />
+                  <DetailField icon={<User className="size-4" />} label="WhatsApp Number" value={displayVal(row.whatsappNo)} />
+                  <DetailField icon={<User className="size-4" />} label="Email ID" value={displayVal(row.insuredParty.email)} />
                 </div>
               </div>
               <div className="border-border/60 mt-8 border-t pt-6">
-                <p className="text-foreground mb-4 text-sm font-semibold">Nominee &amp; Courier</p>
+                <p className="text-foreground mb-4 text-sm font-semibold">Nominee Details</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <DetailField icon={<User className="size-4" />} label="Nominee Name" value={displayVal(row.nomineeName)} />
                   <DetailField icon={<User className="size-4" />} label="Nominee Relation" value={displayVal(row.nomineeRelation)} />
-                  <DetailField icon={<User className="size-4" />} label="Nominee Phone" value={displayVal(row.contactPhone)} />
-                  <DetailField icon={<FileText className="size-4" />} label="Courier Status" value={yesNoLabel(row.courierStatus)} />
-                  <DetailField icon={<Calendar className="size-4" />} label="Courier Date" value={fmtDate(row.courierDate)} />
+                  <DetailField
+                    icon={<User className="size-4" />}
+                    label="Nominee Phone number ( one number )"
+                    value={displayVal(row.contactPhone)}
+                  />
+                </div>
+              </div>
+              <div className="border-border/60 mt-8 border-t pt-6">
+                <p className="text-foreground mb-4 text-sm font-semibold">Courier Details</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailField
+                    icon={<FileText className="size-4" />}
+                    label="Courier Status (YES/NO)"
+                    value={yesNoLabel(row.courierStatus)}
+                  />
+                  <DetailField icon={<Calendar className="size-4" />} label="Courier Date" value={fmtDob(row.courierDate)} />
+                  <DetailField icon={<FileText className="size-4" />} label="Courier Company" value={displayVal(row.courierCompany)} />
                   <DetailField icon={<FileText className="size-4" />} label="POD Number" value={displayVal(row.podNumber)} />
+                  <DetailField
+                    icon={<Building2 className="size-4" />}
+                    label="Courier Address"
+                    value={displayVal(row.courierAddress)}
+                  />
                 </div>
               </div>
               <div className="border-border/60 mt-8 border-t pt-6">
@@ -586,10 +643,10 @@ export function PolicyProfileView({
             </TabsContent>
 
             <TabsContent value="premium" className="mt-0">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <DetailField icon={<IndianRupee className="size-4" />} label="Gross Premium" value={fmt(y?.grossPremium)} />
                 <DetailField icon={<IndianRupee className="size-4" />} label="Taxes - %" value={fmt(y?.taxPercent)} />
-                <DetailField icon={<IndianRupee className="size-4" />} label="Taxes Amount" value={fmt(y?.taxAmount)} />
+                <DetailField icon={<IndianRupee className="size-4" />} label="TAXES AMOUNT" value={fmt(y?.taxAmount)} />
                 <DetailField icon={<IndianRupee className="size-4" />} label="SVKK Premium" value={fmt(y?.svkkPremium ?? y?.vkkPremium)} />
                 <DetailField icon={<IndianRupee className="size-4" />} label="Net Premium" value={fmt(y?.expectedNetPremium ?? y?.netPremium)} />
                 {allowCommission ? (
@@ -618,14 +675,49 @@ export function PolicyProfileView({
               </div>
               <div className="border-border/60 mt-8 border-t pt-6">
                 <p className="text-foreground mb-4 text-sm font-semibold">Loan / CD / Refund</p>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <DetailField icon={<FileText className="size-4" />} label="Loan Taken" value={yesNoLabel(row.loanStatus)} />
-                  <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} />
-                  <DetailField icon={<FileText className="size-4" />} label="CD Account Used" value={yesNoLabel(row.cdAccountUsed)} />
-                  <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} />
-                  <DetailField icon={<IndianRupee className="size-4" />} label="Refund Cheque Amount" value={fmt(row.refundChequeAmount)} />
-                  <DetailField icon={<FileText className="size-4" />} label="Refund Cheque Number" value={displayVal(row.refundChequeNo)} />
-                  <DetailField icon={<Calendar className="size-4" />} label="Refund Cheque Date" value={displayVal(refundDateDisplay)} />
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Loan</p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <DetailField
+                        icon={<FileText className="size-4" />}
+                        label="Loan Taken (Yes/No)"
+                        value={yesNoLabel(row.loanStatus)}
+                      />
+                      <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} />
+                    </div>
+                  </div>
+                  <div className="border-border/60 border-t pt-6">
+                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">CD</p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <DetailField
+                        icon={<FileText className="size-4" />}
+                        label="CD Account Used"
+                        value={yesNoLabel(row.cdAccountUsed)}
+                      />
+                      <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} />
+                    </div>
+                  </div>
+                  <div className="border-border/60 border-t pt-6">
+                    <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">Refund</p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <DetailField
+                        icon={<IndianRupee className="size-4" />}
+                        label="Refund Cheque Amount"
+                        value={fmt(row.refundChequeAmount)}
+                      />
+                      <DetailField
+                        icon={<FileText className="size-4" />}
+                        label="Refund Cheque Number"
+                        value={displayVal(row.refundChequeNo)}
+                      />
+                      <DetailField
+                        icon={<Calendar className="size-4" />}
+                        label="Refund Cheque Date"
+                        value={displayVal(refundDateDisplay)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </TabsContent>
@@ -689,8 +781,6 @@ export function PolicyProfileView({
                     )
                   }
                 />
-                <DetailField icon={<FileText className="size-4" />} label="Courier Address" value={displayVal(row.courierAddress)} />
-                <DetailField icon={<FileText className="size-4" />} label="Courier Company" value={displayVal(row.courierCompany)} />
               </div>
             </TabsContent>
 
