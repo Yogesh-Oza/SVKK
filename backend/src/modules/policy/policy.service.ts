@@ -509,6 +509,7 @@ export type InsuredPartySectionPatch = {
 };
 
 export type PolicySectionPatch = {
+  policyTypeId?: string;
   policyNo?: string | null;
   categoryId?: string | null;
   village?: string | null;
@@ -564,6 +565,7 @@ export type PolicySectionPatch = {
 
 export type PolicyYearSectionPatch = {
   yearLabel: string;
+  policyChartId?: string;
   policyStart?: Date | null;
   policyEnd?: Date | null;
   sumInsured?: number | null;
@@ -847,6 +849,34 @@ export async function updatePolicySections(input: {
     }
   }
 
+  const nextPolicyTypeId = input.policy.policyTypeId ?? existing.policyTypeId;
+  const policyTypeChanging =
+    input.policy.policyTypeId !== undefined && input.policy.policyTypeId !== existing.policyTypeId;
+  const chartChanging = input.year?.policyChartId !== undefined;
+
+  if (policyTypeChanging || chartChanging) {
+    if (policyTypeChanging && !input.year?.policyChartId) {
+      throw new AppError(
+        "BAD_REQUEST",
+        "policyChartId and yearLabel are required when changing policy type",
+        400,
+      );
+    }
+    if (!input.year?.yearLabel) {
+      throw new AppError("BAD_REQUEST", "yearLabel is required when changing policy chart", 400);
+    }
+    const chartId = input.year?.policyChartId;
+    if (chartId) {
+      const chart = await prisma.policyChart.findUnique({ where: { id: chartId } });
+      if (!chart) {
+        throw new AppError("CHART_NOT_FOUND", "policyChartId invalid", 400);
+      }
+      if (chart.policyTypeId !== nextPolicyTypeId) {
+        throw new AppError("CHART_TYPE_MISMATCH", "Chart does not belong to policy type", 400);
+      }
+    }
+  }
+
   const pData = Object.fromEntries(
     Object.entries(input.policy).filter(([, v]) => v !== undefined),
   ) as Prisma.PolicyUpdateInput;
@@ -854,6 +884,7 @@ export async function updatePolicySections(input: {
   const y = input.year;
   const hasYearValueFields = y
     ? [
+        y.policyChartId,
         y.policyStart,
         y.policyEnd,
         y.sumInsured,
@@ -906,6 +937,7 @@ export async function updatePolicySections(input: {
   const yearFieldsUpdated =
     Boolean(input.year) &&
     [
+      input.year!.policyChartId,
       input.year!.policyStart,
       input.year!.policyEnd,
       input.year!.sumInsured,
@@ -960,6 +992,7 @@ export async function updatePolicySections(input: {
       if (input.year) {
         const yv = input.year;
         const yearData: Prisma.PolicyYearUpdateInput = {
+          ...(yv.policyChartId !== undefined ? { policyChartId: yv.policyChartId } : {}),
           ...(yv.policyStart !== undefined ? { policyStart: yv.policyStart } : {}),
           ...(yv.policyEnd !== undefined ? { policyEnd: yv.policyEnd } : {}),
           ...(yv.sumInsured !== undefined ? { sumInsured: yv.sumInsured } : {}),

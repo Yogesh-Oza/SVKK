@@ -1,5 +1,5 @@
 import { parseRemarks } from "@/features/svkk-policies/ad-policy-detail-to-form";
-import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
+import { resolvePolicyTypeDisplayLabel } from "@/features/svkk-policies/ad-product-variant";
 import {
   resolveCategoryDisplayLabel,
   type CategoryRef,
@@ -42,12 +42,12 @@ export function latestRemarkForSnapshot(remarks: string | null | undefined): str
   return remarks.trim();
 }
 
-/** Same label rules as policy detail view (prefers AD product variant over policy type name). */
-export function policyTypeLabelForSnapshot(row: PolicyListSnapshotSource): string {
-  if (row.adProductVariant) {
-    return adProductFormValueFromApi(row.adProductVariant) || row.policyType.name;
-  }
-  return row.policyType.name;
+/** Resolve label from admin policy types (dynamic) when provided. */
+export function policyTypeLabelForSnapshot(
+  row: PolicyListSnapshotSource,
+  policyTypeOptions?: ReadonlyArray<{ value: string; label: string }>,
+): string {
+  return resolvePolicyTypeDisplayLabel(row.policyType, row.adProductVariant, policyTypeOptions);
 }
 
 /** Resolves category name from DB (admin categories); falls back to key/text. */
@@ -63,6 +63,7 @@ export type PolicySnapshotField = { label: string; value: string; mono?: boolean
 export function buildPolicySnapshotFields(
   row: PolicyListSnapshotSource,
   categoryByKey?: Map<string, CategoryRef>,
+  policyTypeOptions?: ReadonlyArray<{ value: string; label: string }>,
 ): PolicySnapshotField[] {
   const latestYear = row.years[0];
   return [
@@ -77,7 +78,7 @@ export function buildPolicySnapshotFields(
     { label: "Customer ID", value: display(row.insuredParty.customerId), mono: true },
     { label: "Latest remark", value: latestRemarkForSnapshot(row.remarks) },
     { label: "Grouping", value: display(row.policyGrouping) },
-    { label: "Policy type", value: display(policyTypeLabelForSnapshot(row)) },
+    { label: "Policy type", value: display(policyTypeLabelForSnapshot(row, policyTypeOptions)) },
     { label: "Category", value: display(categoryLabelForSnapshot(row, categoryByKey)) },
   ];
 }
@@ -85,11 +86,13 @@ export function buildPolicySnapshotFields(
 export function PolicyListSnapshotPanel({
   row,
   categoryByKey,
+  policyTypeOptions,
 }: {
   row: PolicyListSnapshotSource;
   categoryByKey?: Map<string, CategoryRef>;
+  policyTypeOptions?: ReadonlyArray<{ value: string; label: string }>;
 }) {
-  const fields = buildPolicySnapshotFields(row, categoryByKey);
+  const fields = buildPolicySnapshotFields(row, categoryByKey, policyTypeOptions);
   return (
     <div className="ring-primary/15 max-w-full rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
       <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">

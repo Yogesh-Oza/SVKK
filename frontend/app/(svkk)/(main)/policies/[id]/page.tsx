@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { adProductFormValueFromApi } from "@/features/svkk-policies/ad-product-variant";
+import { resolvePolicyTypeDisplayLabel } from "@/features/svkk-policies/ad-product-variant";
 import { PolicyProfileView } from "@/features/svkk-policies/policy-profile-view";
 import type { PolicyDetailViewRow } from "@/features/svkk-policies/policy-detail-view-body";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/features/svkk-policies/policy-year-siblings";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
   canDeletePolicy,
@@ -67,6 +68,7 @@ export default function SvkkPolicyDetailPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useSvkkAuth();
+  const ddOptions = useDropdownOptions();
   const receiptImageUrls = useReceiptSettings();
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
 
@@ -297,9 +299,11 @@ export default function SvkkPolicyDetailPage() {
     row.years.find((item) => item.id === yearId) ??
     row.years.find((item) => item.yearLabel === activeYearLabel) ??
     row.years[0];
-  const policyTypeLabel = row.adProductVariant
-    ? adProductFormValueFromApi(row.adProductVariant) || row.policyType.name
-    : row.policyType.name;
+  const policyTypeLabel = resolvePolicyTypeDisplayLabel(
+    row.policyType,
+    row.adProductVariant,
+    ddOptions.policyTypes,
+  );
 
   const svkkId = row.insuredParty.svkkPublicId.trim();
   const renewHref = svkkId

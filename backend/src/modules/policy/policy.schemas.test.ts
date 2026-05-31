@@ -92,6 +92,16 @@ describe("policy schemas - patch body members.min(0)", () => {
       expect(messages.some((m) => /yearLabel is required when replacing members/i.test(m))).toBe(true);
     }
   });
+
+  it("accepts policyTypeId and policyChartId with yearLabel for type change", () => {
+    const result = patchPolicyBodySchema.safeParse({
+      yearLabel: "2026-27",
+      policyTypeId: "ptype-asha",
+      policyChartId: "chart-holder-1",
+      adProductVariant: "ASHA_KIRAN",
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("policy schemas - member row schema", () => {

@@ -189,6 +189,7 @@ function patchBodyToInput(
   } = body;
   const policy: PolicySectionPatch = {};
   if (rest.policyNo !== undefined) policy.policyNo = rest.policyNo;
+  if (rest.policyTypeId !== undefined) policy.policyTypeId = rest.policyTypeId;
   if (rest.categoryId !== undefined) policy.categoryId = rest.categoryId;
   if (rest.village !== undefined) policy.village = rest.village;
   if (rest.pod !== undefined) policy.pod = rest.pod;
@@ -260,7 +261,8 @@ function patchBodyToInput(
 
   const raw = rest as Record<string, unknown>;
   const hasYear =
-    Boolean(rest.yearLabel) && yearValueKeys.some((k) => raw[k] !== undefined);
+    Boolean(rest.yearLabel) &&
+    (rest.policyChartId !== undefined || yearValueKeys.some((k) => raw[k] !== undefined));
   if (!hasYear) {
     return {
       policy,
@@ -271,6 +273,9 @@ function patchBodyToInput(
     };
   }
   const year: PolicyYearSectionPatch = { yearLabel: rest.yearLabel! };
+  if (rest.policyChartId !== undefined) {
+    year.policyChartId = rest.policyChartId;
+  }
   for (const k of yearValueKeys) {
     const v = raw[k];
     if (v !== undefined) {
@@ -570,6 +575,16 @@ export function createPolicyRouter(env: Env) {
       const parsed = patchPolicyBodySchema.parse(req.body);
       const { policy, year, expectedUpdatedAt, insuredParty, replaceMembers, replacePayments } =
         patchBodyToInput(parsed);
+      req.log.debug(
+        {
+          policyId: String(req.params.id),
+          policyTypeId: policy?.policyTypeId ?? null,
+          policyChartId: year?.policyChartId ?? null,
+          adProductVariant: policy?.adProductVariant ?? null,
+          yearLabel: year?.yearLabel ?? null,
+        },
+        "policy patch request",
+      );
       if (
         !hasPermissionInSet(req.permissions!, "policy:commission") &&
         (year?.commissionAmount !== undefined || year?.vkkCommission !== undefined)

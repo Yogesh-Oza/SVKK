@@ -27,7 +27,7 @@ describe("policy-list-snapshot", () => {
     expect(fields.find((f) => f.label === "Year")?.value).toBe("2026");
   });
 
-  it("prefers ad product variant over policy type name for list label", () => {
+  it("prefers policy type name over ad product variant for list label", () => {
     const label = policyTypeLabelForSnapshot({
       policyNo: null,
       village: null,
@@ -39,7 +39,7 @@ describe("policy-list-snapshot", () => {
       category: null,
       years: [],
     });
-    expect(label).toBe("Family-Floater");
+    expect(label).toBe("Asha Kiran");
   });
 
   it("falls back to categoryText when category relation is missing", () => {
@@ -106,7 +106,7 @@ describe("policy-list-snapshot", () => {
       buildCategoryByKeyMap([{ key: "d", name: "Category D" }]),
     );
     expect(fieldsNamed.find((f) => f.label === "Category")?.value).toBe("Category D");
-    expect(fields.find((f) => f.label === "Policy type")?.value).toBe("Family-Floater");
+    expect(fields.find((f) => f.label === "Policy type")?.value).toBe("Asha Kiran");
   });
 
   it("prefers policy change remark over general", () => {

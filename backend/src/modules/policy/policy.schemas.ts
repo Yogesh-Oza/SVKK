@@ -260,6 +260,8 @@ export const patchPolicyBodySchema = z
   .object({
     /// Optimistic concurrency: last known `Policy.updatedAt` (ISO) from `GET` before edit
     expectedUpdatedAt: z.coerce.date().optional(),
+    policyTypeId: z.string().min(1).optional(),
+    policyChartId: z.string().min(1).optional(),
     policyNo: z.string().optional().nullable(),
     categoryId: z.string().optional().nullable(),
     village: z.string().optional().nullable(),

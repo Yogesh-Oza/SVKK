@@ -8,6 +8,7 @@ import {
 import { toAdProductVariant } from "./ad-product-variant";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 import { dateParse, toApiDateIso } from "@/lib/svkk/form-date";
+import { debugPolicyUpdate } from "@/lib/svkk/policy-update-debug";
 
 function parseNum(s: string): number | undefined {
   const t = s.replace(/,/g, "").trim();
@@ -223,6 +224,8 @@ export type SubmitAdPolicyPatchParams = {
   expectedUpdatedAt: string;
   yearLabel: string;
   categoryId?: string;
+  policyTypeId?: string;
+  policyChartId?: string;
 };
 
 /**
@@ -234,6 +237,8 @@ export async function submitAdPolicyPatchRequest({
   expectedUpdatedAt,
   yearLabel,
   categoryId,
+  policyTypeId,
+  policyChartId,
 }: SubmitAdPolicyPatchParams): Promise<void> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -353,11 +358,34 @@ export async function submitAdPolicyPatchRequest({
     payments: mapPaymentTransactionsToApi(values),
   };
 
+  if (policyTypeId) {
+    body.policyTypeId = policyTypeId;
+  }
+  if (policyChartId) {
+    body.policyChartId = policyChartId;
+  }
+
+  debugPolicyUpdate("PATCH /policies/:id request", {
+    policyId,
+    yearLabel,
+    adProduct: values.adProduct,
+    adProductVariant: variant,
+    policyTypeId: policyTypeId ?? null,
+    policyChartId: policyChartId ?? null,
+    expectedUpdatedAt,
+  });
+
   applyPrimaryPaymentModeToBody(body, values);
 
   try {
     await apiPatch(`/policies/${policyId}`, body);
+    debugPolicyUpdate("PATCH /policies/:id success", { policyId });
   } catch (e) {
+    debugPolicyUpdate("PATCH /policies/:id failed", {
+      policyId,
+      message: e instanceof Error ? e.message : String(e),
+      status: e instanceof AxiosError ? e.response?.status : undefined,
+    });
     if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
       const msg = (e.response.data as { message?: unknown }).message;
       if (typeof msg === "string" && msg.trim()) {

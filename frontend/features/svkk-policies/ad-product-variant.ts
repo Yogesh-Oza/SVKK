@@ -94,3 +94,63 @@ export const AD_PRODUCT_OPTIONS = [
   { value: "Individual", label: "Individual" },
   { value: "Senior-Citizen", label: "Senior Citizen" },
 ] as const;
+
+const VARIANT_TO_POLICY_TYPE_KEY: Record<AdProductVariant, string> = {
+  FAMILY_FLOATER: "family_floater",
+  INDIVIDUAL: "individual",
+  ASHA_KIRAN: "asha_kiran",
+  SENIOR_CITIZEN: "senior_citizen",
+};
+
+/** Policy type dropdown / submit value: admin PolicyType.key (e.g. family_floater). */
+export function policyTypeKeyForForm(
+  policyType?: { name?: string | null; key?: string | null } | null,
+  adProductVariant?: string | null,
+): string {
+  const key = policyType?.key?.trim();
+  if (key) return key;
+  if (adProductVariant) {
+    const fromVariant = VARIANT_TO_POLICY_TYPE_KEY[adProductVariant as AdProductVariant];
+    if (fromVariant) return fromVariant;
+  }
+  return "";
+}
+
+/**
+ * Human-readable policy type for profile, lists, and carry-forward summary.
+ * Uses policyType from API first, then dynamic admin options, then legacy fallbacks.
+ */
+export function resolvePolicyTypeDisplayLabel(
+  policyType?: { name?: string | null; key?: string | null } | null,
+  adProductVariant?: string | null,
+  options?: ReadonlyArray<{ value: string; label: string }>,
+): string {
+  const name = policyType?.name?.trim();
+  if (name) return name;
+
+  const fromKey = policyTypeLabelFromKey(policyType?.key, options);
+  if (fromKey) return fromKey;
+
+  if (adProductVariant) {
+    const variantKey = VARIANT_TO_POLICY_TYPE_KEY[adProductVariant as AdProductVariant];
+    const fromVariantKey = policyTypeLabelFromKey(variantKey, options);
+    if (fromVariantKey) return fromVariantKey;
+    return adProductFormValueFromApi(adProductVariant) || adProductVariant;
+  }
+  return "";
+}
+
+/** Human label for a policy-type dropdown key (e.g. family_floater → Family Floater). */
+export function policyTypeLabelFromKey(
+  key: string | null | undefined,
+  options?: ReadonlyArray<{ value: string; label: string }>,
+): string {
+  const trimmed = key?.trim();
+  if (!trimmed) return "";
+  const fromOptions =
+    options?.find(
+      (o) => o.value === trimmed || o.value.toLowerCase() === trimmed.toLowerCase(),
+    )?.label ?? "";
+  if (fromOptions) return fromOptions;
+  return resolveAdProductFormValue(null, null, trimmed) || trimmed;
+}

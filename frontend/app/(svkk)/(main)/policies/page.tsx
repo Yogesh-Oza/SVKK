@@ -873,7 +873,7 @@ export default function SvkkPoliciesPage() {
       },
       {
         id: "policyType",
-        accessorFn: (r) => policyTypeLabelForSnapshot(r),
+        accessorFn: (r) => policyTypeLabelForSnapshot(r, ddOptions.policyTypes),
         header: ({ column }) => (
           <PoliciesColumnHeader
             column={column}
@@ -885,7 +885,7 @@ export default function SvkkPoliciesPage() {
           />
         ),
         cell: ({ row }) => {
-          const n = policyTypeLabelForSnapshot(row.original);
+          const n = policyTypeLabelForSnapshot(row.original, ddOptions.policyTypes);
           return (
             <span className={cn(policyTableCell, "max-w-[160px] truncate")} title={n}>
               {n}
@@ -992,7 +992,7 @@ export default function SvkkPoliciesPage() {
     );
 
     return cols;
-  }, [applySort, canDel, canEdit, categoryByKey, expandedSvkkId, receiptBusyId, sort]);
+  }, [applySort, canDel, canEdit, categoryByKey, ddOptions.policyTypes, expandedSvkkId, receiptBusyId, sort]);
 
   const table = useReactTable({
     data: rows,
@@ -1491,7 +1491,11 @@ export default function SvkkPoliciesPage() {
                               ))}
                             </div>
                             {rowYearAction?.svkkPublicId === original.svkkPublicId ? null : (
-                              <PolicyListSnapshotPanel row={original} categoryByKey={categoryByKey} />
+                              <PolicyListSnapshotPanel
+                                row={original}
+                                categoryByKey={categoryByKey}
+                                policyTypeOptions={ddOptions.policyTypes}
+                              />
                             )}
                           </motion.div>
                         </TableCell>

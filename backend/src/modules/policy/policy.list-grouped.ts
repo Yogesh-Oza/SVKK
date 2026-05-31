@@ -48,7 +48,7 @@ export type PolicyListGroupedItem = {
   policyGrouping: string | null;
   personsInsuredCount: number | null;
   adProductVariant: string | null;
-  policyType: { id: string; name: string };
+  policyType: { id: string; name: string; key: string };
   category: { id: string; key: string; name: string } | null;
   categoryText: string | null;
   years: PolicyListYearEntry[];
@@ -143,7 +143,11 @@ function buildGroupedItem(
     policyGrouping: primary.policyGrouping,
     personsInsuredCount: primary.personsInsuredCount,
     adProductVariant: primary.adProductVariant,
-    policyType: { id: primary.policyType.id, name: primary.policyType.name },
+    policyType: {
+      id: primary.policyType.id,
+      name: primary.policyType.name,
+      key: primary.policyType.key,
+    },
     category: resolveCategoryRef(primary.category, primary.categoryText, categoryByKey),
     categoryText: primary.categoryText,
     years,

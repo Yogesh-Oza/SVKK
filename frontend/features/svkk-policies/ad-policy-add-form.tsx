@@ -46,7 +46,11 @@ import { toast } from "sonner";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { emptyMemberRow } from "./ad-member-types";
 import type { AdMemberRow } from "./ad-member-types";
-import { adProductFormValueFromApi, toAdProductVariant } from "./ad-product-variant";
+import {
+  policyTypeLabelFromKey,
+  resolvePolicyTypeDisplayLabel,
+  toAdProductVariant,
+} from "./ad-product-variant";
 import { normalizeCategoryKey, resolveCategoryIdByKey } from "@/lib/svkk/category-display";
 import { FormikError, RequiredLabel } from "./ad-policy-form-controls";
 import {
@@ -58,6 +62,7 @@ import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
 import { clonePaymentDetailsForCarryForward } from "./ad-policy-payments";
 import { applyDisplayYearLabels, yearChipLabel } from "./policy-year-display";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
+import { debugPolicyUpdate } from "@/lib/svkk/policy-update-debug";
 import {
   pickPolicyYear,
   policyDetailToAdFormValues,
@@ -85,6 +90,7 @@ type PolicyListRow = {
   referenceNo?: string | null;
   insuredParty: { svkkPublicId: string; name: string; customerId: string | null };
   adProductVariant?: string | null;
+  policyType?: { name: string; key?: string | null };
   periodYearText?: string | null;
   years: Array<{ yearLabel: string; vkkPremium?: unknown }>;
 };
@@ -516,13 +522,32 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           return;
         }
         try {
+          debugPolicyUpdate("edit submit", {
+            policyId: editCtx.policyId,
+            adProduct: submitValues.adProduct,
+            policyTypeId: policyTypeId || null,
+            policyChartId: policyChartId || null,
+            yearLabel: y.yearLabel,
+            previousPolicyTypeId: editCtx.detail.policyType?.id ?? null,
+            previousPolicyTypeKey: editCtx.detail.policyType?.key ?? null,
+          });
+          if (!policyTypeId || !policyChartId) {
+            setApiErr("Policy type / chart not loaded. Wait for policy types to load, then try again.");
+            toast.error("Policy type not ready", {
+              description: "Charts are still loading. Select Policy Type again and save.",
+            });
+            return;
+          }
           await submitAdPolicyPatchRequest({
             policyId: editCtx.policyId,
             values: submitValues,
             expectedUpdatedAt: editCtx.detail.updatedAt,
             yearLabel: y.yearLabel,
             categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
+            policyTypeId,
+            policyChartId,
           });
+          toast.success("Policy updated");
           void router.push(`/policies/${editCtx.policyId}`);
         } catch (e) {
           if (tryApplyBackendValidationErrors(e)) {
@@ -750,13 +775,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         setPremiumManual({});
         setAgeManual({});
         await formik.setValues(nextValues);
+        await syncPolicyTypeFromKey(nextValues.adProduct);
         setSelectFieldsMountKey((k) => k + 1);
         setFetchNotice(modeNotice);
       } catch (e) {
         setFetchNotice(e instanceof Error ? e.message : "Failed to load policy details");
       }
     },
-    [formik],
+    [formik, syncPolicyTypeFromKey],
   );
 
   const loadFetchSuggestions = useCallback(async (query: string) => {
@@ -980,6 +1006,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         generalRemark: "",
         policyChangeRemark: "",
       });
+      await syncPolicyTypeFromKey(carriedValues.adProduct);
       // Carry forward creates a *new* policy/year; do not show Update button.
       setFetchedPolicyForUpdate(null);
       // Seed the auto-id cache so the useEffect treats the carried state as
@@ -1035,6 +1062,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     matchedYearRows,
     requestAutoIds,
     selectedFetchId,
+    syncPolicyTypeFromKey,
   ]);
 
   useEffect(() => {
@@ -1682,6 +1710,22 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     return policyTypeOptions.some((o) => o.value === raw) ? raw : "__none__";
   }, [values.adProduct, editMappedValues?.adProduct, policyTypeOptions]);
+
+  const policyTypeDisplayLabel = useMemo(
+    () => policyTypeLabelFromKey(values.adProduct, policyTypeOptions) || "—",
+    [policyTypeOptions, values.adProduct],
+  );
+
+  const fetchPolicyTypeLabel = useMemo(() => {
+    const fromList = resolvePolicyTypeDisplayLabel(
+      selectedFetch?.policyType ?? null,
+      selectedFetch?.adProductVariant,
+      policyTypeOptions,
+    );
+    if (fromList) return fromList;
+    return policyTypeLabelFromKey(values.adProduct, policyTypeOptions) || "—";
+  }, [policyTypeOptions, selectedFetch, values.adProduct]);
+
   const monthSelectValue = values.month || editMappedValues?.month || "";
 
   if (missingUrl) {
@@ -1772,11 +1816,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <div className="space-y-2">
                   <Label>Policy Type</Label>
                   <Input
-                    value={
-                      selectedFetch?.adProductVariant
-                        ? (adProductFormValueFromApi(selectedFetch.adProductVariant) || selectedFetch.adProductVariant)
-                        : values.adProduct || "—"
-                    }
+                    value={fetchPolicyTypeLabel}
                     readOnly
                     className="bg-muted"
                   />
@@ -1896,7 +1936,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Card>
                 <CardContent className="pt-4">
                   <p className="text-muted-foreground text-xs">Policy Type</p>
-                  <p className="font-semibold">{values.adProduct || "—"}</p>
+                  <p className="font-semibold">{policyTypeDisplayLabel}</p>
                 </CardContent>
               </Card>
               <Card>
@@ -2057,7 +2097,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onValueChange={(v) => {
                     const key = v === "__none__" ? "" : v;
                     void setFieldValue("adProduct", key);
-                    if (key) void syncPolicyTypeFromKey(key);
+                    if (key) {
+                      debugPolicyUpdate("policy type dropdown changed", {
+                        adProduct: key,
+                        previousPolicyTypeId: policyTypeId || null,
+                      });
+                      void syncPolicyTypeFromKey(key);
+                    }
                   }}
                 >
                   <SelectTrigger className="w-full">

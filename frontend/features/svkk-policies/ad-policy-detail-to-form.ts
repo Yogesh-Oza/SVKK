@@ -1,4 +1,4 @@
-import { resolveAdProductFormValue } from "./ad-product-variant";
+import { policyTypeKeyForForm } from "./ad-product-variant";
 import type { AdMemberRow } from "./ad-member-types";
 import type {
   AdPolicyFormValues,
@@ -518,9 +518,7 @@ export function policyDetailToAdFormValues(
   return {
     ...base,
     policyNo: row.policyNo ?? "",
-    adProduct:
-      row.policyType?.key?.trim() ||
-      resolveAdProductFormValue(row.adProductVariant, row.policyType?.name, row.policyType?.key),
+    adProduct: policyTypeKeyForForm(row.policyType, row.adProductVariant),
     customerId: row.insuredParty.customerId ?? "",
     svkkPublicId: row.insuredParty.svkkPublicId ?? "",
     policyHolder: row.insuredParty.name ?? "",

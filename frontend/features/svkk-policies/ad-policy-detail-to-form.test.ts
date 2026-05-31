@@ -59,7 +59,7 @@ describe("policyDetailToAdFormValues", () => {
       ],
     } as Parameters<typeof policyDetailToAdFormValues>[0]);
 
-    expect(values.adProduct).toBe("Asha-Kiran");
+    expect(values.adProduct).toBe("ad_policy");
     expect(values.month).toBe("January");
     expect(values.cat).toBe("d");
     expect(values.svkkPublicId).toBe("RTYMAR0021");
