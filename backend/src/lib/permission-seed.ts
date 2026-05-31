@@ -37,6 +37,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "claim:read",
       "claim:update",
       "claim:delete",
+      "claim:import",
       "claim:scope_all",
       "receipt:create",
       "users:manage",

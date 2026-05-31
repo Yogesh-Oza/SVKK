@@ -27,6 +27,23 @@ export type ClaimReportFilters = {
   fiscalLabels: string[];
 };
 
+/** Avoid MySQL 1267 when claim/policy string columns use different collations than bind params. */
+function sqlUtf8Ci(expr: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`${expr} COLLATE utf8mb4_unicode_ci`;
+}
+
+function claimVillageExpr(): Prisma.Sql {
+  return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`c.village`)}, ${sqlUtf8Ci(Prisma.sql`p.village`)})`;
+}
+
+function villageEquals(village: string): Prisma.Sql {
+  return Prisma.sql`(${claimVillageExpr()} = ${village})`;
+}
+
+function villageIn(villages: string[]): Prisma.Sql {
+  return Prisma.sql`(${claimVillageExpr()} IN (${sqlInList(villages)}))`;
+}
+
 function sqlInList(values: string[]): Prisma.Sql {
   if (!values.length) return Prisma.sql`1 = 0`;
   return Prisma.join(values.map((v) => Prisma.sql`${v}`));
@@ -43,20 +60,20 @@ export function buildClaimScopeSqlC(
     hasPermissionInSet(permissions, "mis:scope_all")
   ) {
     if (filterVillages.length === 1) {
-      return Prisma.sql`(COALESCE(c.village, p.village) = ${filterVillages[0]})`;
+      return villageEquals(filterVillages[0]!);
     }
     if (filterVillages.length > 1) {
-      return Prisma.sql`(COALESCE(c.village, p.village) IN (${sqlInList(filterVillages)}))`;
+      return villageIn(filterVillages);
     }
     return Prisma.sql`1=1`;
   }
 
   if (scope.kind === "full") {
     if (filterVillages.length === 1) {
-      return Prisma.sql`(COALESCE(c.village, p.village) = ${filterVillages[0]})`;
+      return villageEquals(filterVillages[0]!);
     }
     if (filterVillages.length > 1) {
-      return Prisma.sql`(COALESCE(c.village, p.village) IN (${sqlInList(filterVillages)}))`;
+      return villageIn(filterVillages);
     }
     return Prisma.sql`1=1`;
   }
@@ -72,11 +89,11 @@ export function buildClaimScopeSqlC(
       ? filterVillages.filter((v) => villageValues.includes(v))
       : villageValues;
     if (villages.length) {
-      parts.push(Prisma.sql`COALESCE(c.village, p.village) IN (${sqlInList(villages)})`);
+      parts.push(villageIn(villages));
     }
   }
   if (areaValues.length > 0) {
-    parts.push(Prisma.sql`p.area IN (${sqlInList(areaValues)})`);
+    parts.push(Prisma.sql`${sqlUtf8Ci(Prisma.sql`p.area`)} IN (${sqlInList(areaValues)})`);
   }
   return parts.length ? Prisma.join(parts, " AND ") : Prisma.sql`1=0`;
 }
@@ -96,7 +113,7 @@ function dateFilterSql(filters: ClaimReportFilters): Prisma.Sql {
 
 function matchStatusFilter(filters: ClaimReportFilters): Prisma.Sql {
   if (!filters.matchStatus) return Prisma.sql``;
-  return Prisma.sql`AND c.matchStatus = ${filters.matchStatus}`;
+  return Prisma.sql`AND ${sqlUtf8Ci(Prisma.sql`CAST(c.matchStatus AS CHAR)`)} = ${filters.matchStatus}`;
 }
 
 function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
@@ -111,12 +128,12 @@ function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
 
 function policyGroupingsFilterSql(groupings: string[]): Prisma.Sql {
   if (!groupings.length) return Prisma.empty;
-  return Prisma.sql` AND p.policyGrouping IN (${Prisma.join(groupings)})`;
+  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.policyGrouping`)} IN (${Prisma.join(groupings)})`;
 }
 
 function areasFilterSql(areas: string[]): Prisma.Sql {
   if (!areas.length) return Prisma.empty;
-  return Prisma.sql` AND p.area IN (${Prisma.join(areas)})`;
+  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.area`)} IN (${Prisma.join(areas)})`;
 }
 
 function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
@@ -132,15 +149,15 @@ function periodMonthTextsFilterSql(periodMonthTexts: string[]): Prisma.Sql {
   if (!periodMonthTexts.length) return Prisma.empty;
   const variants = expandPeriodMonthTextVariants(periodMonthTexts);
   if (!variants.length) return Prisma.empty;
-  return Prisma.sql` AND p.periodMonthText IN (${Prisma.join(variants)})`;
+  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.periodMonthText`)} IN (${Prisma.join(variants)})`;
 }
 
 function fiscalLabelsFilterSql(fiscalLabels: string[]): Prisma.Sql {
   if (!fiscalLabels.length) return Prisma.empty;
   return Prisma.sql` AND (
-    p.periodYearText IN (${Prisma.join(fiscalLabels)})
-    OR py.yearLabel IN (${Prisma.join(fiscalLabels)})
-    OR c.policyYear IN (${Prisma.join(fiscalLabels)})
+    ${sqlUtf8Ci(Prisma.sql`p.periodYearText`)} IN (${Prisma.join(fiscalLabels)})
+    OR ${sqlUtf8Ci(Prisma.sql`py.yearLabel`)} IN (${Prisma.join(fiscalLabels)})
+    OR ${sqlUtf8Ci(Prisma.sql`c.policyYear`)} IN (${Prisma.join(fiscalLabels)})
   )`;
 }
 
@@ -165,11 +182,11 @@ function groupLabelSql(groupBy: GroupDimension): Prisma.Sql {
     case "category":
       return Prisma.sql`COALESCE(cat.key, 'uncategorized')`;
     case "village":
-      return Prisma.sql`COALESCE(c.village, p.village, '—')`;
+      return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`c.village`)}, ${sqlUtf8Ci(Prisma.sql`p.village`)}, '—')`;
     case "sum_insured":
       return Prisma.sql`COALESCE(CAST(py.sumInsured AS CHAR), CAST(c.sumInsured AS CHAR), '—')`;
     case "policy_type":
-      return Prisma.sql`COALESCE(pt.name, c.policyTypeText, '—')`;
+      return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`pt.name`)}, ${sqlUtf8Ci(Prisma.sql`c.policyTypeText`)}, '—')`;
   }
 }
 
