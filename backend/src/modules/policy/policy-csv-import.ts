@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { CsvImportMode, Prisma } from "@prisma/client";
 import {
   ChequeStatus,
   PayMethod,
@@ -18,7 +18,28 @@ import {
   collectMembersFromCsvMap,
   collectPaymentsFromCsvMap,
 } from "./policy-csv-slots.js";
+import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
+import {
+  policyTypeKeyToAdVariant,
+  resolveImportPolicyChart,
+  resolvePolicyForCsvImport,
+  resolvePolicyTypeFromCache,
+  type PolicyTypeCache,
+} from "./policy-csv-resolve.js";
+import { prisma } from "../../lib/prisma.js";
+import { createPolicyFromCsvRow, validateCreateRequiredFields } from "./policy-csv-create.js";
+
+export type CsvUpsertResult = "created" | "updated";
+
+export type LegacyCsvRowContext = {
+  userId: string;
+  permissions: Set<string>;
+  scope: GeoScope;
+  importMode: CsvImportMode;
+  typeCache: PolicyTypeCache;
+  dryRun?: boolean;
+};
 
 function parseOptionalDate(raw: string): Date | undefined {
   const t = raw.trim();
@@ -158,50 +179,27 @@ async function replaceYearPaymentsFromCsv(
   }
 }
 
-export async function applyLegacyPolicyCsvRow(
+async function updatePolicyCsvRow(
   tx: Prisma.TransactionClient,
   header: string[],
   row: string[],
-  ctx: { userId: string; permissions: Set<string>; scope: GeoScope },
+  ctx: LegacyCsvRowContext,
 ): Promise<void> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
 
-  if (!refNo && !svkkId && !policyNo) {
-    throw new Error("ref no, SVKK ID, or policy no required");
-  }
-
-  const policy = await tx.policy.findFirst({
-    where: {
-      deletedAt: null,
-      OR: [
-        refNo ? { referenceNo: refNo } : undefined,
-        svkkId ? { insuredParty: { svkkPublicId: svkkId } } : undefined,
-        policyNo ? { policyNo } : undefined,
-      ].filter(Boolean) as Prisma.PolicyWhereInput[],
-    },
-    include: {
-      insuredParty: true,
-      years: {
-        where: { deletedAt: null },
-        orderBy: { yearLabel: "desc" },
-        include: {
-          members: { where: { deletedAt: null }, orderBy: { name: "asc" } },
-          payments: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: "asc" },
-            include: { cheque: true },
-          },
-        },
-      },
-    },
+  const { match: policy, conflict } = await resolvePolicyForCsvImport(tx, {
+    svkkId,
+    policyNo,
+    refNo,
   });
 
+  if (conflict) throw new Error(conflict);
   if (!policy) {
     throw new Error(
-      `policy not found (ref no=${refNo || "—"}, SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"})`,
+      `Policy not found (SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"})`,
     );
   }
 
@@ -240,6 +238,8 @@ export async function applyLegacyPolicyCsvRow(
   if (newPolicyNo) policyUpdate.policyNo = newPolicyNo;
   const prevNo = getCsvField(map, "previous policy no");
   if (prevNo) policyUpdate.previousPolicyNo = prevNo;
+  const prevEnd = getCsvField(map, "PRE. END DATE");
+  if (prevEnd) policyUpdate.previousEndDate = parseOptionalDate(prevEnd);
   const village = getCsvField(map, "Village");
   if (village) policyUpdate.village = village;
   const grouping = getCsvField(map, "grouping");
@@ -281,6 +281,8 @@ export async function applyLegacyPolicyCsvRow(
   if (nomineeName) policyUpdate.nomineeName = nomineeName;
   const nomineeRel = getCsvField(map, "nominee_relation");
   if (nomineeRel) policyUpdate.nomineeRelation = nomineeRel;
+  const nomineeMobile = getCsvField(map, "nominee mobile");
+  if (nomineeMobile) policyUpdate.contactPhone = nomineeMobile;
   const addr1 = getCsvField(map, "Address Line 1: House/Flat No, Building Name");
   if (addr1) policyUpdate.addressLine1 = addr1;
   const addr2 = getCsvField(map, "Address Line 2: Street/Road Name");
@@ -313,6 +315,24 @@ export async function applyLegacyPolicyCsvRow(
   if (genRemark) policyUpdate.remarks = genRemark;
   const refFromCsv = getCsvField(map, "ref no");
   if (refFromCsv) policyUpdate.referenceNo = refFromCsv;
+
+  const productTypeRaw = getCsvField(map, "Product Type");
+  if (productTypeRaw) {
+    const resolved = resolvePolicyTypeFromCache(productTypeRaw, ctx.typeCache);
+    if (!resolved) {
+      throw new Error(
+        `Invalid Product Type "${productTypeRaw}". Allowed: ${ctx.typeCache.allowedLabels()}`,
+      );
+    }
+    policyUpdate.policyType = { connect: { id: resolved.id } };
+    const variant = policyTypeKeyToAdVariant(resolved.key);
+    if (variant) policyUpdate.adProductVariant = variant;
+  }
+
+  const policyUrl = getCsvField(map, "policy url");
+  if (policyUrl && isImportablePolicyUrl(policyUrl)) policyUpdate.policyUrl = policyUrl;
+  const url2 = getCsvField(map, "url");
+  if (url2 && isImportablePolicyUrl(url2)) policyUpdate.policyUrl2 = url2;
 
   if (Object.keys(policyUpdate).length) {
     await tx.policy.update({ where: { id: policy.id }, data: policyUpdate });
@@ -358,8 +378,17 @@ export async function applyLegacyPolicyCsvRow(
     if (excess) yearUpdate.excessShortAmount = parseOptionalDecimal(excess);
     const diff = getCsvField(map, "Diff paid by holder");
     if (diff) yearUpdate.diffPaidByHolder = parseOptionalDecimal(diff);
-    const yearRemarks = getCsvField(map, "policy remar");
+    const yearRemarks = getCsvField(map, "policy remarK", "policy remar");
     if (yearRemarks) yearUpdate.yearRemarks = yearRemarks;
+
+    if (productTypeRaw) {
+      const resolved = resolvePolicyTypeFromCache(productTypeRaw, ctx.typeCache);
+      if (resolved) {
+        const si = sumInsured ? parseOptionalDecimal(sumInsured) : year.sumInsured;
+        const chartId = await resolveImportPolicyChart(tx, resolved.id, si ?? undefined);
+        if (chartId) yearUpdate.policyChart = { connect: { id: chartId } };
+      }
+    }
 
     if (Object.keys(yearUpdate).length) {
       await tx.policyYear.update({ where: { id: year.id }, data: yearUpdate });
@@ -377,14 +406,89 @@ export async function applyLegacyPolicyCsvRow(
   }
 }
 
-export function validateLegacyPolicyCsvRow(header: string[], row: string[]): void {
+/** @deprecated Use processLegacyPolicyCsvRow */
+export const applyLegacyPolicyCsvRow = processLegacyPolicyCsvRow;
+
+/**
+ * Validate or upsert one legacy/v2 policy CSV row according to IMPORT_MODE.
+ */
+export async function processLegacyPolicyCsvRow(
+  header: string[],
+  row: string[],
+  ctx: LegacyCsvRowContext,
+): Promise<CsvUpsertResult> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
-  if (!refNo && !svkkId && !policyNo) {
+
+  const { match: policy, conflict } = await resolvePolicyForCsvImport(prisma, {
+    svkkId,
+    policyNo,
+    refNo,
+  });
+
+  if (conflict) throw new Error(conflict);
+
+  if (policy) {
+    if (ctx.importMode === "CREATE_ONLY") {
+      throw new Error("Policy already exists (CREATE_ONLY mode)");
+    }
+    if (ctx.dryRun) return "updated";
+    await prisma.$transaction(async (tx) => updatePolicyCsvRow(tx, header, row, ctx));
+    return "updated";
+  }
+
+  if (ctx.importMode === "UPDATE_ONLY") {
+    throw new Error(
+      `Policy not found (UPDATE_ONLY mode; SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"})`,
+    );
+  }
+
+  if (ctx.dryRun) {
+    validateCreateRequiredFields(header, row);
+    return "created";
+  }
+
+  await createPolicyFromCsvRow(header, row, {
+    actorUserId: ctx.userId,
+    permissions: ctx.permissions,
+    scope: ctx.scope,
+    typeCache: ctx.typeCache,
+  });
+  return "created";
+}
+
+/** @deprecated Use processLegacyPolicyCsvRow */
+export async function upsertLegacyPolicyCsvRow(
+  _tx: Prisma.TransactionClient,
+  header: string[],
+  row: string[],
+  ctx: LegacyCsvRowContext,
+): Promise<CsvUpsertResult> {
+  return processLegacyPolicyCsvRow(header, row, ctx);
+}
+
+export function validateLegacyPolicyCsvRow(
+  header: string[],
+  row: string[],
+  importMode: CsvImportMode = "UPSERT",
+): void {
+  const map = rowToHeaderMap(header, row);
+  const refNo = getCsvField(map, "ref no");
+  const svkkId = getCsvField(map, "SVKK ID");
+  const policyNo = getCsvField(map, "policy no");
+
+  if (importMode !== "CREATE_ONLY" && !refNo && !svkkId && !policyNo) {
     throw new Error("ref no, SVKK ID, or policy no required");
   }
+
+  if (importMode === "CREATE_ONLY" || importMode === "UPSERT") {
+    if (!refNo && !svkkId && !policyNo) {
+      validateCreateRequiredFields(header, row);
+    }
+  }
+
   collectMembersFromCsvMap(map);
   collectPaymentsFromCsvMap(map);
 }

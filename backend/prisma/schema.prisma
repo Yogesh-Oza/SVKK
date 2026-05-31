@@ -20,10 +20,32 @@ enum ClaimStatus {
   REJECTED
 }
 
+enum ClaimPolicyMatchStatus {
+  MATCHED_EXACT
+  UNLINKED
+  CONFLICT
+}
+
+enum ClaimLinkMode {
+  STRICT_MATCH
+  ALLOW_UNLINKED
+}
+
+enum CsvImportEntity {
+  POLICY
+  CLAIM
+}
+
 enum CsvUpdateMode {
   POD_ONLY
   POLICY_ONLY
   FULL
+}
+
+enum CsvImportMode {
+  UPSERT
+  UPDATE_ONLY
+  CREATE_ONLY
 }
 
 enum CsvJobStatus {
@@ -409,6 +431,7 @@ model PolicyYear {
   receipts             Receipt[]
   payments             Payment[]
   renewalReminderLogs  RenewalReminderLog[]
+  claims               Claim[]
 
   @@unique([policyId, yearLabel])
   @@index([policyChartId])
@@ -736,51 +759,105 @@ model IdempotencyRecord {
 }
 
 model CsvImportJob {
-  id               String        @id @default(cuid())
+  id               String           @id @default(cuid())
   s3Key            String
   checksum         String
   updateMode       CsvUpdateMode
-  dryRun           Boolean       @default(false)
-  status           CsvJobStatus  @default(PENDING)
+  importMode       CsvImportMode    @default(UPSERT)
+  importEntity     CsvImportEntity  @default(POLICY)
+  linkMode         ClaimLinkMode?
+  dryRun           Boolean          @default(false)
+  status           CsvJobStatus     @default(PENDING)
   errorReportS3Key String?
   duplicateOfJobId String?
-  forceApplied     Boolean       @default(false)
+  forceApplied     Boolean          @default(false)
+  fileName         String?          @db.VarChar(500)
+  originalFilePath String?          @db.VarChar(1000)
   rowCount         Int?
   successCount     Int?
   failCount        Int?
+  createdCount     Int?
+  updatedCount     Int?
+  durationMs       Int?
+  csvVersion       String?          @db.VarChar(20)
+  warningsJson     String?          @db.Text
+  matchStatsJson   String?          @db.Text
+  previewTokenHash String?          @db.VarChar(128)
+  progressPercent  Int?             @default(0)
   createdById      String?
-  createdBy        User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt        DateTime      @default(now())
+  createdBy        User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
   completedAt      DateTime?
+  claims           Claim[]
 
   @@index([checksum, updateMode])
+  @@index([importEntity, createdAt])
   @@index([createdById])
   @@map("csvimportjob")
 }
 
 model Claim {
-  id             String        @id @default(cuid())
-  claimNo        String        @unique
-  svkkPublicId   String
-  insuredPartyId String?
-  insuredParty   InsuredParty? @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
-  policyId       String?
-  policy         Policy?       @relation(fields: [policyId], references: [id], onDelete: SetNull)
-  policyYear     String
-  patientName    String?
-  status         ClaimStatus   @default(PENDING)
-  claimAmount    Decimal?      @db.Decimal(14, 2)
-  approvedAmount Decimal?      @db.Decimal(14, 2)
-  village        String?
-  createdById    String?
-  createdBy      User?         @relation("ClaimCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  approvedById   String?
-  approvedBy     User?         @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                      String                  @id @default(cuid())
+  claimNo                 String                  @unique
+  svkkPublicId            String                  @default("")
+  insuredPartyId          String?
+  insuredParty            InsuredParty?           @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
+  policyId                String?
+  policy                  Policy?                 @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  policyYearId            String?
+  policyYearRow           PolicyYear?             @relation(fields: [policyYearId], references: [id], onDelete: SetNull)
+  policyYear              String
+  patientName             String?
+  patientAge              Int?
+  patientRelation         String?                 @db.VarChar(100)
+  patientGender           String?                 @db.VarChar(16)
+  status                  ClaimStatus             @default(PENDING)
+  statusText              String?                 @db.VarChar(200)
+  claimType               String?                 @db.VarChar(100)
+  claimAmount             Decimal?                @db.Decimal(14, 2)
+  approvedAmount          Decimal?                @db.Decimal(14, 2)
+  deductionAmount         Decimal?                @db.Decimal(14, 2)
+  deductionDetails        String?                 @db.Text
+  balanceSumInsured       Decimal?                @db.Decimal(14, 2)
+  village                 String?
+  tpaName                 String?                 @db.VarChar(200)
+  insuranceCompany        String?                 @db.VarChar(200)
+  doBranch                String?                 @db.VarChar(200)
+  policyHolderName        String?                 @db.VarChar(200)
+  policyTypeText          String?                 @db.VarChar(200)
+  policyStartDate         DateTime?
+  policyEndDate           DateTime?
+  sumInsured              Decimal?                @db.Decimal(14, 2)
+  claimReceivedDate       DateTime?
+  informationRaisedDate   DateTime?
+  informationReceivedDate DateTime?
+  hospitalName            String?                 @db.VarChar(300)
+  hospitalArea            String?                 @db.VarChar(200)
+  networkType             String?                 @db.VarChar(50)
+  hospitalInPpn           Boolean?
+  admissionDate           DateTime?
+  dischargeDate           DateTime?
+  illness                 String?                 @db.Text
+  deniedReasons           String?                 @db.Text
+  roomCategory            String?                 @db.VarChar(100)
+  paymentDetails          String?                 @db.Text
+  matchStatus             ClaimPolicyMatchStatus?
+  verificationWarnings    Json?
+  importJobId             String?
+  importJob               CsvImportJob?           @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  createdById             String?
+  createdBy               User?                   @relation("ClaimCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById            String?
+  approvedBy              User?                   @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 
   @@index([svkkPublicId, policyYear])
   @@index([policyId])
+  @@index([policyYearId])
+  @@index([importJobId])
+  @@index([matchStatus])
+  @@index([claimReceivedDate])
   @@map("claim")
 }
 

@@ -10,10 +10,12 @@ import {
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { PieSlice } from "@/features/svkk-dashboard/aggregate-mis-rows";
+import type { ClaimPieSlice } from "@/features/svkk-dashboard/aggregate-claim-rows";
 import type { DashboardChartsPayload } from "@/features/svkk-dashboard/dashboard-metric-cards";
 import { RenewalPendingPie } from "@/features/svkk-dashboard/renewal-pending-pie";
 import {
   buildDashboardHref,
+  claimMisQueryFromRange,
   misQueryFromPolicyStartMonth,
   misQueryFromRange,
   policiesQueryFromRange,
@@ -51,6 +53,8 @@ type Props = {
   villagePie: PieSlice[];
   agePie: PieSlice[];
   productCounts: { label: string; count: number }[];
+  claimVillagePie?: ClaimPieSlice[];
+  claimProductPie?: ClaimPieSlice[];
 };
 
 function PiePanel({
@@ -61,7 +65,7 @@ function PiePanel({
 }: {
   title: string;
   description: string;
-  data: PieSlice[];
+  data: PieSlice[] | ClaimPieSlice[];
   onSliceClick?: (name: string) => void;
 }) {
   if (!data.length) {
@@ -130,18 +134,27 @@ export function PremiumTrendAndBreakdown({
   villagePie,
   agePie,
   productCounts,
+  claimVillagePie = [],
+  claimProductPie = [],
 }: Props) {
   const router = useRouter();
   const misQ = misQueryFromRange(range);
   const polQ = policiesQueryFromRange(range);
+  const claimMisQ = claimMisQueryFromRange(range);
 
   const goMis = (extra?: Record<string, string | string[]>) => {
     router.push(buildDashboardHref({ pathname: "/mis", query: { ...misQ, ...extra } }));
   };
 
+  const goClaimMis = (extra?: Record<string, string | string[]>) => {
+    router.push(buildDashboardHref({ pathname: "/mis", query: { ...claimMisQ, ...extra } }));
+  };
+
   const goPolicies = (extra?: Record<string, string | string[]>) => {
     router.push(buildDashboardHref({ pathname: "/policies", query: { ...polQ, ...extra } }));
   };
+
+  const hasClaimCharts = claimVillagePie.length > 0 || claimProductPie.length > 0;
 
   if (loading) {
     return (
@@ -294,6 +307,29 @@ export function PremiumTrendAndBreakdown({
             ))}
           </CardContent>
         </Card>
+      ) : null}
+
+      {hasClaimCharts ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <PiePanel
+            title="Claims by village"
+            description="Top villages by claim amount in period. Click a slice for Claim MIS."
+            data={claimVillagePie}
+            onSliceClick={(name) => {
+              if (name === "Other") {
+                goClaimMis({ groupBy: "village" });
+              } else {
+                goClaimMis({ groupBy: "village", villages: name });
+              }
+            }}
+          />
+          <PiePanel
+            title="Claim amount by product"
+            description="Share of claim amount by policy type. Click a slice for Claim MIS."
+            data={claimProductPie}
+            onSliceClick={() => goClaimMis({ groupBy: "policy_type" })}
+          />
+        </div>
       ) : null}
     </div>
   );

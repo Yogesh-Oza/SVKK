@@ -5,22 +5,24 @@ import {
 } from "../../lib/category-display.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
-  buildAllMemberSlotCells,
-  buildAllPaymentSlotCells,
   buildExtendedMemberHeaders,
+  buildExtendedMemberSlotCells,
   buildExtendedPaymentHeaders,
+  buildFlatMember1Cells,
+  buildAllPaymentSlotCells,
   buildPolicyCsvSampleDemoRow,
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
-  POLICY_CSV_SAMPLE_MEMBER_SLOTS,
-  POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
-import { csvCell } from "./policy-csv-utils.js";
+import { csvCell, fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
 
-export { csvCell } from "./policy-csv-utils.js";
+export { csvCell, fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
 
-/** Base 95 columns from `policies-export-23 05 2026.xlsx` (includes Member 3 + payment 1). */
-export const POLICY_CSV_LEGACY_HEADERS = [
+/** Documented format version (not embedded as a required CSV row). */
+export const POLICY_CSV_VERSION = "v2";
+
+/** Canonical v2 flat column block (~106 columns). */
+export const POLICY_CSV_FLAT_HEADERS = [
   "year",
   "month",
   "grouping",
@@ -30,6 +32,7 @@ export const POLICY_CSV_LEGACY_HEADERS = [
   "Holder PAN",
   "Holder Aadhaar",
   "previous policy no",
+  "PRE. END DATE",
   "policy no",
   "Policy start",
   "Policy end",
@@ -80,16 +83,16 @@ export const POLICY_CSV_LEGACY_HEADERS = [
   "Refund Cheque Amount",
   "Refund Cheque Number",
   "Refund Cheque Date",
-  "Member 3 Name",
-  "Member 3 DOB",
-  "Member 3 Relationship",
-  "Member 3 Gender",
-  "Member 3 Sum insured",
-  "Member 3 Basic premium",
-  "Member 3 Cumulative bonus",
-  "Member 3 Phone",
-  "Member 3 Age at entry",
-  "member_date_of_joining1",
+  "Member 1 Name",
+  "Member 1 DOB",
+  "Member 1 Relationship",
+  "Member 1 Gender",
+  "MEMBER 1 DATE OF JOINING",
+  "Member 1 Sum insured",
+  "Member 1 Basic premium",
+  "Member 1 Cumulative bonus",
+  "Member 1 Phone",
+  "Member 1 Age at entry",
   "nominee_name",
   "nominee_relation",
   "nominee mobile",
@@ -110,7 +113,7 @@ export const POLICY_CSV_LEGACY_HEADERS = [
   "pod",
   "courier co",
   "gen remark",
-  "policy remar",
+  "policy remarK",
   "ref no",
   "Created at",
   "Updated at",
@@ -118,15 +121,21 @@ export const POLICY_CSV_LEGACY_HEADERS = [
   "url",
 ] as const;
 
-export type PolicyCsvLegacyHeader = (typeof POLICY_CSV_LEGACY_HEADERS)[number];
+/** @deprecated Use POLICY_CSV_FLAT_HEADERS */
+export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
 
-/** Legacy + extra member slots (1,2,4..12) + extra payments (2..8). */
+export type PolicyCsvFlatHeader = (typeof POLICY_CSV_FLAT_HEADERS)[number];
+
+/** Policy list export uses flat v2 columns only (same as sample/import). */
+export const POLICY_CSV_EXPORT_HEADERS = POLICY_CSV_FLAT_HEADERS;
+
+/** Full export: flat + extended member 2–12 + payment 2–8 (optional / tooling). */
 export function buildPolicyCsvHeaders(
   maxMembers = POLICY_CSV_MAX_MEMBER_SLOTS,
   maxPayments = POLICY_CSV_MAX_PAYMENT_SLOTS,
 ): string[] {
   return [
-    ...POLICY_CSV_LEGACY_HEADERS,
+    ...POLICY_CSV_FLAT_HEADERS,
     ...buildExtendedMemberHeaders(maxMembers),
     ...buildExtendedPaymentHeaders(maxPayments),
   ];
@@ -143,14 +152,45 @@ export function isLegacyPolicyCsvFormat(header: string[]): boolean {
   return h.includes("ref no") && h.includes("svkk id") && h.includes("policy no");
 }
 
-export function fmtCsvDate(d: Date | null | undefined): string {
-  if (!d) return "";
-  return d.toISOString().slice(0, 10);
+/** Detect v2 vs legacy from header row. */
+export function detectFormatFromHeaders(header: string[]): string {
+  const h = header.map(normalizeCsvHeader);
+  if (h.includes("pre. end date") && h.includes("member 1 name")) return POLICY_CSV_VERSION;
+  if (h.includes("member 3 name") && !h.includes("member 1 name")) return "legacy";
+  if (isLegacyPolicyCsvFormat(header)) return POLICY_CSV_VERSION;
+  return "unknown";
 }
 
-export function fmtCsvDecimal(v: Prisma.Decimal | null | undefined): string {
-  if (v == null) return "";
-  return v.toString();
+const SUPPORTED_CSV_VERSIONS = new Set(["v2", "legacy"]);
+
+export type ParsedCsvLayout = {
+  csvVersion: string;
+  header: string[];
+  dataRows: string[][];
+};
+
+/** Optional first-row CSV_VERSION metadata; otherwise header-based detection. */
+export function parseCsvWithOptionalVersion(rows: string[][]): ParsedCsvLayout {
+  if (!rows.length) {
+    return { csvVersion: "unknown", header: [], dataRows: [] };
+  }
+
+  const firstCell = rows[0]?.[0]?.trim().toUpperCase() ?? "";
+  if (firstCell === "CSV_VERSION") {
+    const version = rows[0]?.[1]?.trim().toLowerCase() ?? "unknown";
+    if (!SUPPORTED_CSV_VERSIONS.has(version) && version !== "unknown") {
+      throw new Error(`Unsupported CSV_VERSION: ${rows[0]?.[1]?.trim() ?? ""}. Supported: v2`);
+    }
+    const header = rows[1] ?? [];
+    return { csvVersion: version, header, dataRows: rows.slice(2) };
+  }
+
+  const header = rows[0] ?? [];
+  return {
+    csvVersion: detectFormatFromHeaders(header),
+    header,
+    dataRows: rows.slice(1),
+  };
 }
 
 function formatPolicyUrl(raw: string | null | undefined): string {
@@ -170,6 +210,13 @@ function formatPolicyUrl(raw: string | null | undefined): string {
 function cdAccountStatusLabel(used: boolean | null | undefined): string {
   if (used == null) return "";
   return used ? "Yes" : "No";
+}
+
+function isImportablePolicyUrl(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return false;
+  if (t.includes("document(s)")) return false;
+  return t.startsWith("http://") || t.startsWith("https://") || t.startsWith("[");
 }
 
 export function buildLegacyPolicyCsvCells(
@@ -196,6 +243,7 @@ export function buildLegacyPolicyCsvCells(
     "Holder PAN": String(party?.pan ?? ""),
     "Holder Aadhaar": String(party?.aadhaarNo ?? ""),
     "previous policy no": r.previousPolicyNo ?? "",
+    "PRE. END DATE": fmtCsvDate(r.previousEndDate),
     "policy no": r.policyNo ?? "",
     "Policy start": fmtCsvDate(year?.policyStart),
     "Policy end": fmtCsvDate(year?.policyEnd),
@@ -239,7 +287,7 @@ export function buildLegacyPolicyCsvCells(
     "Refund Cheque Date": fmtCsvDate(r.refundChequeDate),
     nominee_name: r.nomineeName ?? "",
     nominee_relation: r.nomineeRelation ?? "",
-    "nominee mobile": "",
+    "nominee mobile": r.contactPhone ?? "",
     "Address Line 1: House/Flat No, Building Name": r.addressLine1 ?? "",
     "Address Line 2: Street/Road Name": r.addressLine2 ?? "",
     "Address Line 3: Landmark / Locality": r.addressLine3 ?? "",
@@ -247,7 +295,7 @@ export function buildLegacyPolicyCsvCells(
     area: r.area ?? "",
     city: r.city ?? "",
     pincode: r.pincode ?? "",
-    "Primary Mobile Number": String(party?.mobile ?? r.contactPhone ?? ""),
+    "Primary Mobile Number": String(party?.mobile ?? ""),
     "Secondary Mobile Number": r.mobileSecondary ?? "",
     whatsapp: r.whatsappNo ?? "",
     email: String(party?.email ?? ""),
@@ -257,28 +305,31 @@ export function buildLegacyPolicyCsvCells(
     pod: r.podNumber ?? r.pod ?? "",
     "courier co": r.courierCompany ?? "",
     "gen remark": r.remarks ?? "",
-    "policy remar": year?.yearRemarks ?? "",
+    "policy remarK": year?.yearRemarks ?? "",
     "ref no": r.referenceNo ?? "",
     "Created at": r.createdAt.toISOString(),
     "Updated at": r.updatedAt.toISOString(),
     "policy url": formatPolicyUrl(r.policyUrl),
     url: r.policyUrl2 ?? "",
-    ...buildAllMemberSlotCells(members),
+    ...buildFlatMember1Cells(members),
+    ...buildExtendedMemberSlotCells(members),
     ...buildAllPaymentSlotCells(payments, year?.paymentMode),
   };
 
-  return POLICY_CSV_HEADERS.map((h) => byHeader[h] ?? "");
+  return POLICY_CSV_EXPORT_HEADERS.map((h) => byHeader[h] ?? "");
+}
+
+export function buildPolicyCsvExportHeaderLine(): string {
+  return POLICY_CSV_EXPORT_HEADERS.map(csvCell).join(",");
 }
 
 export function buildPolicyCsvHeaderLine(): string {
-  return POLICY_CSV_HEADERS.map(csvCell).join(",");
+  return buildPolicyCsvExportHeaderLine();
 }
 
+/** Sample CSV: flat v2 headers + one demo row (no CSV_VERSION row). */
 export function buildPolicyCsvSample(): string {
-  const sampleHeaders = buildPolicyCsvHeaders(
-    POLICY_CSV_SAMPLE_MEMBER_SLOTS,
-    POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
-  );
+  const sampleHeaders = [...POLICY_CSV_FLAT_HEADERS];
   const demo = buildPolicyCsvSampleDemoRow();
   const headerLine = sampleHeaders.map(csvCell).join(",");
   const cells = sampleHeaders.map((h) => demo[h] ?? "");
@@ -303,3 +354,5 @@ export function buildLegacyPoliciesCsv(
   }
   return `\uFEFF${lines.join("\r\n")}`;
 }
+
+export { isImportablePolicyUrl };

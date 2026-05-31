@@ -14,6 +14,8 @@ export const SQL_TABLE = {
   insuredParty: "insuredparty",
   user: "user",
   permission: "permission",
+  claim: "claim",
+  policyType: "policytype",
 } as const;
 
 /** Safe table identifier for Prisma.sql fragments. */

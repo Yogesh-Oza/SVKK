@@ -17,12 +17,21 @@ import {
 } from "./mis.export-drill-down.js";
 import {
   getDashboardCharts,
+  getDashboardClaimMetrics,
   getDashboardMetrics,
   getDashboardRenewalBuckets,
   getPolicyMemberReport,
   getPolicyMemberReportDetail,
   getVillageReport,
+  getClaimReport,
+  getClaimTrend,
 } from "./mis.service.js";
+
+function resolveClaimScopeModule(permissions: Set<string>): "claim" | "mis" | "dashboard" {
+  if (hasPermissionInSet(permissions, "claim:read")) return "claim";
+  if (hasPermissionInSet(permissions, "mis:read")) return "mis";
+  return "dashboard";
+}
 
 function parseAsOf(q: { asOfDate?: string }): Date {
   if (q.asOfDate) {
@@ -223,6 +232,36 @@ export function createMisRouter(_env: Env) {
           getDashboardRenewalBuckets(req.userId!, req.permissions!, scope, asOf, q.village),
         ]);
         res.json({ ...charts, renewal });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/dashboard-claims",
+    requireAnyPermission(["mis:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            dateFrom: z.string().optional(),
+            dateTo: z.string().optional(),
+          })
+          .parse(req.query);
+        const dateFrom = parseOptionalDate(q.dateFrom);
+        const dateTo =
+          parseOptionalDate(q.dateTo) ?? (dateFrom ? null : new Date());
+        const scope = await loadMisScope(
+          req.userId!,
+          req.permissions!,
+          resolveClaimScopeModule(req.permissions!),
+        );
+        const metrics = await getDashboardClaimMetrics(req.permissions!, scope, {
+          dateFrom,
+          dateTo,
+        });
+        res.json(metrics);
       } catch (e) {
         next(e);
       }
@@ -464,6 +503,128 @@ export function createMisRouter(_env: Env) {
       next(e);
     }
   });
+
+  const claimReportQuerySchema = z.object({
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+    /** @deprecated use dateTo */
+    asOfDate: z.string().optional(),
+    villages: stringArrayQuery,
+    matchStatus: z.enum(["MATCHED_EXACT", "UNLINKED", "CONFLICT"]).optional(),
+    groupBy: z.enum(["category", "village", "sum_insured", "policy_type"]).default("village"),
+    categoryKeys: stringArrayQuery,
+    policyGroupings: stringArrayQuery,
+    areas: stringArrayQuery,
+    sumInsureds: stringArrayQuery,
+    periodMonthTexts: stringArrayQuery,
+    fiscalLabels: stringArrayQuery,
+  });
+
+  function normalizeClaimReportQuery(q: z.infer<typeof claimReportQuerySchema>) {
+    const dateFrom = parseOptionalDate(q.dateFrom);
+    const dateTo =
+      parseOptionalDate(q.dateTo) ??
+      parseOptionalDate(q.asOfDate) ??
+      (dateFrom ? null : new Date());
+    return {
+      dateFrom,
+      dateTo,
+      villages: [...new Set(q.villages ?? [])],
+      matchStatus: q.matchStatus,
+      groupBy: q.groupBy,
+      categoryKeys: [...new Set(q.categoryKeys ?? [])],
+      policyGroupings: [...new Set(q.policyGroupings ?? [])],
+      areas: [...new Set(q.areas ?? [])],
+      sumInsureds: [...new Set(q.sumInsureds ?? [])],
+      periodMonthTexts: [...new Set(q.periodMonthTexts ?? [])],
+      fiscalLabels: [...new Set(q.fiscalLabels ?? [])],
+    };
+  }
+
+  r.get(
+    "/claim-report",
+    requireAnyPermission(["mis:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema.parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
+        const report = await getClaimReport(req.permissions!, scope, normalized);
+        res.json(report);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/claim-trend",
+    requireAnyPermission(["mis:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            dateFrom: z.string().optional(),
+            dateTo: z.string().optional(),
+            asOfDate: z.string().optional(),
+            villages: stringArrayQuery,
+            matchStatus: z.enum(["MATCHED_EXACT", "UNLINKED", "CONFLICT"]).optional(),
+            period: z.enum(["month", "quarter", "year"]).default("month"),
+            categoryKeys: stringArrayQuery,
+            policyGroupings: stringArrayQuery,
+            areas: stringArrayQuery,
+            sumInsureds: stringArrayQuery,
+            periodMonthTexts: stringArrayQuery,
+            fiscalLabels: stringArrayQuery,
+          })
+          .parse(req.query);
+        const normalized = normalizeClaimReportQuery({
+          ...q,
+          groupBy: "village",
+        });
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
+        const report = await getClaimTrend(req.permissions!, scope, {
+          ...normalized,
+          period: q.period,
+        });
+        res.json(report);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/export/claim-report.csv",
+    requirePermission("mis:read"),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema.parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const report = await getClaimReport(req.permissions!, scope, normalized);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", 'attachment; filename="claim-mis-report.csv"');
+        res.write("label,claimCount,sumClaimAmount,sumApprovedAmount,sumDeductionAmount\n");
+        for (const row of report.rows) {
+          res.write(
+            [
+              JSON.stringify(row.label),
+              row.claimCount,
+              row.sumClaimAmount,
+              row.sumApprovedAmount,
+              row.sumDeductionAmount,
+            ].join(",") + "\n",
+          );
+        }
+        res.end();
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
 
   return r;
 }

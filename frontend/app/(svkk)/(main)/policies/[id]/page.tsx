@@ -68,7 +68,7 @@ export default function SvkkPolicyDetailPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useSvkkAuth();
-  const ddOptions = useDropdownOptions();
+  const { options: ddOptions } = useDropdownOptions();
   const receiptImageUrls = useReceiptSettings();
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
 

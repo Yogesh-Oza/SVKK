@@ -22,6 +22,15 @@ import {
   UNCATEGORIZED_CATEGORY_KEY,
   type PolicyMemberReportRow,
 } from "./mis.queries.js";
+import {
+  buildClaimScopeSqlC,
+  claimReportRowToJson,
+  queryClaimReport,
+  queryClaimTrend,
+  queryDashboardClaimTotals,
+  type ClaimReportFilters,
+  type ClaimTrendPeriod,
+} from "./claim-mis.queries.js";
 
 async function loadSumInsuredLabelMap(): Promise<Map<string, string>> {
   const rows = await prisma.dropdownOption.findMany({
@@ -607,5 +616,89 @@ export async function getPolicyMemberReportDetail(
     drillType,
     drillLabel,
     sections,
+  };
+}
+
+export type DashboardClaimMetricsJson = {
+  dateFrom: string | null;
+  dateTo: string;
+  claimCount: number;
+  sumClaimAmount: number;
+  sumApprovedAmount: number;
+  sumDeductionAmount: number;
+  byVillage: ReturnType<typeof claimReportRowToJson>[];
+  byPolicyType: ReturnType<typeof claimReportRowToJson>[];
+};
+
+/** Scope-aware claim totals and breakdown slices for the policy dashboard. */
+export async function getDashboardClaimMetrics(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: Pick<ClaimReportFilters, "dateFrom" | "dateTo">,
+): Promise<DashboardClaimMetricsJson> {
+  const filters: ClaimReportFilters = {
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    villages: [],
+    categoryKeys: [],
+    policyGroupings: [],
+    areas: [],
+    sumInsureds: [],
+    periodMonthTexts: [],
+    fiscalLabels: [],
+  };
+  const scopeSql = buildClaimScopeSqlC(permissions, scope, []);
+  const [totals, byVillage, byPolicyType] = await Promise.all([
+    queryDashboardClaimTotals(prisma, { scopeSql, filters }),
+    queryClaimReport(prisma, { scopeSql, filters, groupBy: "village" }),
+    queryClaimReport(prisma, { scopeSql, filters, groupBy: "policy_type" }),
+  ]);
+  return {
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
+    claimCount: Number(totals.claimCount),
+    sumClaimAmount: Number(totals.sumClaimAmount ?? 0),
+    sumApprovedAmount: Number(totals.sumApprovedAmount ?? 0),
+    sumDeductionAmount: Number(totals.sumDeductionAmount ?? 0),
+    byVillage: byVillage.map(claimReportRowToJson),
+    byPolicyType: byPolicyType.map(claimReportRowToJson),
+  };
+}
+
+/** Claim MIS dimensional report. */
+export async function getClaimReport(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: ClaimReportFilters & { groupBy: "category" | "village" | "sum_insured" | "policy_type" },
+) {
+  const scopeSql = buildClaimScopeSqlC(permissions, scope, input.villages);
+  const rows = await queryClaimReport(prisma, {
+    scopeSql,
+    filters: input,
+    groupBy: input.groupBy,
+  });
+  return {
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
+    groupBy: input.groupBy,
+    rows: rows.map(claimReportRowToJson),
+  };
+}
+
+/** Claim MIS trend report (month / quarter / year). */
+export async function getClaimTrend(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: ClaimReportFilters & { period: ClaimTrendPeriod },
+) {
+  const scopeSql = buildClaimScopeSqlC(permissions, scope, input.villages);
+  const rows = await queryClaimTrend(prisma, {
+    scopeSql,
+    filters: input,
+    period: input.period,
+  });
+  return {
+    period: input.period,
+    rows: rows.map(claimReportRowToJson),
   };
 }

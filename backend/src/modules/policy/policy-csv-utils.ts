@@ -1,3 +1,15 @@
+import type { Prisma } from "@prisma/client";
+
+export function fmtCsvDate(d: Date | null | undefined): string {
+  if (!d) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+export function fmtCsvDecimal(v: Prisma.Decimal | null | undefined): string {
+  if (v == null) return "";
+  return v.toString();
+}
+
 export function csvCell(value: unknown): string {
   if (value == null) return "";
   const s =

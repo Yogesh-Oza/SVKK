@@ -2,15 +2,15 @@ import type { Prisma } from "@prisma/client";
 import { PayMethod, ChequeStatus } from "@prisma/client";
 import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
-import { fmtCsvDate, fmtCsvDecimal } from "./policy-csv-format.js";
+import { fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
 export const POLICY_CSV_MAX_PAYMENT_SLOTS = 8;
 
-/** Sample CSV template: fewer columns so the file is easy to read (export keeps full limits). */
-export const POLICY_CSV_SAMPLE_MEMBER_SLOTS = 2;
-export const POLICY_CSV_SAMPLE_PAYMENT_SLOTS = 2;
+/** Sample CSV uses flat headers only (Member 1 in flat block). */
+export const POLICY_CSV_SAMPLE_MEMBER_SLOTS = 1;
+export const POLICY_CSV_SAMPLE_PAYMENT_SLOTS = 1;
 
 export const MEMBER_SLOT_FIELD_LABELS = [
   "Name",
@@ -48,31 +48,36 @@ const MEMBER_LABEL_TO_KEY: Record<(typeof MEMBER_SLOT_FIELD_LABELS)[number], Mem
   "Age at entry": "ageAtEntry",
 };
 
-/** Member 3 uses legacy column names inside the base 95-column block. */
+/** Canonical v2 header for member slot (slot 1 lives in flat block). */
 export function memberSlotHeader(slot: number, label: (typeof MEMBER_SLOT_FIELD_LABELS)[number]): string {
-  if (slot === 3) {
-    if (label === "Name") return "Member 3 Name";
-    if (label === "DOB") return "Member 3 DOB";
-    if (label === "Relationship") return "Member 3 Relationship";
-    if (label === "Gender") return "Member 3 Gender";
-    if (label === "Sum insured") return "Member 3 Sum insured";
-    if (label === "Basic premium") return "Member 3 Basic premium";
-    if (label === "Cumulative bonus") return "Member 3 Cumulative bonus";
-    if (label === "Phone") return "Member 3 Phone";
-    if (label === "Age at entry") return "Member 3 Age at entry";
-  }
   return `Member ${slot} ${label}`;
 }
 
+/** Legacy Member 3 headers (deprecated; import aliases only). */
+export function legacyMember3Header(label: (typeof MEMBER_SLOT_FIELD_LABELS)[number]): string {
+  if (label === "Name") return "Member 3 Name";
+  if (label === "DOB") return "Member 3 DOB";
+  if (label === "Relationship") return "Member 3 Relationship";
+  if (label === "Gender") return "Member 3 Gender";
+  if (label === "Sum insured") return "Member 3 Sum insured";
+  if (label === "Basic premium") return "Member 3 Basic premium";
+  if (label === "Cumulative bonus") return "Member 3 Cumulative bonus";
+  if (label === "Phone") return "Member 3 Phone";
+  if (label === "Age at entry") return "Member 3 Age at entry";
+  return memberSlotHeader(3, label);
+}
+
 export function memberJoiningHeader(slot: number): string {
-  if (slot === 3) return "member_date_of_joining1";
+  if (slot === 1) return "MEMBER 1 DATE OF JOINING";
   return `Member ${slot} Date of joining`;
 }
 
+const LEGACY_MEMBER3_JOINING = "member_date_of_joining1";
+
+/** Extended member columns: slots 2–12 (slot 1 is in flat block). */
 export function buildExtendedMemberHeaders(maxSlots = POLICY_CSV_MAX_MEMBER_SLOTS): string[] {
   const headers: string[] = [];
-  for (let slot = 1; slot <= maxSlots; slot++) {
-    if (slot === 3) continue;
+  for (let slot = 2; slot <= maxSlots; slot++) {
     for (const label of MEMBER_SLOT_FIELD_LABELS) {
       headers.push(memberSlotHeader(slot, label));
     }
@@ -121,7 +126,7 @@ const PAYMENT_FIELD_LABEL: Record<PaymentSlotFieldKey, string> = {
   "other carges": "other carges",
 };
 
-/** Payment 1 uses unprefixed legacy column names. */
+/** Payment 1 uses unprefixed legacy column names in flat block. */
 export function paymentSlotHeader(slot: number, field: PaymentSlotFieldKey): string {
   const label = PAYMENT_FIELD_LABEL[field];
   if (slot === 1) {
@@ -221,13 +226,16 @@ export function paymentSlotCells(
   return out;
 }
 
-export function buildAllMemberSlotCells(
-  members: YearMember[],
-): Record<string, string> {
+/** Flat block: member slot 1 only. */
+export function buildFlatMember1Cells(members: YearMember[]): Record<string, string> {
+  return memberSlotCells(members[0], 1);
+}
+
+/** Extended block: member slots 2–12. */
+export function buildExtendedMemberSlotCells(members: YearMember[]): Record<string, string> {
   const cells: Record<string, string> = {};
-  for (let slot = 1; slot <= POLICY_CSV_MAX_MEMBER_SLOTS; slot++) {
-    const member = members[slot - 1];
-    Object.assign(cells, memberSlotCells(member, slot));
+  for (let slot = 2; slot <= POLICY_CSV_MAX_MEMBER_SLOTS; slot++) {
+    Object.assign(cells, memberSlotCells(members[slot - 1], slot));
   }
   return cells;
 }
@@ -241,6 +249,42 @@ export function buildAllPaymentSlotCells(
     Object.assign(cells, paymentSlotCells(payments[slot - 1], slot, yearPaymentMode));
   }
   return cells;
+}
+
+function getMemberFieldFromMap(
+  map: Map<string, string>,
+  slot: number,
+  label: (typeof MEMBER_SLOT_FIELD_LABELS)[number],
+): string {
+  const canonical = getCsvField(map, memberSlotHeader(slot, label));
+  if (canonical) return canonical;
+  if (slot === 1) {
+    return getCsvField(map, legacyMember3Header(label));
+  }
+  return "";
+}
+
+function getMemberJoiningFromMap(map: Map<string, string>, slot: number): string {
+  const canonical = getCsvField(map, memberJoiningHeader(slot));
+  if (canonical) return canonical;
+  if (slot === 1) return getCsvField(map, LEGACY_MEMBER3_JOINING);
+  return "";
+}
+
+/** Detect deprecated column headers present in CSV. */
+export function collectDeprecatedHeaderWarnings(header: string[]): string[] {
+  const normalized = new Set(header.map((h) => h.trim().toLowerCase()));
+  const warnings: string[] = [];
+  if (normalized.has("member 3 name")) {
+    warnings.push("Deprecated column 'Member 3 Name' — migrate to 'Member 1 Name'");
+  }
+  if (normalized.has("member_date_of_joining1")) {
+    warnings.push("Deprecated column 'member_date_of_joining1' — migrate to 'MEMBER 1 DATE OF JOINING'");
+  }
+  if (normalized.has("policy remar") && !normalized.has("policy remark")) {
+    warnings.push("Deprecated column 'policy remar' — migrate to 'policy remarK'");
+  }
+  return warnings;
 }
 
 function parsePayMethod(raw: string): PayMethod | undefined {
@@ -307,22 +351,22 @@ export function collectMembersFromCsvMap(
 ): PolicyMemberReplaceRow[] {
   const members: PolicyMemberReplaceRow[] = [];
   for (let slot = 1; slot <= POLICY_CSV_MAX_MEMBER_SLOTS; slot++) {
-    const name = getCsvField(map, memberSlotHeader(slot, "Name"));
+    const name = getMemberFieldFromMap(map, slot, "Name");
     if (!name) continue;
-    const dobRaw = getCsvField(map, memberSlotHeader(slot, "DOB"));
+    const dobRaw = getMemberFieldFromMap(map, slot, "DOB");
     members.push({
       name,
       dob: parseOptionalDate(dobRaw) ?? new Date("1970-01-01"),
-      relationship: getCsvField(map, memberSlotHeader(slot, "Relationship")) || "Other",
-      gender: getCsvField(map, memberSlotHeader(slot, "Gender")) || "Other",
-      sumInsured: parseOptionalDecimal(getCsvField(map, memberSlotHeader(slot, "Sum insured"))),
+      relationship: getMemberFieldFromMap(map, slot, "Relationship") || "Other",
+      gender: getMemberFieldFromMap(map, slot, "Gender") || "Other",
+      sumInsured: parseOptionalDecimal(getMemberFieldFromMap(map, slot, "Sum insured")),
       cumulativeBonus: parseOptionalDecimal(
-        getCsvField(map, memberSlotHeader(slot, "Cumulative bonus")),
+        getMemberFieldFromMap(map, slot, "Cumulative bonus"),
       ),
-      basicPremium: parseOptionalDecimal(getCsvField(map, memberSlotHeader(slot, "Basic premium"))),
-      memberPhone: getCsvField(map, memberSlotHeader(slot, "Phone")) || null,
-      ageAtEntry: parseOptionalInt(getCsvField(map, memberSlotHeader(slot, "Age at entry"))),
-      dateOfJoining: parseOptionalDate(getCsvField(map, memberJoiningHeader(slot))),
+      basicPremium: parseOptionalDecimal(getMemberFieldFromMap(map, slot, "Basic premium")),
+      memberPhone: getMemberFieldFromMap(map, slot, "Phone") || null,
+      ageAtEntry: parseOptionalInt(getMemberFieldFromMap(map, slot, "Age at entry")),
+      dateOfJoining: parseOptionalDate(getMemberJoiningFromMap(map, slot)),
     });
   }
   return members;
@@ -365,7 +409,7 @@ export function collectPaymentsFromCsvMap(map: Map<string, string>): PaymentRepl
   return payments;
 }
 
-/** Demo member rows for sample CSV (no payment demo data). */
+/** Demo row for sample CSV (flat format v2). */
 export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
   const cells: Record<string, string> = {
     year: "2026-27",
@@ -374,46 +418,32 @@ export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
     "Customer ID": "DEMO-CUST-001",
     "SVKK ID": "DEMO-SVKK-001",
     "Holder name": "Demo Policyholder",
+    "previous policy no": "PREV-DEMO-001",
+    "PRE. END DATE": "2026-04-30",
     "policy no": "DEMO-POL-001",
-    "ref no": "DEMO-REF-001",
+    "Policy start": "2026-05-01",
+    "Policy end": "2027-04-30",
+    "Product Type": "Family Floater",
     Village: "Demo Village",
+    area: "Demo Area",
     Category: "A",
     "Person Count*": "2",
     "Persons insured": "2",
+    "Sum insured": "500000",
+    "Primary Mobile Number": "9876543210",
+    whatsapp: "9876543210",
+    email: "demo@example.com",
+    "ref no": "DEMO-REF-001",
+    "policy remarK": "Sample import row",
   };
 
-  const demoMembers = [
-    {
-      name: "Demo Member One",
-      dob: "1990-01-15",
-      relationship: "Self",
-      gender: "M",
-      phone: "9876543210",
-      age: "36",
-      joining: "2020-04-01",
-    },
-    {
-      name: "Demo Member Two",
-      dob: "1995-06-20",
-      relationship: "Spouse",
-      gender: "F",
-      phone: "9876543211",
-      age: "30",
-      joining: "2021-05-01",
-    },
-  ];
-
-  for (let i = 0; i < demoMembers.length; i++) {
-    const slot = i + 1;
-    const m = demoMembers[i]!;
-    cells[memberSlotHeader(slot, "Name")] = m.name;
-    cells[memberSlotHeader(slot, "DOB")] = m.dob;
-    cells[memberSlotHeader(slot, "Relationship")] = m.relationship;
-    cells[memberSlotHeader(slot, "Gender")] = m.gender;
-    cells[memberSlotHeader(slot, "Phone")] = m.phone;
-    cells[memberSlotHeader(slot, "Age at entry")] = m.age;
-    cells[memberJoiningHeader(slot)] = m.joining;
-  }
+  cells[memberSlotHeader(1, "Name")] = "Demo Member One";
+  cells[memberSlotHeader(1, "DOB")] = "1990-01-15";
+  cells[memberSlotHeader(1, "Relationship")] = "Self";
+  cells[memberSlotHeader(1, "Gender")] = "M";
+  cells[memberSlotHeader(1, "Phone")] = "9876543210";
+  cells[memberSlotHeader(1, "Age at entry")] = "36";
+  cells[memberJoiningHeader(1)] = "2020-04-01";
 
   return cells;
 }

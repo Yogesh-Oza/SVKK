@@ -84,6 +84,25 @@ export function policiesQueryFromRange(
   return misQueryFromRange(range, extra);
 }
 
+/** Claims register list — same date range as dashboard / Claim MIS. */
+export function claimsQueryFromRange(
+  range: DashboardDateRange,
+  extra?: Record<string, string | string[] | undefined>,
+): Record<string, string | string[] | undefined> {
+  return misQueryFromRange(range, extra);
+}
+
+/** Claim MIS tab with dashboard date filters. */
+export function claimMisQueryFromRange(
+  range: DashboardDateRange,
+  extra?: Record<string, string | string[] | undefined>,
+): Record<string, string | string[] | undefined> {
+  return {
+    ...misQueryFromRange(range, extra),
+    tab: "claim",
+  };
+}
+
 /** Policies list with pending-renewal filter (policy end on/before range to-date). */
 export function policiesPendingRenewalQuery(
   range: DashboardDateRange,

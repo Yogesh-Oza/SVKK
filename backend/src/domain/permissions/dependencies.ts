@@ -9,6 +9,7 @@ export const PERMISSION_DEPENDENCIES: Record<string, readonly string[]> = {
   "claim:update": ["claim:read"],
   "claim:delete": ["claim:read"],
   "claim:create": ["claim:read"],
+  "claim:import": ["claim:read"],
   "admin:charts": ["calculation:live"],
   "roles:manage": ["users:manage"],
 };

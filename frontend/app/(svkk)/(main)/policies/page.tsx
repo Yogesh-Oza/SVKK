@@ -257,7 +257,24 @@ export default function SvkkPoliciesPage() {
   const [pageSize, setPageSize] = useState(20);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadValidateBusy, setUploadValidateBusy] = useState(false);
+  /** Phase 1: create-only imports; upsert/update modes come later. */
+  const policyCsvImportMode = "CREATE_ONLY" as const;
   const [uploadMsg, setUploadMsg] = useState<string>("");
+  const [uploadResult, setUploadResult] = useState<{
+    jobId: string;
+    dryRun: boolean;
+    created: number;
+    updated: number;
+    failed: number;
+    valid: number;
+    invalid: number;
+    durationMs: number;
+    csvVersion?: string;
+    errors?: string[];
+    warnings?: string[];
+    errorReportUrl?: string;
+  } | null>(null);
 
   const [rows, setRows] = useState<ListPolicy[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -513,29 +530,109 @@ export default function SvkkPoliciesPage() {
     }
   }, [queryString]);
 
-  const uploadPoliciesCsv = useCallback(async () => {
-    if (!uploadFile) {
-      setUploadMsg("Choose a CSV file first.");
-      return;
-    }
-    setUploadBusy(true);
-    setUploadMsg("");
+  type CsvImportResponse = {
+    jobId: string;
+    mode: string;
+    dryRun: boolean;
+    rowCount: number;
+    created: number;
+    updated: number;
+    failed: number;
+    valid: number;
+    invalid: number;
+    durationMs: number;
+    csvVersion?: string;
+    errors?: string[];
+    warnings?: string[];
+    errorReportUrl?: string;
+  };
+
+  const postPoliciesCsv = useCallback(
+    async (dryRun: boolean) => {
+      if (!uploadFile) {
+        setUploadMsg("Choose a CSV file first.");
+        return;
+      }
+      if (dryRun) setUploadValidateBusy(true);
+      else setUploadBusy(true);
+      setUploadMsg("");
+      setUploadResult(null);
+      try {
+        const fd = new FormData();
+        fd.append("file", uploadFile);
+        fd.append("updateMode", "FULL");
+        fd.append("dryRun", dryRun ? "true" : "false");
+        fd.append("mode", policyCsvImportMode);
+        fd.append("force", "false");
+        const { data } = await backendApi.post<CsvImportResponse>("/upload/csv", fd, {
+          params: { dryRun: dryRun ? "true" : "false", mode: policyCsvImportMode },
+        });
+        setUploadResult({
+          jobId: data.jobId,
+          dryRun: data.dryRun,
+          created: data.created,
+          updated: data.updated,
+          failed: data.failed,
+          valid: data.valid,
+          invalid: data.invalid,
+          durationMs: data.durationMs,
+          csvVersion: data.csvVersion,
+          errors: data.errors,
+          warnings: data.warnings,
+          errorReportUrl: data.errorReportUrl,
+        });
+        if (dryRun) {
+          const ok = data.invalid === 0;
+          setUploadMsg(
+            ok
+              ? `Validation passed: ${data.valid} row(s) OK (${data.durationMs} ms).`
+              : `Validation found ${data.invalid} invalid row(s); ${data.valid} OK.`,
+          );
+          if (!ok) toast.error("CSV validation failed", { description: `${data.invalid} row(s) need fixes.` });
+          else toast.success("CSV validation passed");
+        } else {
+          setUploadMsg(
+            `Import complete: ${data.created} created, ${data.failed} failed (${data.durationMs} ms).`,
+          );
+          if (data.failed > 0) {
+            toast.message("Import finished with errors", {
+              description: `${data.failed} row(s) failed. Download the error report if available.`,
+            });
+          } else {
+            toast.success("CSV imported");
+          }
+          setUploadFile(null);
+          await load();
+        }
+      } catch (e) {
+        setUploadMsg(e instanceof Error ? e.message : dryRun ? "CSV validation failed" : "CSV upload failed");
+        if (dryRun) toast.error(e instanceof Error ? e.message : "CSV validation failed");
+        else toast.error(e instanceof Error ? e.message : "CSV upload failed");
+      } finally {
+        if (dryRun) setUploadValidateBusy(false);
+        else setUploadBusy(false);
+      }
+    },
+    [uploadFile, policyCsvImportMode, load],
+  );
+
+  const uploadPoliciesCsv = useCallback(() => postPoliciesCsv(false), [postPoliciesCsv]);
+  const validatePoliciesCsv = useCallback(() => postPoliciesCsv(true), [postPoliciesCsv]);
+
+  const downloadCsvErrorReport = useCallback(async (jobId: string) => {
     try {
-      const fd = new FormData();
-      fd.append("file", uploadFile);
-      fd.append("updateMode", "FULL");
-      fd.append("dryRun", "false");
-      fd.append("force", "false");
-      await backendApi.post("/upload/csv", fd);
-      setUploadMsg("CSV uploaded successfully.");
-      setUploadFile(null);
-      await load();
+      const res = await backendApi.get(`/upload/csv/${jobId}/errors.csv`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `csv-import-errors-${jobId}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
-      setUploadMsg(e instanceof Error ? e.message : "CSV upload failed");
-    } finally {
-      setUploadBusy(false);
+      toast.error(e instanceof Error ? e.message : "Error report download failed");
     }
-  }, [uploadFile, load]);
+  }, []);
 
   useEffect(() => {
     if (missingUrl) return;
@@ -1077,44 +1174,102 @@ export default function SvkkPoliciesPage() {
             <CardContent className="space-y-5 pt-6">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="lg:col-span-2">
-                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">Upload CSV</Label>
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
+                    Upload CSV
+                    <span className="text-muted-foreground ml-2 font-normal">
+                      Format v2 — create only (update/upsert in a later phase)
+                    </span>
+                  </Label>
                   <div className="border-primary/20 bg-muted/20 rounded-xl border border-dashed p-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <FileSpreadsheet className="text-muted-foreground size-5 shrink-0" />
-                        <input
-                          type="file"
-                          accept=".csv,text/csv"
-                          disabled={!canCsvUpload}
-                          onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                          className="text-foreground w-full cursor-pointer text-sm font-bold file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-bold"
-                        />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <FileSpreadsheet className="text-muted-foreground size-5 shrink-0" />
+                          <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            disabled={!canCsvUpload}
+                            onChange={(e) => {
+                              setUploadFile(e.target.files?.[0] ?? null);
+                              setUploadResult(null);
+                              setUploadMsg("");
+                            }}
+                            className="text-foreground w-full cursor-pointer text-sm font-bold file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:py-2 file:text-xs file:font-bold"
+                          />
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 font-bold">
+                          Create only
+                        </Badge>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 gap-1.5 font-bold"
-                        disabled={!canCsvUpload}
-                        onClick={() => void downloadPolicyCsvSample()}
-                      >
-                        <Download className="size-3.5" />
-                        Sample CSV
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="shrink-0 gap-1.5 font-bold"
-                        disabled={!canCsvUpload || !uploadFile || uploadBusy}
-                        onClick={() => void uploadPoliciesCsv()}
-                      >
-                        <Upload className="size-3.5" />
-                        {uploadBusy ? "Uploading…" : "Upload"}
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 font-bold"
+                          disabled={!canCsvUpload}
+                          onClick={() => void downloadPolicyCsvSample()}
+                        >
+                          <Download className="size-3.5" />
+                          Sample CSV
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 font-bold"
+                          disabled={!canCsvUpload || !uploadFile || uploadValidateBusy || uploadBusy}
+                          onClick={() => void validatePoliciesCsv()}
+                        >
+                          {uploadValidateBusy ? "Validating…" : "Validate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-1.5 font-bold"
+                          disabled={!canCsvUpload || !uploadFile || uploadBusy || uploadValidateBusy}
+                          onClick={() => void uploadPoliciesCsv()}
+                        >
+                          <Upload className="size-3.5" />
+                          {uploadBusy ? "Uploading…" : "Upload"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                   {uploadMsg ? (
                     <p className="text-muted-foreground mt-2 text-xs leading-relaxed">{uploadMsg}</p>
+                  ) : null}
+                  {uploadResult ? (
+                    <div className="text-muted-foreground mt-2 space-y-1 text-xs leading-relaxed">
+                      <p>
+                        {uploadResult.dryRun ? "Validation" : "Import"} job {uploadResult.jobId.slice(0, 8)}… —{" "}
+                        {uploadResult.valid} valid, {uploadResult.invalid} invalid
+                        {uploadResult.csvVersion ? ` (${uploadResult.csvVersion})` : ""}
+                        {!uploadResult.dryRun && uploadResult.created > 0 ? (
+                          <> · {uploadResult.created} created</>
+                        ) : null}
+                      </p>
+                      {uploadResult.warnings?.length ? (
+                        <p className="text-amber-700 dark:text-amber-400">
+                          Warnings: {uploadResult.warnings.slice(0, 3).join("; ")}
+                          {uploadResult.warnings.length > 3 ? "…" : ""}
+                        </p>
+                      ) : null}
+                      {uploadResult.errors?.length ? (
+                        <p className="text-destructive">{uploadResult.errors[0]}</p>
+                      ) : null}
+                      {uploadResult.errorReportUrl && uploadResult.invalid > 0 ? (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs font-bold"
+                          onClick={() => void downloadCsvErrorReport(uploadResult.jobId)}
+                        >
+                          Download error CSV
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <div className="lg:col-span-2">

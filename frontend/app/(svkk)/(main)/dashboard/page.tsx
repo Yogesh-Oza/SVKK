@@ -11,6 +11,11 @@ import {
   type DashboardChartsPayload,
   type DashboardMetrics,
 } from "@/features/svkk-dashboard/dashboard-metric-cards";
+import {
+  DashboardClaimMetricCards,
+  type DashboardClaimMetrics,
+} from "@/features/svkk-dashboard/dashboard-claim-metric-cards";
+import { claimRowsToPieSlices } from "@/features/svkk-dashboard/aggregate-claim-rows";
 import { PremiumTrendAndBreakdown } from "@/features/svkk-dashboard/premium-trend-and-breakdown";
 import type { PolicyMemberRow } from "@/features/svkk-mis/policy-member-report-section";
 import { canAccessDashboardMis, canAccessMis } from "@/lib/svkk/permissions";
@@ -49,6 +54,9 @@ export default function SvkkDashboardPage() {
   const [productPie, setProductPie] = useState<ReturnType<typeof rowsToPieSlices>>([]);
   const [villagePie, setVillagePie] = useState<ReturnType<typeof rowsToPieSlices>>([]);
   const [agePie, setAgePie] = useState<ReturnType<typeof rowsToPieSlices>>([]);
+  const [claimMetrics, setClaimMetrics] = useState<DashboardClaimMetrics | null>(null);
+  const [claimVillagePie, setClaimVillagePie] = useState<ReturnType<typeof claimRowsToPieSlices>>([]);
+  const [claimProductPie, setClaimProductPie] = useState<ReturnType<typeof claimRowsToPieSlices>>([]);
   const [err, setErr] = useState<string | null>(null);
   const [misLoading, setMisLoading] = useState(false);
   const missingUrl = !getSvkkApiBase();
@@ -80,12 +88,18 @@ export default function SvkkDashboardPage() {
     const pQ = buildMisQuery(range, "policy_type");
     const aQ = buildMisQuery(range, "age");
 
-    const [villageReport, productReport, ageReport, d, c] = await Promise.all([
+    const claimQ = new URLSearchParams();
+    if (range.dateFrom) claimQ.set("dateFrom", range.dateFrom);
+    if (range.dateTo) claimQ.set("dateTo", range.dateTo);
+    const claimQs = claimQ.toString();
+
+    const [villageReport, productReport, ageReport, d, c, claims] = await Promise.all([
       svkkJson<MisReport>("/mis/policy-member-report?" + vQ),
       svkkJson<MisReport>("/mis/policy-member-report?" + pQ),
       svkkJson<MisReport>("/mis/policy-member-report?" + aQ),
       svkkJson<DashboardMetrics>("/mis/dashboard" + asOfQ),
       svkkJson<DashboardChartsPayload>("/mis/dashboard-charts" + asOfQ),
+      svkkJson<DashboardClaimMetrics>("/mis/dashboard-claims" + (claimQs ? "?" + claimQs : "")),
     ]);
 
     const totals = aggregateMisRows(villageReport.rows);
@@ -95,6 +109,9 @@ export default function SvkkDashboardPage() {
     setAgePie(rowsToPieSlices(ageReport.rows, "membersPlusPolicies"));
     setDashboard(d);
     setCharts(c);
+    setClaimMetrics(claims);
+    setClaimVillagePie(claimRowsToPieSlices(claims.byVillage, "sumClaimAmount"));
+    setClaimProductPie(claimRowsToPieSlices(claims.byPolicyType, "sumClaimAmount"));
   }, [canLoadDashboardMis, range]);
 
   useEffect(() => {
@@ -104,12 +121,16 @@ export default function SvkkDashboardPage() {
       setDashboard(null);
       setCharts(null);
       setMisTotals(null);
+      setClaimMetrics(null);
+      setClaimVillagePie([]);
+      setClaimProductPie([]);
       return;
     }
     void (async () => {
       setMisLoading(true);
       setErr(null);
       setMisTotals(null);
+      setClaimMetrics(null);
       try {
         await load();
       } catch (e) {
@@ -117,6 +138,7 @@ export default function SvkkDashboardPage() {
         setDashboard(null);
         setCharts(null);
         setMisTotals(null);
+        setClaimMetrics(null);
       } finally {
         setMisLoading(false);
       }
@@ -135,9 +157,9 @@ export default function SvkkDashboardPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Policy dashboard</h1>
           <p className="text-muted-foreground max-w-2xl text-sm">
-            MIS metrics for your date range, filtered the same way as the Policy &amp; Member report
-            (village/area scope from your role when MIS is village-scoped). Use presets, then open
-            Policies or MIS with the same filters from the cards.
+            MIS metrics for your date range, filtered the same way as the Policy &amp; Member and Claim
+            MIS reports (village/area scope from your role). Use presets, then open Policies, Claims,
+            or MIS with the same filters from the cards.
           </p>
         </div>
         {canOpenFullMis ? (
@@ -169,6 +191,9 @@ export default function SvkkDashboardPage() {
         canSeeMis={canLoadDashboardMis}
         loading={misLoading}
       />
+
+      <DashboardClaimMetricCards range={range} claims={claimMetrics} loading={misLoading} />
+
       {canLoadDashboardMis && err ? <p className="text-destructive text-sm">{err}</p> : null}
 
       {canLoadDashboardMis && !err ? (
@@ -180,6 +205,8 @@ export default function SvkkDashboardPage() {
           villagePie={villagePie}
           agePie={agePie}
           productCounts={productCounts}
+          claimVillagePie={claimVillagePie}
+          claimProductPie={claimProductPie}
         />
       ) : null}
 

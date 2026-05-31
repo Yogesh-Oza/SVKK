@@ -9,7 +9,7 @@ import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import type { Prisma } from "@prisma/client";
-import { CsvJobStatus, CsvUpdateMode } from "@prisma/client";
+import { CsvJobStatus, CsvImportMode, CsvUpdateMode } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
@@ -21,17 +21,21 @@ import {
   uploadBufferToOneDrive,
 } from "../../services/one-drive.service.js";
 import { updatePolicySections } from "../policy/policy.service.js";
-import { isLegacyPolicyCsvFormat } from "../policy/policy-csv-format.js";
+import { isLegacyPolicyCsvFormat, parseCsvWithOptionalVersion } from "../policy/policy-csv-format.js";
 import {
-  applyLegacyPolicyCsvRow,
+  processLegacyPolicyCsvRow,
   validateLegacyPolicyCsvRow,
 } from "../policy/policy-csv-import.js";
+import { buildPolicyTypeCache } from "../policy/policy-csv-resolve.js";
+import { buildErrorReportCsv, type CsvRowError } from "../policy/policy-csv-errors.js";
+import { collectDeprecatedHeaderWarnings } from "../policy/policy-csv-slots.js";
 import { parseCsv } from "../policy/policy-csv-parse.js";
 import {
   assertPolicyReadable,
   loadMisScope,
   type GeoScope,
 } from "../../services/mis-scope.service.js";
+import { createClaimUploadRouter } from "../claim/claim-upload.routes.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const uploadDrive = multer({
@@ -39,7 +43,22 @@ const uploadDrive = multer({
   limits: { fileSize: 32 * 1024 * 1024 },
 });
 
+const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
+
 const MAX_POLICY_URLS = 5;
+
+function parseImportMode(raw: unknown): CsvImportMode {
+  const t = String(raw ?? "UPSERT").trim().toUpperCase();
+  if (t === "UPDATE_ONLY") return CsvImportMode.UPDATE_ONLY;
+  if (t === "CREATE_ONLY") return CsvImportMode.CREATE_ONLY;
+  return CsvImportMode.UPSERT;
+}
+
+function parseDryRun(queryVal: unknown, bodyVal: unknown): boolean {
+  if (queryVal === "true" || queryVal === true) return true;
+  if (queryVal === "false" || queryVal === false) return false;
+  return bodyVal === true || bodyVal === "true";
+}
 
 function parsePolicyUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -73,14 +92,12 @@ export function createUploadRouter(env: Env) {
           throw new AppError("FILE_REQUIRED", "CSV file required", 400);
         }
 
+        const dryRun = parseDryRun(req.query.dryRun, req.body.dryRun);
+        const importMode = parseImportMode(req.query.mode ?? req.body.mode);
+
         const body = z
           .object({
             updateMode: z.nativeEnum(CsvUpdateMode),
-            dryRun: z
-              .union([z.literal("true"), z.literal("false"), z.boolean()])
-              .transform((v) => v === true || v === "true")
-              .optional()
-              .default(false),
             force: z
               .union([z.literal("true"), z.literal("false"), z.boolean()])
               .transform((v) => v === true || v === "true")
@@ -89,7 +106,6 @@ export function createUploadRouter(env: Env) {
           })
           .parse({
             updateMode: req.body.updateMode,
-            dryRun: req.body.dryRun,
             force: req.body.force,
           });
 
@@ -114,14 +130,19 @@ export function createUploadRouter(env: Env) {
 
         await mkdir(env.UPLOAD_DIR, { recursive: true });
 
+        const startedAt = performance.now();
+        const fileName = req.file.originalname ?? "upload.csv";
+
         const job = await prisma.csvImportJob.create({
           data: {
             s3Key: "",
             checksum,
             updateMode: body.updateMode,
-            dryRun: body.dryRun,
+            importMode,
+            dryRun,
             duplicateOfJobId: prior?.id,
             forceApplied: body.force,
+            fileName,
             createdById: req.userId,
             status: CsvJobStatus.PENDING,
           },
@@ -136,64 +157,114 @@ export function createUploadRouter(env: Env) {
         });
 
         const text = req.file.buffer.toString("utf8");
-        const rows = parseCsv(text);
-        const header = rows[0];
-        if (!header) {
-          throw new AppError("CSV_EMPTY", "CSV has no rows", 400);
+        const allRows = parseCsv(text);
+        const { csvVersion, header, dataRows } = parseCsvWithOptionalVersion(allRows);
+        if (!header.length) {
+          throw new AppError("CSV_EMPTY", "CSV has no header row", 400);
         }
 
-        let success = 0;
+        let created = 0;
+        let updated = 0;
         let fail = 0;
         const errors: string[] = [];
+        const rowErrors: CsvRowError[] = [];
+        const warnings = collectDeprecatedHeaderWarnings(header);
 
-        const dataRows = rows.slice(1);
         const policyScope = await loadMisScope(req.userId!, req.permissions!, "policy");
         const legacyFormat = isLegacyPolicyCsvFormat(header);
+        const typeCache = legacyFormat ? await buildPolicyTypeCache(prisma) : null;
 
-        for (let i = 0; i < dataRows.length; i++) {
-          const row = dataRows[i]!;
-          try {
-            if (body.dryRun) {
-              if (legacyFormat) {
-                validateLegacyPolicyCsvRow(header, row);
-              } else {
-                validateRow(body.updateMode, header, row);
+        for (let batchStart = 0; batchStart < dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, dataRows.length);
+          const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
+          for (let i = batchStart; i < batchEnd; i++) {
+            const row = dataRows[i]!;
+            const rowNum = i + headerOffset;
+            const svkkIdx = header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
+            const policyIdx = header.findIndex((h) => h.trim().toLowerCase() === "policy no");
+            const refIdx = header.findIndex((h) => h.trim().toLowerCase() === "ref no");
+            const svkkId = svkkIdx >= 0 ? (row[svkkIdx] ?? "") : "";
+            const policyNo = policyIdx >= 0 ? (row[policyIdx] ?? "") : "";
+            const refNo = refIdx >= 0 ? (row[refIdx] ?? "") : "";
+
+            try {
+              if (dryRun) {
+                if (legacyFormat && typeCache) {
+                  const outcome = await processLegacyPolicyCsvRow(header, row, {
+                    userId: req.userId!,
+                    permissions: req.permissions!,
+                    scope: policyScope,
+                    importMode,
+                    typeCache,
+                    dryRun: true,
+                  });
+                  if (outcome === "created") created++;
+                  else updated++;
+                } else {
+                  validateRow(body.updateMode, header, row);
+                  updated++;
+                }
+                continue;
               }
-              success++;
-              continue;
+
+              if (legacyFormat && typeCache) {
+                const outcome = await processLegacyPolicyCsvRow(header, row, {
+                  userId: req.userId!,
+                  permissions: req.permissions!,
+                  scope: policyScope,
+                  importMode,
+                  typeCache,
+                });
+                if (outcome === "created") created++;
+                else updated++;
+              } else {
+                await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                  await applyRow(tx, body.updateMode, header, row, {
+                    userId: req.userId!,
+                    permissions: req.permissions!,
+                    scope: policyScope,
+                  });
+                });
+                updated++;
+              }
+            } catch (err) {
+              fail++;
+              const message = err instanceof Error ? err.message : String(err);
+              errors.push(`row ${rowNum}: ${message}`);
+              rowErrors.push({
+                row: rowNum,
+                error: message,
+                svkkId: svkkId || undefined,
+                policyNo: policyNo || undefined,
+                refNo: refNo || undefined,
+              });
             }
-
-            await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-              if (legacyFormat) {
-                await applyLegacyPolicyCsvRow(tx, header, row, {
-                  userId: req.userId!,
-                  permissions: req.permissions!,
-                  scope: policyScope,
-                });
-              } else {
-                await applyRow(tx, body.updateMode, header, row, {
-                  userId: req.userId!,
-                  permissions: req.permissions!,
-                  scope: policyScope,
-                });
-              }
-            });
-            success++;
-          } catch (err) {
-            fail++;
-            errors.push(`row ${i + 2}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
 
-        const status = fail > 0 && success === 0 ? CsvJobStatus.FAILED : CsvJobStatus.COMPLETED;
+        const durationMs = Math.round(performance.now() - startedAt);
+        const valid = created + updated;
+        const status = fail > 0 && valid === 0 ? CsvJobStatus.FAILED : CsvJobStatus.COMPLETED;
+
+        let errorReportPath: string | undefined;
+        if (rowErrors.length > 0) {
+          errorReportPath = join(env.UPLOAD_DIR, `errors-${job.id}.csv`);
+          await writeFile(errorReportPath, buildErrorReportCsv(rowErrors), "utf8");
+        }
 
         await prisma.csvImportJob.update({
           where: { id: job.id },
           data: {
             status,
             rowCount: dataRows.length,
-            successCount: success,
+            successCount: valid,
             failCount: fail,
+            createdCount: created,
+            updatedCount: updated,
+            durationMs,
+            csvVersion,
+            warningsJson: warnings.length ? JSON.stringify(warnings) : undefined,
+            errorReportS3Key: errorReportPath,
             completedAt: new Date(),
           },
         });
@@ -201,19 +272,29 @@ export function createUploadRouter(env: Env) {
         await writeActivityLog({
           userId: req.userId,
           module: "upload",
-          action: body.dryRun ? "CSV_VALIDATED" : "CSV_IMPORTED",
+          action: dryRun ? "CSV_VALIDATED" : "CSV_IMPORTED",
           entityType: "CsvImportJob",
           entityId: job.id,
-          afterData: { success, fail, dryRun: body.dryRun },
+          afterData: { created, updated, fail, dryRun, durationMs, importMode },
         });
 
         res.status(201).json({
           jobId: job.id,
-          dryRun: body.dryRun,
+          mode: importMode,
+          dryRun,
           rowCount: dataRows.length,
-          successCount: success,
+          created,
+          updated,
+          failed: fail,
+          valid,
+          invalid: fail,
+          successCount: valid,
           failCount: fail,
+          durationMs,
+          csvVersion,
           errors: errors.slice(0, 50),
+          warnings,
+          errorReportUrl: errorReportPath ? `/upload/csv/${job.id}/errors.csv` : undefined,
         });
       } catch (e) {
         next(e);
@@ -447,17 +528,43 @@ export function createUploadRouter(env: Env) {
     },
   );
 
+  r.get("/csv/:jobId/errors.csv", requirePermission("upload:csv"), async (req, res, next) => {
+    try {
+      const job = await prisma.csvImportJob.findUnique({
+        where: { id: String(req.params.jobId) },
+      });
+      if (!job?.errorReportS3Key) {
+        throw new AppError("NOT_FOUND", "Error report not found for this job", 404);
+      }
+      const { readFile } = await import("fs/promises");
+      const content = await readFile(job.errorReportS3Key, "utf8");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="import-errors-${job.id}.csv"`,
+      );
+      res.send(content);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.get("/csv/:jobId", requirePermission("upload:csv"), async (req, res, next) => {
     try {
       const job = await prisma.csvImportJob.findUnique({
         where: { id: String(req.params.jobId) },
       });
       if (!job) throw new AppError("NOT_FOUND", "Job not found", 404);
-      res.json(job);
+      res.json({
+        ...job,
+        errorReportUrl: job.errorReportS3Key ? `/upload/csv/${job.id}/errors.csv` : undefined,
+      });
     } catch (e) {
       next(e);
     }
   });
+
+  r.use(createClaimUploadRouter(env));
 
   return r;
 }

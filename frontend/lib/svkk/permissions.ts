@@ -101,6 +101,10 @@ export function canDeleteClaim(permissions: string[]) {
   return hasPermission(permissions, "claim:delete");
 }
 
+export function canImportClaim(permissions: string[]) {
+  return hasPermission(permissions, "claim:import");
+}
+
 export function canManageUsers(permissions: string[]) {
   return hasPermission(permissions, "users:manage");
 }

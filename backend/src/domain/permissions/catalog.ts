@@ -27,6 +27,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   { key: "claim:read", label: "List & view claims", group: "Claims", groupOrder: 30, sortOrder: 2 },
   { key: "claim:update", label: "Update claims", group: "Claims", groupOrder: 30, sortOrder: 3 },
   { key: "claim:delete", label: "Delete claims", group: "Claims", groupOrder: 30, sortOrder: 4 },
+  { key: "claim:import", label: "Import claims (CSV/XLSX)", group: "Claims", groupOrder: 30, sortOrder: 5 },
   { key: "claim:scope_all", label: "All claims (scope)", group: "Claim scope", groupOrder: 31, isScope: true, sortOrder: 1 },
   { key: "claim:scope_village", label: "Village-scoped claims", group: "Claim scope", groupOrder: 31, isScope: true, sortOrder: 2 },
   { key: "mis:read", label: "MIS reports", group: "MIS", groupOrder: 40, sortOrder: 1 },
