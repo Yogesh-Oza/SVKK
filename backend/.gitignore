@@ -16,3 +16,4 @@ scripts/legacy-migrate/**/*.d.ts
 scripts/legacy-migrate/**/*.js.map
 scripts/legacy-migrate/**/*.d.ts.map
 .onedrive-token.json
+
