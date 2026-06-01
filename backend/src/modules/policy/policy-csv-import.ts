@@ -13,6 +13,7 @@ import {
   normalizeTxnNumber,
   prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
+import { sanitizePaymentReplaceRow } from "./policy-payment-sanitize.js";
 import type { PaymentReplaceRow, PolicyMemberReplaceRow } from "./policy.schemas.js";
 import {
   collectMembersFromCsvMap,
@@ -111,7 +112,8 @@ async function insertPaymentsForYearCsv(
   payments: PaymentReplaceRow[],
 ): Promise<void> {
   assertUniqueTransactionNumbersInBatch(payments);
-  for (const paymentRow of payments) {
+  for (const rawRow of payments) {
+    const paymentRow = sanitizePaymentReplaceRow(rawRow);
     const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);
     const mappedStatus =
       paymentRow.status === ChequeStatus.DISHONOURED

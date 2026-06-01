@@ -6,6 +6,27 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Payment-mode field sanitization** — after Carry Forward, changing Mode of Payment (e.g. Cheque → Cash) no longer persists hidden bank/cheque data.
+
+| Layer | Role |
+|-------|------|
+| Frontend UX | `handlePaymentModeChange` clears incompatible Formik fields when mode changes |
+| Frontend submit | `sanitizeByMode` in `mapPaymentTransactionsToApi` + `applyPolicyYearPaymentFieldsToBody` (null at API boundary) |
+| Backend | `sanitizePaymentReplaceRow` mandatory in `insertPaymentsForYear` / CSV import; `sanitizeYearPaymentSummary` on policy year create/patch |
+
+**Config (keep in sync):**
+
+- `frontend/features/svkk-policies/ad-policy-payment-mode-fields.ts` — `PAYMENT_TRANSACTION_CLEAR_BY_MODE`
+- `backend/src/modules/policy/policy-payment-sanitize.ts` — `PAYMENT_ROW_CLEAR_BY_METHOD`
+
+**Convention:** Form cleared fields use `""`; API/DB use `null`.
+
+**Tests:** `backend/src/modules/policy/policy-payment-sanitize.test.ts` (vitest). Frontend: `frontend/features/svkk-policies/ad-policy-payments.test.ts` (run with project frontend vitest/alias setup).
+
+**Manual verify:** Carry forward cheque policy → switch to Cash → save → detail view and reload show Cash without bank lines; `PolicyYear.bankName` / payment row bank columns null.
+
+## Previous task (completed)
+
 AD policy Add/Edit form: **hydration lock** for premium auto-calculation — load DB values without chart sync until the user edits a calc-trigger field.
 
 ## Policy form auto-calculation

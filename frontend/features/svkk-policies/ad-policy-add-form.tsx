@@ -59,7 +59,13 @@ import {
   type AdPolicyFormValues,
 } from "./ad-policy-form-values";
 import { adPolicyValidationSchema } from "./ad-policy-validation-schema";
-import { clonePaymentDetailsForCarryForward } from "./ad-policy-payments";
+import {
+  clonePaymentDetailsForCarryForward,
+  legacyPaymentFieldClearsForMode,
+  sanitizePaymentTransactionForMode,
+  syncTopLevelPaymentMode,
+} from "./ad-policy-payments";
+import type { FormPaymentMode } from "./ad-policy-payment-mode-fields";
 import { applyDisplayYearLabels, yearChipLabel } from "./policy-year-display";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
 import { debugPolicyUpdate } from "@/lib/svkk/policy-update-debug";
@@ -1618,6 +1624,24 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     );
   };
 
+  const handlePaymentModeChange = useCallback(
+    (index: number, mode: string) => {
+      const txnMode = mode as FormPaymentMode;
+      const row = values.paymentTransactions[index];
+      if (!row) return;
+      const sanitized = sanitizePaymentTransactionForMode({ ...row, mode: txnMode });
+      void setFieldValue(`paymentTransactions[${index}]`, sanitized);
+      if (index === 0) {
+        void setFieldValue("paymentMode", syncTopLevelPaymentMode(txnMode));
+        const legacyClears = legacyPaymentFieldClearsForMode(txnMode);
+        for (const [key, value] of Object.entries(legacyClears)) {
+          void setFieldValue(key, value);
+        }
+      }
+    },
+    [values.paymentTransactions, setFieldValue],
+  );
+
   useEffect(() => {
     if (autoCalcLocked) return;
     const parsed = Number(values.person);
@@ -2754,9 +2778,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         <Label>Mode of Payment*</Label>
                         <DropdownCombobox
                           value={transaction.mode}
-                          onChange={(v) =>
-                            void setFieldValue(`paymentTransactions[${index}].mode`, v)
-                          }
+                          onChange={(v) => handlePaymentModeChange(index, v)}
                           options={paymentModeOptions}
                           placeholder="Mode of Payment"
                           searchPlaceholder="Search mode"

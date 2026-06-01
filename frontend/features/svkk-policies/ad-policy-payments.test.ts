@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getAdPolicyInitialValues } from "./ad-policy-form-values";
 import {
+  applyPrimaryPaymentModeToBody,
   clonePaymentDetailsForCarryForward,
   mapPaymentTransactionsToApi,
   mapTransactionModeToPayMethod,
+  sanitizeByMode,
+  sanitizePaymentTransactionForMode,
   sortPaymentRowsNewestFirst,
 } from "./ad-policy-payments";
 
@@ -138,6 +141,139 @@ describe("mapPaymentTransactionsToApi", () => {
       accountNumber: "1234567890",
       status: "DISHONOURED",
     });
+  });
+});
+
+describe("sanitizePaymentTransactionForMode", () => {
+  it("clears bank fields when mode changes from CHEQUE to CASH", () => {
+    const row = sanitizePaymentTransactionForMode({
+      mode: "CASH",
+      mobileNumber: "",
+      transactionNumber: "CHQ-999",
+      bankName: "SBI",
+      branch: "Main",
+      accountNumber: "1234567890",
+      nameAsPerCheque: "Holder",
+      ifscCode: "SBIN0001",
+      notOver: "10000",
+      transactionDate: "2026-01-01",
+      transactionStatus: "CLEARED",
+      dishonourReason: "n/a",
+      returnCharges: "",
+      otherCharges: "",
+      amountReceived: "5000",
+    });
+    expect(row.bankName).toBe("");
+    expect(row.transactionNumber).toBe("");
+    expect(row.accountNumber).toBe("");
+  });
+});
+
+describe("mapPaymentTransactionsToApi payment-mode leakage", () => {
+  it("does not persist bank fields after CHEQUE carry-forward row is switched to CASH", () => {
+    const values = getAdPolicyInitialValues();
+    values.paymentTransactions = [
+      sanitizePaymentTransactionForMode({
+        ...values.paymentTransactions[0],
+        mode: "CASH",
+        transactionNumber: "CHQ-999",
+        bankName: "SBI",
+        branch: "Main",
+        accountNumber: "1234567890",
+        nameAsPerCheque: "Holder",
+        ifscCode: "SBIN0001",
+        notOver: "10000",
+        amountReceived: "5000",
+      }),
+    ];
+
+    const api = mapPaymentTransactionsToApi(values);
+    expect(api).toHaveLength(1);
+    expect(api[0]).toMatchObject({
+      method: "CASH",
+      amount: 5000,
+      bankName: null,
+      branchName: null,
+      accountNumber: null,
+      transactionNumber: null,
+      ifscCode: null,
+      nameAsPerCheque: null,
+    });
+  });
+});
+
+describe("applyPrimaryPaymentModeToBody", () => {
+  it("nulls year-level bank summary for CASH", () => {
+    const values = getAdPolicyInitialValues();
+    values.bank = "SBI";
+    values.accountNo = "1234567890";
+    values.onlineTransactionRef = "UTR-OLD";
+    values.paymentTransactions = [
+      {
+        ...values.paymentTransactions[0],
+        mode: "CASH",
+        bankName: "SBI",
+        accountNumber: "1234567890",
+        amountReceived: "1000",
+      },
+    ];
+
+    const body: Record<string, unknown> = {};
+    applyPrimaryPaymentModeToBody(body, values);
+    expect(body).toMatchObject({
+      paymentMode: "CASH",
+      bankName: null,
+      bankAccountLast4: null,
+      utrRef: null,
+      amountReceived: 1000,
+    });
+  });
+});
+
+describe("carry-forward integration: mode switch then submit payload", () => {
+  it("builds a CASH payload without bank metadata after mode change", () => {
+    const carried = getAdPolicyInitialValues();
+    carried.paymentMode = "CHEQUE";
+    carried.bank = "SBI";
+    carried.paymentTransactions = [
+      {
+        ...carried.paymentTransactions[0],
+        mode: "CHEQUE",
+        transactionNumber: "CH-999",
+        bankName: "SBI",
+        accountNumber: "111122223333",
+        amountReceived: "8000",
+      },
+    ];
+    const paymentDetails = clonePaymentDetailsForCarryForward(carried);
+    const values = { ...getAdPolicyInitialValues(), ...paymentDetails };
+    values.paymentTransactions[0] = sanitizePaymentTransactionForMode({
+      ...values.paymentTransactions[0],
+      mode: "CASH",
+    });
+
+    const api = mapPaymentTransactionsToApi(values);
+    const body: Record<string, unknown> = {};
+    applyPrimaryPaymentModeToBody(body, values);
+
+    expect(api[0]?.bankName).toBeNull();
+    expect(body.bankName).toBeNull();
+    expect(body.utrRef).toBeNull();
+  });
+});
+
+describe("sanitizeByMode apiPayload", () => {
+  it("uses null for cleared API fields", () => {
+    const out = sanitizeByMode(
+      "CASH",
+      {
+        ...getAdPolicyInitialValues().paymentTransactions[0],
+        mode: "CASH",
+        bankName: "X",
+      },
+      { apiPayload: true },
+    );
+    expect(out.bankName).toBeNull();
   });
 });
 

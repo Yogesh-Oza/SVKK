@@ -3,7 +3,24 @@ import {
   type AdPolicyFormValues,
   type AdPolicyPaymentTransactionForm,
 } from "./ad-policy-form-values";
+import {
+  applyPolicyYearPaymentFieldsToBody,
+  legacyPaymentFieldClearsForMode,
+  sanitizeByMode,
+  sanitizePaymentTransactionForMode,
+  syncTopLevelPaymentMode,
+  type FormPaymentMode,
+} from "./ad-policy-payment-mode-fields";
 import { toApiDateIso } from "@/lib/svkk/form-date";
+
+export {
+  applyPolicyYearPaymentFieldsToBody,
+  legacyPaymentFieldClearsForMode,
+  sanitizeByMode,
+  sanitizePaymentTransactionForMode,
+  syncTopLevelPaymentMode,
+  type FormPaymentMode,
+} from "./ad-policy-payment-mode-fields";
 
 const PAYMENT_CARRY_FORWARD_KEYS = [
   "paymentMode",
@@ -63,6 +80,12 @@ function parseNum(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function apiStr(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const t = value.trim();
+  return t || null;
+}
+
 /** Form transaction mode → API/DB `PayMethod` (Prisma: NEFT, UPI, CHQ, CASH). */
 export function mapTransactionModeToPayMethod(
   mode: AdPolicyPaymentTransactionForm["mode"],
@@ -78,31 +101,36 @@ export function mapPaymentTransactionsToApi(values: AdPolicyFormValues) {
     (row) => parseNum(row.amountReceived) != null,
   );
   // Form shows newest first; persist oldest-first so createdAt desc matches display on reload.
-  return [...rows].reverse().map((row) => ({
-      amount: parseNum(row.amountReceived)!,
-      method: mapTransactionModeToPayMethod(row.mode),
-      status: row.transactionStatus || null,
-      transactionNumber: row.transactionNumber.trim() || null,
-      transactionDate: toApiDateIso(row.transactionDate),
-      bankName: row.bankName.trim() || null,
-      branchName: row.branch.trim() || null,
-      accountNumber:
-        (row.mode === "UPI" ? row.mobileNumber?.trim() : row.accountNumber.trim()) || null,
-      nameAsPerCheque: row.nameAsPerCheque.trim() || null,
-      ifscCode: row.ifscCode.trim() || null,
-      notOver: row.notOver.trim() || null,
-      dishonourReason: row.dishonourReason.trim() || null,
-      returnCharges: parseNum(row.returnCharges) ?? null,
-      otherCharges: parseNum(row.otherCharges) ?? null,
-    }));
+  return [...rows].reverse().map((row) => {
+    const sanitized = sanitizeByMode(row.mode, row, { apiPayload: true });
+    const accountSource =
+      sanitized.mode === "UPI" ? sanitized.mobileNumber : sanitized.accountNumber;
+    return {
+      amount: parseNum(sanitized.amountReceived)!,
+      method: mapTransactionModeToPayMethod(sanitized.mode),
+      status: sanitized.transactionStatus || null,
+      transactionNumber: apiStr(sanitized.transactionNumber),
+      transactionDate: toApiDateIso(sanitized.transactionDate),
+      bankName: apiStr(sanitized.bankName),
+      branchName: apiStr(sanitized.branch),
+      accountNumber: apiStr(accountSource),
+      nameAsPerCheque: apiStr(sanitized.nameAsPerCheque),
+      ifscCode: apiStr(sanitized.ifscCode),
+      notOver: apiStr(sanitized.notOver),
+      dishonourReason: apiStr(sanitized.dishonourReason),
+      returnCharges: parseNum(sanitized.returnCharges) ?? null,
+      otherCharges: parseNum(sanitized.otherCharges) ?? null,
+    };
+  });
 }
 
 /** Validates rows that have an amount — cheque rows need bank + transaction/cheque number. */
 export function validatePaymentTransactions(values: AdPolicyFormValues): void {
   values.paymentTransactions.forEach((row, index) => {
     if (parseNum(row.amountReceived) == null) return;
-    if (row.mode === "CHEQUE") {
-      if (!row.bankName.trim() || !row.transactionNumber.trim()) {
+    const check = sanitizePaymentTransactionForMode(row);
+    if (check.mode === "CHEQUE") {
+      if (!check.bankName.trim() || !check.transactionNumber.trim()) {
         throw new Error(
           `Payment ${index + 1} (Cheque): enter bank name and cheque/transaction number.`,
         );
@@ -122,36 +150,22 @@ export function applyPrimaryPaymentModeToBody(
   body: Record<string, unknown>,
   values: AdPolicyFormValues,
 ): void {
-  const firstTxn = values.paymentTransactions[0];
-  const mode = primaryTransactionMode(values);
+  const rawFirst = values.paymentTransactions[0];
+  const mode = primaryTransactionMode(values) as FormPaymentMode;
+  const firstTxn = rawFirst
+    ? sanitizePaymentTransactionForMode(rawFirst)
+    : undefined;
+  const amt = parseNum(firstTxn?.amountReceived ?? "");
 
-  if (mode === "UPI") {
-    body.paymentMode = "UPI";
-    body.utrRef =
-      values.onlineTransactionRef.trim() || firstTxn?.transactionNumber?.trim() || null;
-    const bank = firstTxn?.bankName?.trim();
-    if (bank) body.bankName = bank;
-    const amt = parseNum(firstTxn?.amountReceived ?? "");
-    if (amt != null) body.amountReceived = amt;
-  } else if (mode === "ONLINE") {
-    body.paymentMode = "NEFT";
-    body.utrRef =
-      values.onlineTransactionRef.trim() || firstTxn?.transactionNumber?.trim() || null;
-    const bank = firstTxn?.bankName?.trim();
-    if (bank) body.bankName = bank;
-    const amt = parseNum(firstTxn?.amountReceived ?? "");
-    if (amt != null) body.amountReceived = amt;
-  } else if (mode === "CHEQUE") {
-    body.paymentMode = "CHQ";
-    const bank = values.bank.trim() || firstTxn?.bankName?.trim() || null;
-    const acct = values.accountNo.trim() || firstTxn?.accountNumber?.trim() || "";
-    body.bankName = bank;
-    body.bankAccountLast4 = acct ? acct.replace(/\D/g, "").slice(-4) : null;
-    const amt = parseNum(firstTxn?.amountReceived ?? "");
-    if (amt != null) body.amountReceived = amt;
-  } else if (mode === "CASH") {
-    body.paymentMode = "CASH";
-    const amt = parseNum(firstTxn?.amountReceived ?? "");
-    if (amt != null) body.amountReceived = amt;
-  }
+  applyPolicyYearPaymentFieldsToBody(body, mode, {
+    onlineTransactionRef:
+      mode === "ONLINE" || mode === "UPI" ? values.onlineTransactionRef : "",
+    bank: mode === "CHEQUE" ? values.bank : "",
+    accountNo: mode === "CHEQUE" ? values.accountNo : "",
+    onlineTransactionRef,
+    bank,
+    accountNo,
+    firstTxn,
+    amountReceived: amt ?? null,
+  });
 }

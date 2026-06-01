@@ -31,6 +31,12 @@ import {
   normalizeTxnNumber,
   prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
+import {
+  payMethodFromModeString,
+  primaryPayMethodFromPayments,
+  sanitizePaymentReplaceRow,
+  sanitizeYearPaymentSummary,
+} from "./policy-payment-sanitize.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -271,6 +277,15 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       throw e;
     }
 
+    const paymentBatch = input.payments?.map(sanitizePaymentReplaceRow) ?? [];
+    const primaryPayMethod =
+      primaryPayMethodFromPayments(paymentBatch) ?? payMethodFromModeString(input.paymentMode);
+    const yearPaymentSummary = sanitizeYearPaymentSummary(primaryPayMethod, {
+      bankName: input.bankName ?? null,
+      bankAccountLast4: input.bankAccountLast4 ?? null,
+      utrRef: input.utrRef ?? null,
+    });
+
     const year = await tx.policyYear.create({
       data: {
         policyId: policy.id,
@@ -283,9 +298,9 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         paymentMode: input.paymentMode ?? undefined,
         paymentType: input.paymentType ?? undefined,
         amountReceived: input.amountReceived ?? undefined,
-        bankName: input.bankName ?? undefined,
-        bankAccountLast4: input.bankAccountLast4 ?? undefined,
-        utrRef: input.utrRef ?? undefined,
+        bankName: yearPaymentSummary.bankName ?? undefined,
+        bankAccountLast4: yearPaymentSummary.bankAccountLast4 ?? undefined,
+        utrRef: yearPaymentSummary.utrRef ?? undefined,
         yearRemarks: input.yearRemarks ?? undefined,
         holderCumulativeBonus: input.holderCumulativeBonus != null ? input.holderCumulativeBonus : undefined,
         holderJoiningYear: input.holderJoiningYear ?? undefined,
@@ -362,8 +377,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       });
     }
 
-    if (input.payments?.length) {
-      await insertPaymentsForYear(tx, year.id, input.payments);
+    if (paymentBatch.length) {
+      await insertPaymentsForYear(tx, year.id, paymentBatch);
     }
 
     await syncPolicyListVkkPremium(tx, policy.id);
@@ -671,7 +686,8 @@ async function insertPaymentsForYear(
   payments: PaymentReplaceRow[],
 ) {
   assertUniqueTransactionNumbersInBatch(payments);
-  for (const paymentRow of payments) {
+  for (const rawRow of payments) {
+    const paymentRow = sanitizePaymentReplaceRow(rawRow);
     const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);
     const mappedStatus =
       paymentRow.status === "DISHONOURED"
@@ -991,6 +1007,24 @@ export async function updatePolicySections(input: {
 
       if (input.year) {
         const yv = input.year;
+        let bankName = yv.bankName;
+        let bankAccountLast4 = yv.bankAccountLast4;
+        let utrRef = yv.utrRef;
+        if (
+          yv.paymentMode !== undefined ||
+          yv.bankName !== undefined ||
+          yv.bankAccountLast4 !== undefined ||
+          yv.utrRef !== undefined
+        ) {
+          const summary = sanitizeYearPaymentSummary(payMethodFromModeString(yv.paymentMode), {
+            bankName: yv.bankName ?? null,
+            bankAccountLast4: yv.bankAccountLast4 ?? null,
+            utrRef: yv.utrRef ?? null,
+          });
+          if (yv.bankName !== undefined) bankName = summary.bankName;
+          if (yv.bankAccountLast4 !== undefined) bankAccountLast4 = summary.bankAccountLast4;
+          if (yv.utrRef !== undefined) utrRef = summary.utrRef;
+        }
         const yearData: Prisma.PolicyYearUpdateInput = {
           ...(yv.policyChartId !== undefined ? { policyChartId: yv.policyChartId } : {}),
           ...(yv.policyStart !== undefined ? { policyStart: yv.policyStart } : {}),
@@ -1000,9 +1034,9 @@ export async function updatePolicySections(input: {
           ...(yv.paymentMode !== undefined ? { paymentMode: yv.paymentMode } : {}),
           ...(yv.paymentType !== undefined ? { paymentType: yv.paymentType } : {}),
           ...(yv.amountReceived !== undefined ? { amountReceived: yv.amountReceived } : {}),
-          ...(yv.bankName !== undefined ? { bankName: yv.bankName } : {}),
-          ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4: yv.bankAccountLast4 } : {}),
-          ...(yv.utrRef !== undefined ? { utrRef: yv.utrRef } : {}),
+          ...(yv.bankName !== undefined ? { bankName } : {}),
+          ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4 } : {}),
+          ...(yv.utrRef !== undefined ? { utrRef } : {}),
           ...(yv.yearRemarks !== undefined ? { yearRemarks: yv.yearRemarks } : {}),
           ...(yv.vkkPremium !== undefined ? { vkkPremium: yv.vkkPremium } : {}),
           ...(yv.grossPremium !== undefined ? { grossPremium: yv.grossPremium } : {}),
