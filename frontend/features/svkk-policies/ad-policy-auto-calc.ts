@@ -90,6 +90,51 @@ export function shouldApplyChartBasicToField(
   return parseInrForCalc(currentValue) !== chartBasic;
 }
 
+/**
+ * Clear stored basic premium when the chart row errors (live mode only).
+ * Prevents carry-forward / prior-year amounts from lingering when the summary is blank.
+ */
+export function shouldClearBasicOnChartError(
+  currentValue: string,
+  rowHasError: boolean,
+  isManual: boolean,
+): boolean {
+  return rowHasError && !isManual && parseInrForCalc(currentValue) > 0;
+}
+
+/**
+ * Sum insured for chart lookup: policy-level field, else highest member SI (carry-forward).
+ */
+export function resolveQuoteSumInsured(
+  policySumInsured: string,
+  members: ReadonlyArray<{ sumInsured?: string }>,
+): number {
+  const policy = parseInrForCalc(policySumInsured);
+  if (policy > 0) {
+    return policy;
+  }
+  let maxMember = 0;
+  for (const m of members) {
+    const si = parseInrForCalc(m.sumInsured ?? "");
+    if (si > maxMember) {
+      maxMember = si;
+    }
+  }
+  return maxMember;
+}
+
+/** Map form gender codes to premium engine input. */
+export function genderToQuoteInput(gender: string): MemberInput["gender"] {
+  const g = gender.trim().toUpperCase();
+  if (g === "M" || g === "MALE") {
+    return "male";
+  }
+  if (g === "F" || g === "FEMALE") {
+    return "female";
+  }
+  return "";
+}
+
 /** Parse INR-style numeric strings from form fields. */
 export function parseInrForCalc(value: string): number {
   const cleaned = value.replace(/,/g, "").trim();

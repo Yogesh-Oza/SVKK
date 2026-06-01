@@ -49,7 +49,7 @@ AD policy form: **disable live auto-calculation on fetch / edit / update**; keep
 
 **Calc-trigger fields (unlock only in live/create mode):** `adProduct`, `sumInsured`, `person`, DOB/dates, holder gender/relation/add-ons, `members[*]`, add/remove member.
 
-**Live basic premium sync:** In create/carry-forward (`!autoCalcLocked`), holder/member `basicPremium` fields sync from chart when DOB or other calc inputs change—not only when the field was empty. `shouldApplyChartBasicToField` skips overwrite when `premiumManual` is set (user typed in Basic Premium).
+**Live basic premium sync:** In create/carry-forward (`!autoCalcLocked`), holder/member `basicPremium` fields sync from chart when DOB or other calc inputs change—not only when the field was empty. `shouldApplyChartBasicToField` skips overwrite when `premiumManual` is set (user typed in Basic Premium). When a chart row errors (summary shows `—`), `shouldClearBasicOnChartError` clears stale basics so carry-forward amounts do not linger. `resolveQuoteSumInsured` uses policy-level sum insured, or the highest member sum insured when policy SI is blank (common after carry-forward).
 
 **Manual verify**
 

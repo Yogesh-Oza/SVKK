@@ -76,8 +76,11 @@ import {
 } from "./ad-policy-detail-to-form";
 import { PolicyDriveUploadButton } from "./policy-drive-upload";
 import {
+  genderToQuoteInput,
   quoteFromStoredFormValues,
+  resolveQuoteSumInsured,
   shouldApplyChartBasicToField,
+  shouldClearBasicOnChartError,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
 
@@ -676,7 +679,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const liveQuote = useMemo(() => {
     const rawKey = normPolicyKey(values.adProduct || "");
     const policyKey = premiumState.charts[rawKey] ? rawKey : "individual";
-    const sumInsured = parseInr(values.sumInsured);
+    const sumInsured = resolveQuoteSumInsured(values.sumInsured, values.members);
     const endDate = values.previousEndDate || values.policyEnd || "";
     // Ignore placeholder/blank member rows (e.g. fetched policies with 0 members).
     const validMembers = (values.members || []).filter((m) => Boolean(m.name?.trim()) && Boolean(m.dob));
@@ -685,15 +688,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       name: values.policyHolder || "Policy Holder",
       dob: values.dob || "",
       relationship: (values.relation || "self").toLowerCase() || "self",
-      gender:
-        values.holderGender === "M" ? "male" : values.holderGender === "F" ? "female" : "",
+      gender: genderToQuoteInput(values.holderGender),
       addOnRider: parseInr(values.holderAddOns),
     };
     const memberInputs: MemberInput[] = validMembers.map((m, i) => ({
       name: m.name.trim() || `Member ${i + 1}`,
       dob: m.dob,
       relationship: (m.relationship || "member").toLowerCase() || "member",
-      gender: m.gender === "M" ? "male" : m.gender === "F" ? "female" : "",
+      gender: genderToQuoteInput(m.gender),
       addOnRider: parseInr(m.addOnsAmount),
     }));
     return quoteFromInput(premiumState, {
@@ -747,29 +749,32 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (autoCalcLocked) return;
     if (!liveQuote.rows.length) return;
     const holderRow = liveQuote.rows[0];
-    if (
+    const holderManual = Boolean(premiumManual.basicPremiumPs);
+    if (holderRow?.error) {
+      if (shouldClearBasicOnChartError(values.basicPremiumPs, true, holderManual)) {
+        void setFieldValue("basicPremiumPs", "");
+      }
+    } else if (
       holderRow &&
-      !holderRow.error &&
       typeof holderRow.basic === "number" &&
-      shouldApplyChartBasicToField(
-        values.basicPremiumPs,
-        holderRow.basic,
-        Boolean(premiumManual.basicPremiumPs),
-      )
+      shouldApplyChartBasicToField(values.basicPremiumPs, holderRow.basic, holderManual)
     ) {
       void setFieldValue("basicPremiumPs", String(holderRow.basic));
     }
     values.members.forEach((member, index) => {
       const row = liveQuote.rows[index + 1];
-      if (!row || row.error || typeof row.basic !== "number") return;
       const manualKey = `members[${index}].basicPremium`;
-      if (
-        !shouldApplyChartBasicToField(
-          member.basicPremium,
-          row.basic,
-          Boolean(premiumManual[manualKey]),
-        )
-      ) {
+      const isManual = Boolean(premiumManual[manualKey]);
+      if (!row || row.error) {
+        if (shouldClearBasicOnChartError(member.basicPremium, true, isManual)) {
+          void setFieldValue(`members[${index}].basicPremium`, "");
+        }
+        return;
+      }
+      if (typeof row.basic !== "number") {
+        return;
+      }
+      if (!shouldApplyChartBasicToField(member.basicPremium, row.basic, isManual)) {
         return;
       }
       void setFieldValue(`members[${index}].basicPremium`, String(row.basic));

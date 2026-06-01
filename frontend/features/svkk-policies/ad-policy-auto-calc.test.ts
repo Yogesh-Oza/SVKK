@@ -6,7 +6,9 @@ import {
   isCalcTriggerPath,
   parseInrForCalc,
   quoteFromStoredFormValues,
+  resolveQuoteSumInsured,
   shouldApplyChartBasicToField,
+  shouldClearBasicOnChartError,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
 
@@ -130,6 +132,26 @@ describe("isCalcTriggerPath", () => {
     expect(isCalcTriggerPath("customerId")).toBe(false);
     expect(isCalcTriggerPath("generalRemark")).toBe(false);
     expect(isCalcTriggerPath("vkkPremium")).toBe(false);
+  });
+});
+
+describe("resolveQuoteSumInsured", () => {
+  it("uses policy sum insured when set", () => {
+    expect(resolveQuoteSumInsured("500000", [{ sumInsured: "1500000" }])).toBe(500000);
+  });
+
+  it("falls back to max member sum insured when policy field is empty", () => {
+    expect(resolveQuoteSumInsured("", [{ sumInsured: "15,00,000" }, { sumInsured: "200000" }])).toBe(
+      1500000,
+    );
+  });
+});
+
+describe("shouldClearBasicOnChartError", () => {
+  it("clears stale basics when chart errors and field is not manual", () => {
+    expect(shouldClearBasicOnChartError("21293", true, false)).toBe(true);
+    expect(shouldClearBasicOnChartError("", true, false)).toBe(false);
+    expect(shouldClearBasicOnChartError("21293", true, true)).toBe(false);
   });
 });
 
