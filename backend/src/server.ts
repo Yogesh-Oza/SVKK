@@ -3,11 +3,14 @@ import "dotenv/config";
 import { loadEnv } from "./config/env.js";
 import { createRootLogger } from "./utils/logger.js";
 import { createApp } from "./app.js";
+import { assertClaimSchemaReady } from "./lib/claim-schema-ready.js";
 import {
   assertDatabaseSchemaReady,
   isMissingTableError,
 } from "./lib/database-ready.js";
 import { assertCatalogMatchesDatabase } from "./lib/permission-catalog-integrity.js";
+import { upsertPermissionCatalog } from "./lib/permission-seed.js";
+import { prisma } from "./lib/prisma.js";
 import { seedDefaultEmailTemplatesIfMissing } from "./services/email/email-template.service.js";
 import { startRenewalReminderScheduler } from "./services/notification/renewal-reminder.job.js";
 
@@ -17,6 +20,7 @@ const log = createRootLogger(env);
 async function start() {
   try {
     await assertDatabaseSchemaReady();
+    await assertClaimSchemaReady();
   } catch (e) {
     log.fatal({ err: e }, "Database not initialized");
     process.exit(1);
@@ -33,7 +37,14 @@ async function start() {
       log.fatal({ err: e }, "Permission catalog integrity check failed");
       process.exit(1);
     }
-    log.warn({ err: e }, "Permission catalog drift (non-production)");
+    log.warn({ err: e }, "Permission catalog drift — syncing catalog (non-production)");
+    await upsertPermissionCatalog(prisma);
+    try {
+      await assertCatalogMatchesDatabase();
+      log.info("Permission catalog synced");
+    } catch (syncErr) {
+      log.warn({ err: syncErr }, "Permission catalog drift after sync");
+    }
   }
 
   try {

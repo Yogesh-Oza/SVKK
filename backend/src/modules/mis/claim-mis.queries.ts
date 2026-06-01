@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
-import { sqlTable } from "../../lib/sql-tables.js";
+import { sqlCol, sqlTable } from "../../lib/sql-tables.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import { expandPeriodMonthTextVariants } from "../policy/policy.list.js";
@@ -27,26 +27,47 @@ export type ClaimReportFilters = {
   fiscalLabels: string[];
 };
 
-/** Avoid MySQL 1267 when claim/policy string columns use different collations than bind params. */
-function sqlUtf8Ci(expr: Prisma.Sql): Prisma.Sql {
-  return Prisma.sql`${expr} COLLATE utf8mb4_unicode_ci`;
+const UTF8_COLLATE = "utf8mb4_unicode_ci";
+
+/** Qualified column with explicit collation (avoids MySQL 1267 vs connection default). */
+function sqlAliasCol(alias: string, column: string): Prisma.Sql {
+  return Prisma.raw(`${alias}.\`${column}\` COLLATE ${UTF8_COLLATE}`);
+}
+
+/** Arbitrary SQL fragment with explicit collation. */
+function sqlExprUtf8Ci(expr: string): Prisma.Sql {
+  return Prisma.raw(`${expr} COLLATE ${UTF8_COLLATE}`);
+}
+
+/** Bind parameter with the same collation as utf8mb4_unicode_ci columns. */
+function sqlParamUtf8(value: string): Prisma.Sql {
+  return Prisma.sql`CAST(${value} AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci`;
+}
+
+/** JOIN … ON with mixed utf8mb4 collations (e.g. policy.policyTypeId vs policytype.id). */
+function sqlJoinEqUtf8(leftExpr: string, rightExpr: string): Prisma.Sql {
+  return Prisma.sql`${sqlExprUtf8Ci(leftExpr)} = ${sqlExprUtf8Ci(rightExpr)}`;
+}
+
+function joinPolicyTypeSql(): Prisma.Sql {
+  return Prisma.sql`LEFT JOIN ${sqlTable("policyType")} pt ON ${sqlJoinEqUtf8("p.`policyTypeId`", "pt.`id`")}`;
 }
 
 function claimVillageExpr(): Prisma.Sql {
-  return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`c.village`)}, ${sqlUtf8Ci(Prisma.sql`p.village`)})`;
+  return Prisma.sql`COALESCE(${sqlAliasCol("c", "village")}, ${sqlAliasCol("p", "village")})`;
 }
 
 function villageEquals(village: string): Prisma.Sql {
-  return Prisma.sql`(${claimVillageExpr()} = ${village})`;
+  return Prisma.sql`(${claimVillageExpr()} = ${sqlParamUtf8(village)})`;
 }
 
 function villageIn(villages: string[]): Prisma.Sql {
-  return Prisma.sql`(${claimVillageExpr()} IN (${sqlInList(villages)}))`;
+  return Prisma.sql`(${claimVillageExpr()} IN (${sqlInListUtf8(villages)}))`;
 }
 
-function sqlInList(values: string[]): Prisma.Sql {
+function sqlInListUtf8(values: string[]): Prisma.Sql {
   if (!values.length) return Prisma.sql`1 = 0`;
-  return Prisma.join(values.map((v) => Prisma.sql`${v}`));
+  return Prisma.join(values.map((v) => sqlParamUtf8(v)));
 }
 
 /** Build claim scope SQL for alias `c`. */
@@ -93,47 +114,52 @@ export function buildClaimScopeSqlC(
     }
   }
   if (areaValues.length > 0) {
-    parts.push(Prisma.sql`${sqlUtf8Ci(Prisma.sql`p.area`)} IN (${sqlInList(areaValues)})`);
+    parts.push(Prisma.sql`${sqlAliasCol("p", "area")} IN (${sqlInListUtf8(areaValues)})`);
   }
   return parts.length ? Prisma.join(parts, " AND ") : Prisma.sql`1=0`;
 }
 
+function claimActivityDateExpr(): Prisma.Sql {
+  return Prisma.sql`COALESCE(${sqlCol("c", "claimReceivedDate")}, ${sqlCol("c", "admissionDate")}, ${sqlCol("c", "createdAt")})`;
+}
+
 function dateFilterSql(filters: ClaimReportFilters): Prisma.Sql {
+  const dateExpr = claimActivityDateExpr();
   if (filters.dateFrom && filters.dateTo) {
-    return Prisma.sql`AND COALESCE(c.claimReceivedDate, c.admissionDate, c.createdAt) >= ${filters.dateFrom} AND COALESCE(c.claimReceivedDate, c.admissionDate, c.createdAt) <= ${filters.dateTo}`;
+    return Prisma.sql`AND ${dateExpr} >= ${filters.dateFrom} AND ${dateExpr} <= ${filters.dateTo}`;
   }
   if (filters.dateFrom) {
-    return Prisma.sql`AND COALESCE(c.claimReceivedDate, c.admissionDate, c.createdAt) >= ${filters.dateFrom}`;
+    return Prisma.sql`AND ${dateExpr} >= ${filters.dateFrom}`;
   }
   if (filters.dateTo) {
-    return Prisma.sql`AND COALESCE(c.claimReceivedDate, c.admissionDate, c.createdAt) <= ${filters.dateTo}`;
+    return Prisma.sql`AND ${dateExpr} <= ${filters.dateTo}`;
   }
   return Prisma.sql``;
 }
 
 function matchStatusFilter(filters: ClaimReportFilters): Prisma.Sql {
   if (!filters.matchStatus) return Prisma.sql``;
-  return Prisma.sql`AND ${sqlUtf8Ci(Prisma.sql`CAST(c.matchStatus AS CHAR)`)} = ${filters.matchStatus}`;
+  return Prisma.sql`AND ${sqlExprUtf8Ci("CAST(c.`matchStatus` AS CHAR)")} = ${sqlParamUtf8(filters.matchStatus)}`;
 }
 
 function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
   if (!categoryKeys.length) return Prisma.empty;
   if (categoryKeys.length === 1 && categoryKeys[0] === UNCATEGORIZED_CATEGORY_KEY) {
-    return Prisma.sql` AND (p.categoryId IS NULL OR cat.id IS NULL)`;
+    return Prisma.sql` AND (${sqlCol("p", "categoryId")} IS NULL OR cat.id IS NULL)`;
   }
-  return Prisma.sql` AND LOWER(cat.key) IN (${Prisma.join(
-    categoryKeys.map((k) => Prisma.sql`LOWER(${k})`),
+  return Prisma.sql` AND LOWER(${sqlAliasCol("cat", "key")}) IN (${Prisma.join(
+    categoryKeys.map((k) => Prisma.sql`LOWER(${sqlParamUtf8(k)})`),
   )})`;
 }
 
 function policyGroupingsFilterSql(groupings: string[]): Prisma.Sql {
   if (!groupings.length) return Prisma.empty;
-  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.policyGrouping`)} IN (${Prisma.join(groupings)})`;
+  return Prisma.sql` AND ${sqlAliasCol("p", "policyGrouping")} IN (${sqlInListUtf8(groupings)})`;
 }
 
 function areasFilterSql(areas: string[]): Prisma.Sql {
   if (!areas.length) return Prisma.empty;
-  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.area`)} IN (${Prisma.join(areas)})`;
+  return Prisma.sql` AND ${sqlAliasCol("p", "area")} IN (${sqlInListUtf8(areas)})`;
 }
 
 function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
@@ -142,22 +168,22 @@ function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n) && n > 0);
   if (!amounts.length) return Prisma.empty;
-  return Prisma.sql` AND COALESCE(py.sumInsured, c.sumInsured) IN (${Prisma.join(amounts)})`;
+  return Prisma.sql` AND COALESCE(${sqlCol("py", "sumInsured")}, ${sqlCol("c", "sumInsured")}) IN (${Prisma.join(amounts)})`;
 }
 
 function periodMonthTextsFilterSql(periodMonthTexts: string[]): Prisma.Sql {
   if (!periodMonthTexts.length) return Prisma.empty;
   const variants = expandPeriodMonthTextVariants(periodMonthTexts);
   if (!variants.length) return Prisma.empty;
-  return Prisma.sql` AND ${sqlUtf8Ci(Prisma.sql`p.periodMonthText`)} IN (${Prisma.join(variants)})`;
+  return Prisma.sql` AND ${sqlAliasCol("p", "periodMonthText")} IN (${sqlInListUtf8(variants)})`;
 }
 
 function fiscalLabelsFilterSql(fiscalLabels: string[]): Prisma.Sql {
   if (!fiscalLabels.length) return Prisma.empty;
   return Prisma.sql` AND (
-    ${sqlUtf8Ci(Prisma.sql`p.periodYearText`)} IN (${Prisma.join(fiscalLabels)})
-    OR ${sqlUtf8Ci(Prisma.sql`py.yearLabel`)} IN (${Prisma.join(fiscalLabels)})
-    OR ${sqlUtf8Ci(Prisma.sql`c.policyYear`)} IN (${Prisma.join(fiscalLabels)})
+    ${sqlAliasCol("p", "periodYearText")} IN (${sqlInListUtf8(fiscalLabels)})
+    OR ${sqlAliasCol("py", "yearLabel")} IN (${sqlInListUtf8(fiscalLabels)})
+    OR ${sqlAliasCol("c", "policyYear")} IN (${sqlInListUtf8(fiscalLabels)})
   )`;
 }
 
@@ -178,15 +204,16 @@ function policySideFiltersSql(filters: ClaimReportFilters): Prisma.Sql {
 type GroupDimension = "category" | "village" | "sum_insured" | "policy_type";
 
 function groupLabelSql(groupBy: GroupDimension): Prisma.Sql {
+  const dash = sqlParamUtf8("—");
   switch (groupBy) {
     case "category":
-      return Prisma.sql`COALESCE(cat.key, 'uncategorized')`;
+      return Prisma.sql`COALESCE(${sqlAliasCol("cat", "key")}, ${sqlParamUtf8("uncategorized")})`;
     case "village":
-      return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`c.village`)}, ${sqlUtf8Ci(Prisma.sql`p.village`)}, '—')`;
+      return Prisma.sql`COALESCE(${sqlAliasCol("c", "village")}, ${sqlAliasCol("p", "village")}, ${dash})`;
     case "sum_insured":
-      return Prisma.sql`COALESCE(CAST(py.sumInsured AS CHAR), CAST(c.sumInsured AS CHAR), '—')`;
+      return Prisma.sql`COALESCE(${sqlExprUtf8Ci("CAST(py.`sumInsured` AS CHAR)")}, ${sqlExprUtf8Ci("CAST(c.`sumInsured` AS CHAR)")}, ${dash})`;
     case "policy_type":
-      return Prisma.sql`COALESCE(${sqlUtf8Ci(Prisma.sql`pt.name`)}, ${sqlUtf8Ci(Prisma.sql`c.policyTypeText`)}, '—')`;
+      return Prisma.sql`COALESCE(${sqlAliasCol("pt", "name")}, ${sqlAliasCol("c", "policyTypeText")}, ${dash})`;
   }
 }
 
@@ -203,15 +230,15 @@ export async function queryClaimReport(
   return prisma.$queryRaw<ClaimReportRow[]>`
     SELECT
       ${label} AS label,
-      COUNT(c.id) AS claimCount,
-      COALESCE(SUM(c.claimAmount), 0) AS sumClaimAmount,
-      COALESCE(SUM(c.approvedAmount), 0) AS sumApprovedAmount,
-      COALESCE(SUM(c.deductionAmount), 0) AS sumDeductionAmount
+      COUNT(${sqlCol("c", "id")}) AS claimCount,
+      COALESCE(SUM(${sqlCol("c", "claimAmount")}), 0) AS sumClaimAmount,
+      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS sumApprovedAmount,
+      COALESCE(SUM(${sqlCol("c", "deductionAmount")}), 0) AS sumDeductionAmount
     FROM ${sqlTable("claim")} c
-    LEFT JOIN ${sqlTable("policy")} p ON c.policyId = p.id AND p.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("policyYear")} py ON c.policyYearId = py.id AND py.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
-    LEFT JOIN ${sqlTable("policyType")} pt ON p.policyTypeId = pt.id
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
+    ${joinPolicyTypeSql()}
     WHERE ${args.scopeSql}
     ${dateFilterSql(args.filters)}
     ${matchStatusFilter(args.filters)}
@@ -224,7 +251,7 @@ export async function queryClaimReport(
 export type ClaimTrendPeriod = "month" | "quarter" | "year";
 
 function trendLabelSql(period: ClaimTrendPeriod): Prisma.Sql {
-  const dateExpr = Prisma.sql`COALESCE(c.claimReceivedDate, c.admissionDate, c.createdAt)`;
+  const dateExpr = claimActivityDateExpr();
   switch (period) {
     case "month":
       return Prisma.sql`DATE_FORMAT(${dateExpr}, '%Y-%m')`;
@@ -248,14 +275,14 @@ export async function queryClaimTrend(
   return prisma.$queryRaw<ClaimReportRow[]>`
     SELECT
       ${label} AS label,
-      COUNT(c.id) AS claimCount,
-      COALESCE(SUM(c.claimAmount), 0) AS sumClaimAmount,
-      COALESCE(SUM(c.approvedAmount), 0) AS sumApprovedAmount,
-      COALESCE(SUM(c.deductionAmount), 0) AS sumDeductionAmount
+      COUNT(${sqlCol("c", "id")}) AS claimCount,
+      COALESCE(SUM(${sqlCol("c", "claimAmount")}), 0) AS sumClaimAmount,
+      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS sumApprovedAmount,
+      COALESCE(SUM(${sqlCol("c", "deductionAmount")}), 0) AS sumDeductionAmount
     FROM ${sqlTable("claim")} c
-    LEFT JOIN ${sqlTable("policy")} p ON c.policyId = p.id AND p.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("policyYear")} py ON c.policyYearId = py.id AND py.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
     WHERE ${args.scopeSql}
     ${dateFilterSql(args.filters)}
     ${matchStatusFilter(args.filters)}
@@ -282,14 +309,14 @@ export async function queryDashboardClaimTotals(
 ): Promise<ClaimDashboardTotalsRow> {
   const rows = await prisma.$queryRaw<ClaimDashboardTotalsRow[]>`
     SELECT
-      COUNT(c.id) AS claimCount,
-      COALESCE(SUM(c.claimAmount), 0) AS sumClaimAmount,
-      COALESCE(SUM(c.approvedAmount), 0) AS sumApprovedAmount,
-      COALESCE(SUM(c.deductionAmount), 0) AS sumDeductionAmount
+      COUNT(${sqlCol("c", "id")}) AS claimCount,
+      COALESCE(SUM(${sqlCol("c", "claimAmount")}), 0) AS sumClaimAmount,
+      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS sumApprovedAmount,
+      COALESCE(SUM(${sqlCol("c", "deductionAmount")}), 0) AS sumDeductionAmount
     FROM ${sqlTable("claim")} c
-    LEFT JOIN ${sqlTable("policy")} p ON c.policyId = p.id AND p.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("policyYear")} py ON c.policyYearId = py.id AND py.deletedAt IS NULL
-    LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
     WHERE ${args.scopeSql}
     ${dateFilterSql(args.filters)}
     ${matchStatusFilter(args.filters)}

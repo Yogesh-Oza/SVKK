@@ -191,12 +191,22 @@ export async function queryClaimsForExport(
 
 export const CLAIM_LIST_EXPORT_MAX_ROWS = 100_000;
 
+function nonEmptyFieldFilter(
+  field: "village" | "policyYear" | "claimType",
+): Prisma.ClaimWhereInput {
+  // policyYear is a required String on Claim (not nullable); village/claimType are optional.
+  if (field === "policyYear") {
+    return { policyYear: { not: "" } };
+  }
+  return { [field]: { not: null } };
+}
+
 async function distinctNonEmpty(
   where: Prisma.ClaimWhereInput,
   field: "village" | "policyYear" | "claimType",
 ): Promise<string[]> {
   const rows = await prisma.claim.findMany({
-    where: { AND: [where, { [field]: { not: null } }] },
+    where: { AND: [where, nonEmptyFieldFilter(field)] },
     distinct: [field],
     select: { [field]: true },
     orderBy: { [field]: "asc" },

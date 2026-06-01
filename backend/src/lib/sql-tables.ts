@@ -22,3 +22,8 @@ export const SQL_TABLE = {
 export function sqlTable(name: keyof typeof SQL_TABLE): Prisma.Sql {
   return Prisma.raw(SQL_TABLE[name]);
 }
+
+/** Qualified column (backtick-quoted). Required for camelCase columns in raw MySQL SQL. */
+export function sqlCol(alias: string, column: string): Prisma.Sql {
+  return Prisma.raw(`${alias}.\`${column}\``);
+}
