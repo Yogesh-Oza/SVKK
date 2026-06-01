@@ -6,6 +6,30 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+AD policy Add/Edit form: **hydration lock** for premium auto-calculation — load DB values without chart sync until the user edits a calc-trigger field.
+
+## Policy form auto-calculation
+
+| State | When | Behavior |
+|-------|------|----------|
+| `autoCalcLocked = true` | After fetch-by-SVKK load or edit `resetForm` | Premium/age rollup `useEffect`s skipped; Calculated Premium Summary uses **stored** amounts (`quoteFromStoredFormValues`) |
+| `autoCalcLocked = false` | New blank add, carry forward, or user edits calc field | Live `quoteFromInput` + existing sync into Premium Details |
+| Carry forward | Renew workflow | Clears premium fields, `autoCalcLocked = false` — immediate chart recalc (unchanged) |
+
+**Key files**
+
+- `frontend/features/svkk-policies/ad-policy-auto-calc.ts` — trigger paths, `shouldUnlockAutoCalc`, stored quote display
+- `frontend/features/svkk-policies/ad-policy-add-form.tsx` — `autoCalcLocked`, hydrate ref, unlock on `setFieldValueWithUnlock` / member actions
+- `frontend/features/svkk-policies/ad-policy-auto-calc.test.ts` — unit tests (Vitest)
+
+**Calc-trigger fields (unlock):** `adProduct`, `sumInsured`, `person`, DOB/dates, holder gender/relation/add-ons, `members[*]`, add/remove member.
+
+**Not calc-trigger:** customer ID, address, remarks, payment fields, SVKK display IDs.
+
+`fetchedPolicyForUpdate` remains separate (Update vs Create submit, auto-id lock).
+
+## Previous task (completed)
+
 Claim CSV/XLSX import with preview-before-commit, tiered policy matching, match-confidence reporting, and Claim MIS tab (dimensional + trend views).
 
 ## Tech stack
@@ -23,6 +47,7 @@ backend/src/modules/claim/     — Claim CRUD + claim-csv-* import pipeline
 backend/src/modules/mis/       — Policy MIS + claim-mis.queries.ts
 frontend/features/svkk-claims/ — Claim CSV import UI
 frontend/features/svkk-mis/    — Policy + Claim MIS sections
+frontend/features/svkk-policies/ — AD policy add/edit form + auto-calc lock
 ```
 
 ## Claim import architecture

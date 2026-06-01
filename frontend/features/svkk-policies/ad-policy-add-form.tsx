@@ -69,6 +69,7 @@ import {
   type SvkkPolicyDetailForForm,
 } from "./ad-policy-detail-to-form";
 import { PolicyDriveUploadButton } from "./policy-drive-upload";
+import { quoteFromStoredFormValues, shouldUnlockAutoCalc } from "./ad-policy-auto-calc";
 
 export type { AdMemberRow } from "./ad-member-types";
 
@@ -607,8 +608,31 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const isBusy = isSubmitting;
   const [premiumManual, setPremiumManual] = useState<Record<string, boolean>>({});
   const [ageManual, setAgeManual] = useState<Record<string, boolean>>({});
-  /** Edit or fetch-for-update: keep loaded DB values; no premium/age/member auto-sync. */
-  const freezeAutoCalculations = isEdit || Boolean(fetchedPolicyForUpdate);
+  /** After DB hydrate (fetch/edit): show stored premiums until user edits a calc-trigger field. */
+  const [autoCalcLocked, setAutoCalcLocked] = useState(false);
+  const isHydratingRef = useRef(false);
+
+  const tryUnlockAutoCalc = useCallback((path: string) => {
+    if (shouldUnlockAutoCalc(path, isHydratingRef.current)) {
+      setAutoCalcLocked(false);
+    }
+  }, []);
+
+  const setFieldValueWithUnlock = useCallback(
+    (field: string, value: unknown, shouldValidate?: boolean) => {
+      tryUnlockAutoCalc(field);
+      return setFieldValue(field, value, shouldValidate);
+    },
+    [setFieldValue, tryUnlockAutoCalc],
+  );
+
+  const handleChangeWithUnlock = useCallback(
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      tryUnlockAutoCalc(e.target.name);
+      handleChange(e);
+    },
+    [handleChange, tryUnlockAutoCalc],
+  );
 
   const markPremiumManual = useCallback((field: string) => {
     setPremiumManual((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
@@ -631,7 +655,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [handleChange, markPremiumManual, setFieldValue],
   );
 
-  const quote = useMemo(() => {
+  const liveQuote = useMemo(() => {
     const rawKey = normPolicyKey(values.adProduct || "");
     const policyKey = premiumState.charts[rawKey] ? rawKey : "individual";
     const sumInsured = parseInr(values.sumInsured);
@@ -675,21 +699,36 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     values.members,
   ]);
 
+  const displayQuote = useMemo(() => {
+    if (!autoCalcLocked) {
+      return liveQuote;
+    }
+    const endDate = values.previousEndDate || values.policyEnd || "";
+    return quoteFromStoredFormValues(values, premiumState, endDate);
+  }, [
+    autoCalcLocked,
+    liveQuote,
+    premiumState,
+    values,
+    values.previousEndDate,
+    values.policyEnd,
+  ]);
+
   const summary = useMemo(
     () => ({
-      basic: quote.basic,
-      rider: quote.rider,
-      gross: quote.gross,
-      discount: quote.disc,
-      net: quote.net,
+      basic: displayQuote.basic,
+      rider: displayQuote.rider,
+      gross: displayQuote.gross,
+      discount: displayQuote.disc,
+      net: displayQuote.net,
     }),
-    [quote],
+    [displayQuote],
   );
 
   useEffect(() => {
-    if (freezeAutoCalculations) return;
-    if (!quote.rows.length) return;
-    const holderRow = quote.rows[0];
+    if (autoCalcLocked) return;
+    if (!liveQuote.rows.length) return;
+    const holderRow = liveQuote.rows[0];
     if (
       holderRow &&
       !holderRow.error &&
@@ -701,14 +740,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       void setFieldValue("basicPremiumPs", String(holderRow.basic));
     }
     values.members.forEach((member, index) => {
-      const row = quote.rows[index + 1];
+      const row = liveQuote.rows[index + 1];
       if (!row || row.error || typeof row.basic !== "number" || row.basic <= 0) return;
       const manualKey = `members[${index}].basicPremium`;
       if (premiumManual[manualKey]) return;
       if (parseInr(member.basicPremium) > 0) return;
       void setFieldValue(`members[${index}].basicPremium`, String(row.basic));
     });
-  }, [freezeAutoCalculations, quote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
+  }, [autoCalcLocked, liveQuote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
 
   const selectedFetch = useMemo(
     () => fetchRows.find((row) => row.id === selectedFetchId) ?? null,
@@ -766,20 +805,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const loadPolicyDetailIntoForm = useCallback(
     async (id: string, modeNotice: string) => {
+      isHydratingRef.current = true;
       try {
         const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${id}`);
         const nextValues = policyDetailToAdFormValues(row);
-        // Lock auto-calc before setValues so premium fields are not overwritten mid-load.
         setFetchedPolicyForUpdate(row);
         setCarriedForwardNotice(null);
         setPremiumManual({});
         setAgeManual({});
+        setAutoCalcLocked(true);
         await formik.setValues(nextValues);
         await syncPolicyTypeFromKey(nextValues.adProduct);
         setSelectFieldsMountKey((k) => k + 1);
         setFetchNotice(modeNotice);
       } catch (e) {
         setFetchNotice(e instanceof Error ? e.message : "Failed to load policy details");
+      } finally {
+        isHydratingRef.current = false;
       }
     },
     [formik, syncPolicyTypeFromKey],
@@ -960,8 +1002,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
       const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
       // Keep Net Premium blank for manual entry; other premium fields may still auto-calc.
+      isHydratingRef.current = true;
       setPremiumManual({ coPremium: true, netPremiumCalc: true });
       setAgeManual({});
+      setAutoCalcLocked(false);
       await formik.setValues({
         ...carriedValues,
         year: shiftedYear,
@@ -1053,6 +1097,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         description: msg,
       });
     } finally {
+      isHydratingRef.current = false;
       setCarryForwardBusy(false);
     }
   }, [
@@ -1414,12 +1459,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     detailHydrationKeyRef.current = hydrationKey;
     void (async () => {
-      const nextValues = policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
-      setPremiumManual({});
-      setAgeManual({});
-      await formik.resetForm({ values: nextValues });
-      setSelectFieldsMountKey((k) => k + 1);
-      setEditHydrated(true);
+      isHydratingRef.current = true;
+      try {
+        const nextValues = policyDetailToAdFormValues(detail, { yearLabel: editYearLabel });
+        setPremiumManual({});
+        setAgeManual({});
+        setAutoCalcLocked(true);
+        await formik.resetForm({ values: nextValues });
+        setSelectFieldsMountKey((k) => k + 1);
+        setEditHydrated(true);
+      } finally {
+        isHydratingRef.current = false;
+      }
     })();
   }, [isEdit, detail, editYearLabel, formik.resetForm]);
 
@@ -1495,15 +1546,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const ageAnchorDate = values.previousEndDate || values.policyEnd;
 
   useEffect(() => {
-    if (freezeAutoCalculations || ageManual.age) return;
+    if (autoCalcLocked || ageManual.age) return;
     const next = ageFromDobOnAnchor(values.dob, ageAnchorDate);
     if (values.age !== next) {
       void setFieldValue("age", next);
     }
-  }, [freezeAutoCalculations, ageManual.age, values.age, values.dob, ageAnchorDate, setFieldValue]);
+  }, [autoCalcLocked, ageManual.age, values.age, values.dob, ageAnchorDate, setFieldValue]);
 
   useEffect(() => {
-    if (freezeAutoCalculations) return;
+    if (autoCalcLocked) return;
     if (!values.members.length) {
       return;
     }
@@ -1520,29 +1571,34 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (changed) {
       void setFieldValue("members", next);
     }
-  }, [freezeAutoCalculations, ageAnchorDate, ageManual, setFieldValue, values.members]);
+  }, [autoCalcLocked, ageAnchorDate, ageManual, setFieldValue, values.members]);
 
   const updateMember = (i: number, patch: Partial<AdMemberRow>) => {
+    for (const key of Object.keys(patch) as Array<keyof AdMemberRow>) {
+      tryUnlockAutoCalc(`members[${i}].${String(key)}`);
+    }
     const next = [...values.members];
     next[i] = { ...next[i]!, ...patch };
-    if (!freezeAutoCalculations && patch.dob !== undefined && !ageManual[`members[${i}].age`]) {
+    if (!autoCalcLocked && patch.dob !== undefined && !ageManual[`members[${i}].age`]) {
       next[i]!.age = ageFromDobOnAnchor(next[i]!.dob, ageAnchorDate);
     }
     void setFieldValue("members", next);
   };
 
   const addMember = () => {
+    tryUnlockAutoCalc("members");
     const nextMembers = [...values.members, emptyMemberRow()];
     void setFieldValue("members", nextMembers);
-    void setFieldValue("person", String(nextMembers.length + 1));
+    void setFieldValueWithUnlock("person", String(nextMembers.length + 1));
   };
   const removeMember = (i: number) => {
     if (values.members.length <= 0) {
       return;
     }
+    tryUnlockAutoCalc("members");
     const nextMembers = values.members.filter((_, j) => j !== i);
     void setFieldValue("members", nextMembers);
-    void setFieldValue("person", String(nextMembers.length + 1));
+    void setFieldValueWithUnlock("person", String(nextMembers.length + 1));
   };
 
   const addPaymentTransaction = () => {
@@ -1563,7 +1619,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   };
 
   useEffect(() => {
-    if (freezeAutoCalculations) return;
+    if (autoCalcLocked) return;
     const parsed = Number(values.person);
     if (!Number.isFinite(parsed) || parsed < 1) {
       return;
@@ -1585,10 +1641,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     // Intentionally not depending on values.members to avoid feedback loop
     // with addMember/removeMember (which set both fields atomically).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freezeAutoCalculations, values.person, setFieldValue]);
+  }, [autoCalcLocked, values.person, setFieldValue]);
 
   useEffect(() => {
-    if (freezeAutoCalculations) return;
+    if (autoCalcLocked) return;
     const setAutoField = (
       field: keyof AdPolicyFormValues,
       value: number,
@@ -1633,8 +1689,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         }, 0)
       : familyFloaterNet;
 
-    const quoteReady = quote.rows.length > 0 && quote.rows.every((row) => !row.error);
-    const calculatedNetPremium = quoteReady ? quote.net : null;
+    const quoteReady = liveQuote.rows.length > 0 && liveQuote.rows.every((row) => !row.error);
+    const calculatedNetPremium = quoteReady ? liveQuote.net : null;
 
     // Premium Details Gross Premium = Calculated Premium Summary net (member-wise quote).
     const autoGrossPremium =
@@ -1701,7 +1757,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("excessShort", excessShort, false, true);
     setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
     setAutoField("diffAmt", differenceAmountPaidByHolder);
-  }, [freezeAutoCalculations, premiumManual, quote, setFieldValue, values]);
+  }, [autoCalcLocked, premiumManual, liveQuote, setFieldValue, values]);
 
   const adProductSelectValue = useMemo(() => {
     const raw = (values.adProduct || editMappedValues?.adProduct || "").trim();
@@ -1955,6 +2011,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {autoCalcLocked ? (
+                  <p className="text-muted-foreground text-sm">
+                    Showing saved premiums from the loaded policy. Edit DOB, sum insured, policy type, or members to recalculate.
+                  </p>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Basic Premium</p><p className="font-semibold">₹{rs(summary.basic)}</p></CardContent></Card>
                   <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Add-on Rider</p><p className="font-semibold">₹{rs(summary.rider)}</p></CardContent></Card>
@@ -1983,7 +2044,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       </tr>
                     </thead>
                     <tbody>
-                      {quote.rows.map((row, idx) => {
+                      {displayQuote.rows.map((row, idx) => {
                         const isHolder = idx === 0;
                         const displayName =
                           row.name || (isHolder ? values.policyHolder || "Holder" : `Member ${idx}`);
@@ -2017,6 +2078,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                             <td className="p-2">
                               {row.error ? (
                                 "—"
+                              ) : autoCalcLocked ? (
+                                <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                  Stored
+                                </span>
                               ) : (
                                 <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
                                   Ready
@@ -2096,7 +2161,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   value={adProductSelectValue}
                   onValueChange={(v) => {
                     const key = v === "__none__" ? "" : v;
-                    void setFieldValue("adProduct", key);
+                    void setFieldValueWithUnlock("adProduct", key);
                     if (key) {
                       debugPolicyUpdate("policy type dropdown changed", {
                         adProduct: key,
@@ -2122,12 +2187,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <Label>Policy Start Date</Label>
-                <PolicyDateInput name="policyStart" value={values.policyStart} onValueChange={(v) => void setFieldValue("policyStart", v)} onBlur={handleBlur} />
+                <PolicyDateInput name="policyStart" value={values.policyStart} onValueChange={(v) => void setFieldValueWithUnlock("policyStart", v)} onBlur={handleBlur} />
                 <FormikError name="policyStart" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
                 <Label>Policy End Date</Label>
-                <PolicyDateInput name="policyEnd" value={values.policyEnd} onValueChange={(v) => void setFieldValue("policyEnd", v)} onBlur={handleBlur} />
+                <PolicyDateInput name="policyEnd" value={values.policyEnd} onValueChange={(v) => void setFieldValueWithUnlock("policyEnd", v)} onBlur={handleBlur} />
                 <FormikError name="policyEnd" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
@@ -2139,7 +2204,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <PolicyDateInput
                   name="previousEndDate"
                   value={values.previousEndDate}
-                  onValueChange={(v) => void setFieldValue("previousEndDate", v)}
+                  onValueChange={(v) => void setFieldValueWithUnlock("previousEndDate", v)}
                   onBlur={handleBlur}
                 />
               </div>
@@ -2147,7 +2212,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <RequiredLabel>Sum Insured (SI)</RequiredLabel>
                 <DropdownCombobox
                   value={values.sumInsured}
-                  onChange={(v) => void setFieldValue("sumInsured", v)}
+                  onChange={(v) => void setFieldValueWithUnlock("sumInsured", v)}
                   options={sumInsuredOptions}
                   placeholder="Select sum insured"
                   searchPlaceholder="Search amount"
@@ -2156,7 +2221,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               </div>
               <div className="space-y-2">
                 <RequiredLabel>Person Count</RequiredLabel>
-                <Input name="person" value={values.person} onChange={handleChange} onBlur={handleBlur} placeholder="e.g. 1" />
+                <Input name="person" value={values.person} onChange={handleChangeWithUnlock} onBlur={handleBlur} placeholder="e.g. 1" />
                 <FormikError name="person" errors={errors} touched={touched} submitCount={submitCount} />
               </div>
               <div className="space-y-2">
@@ -2374,7 +2439,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       id={`${idPrefix}-dob`}
                       name="dob"
                       value={values.dob}
-                      onValueChange={(v) => void setFieldValue("dob", v)}
+                      onValueChange={(v) => void setFieldValueWithUnlock("dob", v)}
                       onBlur={handleBlur}
                     />
                     <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
@@ -2418,7 +2483,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Label>Relation</Label>
                     <DropdownCombobox
                       value={values.relation}
-                      onChange={(v) => void setFieldValue("relation", v)}
+                      onChange={(v) => void setFieldValueWithUnlock("relation", v)}
                       options={relationOptions}
                       placeholder="Select relation"
                       searchPlaceholder="Search relation"
@@ -2476,7 +2541,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input
                       name="holderAddOns"
                       value={values.holderAddOns}
-                      onChange={handleChange}
+                      onChange={handleChangeWithUnlock}
                       onBlur={handleBlur}
                     />
                   </div>
@@ -2518,7 +2583,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input
                       name={`members[${i}].name`}
                       value={m.name}
-                      onChange={handleChange}
+                      onChange={handleChangeWithUnlock}
                       onBlur={handleBlur}
                     />
                   </div>
@@ -2538,8 +2603,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       name={`members[${i}].dob`}
                       value={m.dob}
                       onValueChange={(d) => {
-                        void setFieldValue(`members[${i}].dob`, d);
-                        if (!freezeAutoCalculations && !ageManual[`members[${i}].age`]) {
+                        void setFieldValueWithUnlock(`members[${i}].dob`, d);
+                        if (!autoCalcLocked && !ageManual[`members[${i}].age`]) {
                           void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
                         }
                       }}
@@ -2601,7 +2666,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input
                       name={`members[${i}].addOnsAmount`}
                       value={m.addOnsAmount}
-                      onChange={handleChange}
+                      onChange={handleChangeWithUnlock}
                       onBlur={handleBlur}
                     />
                   </div>
