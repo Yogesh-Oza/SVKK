@@ -116,6 +116,7 @@ export function createUploadRouter(env: Env) {
             checksum,
             updateMode: body.updateMode,
             status: CsvJobStatus.COMPLETED,
+            dryRun: false,
           },
           orderBy: { createdAt: "desc" },
         });
