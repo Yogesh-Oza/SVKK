@@ -15,6 +15,8 @@ export type ClaimListQuery = {
   page?: number;
   pageSize?: number;
   sort?: string;
+  policyId?: string;
+  svkkPublicId?: string;
 };
 
 export type ClaimFiltersMeta = {
@@ -116,11 +118,24 @@ export function buildClaimListWhere(scope: GeoScope, q: ClaimListQuery): Prisma.
     });
   }
 
+  const policyId = q.policyId?.trim();
+  const svkkPublicId = q.svkkPublicId?.trim();
+  if (policyId && svkkPublicId) {
+    parts.push({
+      OR: [{ policyId }, { svkkPublicId }],
+    });
+  } else if (policyId) {
+    parts.push({ policyId });
+  } else if (svkkPublicId) {
+    parts.push({ svkkPublicId });
+  }
+
   return parts.length > 1 ? { AND: parts } : scopeWhere;
 }
 
 const claimListSelect = {
   id: true,
+  policyId: true,
   claimNo: true,
   svkkPublicId: true,
   policyYear: true,

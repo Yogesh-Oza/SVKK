@@ -75,6 +75,7 @@ const claimListPagedQuerySchema = claimListFiltersSchema.extend({
   limit: z.coerce.number().min(1).max(100).default(20),
   cursor: z.string().optional(),
   svkkPublicId: z.string().optional(),
+  policyId: z.string().optional(),
   policyYear: z.string().optional(),
   village: z.string().optional(),
 });
@@ -92,6 +93,8 @@ function listFilterFromQuery(q: z.infer<typeof claimListPagedQuerySchema>): Clai
     sort: q.sort,
     page: q.page,
     pageSize: q.pageSize,
+    policyId: q.policyId,
+    svkkPublicId: q.svkkPublicId,
   };
 }
 

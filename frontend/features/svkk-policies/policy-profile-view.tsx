@@ -44,6 +44,7 @@ import {
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import type { PolicyListYearSibling } from "@/features/svkk-policies/policy-year-siblings";
+import { PolicyProfileClaimsTab } from "@/features/svkk-policies/policy-profile-claims-tab";
 import { yearChipLabel } from "@/features/svkk-policies/policy-year-display";
 
 /** Corporate blue palette aligned with insurance dashboard reference */
@@ -783,7 +784,11 @@ export function PolicyProfileView({
             </TabsContent>
 
             <TabsContent value="claims" className="mt-6">
-              <p className={cn("text-sm", profileTheme.subtext)}>No claims linked to this policy yet.</p>
+              <PolicyProfileClaimsTab
+                policyId={currentPolicyId}
+                svkkPublicId={row.insuredParty?.svkkPublicId}
+                subtextClassName={profileTheme.subtext}
+              />
             </TabsContent>
           </Tabs>
         </CardContent>

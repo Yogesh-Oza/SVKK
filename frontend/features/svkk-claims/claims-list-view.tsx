@@ -69,6 +69,7 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -92,6 +93,7 @@ type Claim = {
   claimType?: string | null;
   hospitalName?: string | null;
   matchStatus?: string | null;
+  policyId?: string | null;
   policy?: { policyNo: string | null } | null;
 };
 
@@ -718,7 +720,16 @@ export function ClaimsListView() {
                 rows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>
-                      {c.policy?.policyNo ?? "—"}
+                      {c.policyId && c.policy?.policyNo ? (
+                        <Link
+                          href={`/policies/${c.policyId}${c.policyYear ? `?year=${encodeURIComponent(c.policyYear)}` : ""}`}
+                          className="text-[#2563EB] hover:underline"
+                        >
+                          {c.policy.policyNo}
+                        </Link>
+                      ) : (
+                        (c.policy?.policyNo ?? "—")
+                      )}
                     </TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.claimNo}</TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>
