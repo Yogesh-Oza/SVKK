@@ -1,9 +1,51 @@
 import { describe, expect, it } from "vitest";
+import { Prisma } from "@prisma/client";
 import {
   buildPoliciesExportCsv,
   pickExportPolicyYear,
   type PolicyExportRow,
 } from "./policy.export-csv.js";
+
+function paymentRow(
+  overrides: Partial<PolicyExportRow["years"][number]["payments"][number]> = {},
+): PolicyExportRow["years"][number]["payments"][number] {
+  return {
+    id: "pay1",
+    policyYearId: "y1",
+    amount: new Prisma.Decimal(11872),
+    transactionNumber: "CH-000038",
+    transactionDate: new Date("2025-08-07T00:00:00.000Z"),
+    bankName: "HDFC Bank",
+    branchName: "Mumbai - 400028",
+    accountNumber: "AC-50100122747962",
+    nameAsPerCheque: "Keval J. Gala",
+    ifscCode: "HDFC0001119",
+    notOver: "8000",
+    dishonourReason: null,
+    returnCharges: null,
+    otherCharges: null,
+    status: "CLEARED",
+    method: "CHQ",
+    chequeId: "ch1",
+    cheque: {
+      number: "CH-000038",
+      status: "CLEARED",
+      bankName: "HDFC Bank",
+      accountNo: "AC-50100122747962",
+      branch: "Mumbai - 400028",
+      nameAsPerCheque: "Keval J. Gala",
+      ifsc: "HDFC0001119",
+      notOver: "8000",
+      chequeDate: new Date("2025-08-07T00:00:00.000Z"),
+      reason: null,
+    },
+    migratedRunId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deletedAt: null,
+    ...overrides,
+  };
+}
 
 function minimalRow(overrides: Partial<PolicyExportRow> = {}): PolicyExportRow {
   return {
@@ -203,13 +245,16 @@ describe("pickExportPolicyYear", () => {
 });
 
 describe("buildPoliciesExportCsv", () => {
-  it("includes extended member and payment columns in export", () => {
+  it("sizes columns to batch max members and omits payment columns when none", () => {
     const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
     const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
     expect(headerLine).toMatch(/^year,month,grouping,/);
     expect(headerLine).toContain("Member 1 Name");
     expect(headerLine).toContain("Member 2 Name");
-    expect(headerLine).toContain("Payment 2 amount");
+    expect(headerLine).toContain("Member 3 Name");
+    expect(headerLine).not.toContain("Member 4 Name");
+    expect(headerLine).toContain("mode of payment");
+    expect(headerLine).not.toContain("Payment 2 amount");
     expect(headerLine).toContain("PRE. END DATE");
     expect(headerLine).toContain("policy remarK");
     expect(headerLine).toContain("ref no");
@@ -217,5 +262,27 @@ describe("buildPoliciesExportCsv", () => {
     expect(dataLine).toContain("Member One");
     expect(dataLine).toContain("Member Three");
     expect(dataLine).toContain("REF-1");
+  });
+
+  it("exports two members and one payment without extra slots", () => {
+    const row = minimalRow({
+      years: [
+        {
+          ...minimalRow().years[0]!,
+          members: minimalRow().years[0]!.members.slice(0, 2),
+          payments: [paymentRow()],
+        },
+      ],
+    });
+    const csv = buildPoliciesExportCsv([row], new Set(["policy:scope_all"]), ["2026-27"]);
+    const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
+    expect(headerLine).toContain("Member 2 Name");
+    expect(headerLine).not.toContain("Member 3 Name");
+    expect(headerLine).toContain("mode of payment");
+    expect(headerLine).not.toContain("Payment 2 amount");
+    expect(dataLine).toContain("Member One");
+    expect(dataLine).toContain("Member Two");
+    expect(dataLine).not.toContain("Member Three");
+    expect(dataLine).toContain("CH-000038");
   });
 });

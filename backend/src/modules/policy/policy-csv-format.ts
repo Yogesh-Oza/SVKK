@@ -5,9 +5,11 @@ import {
 } from "../../lib/category-display.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
-  buildExtendedMemberHeaders,
+  buildPolicyCsvHeadersForExport,
+  resolveExportSlotCounts,
+} from "./policy-csv-export-layout.js";
+import {
   buildExtendedMemberSlotCells,
-  buildExtendedPaymentHeaders,
   buildFlatMember1Cells,
   buildAllPaymentSlotCells,
   buildPolicyCsvSampleDemoRow,
@@ -22,127 +24,25 @@ export { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport, csvPhoneCe
 /** Documented format version (not embedded as a required CSV row). */
 export const POLICY_CSV_VERSION = "v2";
 
-/** Canonical v2 flat column block (~106 columns). */
-export const POLICY_CSV_FLAT_HEADERS = [
-  "year",
-  "month",
-  "grouping",
-  "Customer ID",
-  "SVKK ID",
-  "Holder name",
-  "Holder PAN",
-  "Holder Aadhaar",
-  "previous policy no",
-  "PRE. END DATE",
-  "policy no",
-  "Policy start",
-  "Policy end",
-  "Person Count*",
-  "Insurance company",
-  "TPA",
-  "Product Type",
-  "Village",
-  "Category",
-  "Holder DOB",
-  "Holder gender",
-  "Holder age",
-  "Holder relationship",
-  "Persons insured",
-  "Sum insured",
-  "holder cumulative bonus",
-  "holder joining year",
-  "holder basic premium",
-  "mode of payment",
-  "policy_cheque_no",
-  "bank",
-  "account_no",
-  "branch",
-  "name_as_per_cheque",
-  "ifsc",
-  "not_over",
-  "cheque_date",
-  "cheque_status",
-  "reason_dishonoured",
-  "return charge",
-  "other carges",
-  "Gross premium",
-  "Tax %",
-  "Tax amount",
-  "SVKK premium",
-  "Net premium",
-  "VKK commission",
-  "Commission amount",
-  "Policy Holder Premium",
-  "Two lac floater",
-  "Gaam mahajan contribution",
-  "Excess / short",
-  "Diff paid by holder",
-  "loan_status",
-  "loan_amt",
-  "cd_account_status",
-  "cd_amount",
-  "Refund Cheque Amount",
-  "Refund Cheque Number",
-  "Refund Cheque Date",
-  "Member 1 Name",
-  "Member 1 DOB",
-  "Member 1 Relationship",
-  "Member 1 Gender",
-  "MEMBER 1 DATE OF JOINING",
-  "Member 1 Sum insured",
-  "Member 1 Basic premium",
-  "Member 1 Cumulative bonus",
-  "Member 1 Phone",
-  "Member 1 Age at entry",
-  "nominee_name",
-  "nominee_relation",
-  "nominee mobile",
-  "Address Line 1: House/Flat No, Building Name",
-  "Address Line 2: Street/Road Name",
-  "Address Line 3: Landmark / Locality",
-  "Address Line 4: Additional Details (optional)",
-  "area",
-  "city",
-  "pincode",
-  "Primary Mobile Number",
-  "Secondary Mobile Number",
-  "whatsapp",
-  "email",
-  "not_courier",
-  "courier_date",
-  "courier_address",
-  "pod",
-  "courier co",
-  "gen remark",
-  "policy remarK",
-  "ref no",
-  "Created at",
-  "Updated at",
-  "policy url",
-  "url",
-] as const;
+export {
+  POLICY_CSV_FLAT_HEADERS,
+  type PolicyCsvFlatHeader,
+} from "./policy-csv-flat-headers.js";
+
+import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 
 /** @deprecated Use POLICY_CSV_FLAT_HEADERS */
 export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
 
-export type PolicyCsvFlatHeader = (typeof POLICY_CSV_FLAT_HEADERS)[number];
-
-/** Full export: flat + extended member 2–12 + payment 2–8. */
+/** Widest import/tooling layout (12 members, 8 payments). */
 export function buildPolicyCsvHeaders(
   maxMembers = POLICY_CSV_MAX_MEMBER_SLOTS,
   maxPayments = POLICY_CSV_MAX_PAYMENT_SLOTS,
 ): string[] {
-  return [
-    ...POLICY_CSV_FLAT_HEADERS,
-    ...buildExtendedMemberHeaders(maxMembers),
-    ...buildExtendedPaymentHeaders(maxPayments),
-  ];
+  return buildPolicyCsvHeadersForExport(maxMembers, maxPayments);
 }
 
-/**
- * Policy list export headers (all member/payment slots).
- * Import sample (`buildPolicyCsvSample`) stays flat-only for simplicity.
- */
+/** Full-width headers (import round-trip, tests). */
 export const POLICY_CSV_EXPORT_HEADERS = buildPolicyCsvHeaders();
 
 export const POLICY_CSV_HEADERS = POLICY_CSV_EXPORT_HEADERS;
@@ -228,6 +128,7 @@ export function buildLegacyPolicyCsvCells(
   party: Record<string, unknown> | null,
   year: PolicyExportRow["years"][number] | undefined,
   categoryByKey: Map<string, CategoryRef>,
+  exportHeaders: string[],
 ): string[] {
   const members = year?.members ?? [];
   const payments = year?.payments ?? [];
@@ -317,7 +218,7 @@ export function buildLegacyPolicyCsvCells(
     ...buildAllPaymentSlotCells(payments, year?.paymentMode),
   };
 
-  return POLICY_CSV_EXPORT_HEADERS.map((h) => byHeader[h] ?? "");
+  return exportHeaders.map((h) => byHeader[h] ?? "");
 }
 
 export function buildPolicyCsvExportHeaderLine(): string {
@@ -343,13 +244,19 @@ export function buildLegacyPoliciesCsv(
   years: Array<PolicyExportRow["years"][number] | undefined>,
   categoryByKey: Map<string, CategoryRef>,
 ): string {
-  const lines = [buildPolicyCsvHeaderLine()];
+  const slotCounts = resolveExportSlotCounts(years);
+  const exportHeaders = buildPolicyCsvHeadersForExport(
+    slotCounts.maxMembers,
+    slotCounts.maxPayments,
+  );
+  const lines = [exportHeaders.map(csvCell).join(",")];
   for (let i = 0; i < rows.length; i++) {
     const cells = buildLegacyPolicyCsvCells(
       rows[i]!,
       partyByRow[i] ?? null,
       years[i],
       categoryByKey,
+      exportHeaders,
     );
     lines.push(cells.map(csvCell).join(","));
   }
