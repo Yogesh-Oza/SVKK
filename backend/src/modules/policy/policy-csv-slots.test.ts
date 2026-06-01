@@ -118,7 +118,7 @@ describe("policy CSV slots", () => {
 });
 
 describe("buildPoliciesExportCsv multiple slots", () => {
-  it("exports member 1 and payment 1 in flat columns only", () => {
+  it("exports all member and payment slots in policy list CSV", () => {
     const base = {
       id: "p1",
       insuredPartyId: "ip1",
@@ -245,12 +245,12 @@ describe("buildPoliciesExportCsv multiple slots", () => {
     const map = rowToHeaderMap(header, data);
 
     expect(map.get(memberSlotHeader(1, "Name"))).toBe("Member One");
-    expect(map.get(memberSlotHeader(2, "Name"))).toBeUndefined();
-    expect(map.get(memberSlotHeader(3, "Name"))).toBeUndefined();
-    expect(header).not.toContain("Member 2 Name");
-    expect(header).not.toContain("Payment 2 amount");
+    expect(map.get(memberSlotHeader(2, "Name"))).toBe("Member Two");
+    expect(map.get(memberSlotHeader(3, "Name"))).toBe("Member Three");
+    expect(header).toContain("Member 2 Name");
+    expect(header).toContain("Payment 2 amount");
     expect(map.get(paymentSlotHeader(1, "policy_cheque_no"))).toBe("CHQ-ONE");
     expect(map.get("mode of payment")).toBe("CHQ");
-    expect(map.get(paymentSlotHeader(2, "transactionNumber"))).toBeUndefined();
+    expect(map.get(paymentSlotHeader(2, "transactionNumber"))).toBe("UPI-TWO");
   });
 });

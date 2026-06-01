@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  POLICY_CSV_EXPORT_HEADERS,
   POLICY_CSV_FLAT_HEADERS,
   POLICY_CSV_VERSION,
   buildPolicyCsvExportHeaderLine,
@@ -17,13 +18,15 @@ describe("policy-csv-format v2", () => {
     expect(POLICY_CSV_FLAT_HEADERS).toContain("policy remarK");
   });
 
-  it("export header line matches flat v2 columns ending at url", () => {
+  it("export header line includes extended member and payment slots", () => {
     const headerLine = buildPolicyCsvExportHeaderLine();
     const [header] = parseCsv(`${headerLine}\r\n`);
-    expect(header?.at(-1)).toBe("url");
-    expect(header).toHaveLength(POLICY_CSV_FLAT_HEADERS.length);
-    expect(header).not.toContain("Member 2 Name");
-    expect(headerLine).not.toContain("Payment 2 amount");
+    expect(header).toHaveLength(POLICY_CSV_EXPORT_HEADERS.length);
+    expect(header).toContain("Member 1 Name");
+    expect(header).toContain("Member 2 Name");
+    expect(header).toContain("Payment 2 amount");
+    expect(header?.at(-1)).toBe("Payment 8 other carges");
+    expect(header?.indexOf("url")).toBeLessThan(header?.indexOf("Member 2 Name") ?? -1);
   });
 
   it("sample CSV has header row only without CSV_VERSION row", () => {

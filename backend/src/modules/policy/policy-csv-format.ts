@@ -127,10 +127,7 @@ export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
 
 export type PolicyCsvFlatHeader = (typeof POLICY_CSV_FLAT_HEADERS)[number];
 
-/** Policy list export uses flat v2 columns only (same as sample/import). */
-export const POLICY_CSV_EXPORT_HEADERS = POLICY_CSV_FLAT_HEADERS;
-
-/** Full export: flat + extended member 2–12 + payment 2–8 (optional / tooling). */
+/** Full export: flat + extended member 2–12 + payment 2–8. */
 export function buildPolicyCsvHeaders(
   maxMembers = POLICY_CSV_MAX_MEMBER_SLOTS,
   maxPayments = POLICY_CSV_MAX_PAYMENT_SLOTS,
@@ -142,7 +139,13 @@ export function buildPolicyCsvHeaders(
   ];
 }
 
-export const POLICY_CSV_HEADERS = buildPolicyCsvHeaders();
+/**
+ * Policy list export headers (all member/payment slots).
+ * Import sample (`buildPolicyCsvSample`) stays flat-only for simplicity.
+ */
+export const POLICY_CSV_EXPORT_HEADERS = buildPolicyCsvHeaders();
+
+export const POLICY_CSV_HEADERS = POLICY_CSV_EXPORT_HEADERS;
 
 export function normalizeCsvHeader(h: string): string {
   return h.trim().toLowerCase();

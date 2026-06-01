@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy CSV export — all members & payments**
+
+List export (`/policies/export.csv`) now uses `POLICY_CSV_EXPORT_HEADERS` = flat block + Member 2–12 + Payment 2–8 (was flat-only; slot data was built but dropped). Import sample CSV unchanged (flat + Member 1).
+
+## Previous task (completed)
+
 **Policy PATCH — premium fields not persisted**
 
 Root cause: `updatePolicy` built `PolicyYear` update data without `taxPercent`, `taxAmount`, `svkkPremium`, `netPremium`, `vkkCommission`, `gaamMahajanContribution`, etc. (API accepted them; DB never updated). Fixed via `policy-year-financial-fields.ts` shared by create + patch.
