@@ -58,6 +58,10 @@ export function PolicyProfileClaimsTab({
   const [rows, setRows] = useState<PolicyClaimRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const svkkSearch = svkkPublicId?.trim() ?? "";
+  const claimsRegisterHref = svkkSearch
+    ? `/claims?search=${encodeURIComponent(svkkSearch)}`
+    : "/claims";
 
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +112,7 @@ export function PolicyProfileClaimsTab({
     return (
       <p className={cn("text-sm", subtextClassName)}>
         No claims linked to this policy yet.{" "}
-        <Link href="/claims" className="text-[#2563EB] underline">
+        <Link href={claimsRegisterHref} className="text-[#2563EB] underline">
           View claims register
         </Link>
       </p>
@@ -119,14 +123,7 @@ export function PolicyProfileClaimsTab({
     <div className="space-y-3">
       <p className={cn("text-sm", subtextClassName)}>
         {rows.length} claim{rows.length === 1 ? "" : "s"} for this policy / SVKK ID.{" "}
-        <Link
-          href={
-            svkk
-              ? `/claims?search=${encodeURIComponent(svkk)}`
-              : "/claims"
-          }
-          className="text-[#2563EB] underline"
-        >
+        <Link href={claimsRegisterHref} className="text-[#2563EB] underline">
           Open full register
         </Link>
       </p>
