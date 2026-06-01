@@ -6,6 +6,7 @@ import {
   isCalcTriggerPath,
   parseInrForCalc,
   quoteFromStoredFormValues,
+  shouldApplyChartBasicToField,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
 
@@ -129,6 +130,22 @@ describe("isCalcTriggerPath", () => {
     expect(isCalcTriggerPath("customerId")).toBe(false);
     expect(isCalcTriggerPath("generalRemark")).toBe(false);
     expect(isCalcTriggerPath("vkkPremium")).toBe(false);
+  });
+});
+
+describe("shouldApplyChartBasicToField", () => {
+  it("fills empty fields from chart", () => {
+    expect(shouldApplyChartBasicToField("", 5993, false)).toBe(true);
+    expect(shouldApplyChartBasicToField("0", 5993, false)).toBe(true);
+  });
+
+  it("overwrites stale values when chart basic changes", () => {
+    expect(shouldApplyChartBasicToField("16889", 5993, false)).toBe(true);
+    expect(shouldApplyChartBasicToField("5,993", 5993, false)).toBe(false);
+  });
+
+  it("skips when user marked premium manual", () => {
+    expect(shouldApplyChartBasicToField("16889", 5993, true)).toBe(false);
   });
 });
 

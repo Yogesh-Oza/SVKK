@@ -75,6 +75,21 @@ export function shouldUnlockAutoCalc(
   return canEnableLiveAutoCalc(ctx) && !isHydrating && isCalcTriggerPath(path);
 }
 
+/**
+ * Whether live chart basic premium should overwrite a form field (create / carry-forward).
+ * Skips when the user manually edited the field; updates when empty or stale vs chart.
+ */
+export function shouldApplyChartBasicToField(
+  currentValue: string,
+  chartBasic: number,
+  isManual: boolean,
+): boolean {
+  if (isManual || chartBasic <= 0) {
+    return false;
+  }
+  return parseInrForCalc(currentValue) !== chartBasic;
+}
+
 /** Parse INR-style numeric strings from form fields. */
 export function parseInrForCalc(value: string): number {
   const cleaned = value.replace(/,/g, "").trim();

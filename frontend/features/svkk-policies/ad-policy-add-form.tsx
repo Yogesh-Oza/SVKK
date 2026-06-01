@@ -75,7 +75,11 @@ import {
   type SvkkPolicyDetailForForm,
 } from "./ad-policy-detail-to-form";
 import { PolicyDriveUploadButton } from "./policy-drive-upload";
-import { quoteFromStoredFormValues, shouldUnlockAutoCalc } from "./ad-policy-auto-calc";
+import {
+  quoteFromStoredFormValues,
+  shouldApplyChartBasicToField,
+  shouldUnlockAutoCalc,
+} from "./ad-policy-auto-calc";
 
 export type { AdMemberRow } from "./ad-member-types";
 
@@ -747,18 +751,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       holderRow &&
       !holderRow.error &&
       typeof holderRow.basic === "number" &&
-      holderRow.basic > 0 &&
-      !premiumManual.basicPremiumPs &&
-      parseInr(values.basicPremiumPs) === 0
+      shouldApplyChartBasicToField(
+        values.basicPremiumPs,
+        holderRow.basic,
+        Boolean(premiumManual.basicPremiumPs),
+      )
     ) {
       void setFieldValue("basicPremiumPs", String(holderRow.basic));
     }
     values.members.forEach((member, index) => {
       const row = liveQuote.rows[index + 1];
-      if (!row || row.error || typeof row.basic !== "number" || row.basic <= 0) return;
+      if (!row || row.error || typeof row.basic !== "number") return;
       const manualKey = `members[${index}].basicPremium`;
-      if (premiumManual[manualKey]) return;
-      if (parseInr(member.basicPremium) > 0) return;
+      if (
+        !shouldApplyChartBasicToField(
+          member.basicPremium,
+          row.basic,
+          Boolean(premiumManual[manualKey]),
+        )
+      ) {
+        return;
+      }
       void setFieldValue(`members[${index}].basicPremium`, String(row.basic));
     });
   }, [autoCalcLocked, liveQuote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
@@ -2583,7 +2596,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input
                       name="basicPremiumPs"
                       value={values.basicPremiumPs}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        markPremiumManual("basicPremiumPs");
+                        handleChange(e);
+                      }}
                       onBlur={handleBlur}
                       inputMode="decimal"
                       placeholder="e.g. 5000"
@@ -2708,7 +2724,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     <Input
                       name={`members[${i}].basicPremium`}
                       value={m.basicPremium}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        markPremiumManual(`members[${i}].basicPremium`);
+                        handleChange(e);
+                      }}
                       onBlur={handleBlur}
                       inputMode="decimal"
                       placeholder="e.g. 5000"

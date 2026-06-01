@@ -49,12 +49,15 @@ AD policy form: **disable live auto-calculation on fetch / edit / update**; keep
 
 **Calc-trigger fields (unlock only in live/create mode):** `adProduct`, `sumInsured`, `person`, DOB/dates, holder gender/relation/add-ons, `members[*]`, add/remove member.
 
+**Live basic premium sync:** In create/carry-forward (`!autoCalcLocked`), holder/member `basicPremium` fields sync from chart when DOB or other calc inputs change—not only when the field was empty. `shouldApplyChartBasicToField` skips overwrite when `premiumManual` is set (user typed in Basic Premium).
+
 **Manual verify**
 
-1. Add policy → change DOB/sum insured → summary **Ready**, premiums update.
-2. Fetch policy for update → change DOB → stays **Stored**, totals unchanged by effects.
+1. Add policy → change member DOB → summary **Ready** and member Basic Premium input matches table (e.g. 5993 not stale 16889).
+2. Fetch policy for update → change DOB → stays **Stored**, form basics unchanged.
 3. Edit policy → same as (2).
-4. Carry forward → change DOB → **Ready**, live calc resumes.
+4. Carry forward → change DOB → **Ready**, basics update from chart.
+5. Manually type member Basic Premium → change DOB → manual value preserved.
 
 `fetchedPolicyForUpdate` also gates submit (Update vs Create) and auto-id lock.
 
