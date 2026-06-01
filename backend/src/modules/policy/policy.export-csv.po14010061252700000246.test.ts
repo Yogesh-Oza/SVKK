@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
-import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
+import { buildPolicyCsvHeadersForExport } from "./policy-csv-export-layout.js";
 import { parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
   buildPoliciesExportCsv,
@@ -215,9 +215,10 @@ describe("PO- 14010061252700000246 export", () => {
       ["2025-26"],
     );
     const [header, data] = parseCsv(csv.replace(/^\uFEFF/, ""));
-    expect(header?.slice(0, POLICY_CSV_FLAT_HEADERS.length)).toEqual([
-      ...POLICY_CSV_FLAT_HEADERS,
-    ]);
+    expect(header).toEqual(buildPolicyCsvHeadersForExport(2, 1));
+    expect(header?.indexOf(memberSlotHeader(2, "Name"))).toBeLessThan(
+      header?.indexOf("nominee_name") ?? -1,
+    );
     const map = rowToHeaderMap(header!, data!);
 
     expect(map.get("policy no")).toBe("PO- 14010061252700000246");

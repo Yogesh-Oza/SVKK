@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import {
+  buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
   flatMember1FieldHeaders,
   flatPayment1FieldHeaders,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
-import { memberSlotHeader } from "./policy-csv-slots.js";
+import { memberSlotHeader, paymentSlotHeader } from "./policy-csv-slots.js";
 
 describe("resolveExportSlotCounts", () => {
   it("uses batch max members and payments", () => {
@@ -26,20 +27,23 @@ describe("resolveExportSlotCounts", () => {
 });
 
 describe("buildPolicyCsvHeadersForExport", () => {
-  it("includes the full flat template when counts are zero (blank member/payment slots)", () => {
+  it("includes every flat column once in export order (1 member, 1 payment)", () => {
     const headers = buildPolicyCsvHeadersForExport(0, 0);
-    expect(headers).toEqual([...POLICY_CSV_FLAT_HEADERS]);
+    expect(new Set(headers)).toEqual(new Set(POLICY_CSV_FLAT_HEADERS));
+    expect(headers).toEqual(buildPolicyCsvFlatExportHeaders());
   });
 
-  it("matches flat column order and appends member 2 only when needed", () => {
-    const headers = buildPolicyCsvHeadersForExport(2, 1);
-    expect(headers.slice(0, POLICY_CSV_FLAT_HEADERS.length)).toEqual([
-      ...POLICY_CSV_FLAT_HEADERS,
-    ]);
-    expect(headers).toContain(memberSlotHeader(2, "Name"));
+  it("groups payments then members before nominee/address tail", () => {
+    const headers = buildPolicyCsvHeadersForExport(2, 2);
+    expect(headers.indexOf("mode of payment")).toBeLessThan(headers.indexOf("Gross premium"));
+    expect(headers.indexOf(paymentSlotHeader(2, "amount"))).toBeLessThan(
+      headers.indexOf("Gross premium"),
+    );
+    expect(headers.indexOf("Gross premium")).toBeLessThan(headers.indexOf("Member 1 Name"));
+    expect(headers.indexOf("Member 1 Name")).toBeLessThan(headers.indexOf(memberSlotHeader(2, "Name")));
+    expect(headers.indexOf(memberSlotHeader(2, "Name"))).toBeLessThan(headers.indexOf("nominee_name"));
+    expect(headers.indexOf("url")).toBeGreaterThan(headers.indexOf(memberSlotHeader(2, "Name")));
     expect(headers).not.toContain(memberSlotHeader(3, "Name"));
-    expect(headers).not.toContain("Payment 2 amount");
-    expect(headers.indexOf("url")).toBeLessThan(headers.indexOf(memberSlotHeader(2, "Name")));
   });
 
   it("adds payment 2 columns only when maxPayments >= 2", () => {

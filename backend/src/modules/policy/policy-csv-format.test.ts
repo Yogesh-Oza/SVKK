@@ -18,15 +18,17 @@ describe("policy-csv-format v2", () => {
     expect(POLICY_CSV_FLAT_HEADERS).toContain("policy remarK");
   });
 
-  it("export header line includes extended member and payment slots", () => {
+  it("export header line includes extended member and payment slots in grouped order", () => {
     const headerLine = buildPolicyCsvExportHeaderLine();
     const [header] = parseCsv(`${headerLine}\r\n`);
     expect(header).toHaveLength(POLICY_CSV_EXPORT_HEADERS.length);
     expect(header).toContain("Member 1 Name");
     expect(header).toContain("Member 2 Name");
     expect(header).toContain("Payment 2 amount");
-    expect(header?.at(-1)).toBe("Payment 8 other carges");
-    expect(header?.indexOf("url")).toBeLessThan(header?.indexOf("Member 2 Name") ?? -1);
+    expect(header?.at(-1)).toBe("url");
+    expect(header?.indexOf("Payment 2 amount")).toBeLessThan(header?.indexOf("Gross premium") ?? -1);
+    expect(header?.indexOf("Member 2 Name")).toBeLessThan(header?.indexOf("nominee_name") ?? -1);
+    expect(header?.indexOf("url")).toBeGreaterThan(header?.indexOf("Member 2 Name") ?? -1);
   });
 
   it("sample CSV has header row only without CSV_VERSION row", () => {

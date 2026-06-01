@@ -247,12 +247,13 @@ describe("pickExportPolicyYear", () => {
 });
 
 describe("buildPoliciesExportCsv", () => {
-  it("export header row includes every flat template column in canonical order", () => {
+  it("export header row includes every flat column in grouped export order", () => {
     const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
     const [header] = parseCsv(csv.replace(/^\uFEFF/, ""));
-    expect(header?.slice(0, POLICY_CSV_FLAT_HEADERS.length)).toEqual([
-      ...POLICY_CSV_FLAT_HEADERS,
-    ]);
+    for (const col of POLICY_CSV_FLAT_HEADERS) {
+      expect(header).toContain(col);
+    }
+    expect(header?.indexOf("Member 3 Name")).toBeLessThan(header?.indexOf("nominee_name") ?? -1);
     expect(header).toContain("Address Line 1: House/Flat No, Building Name");
     expect(header).toContain("policy remarK");
     expect(header).toContain("PRE. END DATE");
@@ -272,7 +273,7 @@ describe("buildPoliciesExportCsv", () => {
     expect(headerLine).toContain("PRE. END DATE");
     expect(headerLine).toContain("policy remarK");
     expect(headerLine).toContain("ref no");
-    expect(headerLine.indexOf("url")).toBeLessThan(headerLine.indexOf("Member 2 Name"));
+    expect(headerLine.indexOf("Member 2 Name")).toBeLessThan(headerLine.indexOf("nominee_name"));
     expect(dataLine).toContain("Member One");
     expect(dataLine).toContain("Member Three");
     expect(dataLine).toContain("REF-1");

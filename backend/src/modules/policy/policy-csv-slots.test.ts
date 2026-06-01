@@ -61,7 +61,8 @@ describe("policy CSV slots", () => {
     expect(headers).toContain(paymentSlotHeader(2, "amount"));
     expect(headers).toContain(paymentSlotHeader(2, "policy_cheque_no"));
     expect(headers.indexOf("Member 1 Name")).toBeLessThan(headers.indexOf("url"));
-    expect(headers.indexOf("Member 2 Name")).toBeGreaterThan(headers.indexOf("url"));
+    expect(headers.indexOf("Member 2 Name")).toBeLessThan(headers.indexOf("nominee_name"));
+    expect(headers.indexOf("Member 2 Name")).toBeGreaterThan(headers.indexOf("Member 1 Name"));
   });
 
   it("sample CSV uses flat v2 headers with Member 1 only", () => {

@@ -5,6 +5,7 @@ import {
 } from "../../lib/category-display.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
+  buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
@@ -235,7 +236,7 @@ export function buildPolicyCsvHeaderLine(): string {
 
 /** Sample CSV: flat v2 headers + one demo row (no CSV_VERSION row). */
 export function buildPolicyCsvSample(): string {
-  const sampleHeaders = [...POLICY_CSV_FLAT_HEADERS];
+  const sampleHeaders = buildPolicyCsvFlatExportHeaders();
   const demo = buildPolicyCsvSampleDemoRow();
   const headerLine = sampleHeaders.map(csvCell).join(",");
   const cells = sampleHeaders.map((h) => demo[h] ?? "");

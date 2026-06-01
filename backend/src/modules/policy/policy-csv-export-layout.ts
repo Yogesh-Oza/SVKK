@@ -76,9 +76,34 @@ export function resolveExportSlotCounts(
   return clampExportSlotCounts({ maxMembers, maxPayments });
 }
 
+/** Payment slots 1…N contiguous (slot 1 = flat cheque block). */
+export function buildAllPaymentHeaders(maxPayments: number): string[] {
+  const headers: string[] = [];
+  if (maxPayments >= 1) {
+    headers.push(...POLICY_CSV_FLAT_PAYMENT1_HEADERS);
+  }
+  if (maxPayments >= 2) {
+    headers.push(...buildExtendedPaymentHeaders(maxPayments));
+  }
+  return headers;
+}
+
+/** Member slots 1…N contiguous (slot 1 = flat Member 1 block), before nominee/address tail. */
+export function buildAllMemberHeaders(maxMembers: number): string[] {
+  const headers: string[] = [];
+  if (maxMembers >= 1) {
+    headers.push(...POLICY_CSV_FLAT_MEMBER1_HEADERS);
+  }
+  if (maxMembers >= 2) {
+    headers.push(...buildExtendedMemberHeaders(maxMembers));
+  }
+  return headers;
+}
+
 /**
- * Builds export headers: always the full flat template (Member 1 + Payment 1 in canonical order),
- * then optional Member 2…N / Payment 2…N when the batch needs more slots.
+ * Export column order:
+ * core → Payment 1…N → premium/loan → Member 1…N → nominee/address/… (tail).
+ * Members and payments are never appended after `url`.
  */
 export function buildPolicyCsvHeadersForExport(
   maxMembers: number,
@@ -89,14 +114,18 @@ export function buildPolicyCsvHeadersForExport(
     maxPayments,
   });
 
-  const headers: string[] = [...POLICY_CSV_FLAT_HEADERS];
-  if (members >= 2) {
-    headers.push(...buildExtendedMemberHeaders(members));
-  }
-  if (payments >= 2) {
-    headers.push(...buildExtendedPaymentHeaders(payments));
-  }
-  return headers;
+  return [
+    ...POLICY_CSV_FLAT_CORE_HEADERS,
+    ...buildAllPaymentHeaders(payments),
+    ...POLICY_CSV_FLAT_PREMIUM_HEADERS,
+    ...buildAllMemberHeaders(members),
+    ...POLICY_CSV_FLAT_TAIL_HEADERS,
+  ];
+}
+
+/** Full flat column set in export order (1 member, 1 payment) — use for samples and width tests. */
+export function buildPolicyCsvFlatExportHeaders(): string[] {
+  return buildPolicyCsvHeadersForExport(1, 1);
 }
 
 /** Member 1 field headers in flat block (for tests). */
