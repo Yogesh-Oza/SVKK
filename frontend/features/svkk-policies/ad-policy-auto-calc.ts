@@ -47,14 +47,32 @@ export function isCalcTriggerPath(path: string): boolean {
   );
 }
 
+/** Policy form context that controls whether live chart auto-calculation may run. */
+export type AutoCalcContext = {
+  isEdit: boolean;
+  fetchedForUpdate: boolean;
+};
+
+/**
+ * Live auto-calc is allowed only on create-new and carry-forward (not fetch/edit/update).
+ */
+export function canEnableLiveAutoCalc(ctx: AutoCalcContext): boolean {
+  return !ctx.isEdit && !ctx.fetchedForUpdate;
+}
+
 /**
  * Whether auto-calc should unlock for a user-driven change (not during programmatic hydrate).
  *
  * @param path - Field path passed to `setFieldValue` or input `name`.
  * @param isHydrating - True while `loadPolicyDetailIntoForm` / edit `resetForm` runs.
+ * @param ctx - Edit or fetch-for-update flows keep stored premiums (no unlock).
  */
-export function shouldUnlockAutoCalc(path: string, isHydrating: boolean): boolean {
-  return !isHydrating && isCalcTriggerPath(path);
+export function shouldUnlockAutoCalc(
+  path: string,
+  isHydrating: boolean,
+  ctx: AutoCalcContext,
+): boolean {
+  return canEnableLiveAutoCalc(ctx) && !isHydrating && isCalcTriggerPath(path);
 }
 
 /** Parse INR-style numeric strings from form fields. */

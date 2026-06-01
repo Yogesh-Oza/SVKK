@@ -618,11 +618,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [autoCalcLocked, setAutoCalcLocked] = useState(false);
   const isHydratingRef = useRef(false);
 
-  const tryUnlockAutoCalc = useCallback((path: string) => {
-    if (shouldUnlockAutoCalc(path, isHydratingRef.current)) {
-      setAutoCalcLocked(false);
-    }
-  }, []);
+  const autoCalcContext = useMemo(
+    () => ({ isEdit, fetchedForUpdate: Boolean(fetchedPolicyForUpdate) }),
+    [isEdit, fetchedPolicyForUpdate],
+  );
+
+  const tryUnlockAutoCalc = useCallback(
+    (path: string) => {
+      if (shouldUnlockAutoCalc(path, isHydratingRef.current, autoCalcContext)) {
+        setAutoCalcLocked(false);
+      }
+    },
+    [autoCalcContext],
+  );
 
   const setFieldValueWithUnlock = useCallback(
     (field: string, value: unknown, shouldValidate?: boolean) => {
@@ -2037,7 +2045,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <CardContent className="space-y-4">
                 {autoCalcLocked ? (
                   <p className="text-muted-foreground text-sm">
-                    Showing saved premiums from the loaded policy. Edit DOB, sum insured, policy type, or members to recalculate.
+                    Showing saved premiums from the loaded policy. Auto-calculation is off for fetch and edit;
+                    use Create or Carry forward for live calculation.
                   </p>
                 ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

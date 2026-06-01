@@ -25,29 +25,38 @@ Standalone Next.js + Express insurance management system for policy registration
 
 **Manual verify:** Carry forward cheque policy → switch to Cash → save → detail view and reload show Cash without bank lines; `PolicyYear.bankName` / payment row bank columns null.
 
-## Previous task (completed)
+## Current task (completed)
 
-AD policy Add/Edit form: **hydration lock** for premium auto-calculation — load DB values without chart sync until the user edits a calc-trigger field.
+AD policy form: **disable live auto-calculation on fetch / edit / update**; keep live calc for **create** and **carry forward** only.
 
 ## Policy form auto-calculation
 
-| State | When | Behavior |
-|-------|------|----------|
-| `autoCalcLocked = true` | After fetch-by-SVKK load or edit `resetForm` | Premium/age rollup `useEffect`s skipped; Calculated Premium Summary uses **stored** amounts (`quoteFromStoredFormValues`) |
-| `autoCalcLocked = false` | New blank add, carry forward, or user edits calc field | Live `quoteFromInput` + existing sync into Premium Details |
-| Carry forward | Renew workflow | Clears premium fields, `autoCalcLocked = false` — immediate chart recalc (unchanged) |
+| Mode | When | `autoCalcLocked` | Unlock on user edit? |
+|------|------|------------------|----------------------|
+| **Stored** | Fetch policy (update flow), edit policy page | `true` after hydrate | **No** — `canEnableLiveAutoCalc` false when `isEdit` or `fetchedPolicyForUpdate` |
+| **Live** | New add (blank form), carry forward | `false` after carry forward | **Yes** — calc-trigger fields call `shouldUnlockAutoCalc` with create context |
+
+| State | Behavior |
+|-------|----------|
+| `autoCalcLocked = true` | Premium/age rollup `useEffect`s skipped; Calculated Premium Summary uses **stored** amounts (`quoteFromStoredFormValues`); summary badge **Stored** |
+| `autoCalcLocked = false` | Live `quoteFromInput` + sync into Premium Details; badge **Ready** |
 
 **Key files**
 
-- `frontend/features/svkk-policies/ad-policy-auto-calc.ts` — trigger paths, `shouldUnlockAutoCalc`, stored quote display
-- `frontend/features/svkk-policies/ad-policy-add-form.tsx` — `autoCalcLocked`, hydrate ref, unlock on `setFieldValueWithUnlock` / member actions
+- `frontend/features/svkk-policies/ad-policy-auto-calc.ts` — `canEnableLiveAutoCalc`, `shouldUnlockAutoCalc(path, isHydrating, ctx)`, stored quote display
+- `frontend/features/svkk-policies/ad-policy-add-form.tsx` — `autoCalcContext` (`isEdit`, `fetchedForUpdate`), hydrate sets lock, carry forward clears lock
 - `frontend/features/svkk-policies/ad-policy-auto-calc.test.ts` — unit tests (Vitest)
 
-**Calc-trigger fields (unlock):** `adProduct`, `sumInsured`, `person`, DOB/dates, holder gender/relation/add-ons, `members[*]`, add/remove member.
+**Calc-trigger fields (unlock only in live/create mode):** `adProduct`, `sumInsured`, `person`, DOB/dates, holder gender/relation/add-ons, `members[*]`, add/remove member.
 
-**Not calc-trigger:** customer ID, address, remarks, payment fields, SVKK display IDs.
+**Manual verify**
 
-`fetchedPolicyForUpdate` remains separate (Update vs Create submit, auto-id lock).
+1. Add policy → change DOB/sum insured → summary **Ready**, premiums update.
+2. Fetch policy for update → change DOB → stays **Stored**, totals unchanged by effects.
+3. Edit policy → same as (2).
+4. Carry forward → change DOB → **Ready**, live calc resumes.
+
+`fetchedPolicyForUpdate` also gates submit (Update vs Create) and auto-id lock.
 
 ## Previous task (completed)
 

@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_CHARTS, SAMPLE_DEFS } from "../../lib/svkk/premium/sample-data";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 import {
+  canEnableLiveAutoCalc,
   isCalcTriggerPath,
   parseInrForCalc,
   quoteFromStoredFormValues,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
+
+const createCtx = { isEdit: false, fetchedForUpdate: false };
+const editCtx = { isEdit: true, fetchedForUpdate: false };
+const fetchedCtx = { isEdit: false, fetchedForUpdate: true };
 
 function minimalFormValues(overrides: Partial<AdPolicyFormValues>): AdPolicyFormValues {
   return {
@@ -127,14 +132,31 @@ describe("isCalcTriggerPath", () => {
   });
 });
 
-describe("shouldUnlockAutoCalc", () => {
-  it("returns false while hydrating", () => {
-    expect(shouldUnlockAutoCalc("sumInsured", true)).toBe(false);
+describe("canEnableLiveAutoCalc", () => {
+  it("allows live calc on create and carry-forward context", () => {
+    expect(canEnableLiveAutoCalc(createCtx)).toBe(true);
   });
 
-  it("returns true for calc fields when not hydrating", () => {
-    expect(shouldUnlockAutoCalc("dob", false)).toBe(true);
-    expect(shouldUnlockAutoCalc("policyNo", false)).toBe(false);
+  it("blocks live calc on edit or fetch-for-update", () => {
+    expect(canEnableLiveAutoCalc(editCtx)).toBe(false);
+    expect(canEnableLiveAutoCalc(fetchedCtx)).toBe(false);
+  });
+});
+
+describe("shouldUnlockAutoCalc", () => {
+  it("returns false while hydrating", () => {
+    expect(shouldUnlockAutoCalc("sumInsured", true, createCtx)).toBe(false);
+  });
+
+  it("returns true for calc fields on create when not hydrating", () => {
+    expect(shouldUnlockAutoCalc("dob", false, createCtx)).toBe(true);
+    expect(shouldUnlockAutoCalc("policyNo", false, createCtx)).toBe(false);
+  });
+
+  it("never unlocks on edit or fetch-for-update even for calc fields", () => {
+    expect(shouldUnlockAutoCalc("dob", false, editCtx)).toBe(false);
+    expect(shouldUnlockAutoCalc("sumInsured", false, fetchedCtx)).toBe(false);
+    expect(shouldUnlockAutoCalc("members[0].dob", false, editCtx)).toBe(false);
   });
 });
 
