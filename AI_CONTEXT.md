@@ -6,6 +6,26 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy PATCH — premium fields not persisted**
+
+Root cause: `updatePolicy` built `PolicyYear` update data without `taxPercent`, `taxAmount`, `svkkPremium`, `netPremium`, `vkkCommission`, `gaamMahajanContribution`, etc. (API accepted them; DB never updated). Fixed via `policy-year-financial-fields.ts` shared by create + patch.
+
+**Re-save** affected policies after deploy to backfill values that were lost on prior edits.
+
+## Previous task (completed)
+
+**Policy CSV export — premium fallbacks & Excel-safe phones**
+
+| Fix | Location |
+|-----|----------|
+| `resolveYearPremiumForExport` (same fallbacks as policy detail UI) | `policy-csv-export-resolve.ts` |
+| `formatPhoneForCsvExport` / `csvPhoneCell` (tab + 10-digit local) | `policy-csv-utils.ts` |
+| Wired into export + member phones | `policy-csv-format.ts`, `policy-csv-slots.ts` |
+
+**Tests:** `policy-csv-export-resolve.test.ts` (vitest).
+
+## Previous task (completed)
+
 **Payment-mode field sanitization** — after Carry Forward, changing Mode of Payment (e.g. Cheque → Cash) no longer persists hidden bank/cheque data.
 
 | Layer | Role |

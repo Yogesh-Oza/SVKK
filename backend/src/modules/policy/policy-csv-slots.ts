@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { PayMethod, ChequeStatus } from "@prisma/client";
 import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
-import { fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
+import { fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
@@ -168,8 +168,9 @@ function memberFieldValue(member: YearMember | undefined, key: MemberSlotFieldKe
     case "name":
     case "relationship":
     case "gender":
-    case "memberPhone":
       return member[key] ?? "";
+    case "memberPhone":
+      return formatPhoneForCsvExport(member[key] ?? "");
     case "dob":
     case "dateOfJoining":
       return fmtCsvDate(member[key]);

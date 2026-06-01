@@ -14,9 +14,10 @@ import {
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
-import { csvCell, fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
+import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
+import { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
 
-export { csvCell, fmtCsvDate, fmtCsvDecimal } from "./policy-csv-utils.js";
+export { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport, csvPhoneCell } from "./policy-csv-utils.js";
 
 /** Documented format version (not embedded as a required CSV row). */
 export const POLICY_CSV_VERSION = "v2";
@@ -227,6 +228,7 @@ export function buildLegacyPolicyCsvCells(
 ): string[] {
   const members = year?.members ?? [];
   const payments = year?.payments ?? [];
+  const premium = resolveYearPremiumForExport(year);
   const category = formatCategoryLabel(
     r.category ? { id: "", key: r.category.key, name: r.category.name } : null,
     r.categoryText,
@@ -262,22 +264,18 @@ export function buildLegacyPolicyCsvCells(
     "holder cumulative bonus": fmtCsvDecimal(year?.holderCumulativeBonus),
     "holder joining year": year?.holderJoiningYear ?? "",
     "holder basic premium": fmtCsvDecimal(year?.holderBasicPremium),
-    "Gross premium": fmtCsvDecimal(year?.grossPremium),
-    "Tax %": fmtCsvDecimal(year?.taxPercent),
-    "Tax amount": fmtCsvDecimal(year?.taxAmount),
-    "SVKK premium": fmtCsvDecimal(year?.svkkPremium),
-    "Net premium": fmtCsvDecimal(year?.netPremium),
-    "VKK commission": fmtCsvDecimal(year?.vkkCommission),
-    "Commission amount": fmtCsvDecimal(year?.commissionAmount),
-    "Policy Holder Premium": fmtCsvDecimal(
-      year?.yearPolicyHolderPremium ?? year?.policyHolderContribution,
-    ),
-    "Two lac floater": fmtCsvDecimal(year?.twoLacFloater ?? year?.premiumOneOrTwoLakh),
-    "Gaam mahajan contribution": fmtCsvDecimal(year?.gaamMahajanContribution),
-    "Excess / short": fmtCsvDecimal(year?.excessShortAmount),
-    "Diff paid by holder": fmtCsvDecimal(
-      year?.diffPaidByHolder ?? year?.differenceAmountPaidByHolder,
-    ),
+    "Gross premium": fmtCsvDecimal(premium.grossPremium),
+    "Tax %": fmtCsvDecimal(premium.taxPercent),
+    "Tax amount": fmtCsvDecimal(premium.taxAmount),
+    "SVKK premium": fmtCsvDecimal(premium.svkkPremium),
+    "Net premium": fmtCsvDecimal(premium.netPremium),
+    "VKK commission": fmtCsvDecimal(premium.vkkCommission),
+    "Commission amount": fmtCsvDecimal(premium.commissionAmount),
+    "Policy Holder Premium": fmtCsvDecimal(premium.yearPolicyHolderPremium),
+    "Two lac floater": fmtCsvDecimal(premium.twoLacFloater),
+    "Gaam mahajan contribution": fmtCsvDecimal(premium.gaamMahajanContribution),
+    "Excess / short": fmtCsvDecimal(premium.excessShortAmount),
+    "Diff paid by holder": fmtCsvDecimal(premium.diffPaidByHolder),
     loan_status: r.loanStatus ?? "",
     loan_amt: fmtCsvDecimal(r.loanAmount),
     cd_account_status: cdAccountStatusLabel(r.cdAccountUsed),
@@ -287,7 +285,7 @@ export function buildLegacyPolicyCsvCells(
     "Refund Cheque Date": fmtCsvDate(r.refundChequeDate),
     nominee_name: r.nomineeName ?? "",
     nominee_relation: r.nomineeRelation ?? "",
-    "nominee mobile": r.contactPhone ?? "",
+    "nominee mobile": formatPhoneForCsvExport(r.contactPhone),
     "Address Line 1: House/Flat No, Building Name": r.addressLine1 ?? "",
     "Address Line 2: Street/Road Name": r.addressLine2 ?? "",
     "Address Line 3: Landmark / Locality": r.addressLine3 ?? "",
@@ -295,9 +293,9 @@ export function buildLegacyPolicyCsvCells(
     area: r.area ?? "",
     city: r.city ?? "",
     pincode: r.pincode ?? "",
-    "Primary Mobile Number": String(party?.mobile ?? ""),
-    "Secondary Mobile Number": r.mobileSecondary ?? "",
-    whatsapp: r.whatsappNo ?? "",
+    "Primary Mobile Number": formatPhoneForCsvExport(String(party?.mobile ?? "")),
+    "Secondary Mobile Number": formatPhoneForCsvExport(r.mobileSecondary),
+    whatsapp: formatPhoneForCsvExport(r.whatsappNo),
     email: String(party?.email ?? ""),
     not_courier: r.courierStatus ?? "",
     courier_date: fmtCsvDate(r.courierDate),

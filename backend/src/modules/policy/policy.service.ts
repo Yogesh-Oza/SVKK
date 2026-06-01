@@ -17,6 +17,10 @@ import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { dispatchPolicyCreated, dispatchPolicyNumberOrDocumentUpdated } from "../../services/notification/notification-dispatch.js";
 import {
+  policyYearFinancialCreateData,
+  policyYearFinancialPatchData,
+} from "./policy-year-financial-fields.js";
+import {
   createPolicyBodySchema,
   type PolicyMemberReplaceRow,
   type PaymentReplaceRow,
@@ -302,18 +306,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         bankAccountLast4: yearPaymentSummary.bankAccountLast4 ?? undefined,
         utrRef: yearPaymentSummary.utrRef ?? undefined,
         yearRemarks: input.yearRemarks ?? undefined,
-        holderCumulativeBonus: input.holderCumulativeBonus != null ? input.holderCumulativeBonus : undefined,
-        holderJoiningYear: input.holderJoiningYear ?? undefined,
-        holderBasicPremium: input.holderBasicPremium != null ? input.holderBasicPremium : undefined,
-        vkkPremium: input.vkkPremium != null ? input.vkkPremium : undefined,
-        grossPremium: input.grossPremium != null ? input.grossPremium : undefined,
-        commissionAmount: input.commissionAmount != null ? input.commissionAmount : undefined,
-        twoLacFloater: input.twoLacFloater != null ? input.twoLacFloater : undefined,
-        yearPolicyHolderPremium:
-          input.yearPolicyHolderPremium != null ? input.yearPolicyHolderPremium : undefined,
-        gaamMahajanVkk: input.gaamMahajanVkk != null ? input.gaamMahajanVkk : undefined,
-        excessShortAmount: input.excessShortAmount != null ? input.excessShortAmount : undefined,
-        diffPaidByHolder: input.diffPaidByHolder != null ? input.diffPaidByHolder : undefined,
+        ...policyYearFinancialCreateData(input),
       },
     });
 
@@ -1038,21 +1031,7 @@ export async function updatePolicySections(input: {
           ...(yv.bankAccountLast4 !== undefined ? { bankAccountLast4 } : {}),
           ...(yv.utrRef !== undefined ? { utrRef } : {}),
           ...(yv.yearRemarks !== undefined ? { yearRemarks: yv.yearRemarks } : {}),
-          ...(yv.vkkPremium !== undefined ? { vkkPremium: yv.vkkPremium } : {}),
-          ...(yv.grossPremium !== undefined ? { grossPremium: yv.grossPremium } : {}),
-          ...(yv.commissionAmount !== undefined ? { commissionAmount: yv.commissionAmount } : {}),
-          ...(yv.twoLacFloater !== undefined ? { twoLacFloater: yv.twoLacFloater } : {}),
-          ...(yv.yearPolicyHolderPremium !== undefined
-            ? { yearPolicyHolderPremium: yv.yearPolicyHolderPremium }
-            : {}),
-          ...(yv.gaamMahajanVkk !== undefined ? { gaamMahajanVkk: yv.gaamMahajanVkk } : {}),
-          ...(yv.excessShortAmount !== undefined ? { excessShortAmount: yv.excessShortAmount } : {}),
-          ...(yv.diffPaidByHolder !== undefined ? { diffPaidByHolder: yv.diffPaidByHolder } : {}),
-          ...(yv.holderCumulativeBonus !== undefined
-            ? { holderCumulativeBonus: yv.holderCumulativeBonus }
-            : {}),
-          ...(yv.holderJoiningYear !== undefined ? { holderJoiningYear: yv.holderJoiningYear } : {}),
-          ...(yv.holderBasicPremium !== undefined ? { holderBasicPremium: yv.holderBasicPremium } : {}),
+          ...policyYearFinancialPatchData(yv),
         };
         if (Object.keys(yearData).length > 0) {
           await tx.policyYear.update({

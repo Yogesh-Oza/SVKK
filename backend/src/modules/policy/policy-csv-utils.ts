@@ -25,3 +25,25 @@ export function csvCell(value: unknown): string {
   }
   return s;
 }
+
+/**
+ * Formats a phone value for CSV export so Excel/Sheets keep full digits (not scientific notation).
+ * Uses a leading tab (Excel text hint) and 10-digit local display for India E.164 (+91…).
+ */
+export function formatPhoneForCsvExport(raw: string | null | undefined): string {
+  if (raw == null) return "";
+  const trimmed = String(raw).trim();
+  if (!trimmed) return "";
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+
+  const local = digits.length >= 10 ? digits.slice(-10) : digits;
+  return `\t${local}`;
+}
+
+/** {@link csvCell} wrapper for phone columns in policy export. */
+export function csvPhoneCell(value: unknown): string {
+  if (value == null || value === "") return "";
+  return csvCell(formatPhoneForCsvExport(String(value)));
+}
