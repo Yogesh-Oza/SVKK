@@ -22,6 +22,7 @@ export const PAYMENT_ROW_CLEAR_BY_METHOD: Record<
   [PayMethod.UPI]: ["bankName", "branchName", "nameAsPerCheque", "ifscCode", "notOver"],
   [PayMethod.NEFT]: ["nameAsPerCheque", "notOver"],
   [PayMethod.CHQ]: [],
+  [PayMethod.OTHER]: [],
 };
 
 function nullIfCleared<T>(value: T | null | undefined): T | null | undefined {
