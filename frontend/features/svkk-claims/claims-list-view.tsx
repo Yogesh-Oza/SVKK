@@ -47,7 +47,7 @@ import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { todayFormDate, toIsoDateParam } from "@/lib/svkk/form-date";
+import { toIsoDateParam } from "@/lib/svkk/form-date";
 import {
   canDeleteClaim,
   canImportClaim,
@@ -70,6 +70,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -172,6 +173,7 @@ const MATCH_OPTIONS: PolicyFilterOption[] = [
 ];
 
 export function ClaimsListView() {
+  const searchParams = useSearchParams();
   const { user } = useSvkkAuth();
   const perms = user?.permissions ?? [];
   const canU = canUpdateClaim(perms);
@@ -183,8 +185,19 @@ export function ClaimsListView() {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
   const prevSearchApplied = useRef(searchApplied);
+  const urlSearchBootstrapped = useRef(false);
+
+  useEffect(() => {
+    if (urlSearchBootstrapped.current) return;
+    const q = searchParams.get("search")?.trim();
+    if (!q) return;
+    urlSearchBootstrapped.current = true;
+    setSearchDraft(q);
+    setSearchApplied(q);
+  }, [searchParams]);
+  /** Empty = no received-date bound (do not default to today — hides claims with null received date). */
   const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState(todayFormDate());
+  const [dateTo, setDateTo] = useState("");
   const [villages, setVillages] = useState<string[]>([]);
   const [policyYears, setPolicyYears] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
@@ -246,7 +259,7 @@ export function ClaimsListView() {
     let n = 0;
     if (searchApplied) n++;
     if (dateFrom.trim()) n++;
-    if (dateTo.trim() && dateTo !== todayFormDate()) n++;
+    if (dateTo.trim()) n++;
     n += villages.length + policyYears.length + statuses.length + claimTypes.length + matchStatuses.length;
     return n;
   }, [searchApplied, dateFrom, dateTo, villages, policyYears, statuses, claimTypes, matchStatuses]);
@@ -402,7 +415,7 @@ export function ClaimsListView() {
     setSearchApplied("");
     prevSearchApplied.current = "";
     setDateFrom("");
-    setDateTo(todayFormDate());
+    setDateTo("");
     setVillages([]);
     setPolicyYears([]);
     setStatuses([]);
@@ -524,7 +537,7 @@ export function ClaimsListView() {
                     className="h-10 bg-background/90 font-bold"
                   />
                   <p className="text-muted-foreground mt-1.5 text-[11px] leading-snug">
-                    Filters by claim received date.
+                    Optional. Leave blank to show all claims (including rows without a received date).
                   </p>
                 </div>
                 <PolicyFilterMulti

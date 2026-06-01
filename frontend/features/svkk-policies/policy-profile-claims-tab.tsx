@@ -119,7 +119,14 @@ export function PolicyProfileClaimsTab({
     <div className="space-y-3">
       <p className={cn("text-sm", subtextClassName)}>
         {rows.length} claim{rows.length === 1 ? "" : "s"} for this policy / SVKK ID.{" "}
-        <Link href="/claims" className="text-[#2563EB] underline">
+        <Link
+          href={
+            svkk
+              ? `/claims?search=${encodeURIComponent(svkk)}`
+              : "/claims"
+          }
+          className="text-[#2563EB] underline"
+        >
           Open full register
         </Link>
       </p>
