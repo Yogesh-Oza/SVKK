@@ -16,6 +16,10 @@ import {
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
+import {
+  formatGenderForCsvExport,
+  resolveHolderJoiningYearForExport,
+} from "./policy-csv-export-fill.js";
 import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
 import { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
 
@@ -160,13 +164,13 @@ export function buildLegacyPolicyCsvCells(
     Village: r.village ?? "",
     Category: category,
     "Holder DOB": fmtCsvDate(party?.dateOfBirth as Date | null | undefined),
-    "Holder gender": r.holderGender ?? "",
+    "Holder gender": formatGenderForCsvExport(r.holderGender),
     "Holder age": r.holderAge != null ? String(r.holderAge) : "",
     "Holder relationship": r.holderRelationship ?? "",
     "Persons insured": r.personsInsuredCount != null ? String(r.personsInsuredCount) : "",
     "Sum insured": fmtCsvDecimal(year?.sumInsured),
     "holder cumulative bonus": fmtCsvDecimal(year?.holderCumulativeBonus),
-    "holder joining year": year?.holderJoiningYear ?? "",
+    "holder joining year": resolveHolderJoiningYearForExport(r, year),
     "holder basic premium": fmtCsvDecimal(year?.holderBasicPremium),
     "Gross premium": fmtCsvDecimal(premium.grossPremium),
     "Tax %": fmtCsvDecimal(premium.taxPercent),

@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { PayMethod, ChequeStatus } from "@prisma/client";
 import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
+import { formatGenderForCsvExport } from "./policy-csv-export-fill.js";
 import { fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
@@ -168,7 +169,7 @@ function memberFieldValue(member: YearMember | undefined, key: MemberSlotFieldKe
     case "name":
     case "relationship":
     case "gender":
-      return member[key] ?? "";
+      return formatGenderForCsvExport(member[key]);
     case "memberPhone":
       return formatPhoneForCsvExport(member[key] ?? "");
     case "dob":
@@ -196,11 +197,10 @@ export function paymentSlotCells(
     out[paymentSlotHeader(slot, field)] = value;
   };
 
-  if (slot === 1) {
-    set("method", yearPaymentMode ?? "");
-  }
-
   if (!payment) {
+    if (slot === 1) {
+      set("method", yearPaymentMode ?? "");
+    }
     for (const field of PAYMENT_SLOT_FIELD_KEYS) {
       if (slot === 1 && field === "method") continue;
       set(field, "");
@@ -209,7 +209,7 @@ export function paymentSlotCells(
   }
 
   set("amount", fmtCsvDecimal(payment.amount));
-  if (slot > 1) set("method", payment.method);
+  set("method", slot === 1 ? (yearPaymentMode ?? payment.method) : payment.method);
   set("transactionNumber", payment.transactionNumber ?? "");
   set("transactionDate", fmtCsvDate(payment.transactionDate));
   set("policy_cheque_no", cheque?.number ?? payment.transactionNumber ?? "");

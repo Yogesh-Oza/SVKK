@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
+import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
+import { parseCsv } from "./policy-csv-parse.js";
 import {
   buildPoliciesExportCsv,
   pickExportPolicyYear,
@@ -245,6 +247,18 @@ describe("pickExportPolicyYear", () => {
 });
 
 describe("buildPoliciesExportCsv", () => {
+  it("export header row includes every flat template column in canonical order", () => {
+    const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
+    const [header] = parseCsv(csv.replace(/^\uFEFF/, ""));
+    expect(header?.slice(0, POLICY_CSV_FLAT_HEADERS.length)).toEqual([
+      ...POLICY_CSV_FLAT_HEADERS,
+    ]);
+    expect(header).toContain("Address Line 1: House/Flat No, Building Name");
+    expect(header).toContain("policy remarK");
+    expect(header).toContain("PRE. END DATE");
+    expect(header).toContain("Refund Cheque Date");
+  });
+
   it("sizes columns to batch max members and omits payment columns when none", () => {
     const csv = buildPoliciesExportCsv([minimalRow()], new Set(["policy:scope_all"]), ["2026-27"]);
     const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");

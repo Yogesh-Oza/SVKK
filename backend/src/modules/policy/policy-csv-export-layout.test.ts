@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import {
   buildPolicyCsvHeadersForExport,
   flatMember1FieldHeaders,
@@ -25,22 +26,18 @@ describe("resolveExportSlotCounts", () => {
 });
 
 describe("buildPolicyCsvHeadersForExport", () => {
-  it("includes one blank member and payment block when counts are zero", () => {
+  it("includes the full flat template when counts are zero (blank member/payment slots)", () => {
     const headers = buildPolicyCsvHeadersForExport(0, 0);
-    expect(headers).toContain("Member 1 Name");
-    expect(headers).toContain("mode of payment");
-    expect(headers).not.toContain("Member 2 Name");
-    expect(headers).not.toContain("Payment 2 amount");
-    expect(headers).toContain("Gross premium");
-    expect(headers).toContain("nominee_name");
+    expect(headers).toEqual([...POLICY_CSV_FLAT_HEADERS]);
   });
 
-  it("includes only member 1–2 and payment 1 for small policies", () => {
+  it("matches flat column order and appends member 2 only when needed", () => {
     const headers = buildPolicyCsvHeadersForExport(2, 1);
-    expect(headers).toContain("Member 1 Name");
+    expect(headers.slice(0, POLICY_CSV_FLAT_HEADERS.length)).toEqual([
+      ...POLICY_CSV_FLAT_HEADERS,
+    ]);
     expect(headers).toContain(memberSlotHeader(2, "Name"));
     expect(headers).not.toContain(memberSlotHeader(3, "Name"));
-    expect(headers).toContain("mode of payment");
     expect(headers).not.toContain("Payment 2 amount");
     expect(headers.indexOf("url")).toBeLessThan(headers.indexOf(memberSlotHeader(2, "Name")));
   });

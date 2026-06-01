@@ -77,9 +77,8 @@ export function resolveExportSlotCounts(
 }
 
 /**
- * Builds export headers with only the member/payment slots present in the batch.
- * @param maxMembers - 0 omits all member columns; 1 = Member 1 only; 2+ adds Member 2…
- * @param maxPayments - 0 omits payment columns; 1 = flat cheque block only; 2+ adds Payment 2…
+ * Builds export headers: always the full flat template (Member 1 + Payment 1 in canonical order),
+ * then optional Member 2…N / Payment 2…N when the batch needs more slots.
  */
 export function buildPolicyCsvHeadersForExport(
   maxMembers: number,
@@ -90,15 +89,7 @@ export function buildPolicyCsvHeadersForExport(
     maxPayments,
   });
 
-  const headers: string[] = [...POLICY_CSV_FLAT_CORE_HEADERS];
-  if (payments >= 1) {
-    headers.push(...POLICY_CSV_FLAT_PAYMENT1_HEADERS);
-  }
-  headers.push(...POLICY_CSV_FLAT_PREMIUM_HEADERS);
-  if (members >= 1) {
-    headers.push(...POLICY_CSV_FLAT_MEMBER1_HEADERS);
-  }
-  headers.push(...POLICY_CSV_FLAT_TAIL_HEADERS);
+  const headers: string[] = [...POLICY_CSV_FLAT_HEADERS];
   if (members >= 2) {
     headers.push(...buildExtendedMemberHeaders(members));
   }
