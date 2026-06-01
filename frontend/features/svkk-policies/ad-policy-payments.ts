@@ -162,9 +162,6 @@ export function applyPrimaryPaymentModeToBody(
       mode === "ONLINE" || mode === "UPI" ? values.onlineTransactionRef : "",
     bank: mode === "CHEQUE" ? values.bank : "",
     accountNo: mode === "CHEQUE" ? values.accountNo : "",
-    onlineTransactionRef,
-    bank,
-    accountNo,
     firstTxn,
     amountReceived: amt ?? null,
   });
