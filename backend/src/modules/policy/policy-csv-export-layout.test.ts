@@ -4,10 +4,10 @@ import {
   buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
   flatMember1FieldHeaders,
-  flatPayment1FieldHeaders,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
-import { memberSlotHeader, paymentSlotHeader } from "./policy-csv-slots.js";
+import { paymentCsvHeader } from "./policy-csv-payment-columns.js";
+import { memberSlotHeader } from "./policy-csv-slots.js";
 
 describe("resolveExportSlotCounts", () => {
   it("uses batch max members and payments", () => {
@@ -27,16 +27,21 @@ describe("resolveExportSlotCounts", () => {
 });
 
 describe("buildPolicyCsvHeadersForExport", () => {
-  it("includes every flat column once in export order (1 member, 1 payment)", () => {
+  it("includes every flat column in export headers (1 member, 1 payment default)", () => {
     const headers = buildPolicyCsvHeadersForExport(0, 0);
-    expect(new Set(headers)).toEqual(new Set(POLICY_CSV_FLAT_HEADERS));
+    for (const h of POLICY_CSV_FLAT_HEADERS) {
+      expect(headers).toContain(h);
+    }
     expect(headers).toEqual(buildPolicyCsvFlatExportHeaders());
+    expect(headers).toContain(paymentCsvHeader(1, "method"));
   });
 
   it("groups payments then members before nominee/address tail", () => {
     const headers = buildPolicyCsvHeadersForExport(2, 2);
-    expect(headers.indexOf("mode of payment")).toBeLessThan(headers.indexOf("Gross premium"));
-    expect(headers.indexOf(paymentSlotHeader(2, "amount"))).toBeLessThan(
+    expect(headers.indexOf(paymentCsvHeader(1, "method"))).toBeLessThan(
+      headers.indexOf("Gross premium"),
+    );
+    expect(headers.indexOf(paymentCsvHeader(2, "method"))).toBeLessThan(
       headers.indexOf("Gross premium"),
     );
     expect(headers.indexOf("Gross premium")).toBeLessThan(headers.indexOf("Member 1 Name"));
@@ -49,17 +54,14 @@ describe("buildPolicyCsvHeadersForExport", () => {
   it("adds payment 2 columns only when maxPayments >= 2", () => {
     const one = buildPolicyCsvHeadersForExport(1, 1);
     const two = buildPolicyCsvHeadersForExport(1, 2);
-    expect(one).not.toContain("Payment 2 amount");
-    expect(two).toContain("Payment 2 amount");
-    expect(two).not.toContain("Payment 3 amount");
+    expect(one).not.toContain(paymentCsvHeader(2, "method"));
+    expect(two).toContain(paymentCsvHeader(2, "method"));
+    expect(two).not.toContain(paymentCsvHeader(3, "method"));
   });
 
-  it("flat member1 and payment1 blocks match layout slices", () => {
+  it("flat member1 block matches layout slice", () => {
     const full = buildPolicyCsvHeadersForExport(12, 8);
     for (const h of flatMember1FieldHeaders()) {
-      expect(full).toContain(h);
-    }
-    for (const h of flatPayment1FieldHeaders()) {
       expect(full).toContain(h);
     }
   });

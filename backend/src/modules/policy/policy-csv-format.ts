@@ -6,14 +6,16 @@ import {
 import { parsePolicyUrls } from "../../services/notification/policy-url.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
+  buildPolicyCsvExportLayout,
   buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
+import { buildAllPaymentCellsForExport } from "./policy-csv-payment-columns.js";
+import type { PaymentExportPlan } from "./policy-csv-payment-columns.js";
 import {
   buildExtendedMemberSlotCells,
   buildFlatMember1Cells,
-  buildAllPaymentSlotCells,
   buildPolicyCsvSampleDemoRow,
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
@@ -149,6 +151,7 @@ export function buildLegacyPolicyCsvCells(
   year: PolicyExportRow["years"][number] | undefined,
   categoryByKey: Map<string, CategoryRef>,
   exportHeaders: string[],
+  paymentPlan: PaymentExportPlan,
 ): string[] {
   const members = year?.members ?? [];
   const payments = year?.payments ?? [];
@@ -236,7 +239,7 @@ export function buildLegacyPolicyCsvCells(
     url: r.policyUrl2 ?? "",
     ...buildFlatMember1Cells(members),
     ...buildExtendedMemberSlotCells(members),
-    ...buildAllPaymentSlotCells(payments, year?.paymentMode),
+    ...buildAllPaymentCellsForExport(payments, paymentPlan, year?.paymentMode),
   };
 
   return exportHeaders.map((h) => byHeader[h] ?? "");
@@ -266,18 +269,20 @@ export function buildLegacyPoliciesCsv(
   categoryByKey: Map<string, CategoryRef>,
 ): string {
   const slotCounts = resolveExportSlotCounts(years);
-  const exportHeaders = buildPolicyCsvHeadersForExport(
+  const layout = buildPolicyCsvExportLayout(
     slotCounts.maxMembers,
     slotCounts.maxPayments,
+    years,
   );
-  const lines = [exportHeaders.map(csvCell).join(",")];
+  const lines = [layout.headers.map(csvCell).join(",")];
   for (let i = 0; i < rows.length; i++) {
     const cells = buildLegacyPolicyCsvCells(
       rows[i]!,
       partyByRow[i] ?? null,
       years[i],
       categoryByKey,
-      exportHeaders,
+      layout.headers,
+      layout.paymentPlan,
     );
     lines.push(cells.map(csvCell).join(","));
   }

@@ -10,6 +10,7 @@ import {
   formatPolicyUrlForCsvExport,
   parseCsvWithOptionalVersion,
 } from "./policy-csv-format.js";
+import { buildPaymentExportPlan, paymentCsvHeader } from "./policy-csv-payment-columns.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import {
   buildCombinedRemarksFromParts,
@@ -31,9 +32,11 @@ describe("policy-csv-format v2", () => {
     expect(header).toHaveLength(POLICY_CSV_EXPORT_HEADERS.length);
     expect(header).toContain("Member 1 Name");
     expect(header).toContain("Member 2 Name");
-    expect(header).toContain("Payment 2 amount");
+    expect(header).toContain(paymentCsvHeader(2, "method"));
     expect(header?.at(-1)).toBe("url");
-    expect(header?.indexOf("Payment 2 amount")).toBeLessThan(header?.indexOf("Gross premium") ?? -1);
+    expect(header?.indexOf(paymentCsvHeader(2, "method"))).toBeLessThan(
+      header?.indexOf("Gross premium") ?? -1,
+    );
     expect(header?.indexOf("Member 2 Name")).toBeLessThan(header?.indexOf("nominee_name") ?? -1);
     expect(header?.indexOf("url")).toBeGreaterThan(header?.indexOf("Member 2 Name") ?? -1);
   });
@@ -107,7 +110,15 @@ describe("policy remark CSV columns", () => {
       years: [{ yearRemarks: "Sample import row", members: [], payments: [] }],
     } as Parameters<typeof buildLegacyPolicyCsvCells>[0];
     const headers = ["gen remark", "policy remarK"];
-    const cells = buildLegacyPolicyCsvCells(row, null, row.years[0], new Map(), headers);
+    const paymentPlan = buildPaymentExportPlan([], 1);
+    const cells = buildLegacyPolicyCsvCells(
+      row,
+      null,
+      row.years[0],
+      new Map(),
+      headers,
+      paymentPlan,
+    );
     expect(cells[headers.indexOf("gen remark")]).toBe("test 1");
     expect(cells[headers.indexOf("policy remarK")]).toBe("test 1");
   });

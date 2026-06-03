@@ -1,26 +1,23 @@
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import {
+  buildPaymentExportPlan,
+  type PaymentExportPlan,
+} from "./policy-csv-payment-columns.js";
+import {
   buildExtendedMemberHeaders,
-  buildExtendedPaymentHeaders,
   memberJoiningHeader,
   memberSlotHeader,
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
-  type PaymentSlotFieldKey,
 } from "./policy-csv-slots.js";
+import type { PolicyExportRow } from "./policy.export-csv.js";
 
-const FLAT_PAYMENT1_START = POLICY_CSV_FLAT_HEADERS.indexOf("mode of payment");
 const FLAT_GROSS_START = POLICY_CSV_FLAT_HEADERS.indexOf("Gross premium");
 const FLAT_MEMBER1_START = POLICY_CSV_FLAT_HEADERS.indexOf("Member 1 Name");
 const FLAT_NOMINEE_START = POLICY_CSV_FLAT_HEADERS.indexOf("nominee_name");
 
-/** Flat v2 segments (payment 1 and member 1 are optional in export). */
-export const POLICY_CSV_FLAT_CORE_HEADERS = POLICY_CSV_FLAT_HEADERS.slice(0, FLAT_PAYMENT1_START);
-
-export const POLICY_CSV_FLAT_PAYMENT1_HEADERS = POLICY_CSV_FLAT_HEADERS.slice(
-  FLAT_PAYMENT1_START,
-  FLAT_GROSS_START,
-);
+/** Flat v2 segments (payments are dynamic; member 1 lives in flat block). */
+export const POLICY_CSV_FLAT_CORE_HEADERS = POLICY_CSV_FLAT_HEADERS.slice(0, FLAT_GROSS_START);
 
 export const POLICY_CSV_FLAT_PREMIUM_HEADERS = POLICY_CSV_FLAT_HEADERS.slice(
   FLAT_GROSS_START,
@@ -39,13 +36,9 @@ export type ExportSlotCounts = {
   maxPayments: number;
 };
 
-/** List export always includes at least one member/payment column group (blank when no data). */
 export const POLICY_CSV_MIN_EXPORT_MEMBER_SLOTS = 1;
 export const POLICY_CSV_MIN_EXPORT_PAYMENT_SLOTS = 1;
 
-/**
- * Max member/payment slots for export, with a floor of one blank slot each.
- */
 export function clampExportSlotCounts(counts: ExportSlotCounts): ExportSlotCounts {
   return {
     maxMembers: Math.min(
@@ -76,19 +69,43 @@ export function resolveExportSlotCounts(
   return clampExportSlotCounts({ maxMembers, maxPayments });
 }
 
-/** Payment slots 1…N contiguous (slot 1 = flat cheque block). */
-export function buildAllPaymentHeaders(maxPayments: number): string[] {
-  const headers: string[] = [];
-  if (maxPayments >= 1) {
-    headers.push(...POLICY_CSV_FLAT_PAYMENT1_HEADERS);
-  }
-  if (maxPayments >= 2) {
-    headers.push(...buildExtendedPaymentHeaders(maxPayments));
-  }
-  return headers;
+export type PolicyCsvExportLayout = {
+  headers: string[];
+  paymentPlan: PaymentExportPlan;
+};
+
+/**
+ * Export column order:
+ * core → Payment 1…N (dynamic fields per slot) → premium → Member 1…N → tail.
+ */
+export function buildPolicyCsvExportLayout(
+  maxMembers: number,
+  maxPayments: number,
+  years: Array<PolicyExportRow["years"][number] | undefined> = [],
+): PolicyCsvExportLayout {
+  const { maxMembers: members, maxPayments: payments } = clampExportSlotCounts({
+    maxMembers,
+    maxPayments,
+  });
+  const paymentPlan = buildPaymentExportPlan(years, payments);
+  const headers = [
+    ...POLICY_CSV_FLAT_CORE_HEADERS,
+    ...paymentPlan.headers,
+    ...POLICY_CSV_FLAT_PREMIUM_HEADERS,
+    ...buildAllMemberHeaders(members),
+    ...POLICY_CSV_FLAT_TAIL_HEADERS,
+  ];
+  return { headers, paymentPlan };
 }
 
-/** Member slots 1…N contiguous (slot 1 = flat Member 1 block), before nominee/address tail. */
+export function buildPolicyCsvHeadersForExport(
+  maxMembers: number,
+  maxPayments: number,
+  years: Array<PolicyExportRow["years"][number] | undefined> = [],
+): string[] {
+  return buildPolicyCsvExportLayout(maxMembers, maxPayments, years).headers;
+}
+
 export function buildAllMemberHeaders(maxMembers: number): string[] {
   const headers: string[] = [];
   if (maxMembers >= 1) {
@@ -100,42 +117,14 @@ export function buildAllMemberHeaders(maxMembers: number): string[] {
   return headers;
 }
 
-/**
- * Export column order:
- * core → Payment 1…N → premium/loan → Member 1…N → nominee/address/… (tail).
- * Members and payments are never appended after `url`.
- */
-export function buildPolicyCsvHeadersForExport(
-  maxMembers: number,
-  maxPayments: number,
+export function buildPolicyCsvFlatExportHeaders(
+  years: Array<PolicyExportRow["years"][number] | undefined> = [],
 ): string[] {
-  const { maxMembers: members, maxPayments: payments } = clampExportSlotCounts({
-    maxMembers,
-    maxPayments,
-  });
-
-  return [
-    ...POLICY_CSV_FLAT_CORE_HEADERS,
-    ...buildAllPaymentHeaders(payments),
-    ...POLICY_CSV_FLAT_PREMIUM_HEADERS,
-    ...buildAllMemberHeaders(members),
-    ...POLICY_CSV_FLAT_TAIL_HEADERS,
-  ];
+  return buildPolicyCsvHeadersForExport(1, 1, years);
 }
 
-/** Full flat column set in export order (1 member, 1 payment) — use for samples and width tests. */
-export function buildPolicyCsvFlatExportHeaders(): string[] {
-  return buildPolicyCsvHeadersForExport(1, 1);
-}
-
-/** Member 1 field headers in flat block (for tests). */
 export function flatMember1FieldHeaders(): string[] {
   return [...POLICY_CSV_FLAT_MEMBER1_HEADERS];
 }
 
-/** Payment 1 field headers in flat block. */
-export function flatPayment1FieldHeaders(): string[] {
-  return [...POLICY_CSV_FLAT_PAYMENT1_HEADERS];
-}
-
-export { memberSlotHeader, memberJoiningHeader, type PaymentSlotFieldKey };
+export { memberSlotHeader, memberJoiningHeader };

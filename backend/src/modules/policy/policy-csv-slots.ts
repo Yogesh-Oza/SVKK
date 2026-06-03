@@ -1,9 +1,7 @@
-import type { Prisma } from "@prisma/client";
-import { PayMethod, ChequeStatus } from "@prisma/client";
-import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
+import type { PolicyMemberReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import { formatGenderForCsvExport } from "./policy-csv-export-fill.js";
-import { fmtCsvDate, fmtCsvDecimal, formatDigitsForCsvExport, formatPhoneForCsvExport, parseCsvDate } from "./policy-csv-utils.js";
+import { fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport, parseCsvDate } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
@@ -87,87 +85,16 @@ export function buildExtendedMemberHeaders(maxSlots = POLICY_CSV_MAX_MEMBER_SLOT
   return headers;
 }
 
-export const PAYMENT_SLOT_FIELD_KEYS = [
-  "amount",
-  "method",
-  "transactionNumber",
-  "transactionDate",
-  "policy_cheque_no",
-  "bank",
-  "account_no",
-  "branch",
-  "name_as_per_cheque",
-  "ifsc",
-  "not_over",
-  "cheque_date",
-  "cheque_status",
-  "reason_dishonoured",
-  "return charge",
-  "other carges",
-] as const;
-
-export type PaymentSlotFieldKey = (typeof PAYMENT_SLOT_FIELD_KEYS)[number];
-
-const PAYMENT_FIELD_LABEL: Record<PaymentSlotFieldKey, string> = {
-  amount: "amount",
-  method: "method",
-  transactionNumber: "transaction number",
-  transactionDate: "transaction date",
-  policy_cheque_no: "policy_cheque_no",
-  bank: "bank",
-  account_no: "account_no",
-  branch: "branch",
-  name_as_per_cheque: "name_as_per_cheque",
-  ifsc: "ifsc",
-  not_over: "not_over",
-  cheque_date: "cheque_date",
-  cheque_status: "cheque_status",
-  reason_dishonoured: "reason_dishonoured",
-  "return charge": "return charge",
-  "other carges": "other carges",
-};
-
-/** Payment 1 uses unprefixed legacy column names in flat block. */
-export function paymentSlotHeader(slot: number, field: PaymentSlotFieldKey): string {
-  const label = PAYMENT_FIELD_LABEL[field];
-  if (slot === 1) {
-    if (field === "method") return "mode of payment";
-    return label;
-  }
-  return `Payment ${slot} ${label}`;
-}
-
-export function buildExtendedPaymentHeaders(maxSlots = POLICY_CSV_MAX_PAYMENT_SLOTS): string[] {
-  const headers: string[] = [];
-  for (let slot = 2; slot <= maxSlots; slot++) {
-    for (const field of PAYMENT_SLOT_FIELD_KEYS) {
-      headers.push(paymentSlotHeader(slot, field));
-    }
-  }
-  return headers;
-}
+export {
+  collectPaymentsFromCsvMap,
+  normalizeCsvPaymentsForDb,
+  sortPaymentsForCsvExport,
+  paymentCsvHeader,
+  PAYMENT_CSV_FIELD_LABELS,
+  type PaymentCsvFieldKey,
+} from "./policy-csv-payment-columns.js";
 
 type YearMember = PolicyExportRow["years"][number]["members"][number];
-type YearPayment = PolicyExportRow["years"][number]["payments"][number];
-
-/** Newest first — matches Payment Transactions UI (Transaction 1 = latest). */
-export function sortPaymentsForCsvExport<T extends { createdAt?: Date | null; id?: string | null }>(
-  payments: readonly T[],
-): T[] {
-  return [...payments].sort((a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    if (ta !== tb) return tb - ta;
-    if (a.id && b.id) return b.id.localeCompare(a.id);
-    return 0;
-  });
-}
-
-/** CSV slot 1 = newest; persist oldest-first like the policy form save path. */
-export function normalizeCsvPaymentsForDb(payments: PaymentReplaceRow[]): PaymentReplaceRow[] {
-  if (payments.length <= 1) return payments;
-  return [...payments].reverse();
-}
 
 export function memberSlotCells(
   member: YearMember | undefined,
@@ -205,60 +132,6 @@ function memberFieldValue(member: YearMember | undefined, key: MemberSlotFieldKe
   }
 }
 
-function formatPaymentStatusForCsvExport(
-  payment: YearPayment,
-  cheque: YearPayment["cheque"] | null | undefined,
-): string {
-  if (cheque?.status === "DISHONOURED" || payment.status === "FAILED") return "DISHONOURED";
-  if (cheque?.status === "CLEARED" || payment.status === "COMPLETED") return "CLEARED";
-  if (cheque?.status === "PENDING" || payment.status === "PENDING") return "PENDING";
-  return cheque?.status ?? payment.status ?? "";
-}
-
-export function paymentSlotCells(
-  payment: YearPayment | undefined,
-  slot: number,
-  yearPaymentMode?: string | null,
-): Record<string, string> {
-  const cheque = payment?.cheque;
-  const out: Record<string, string> = {};
-  const set = (field: PaymentSlotFieldKey, value: string) => {
-    out[paymentSlotHeader(slot, field)] = value;
-  };
-
-  if (!payment) {
-    if (slot === 1) {
-      set("method", yearPaymentMode ?? "");
-    }
-    for (const field of PAYMENT_SLOT_FIELD_KEYS) {
-      if (slot === 1 && field === "method") continue;
-      set(field, "");
-    }
-    return out;
-  }
-
-  set("amount", fmtCsvDecimal(payment.amount));
-  set("method", payment.method ?? (slot === 1 ? (yearPaymentMode ?? "") : ""));
-  set("transactionNumber", payment.transactionNumber ?? "");
-  set("transactionDate", fmtCsvDate(payment.transactionDate));
-  set("policy_cheque_no", cheque?.number ?? payment.transactionNumber ?? "");
-  set("bank", cheque?.bankName ?? payment.bankName ?? "");
-  set(
-    "account_no",
-    formatDigitsForCsvExport(cheque?.accountNo ?? payment.accountNumber ?? ""),
-  );
-  set("branch", cheque?.branch ?? payment.branchName ?? "");
-  set("name_as_per_cheque", cheque?.nameAsPerCheque ?? payment.nameAsPerCheque ?? "");
-  set("ifsc", cheque?.ifsc ?? payment.ifscCode ?? "");
-  set("not_over", cheque?.notOver ?? payment.notOver ?? "");
-  set("cheque_date", fmtCsvDate(cheque?.chequeDate ?? payment.transactionDate));
-  set("cheque_status", formatPaymentStatusForCsvExport(payment, cheque));
-  set("reason_dishonoured", cheque?.reason ?? payment.dishonourReason ?? "");
-  set("return charge", fmtCsvDecimal(payment.returnCharges));
-  set("other carges", fmtCsvDecimal(payment.otherCharges));
-  return out;
-}
-
 /** Flat block: member slot 1 only. */
 export function buildFlatMember1Cells(members: YearMember[]): Record<string, string> {
   return memberSlotCells(members[0], 1);
@@ -269,18 +142,6 @@ export function buildExtendedMemberSlotCells(members: YearMember[]): Record<stri
   const cells: Record<string, string> = {};
   for (let slot = 2; slot <= POLICY_CSV_MAX_MEMBER_SLOTS; slot++) {
     Object.assign(cells, memberSlotCells(members[slot - 1], slot));
-  }
-  return cells;
-}
-
-export function buildAllPaymentSlotCells(
-  payments: YearPayment[],
-  yearPaymentMode?: string | null,
-): Record<string, string> {
-  const ordered = sortPaymentsForCsvExport(payments);
-  const cells: Record<string, string> = {};
-  for (let slot = 1; slot <= POLICY_CSV_MAX_PAYMENT_SLOTS; slot++) {
-    Object.assign(cells, paymentSlotCells(ordered[slot - 1], slot, yearPaymentMode));
   }
   return cells;
 }
@@ -324,30 +185,10 @@ export function collectDeprecatedHeaderWarnings(header: string[]): string[] {
   if (normalized.has("not_courier") && !normalized.has("courier status")) {
     warnings.push("Deprecated column 'not_courier' — migrate to 'Courier Status'");
   }
+  if (normalized.has("mode of payment") && !normalized.has("payment 1 mode of payment")) {
+    warnings.push("Deprecated column 'mode of payment' — migrate to 'Payment 1 Mode of Payment'");
+  }
   return warnings;
-}
-
-function parsePayMethod(raw: string): PayMethod | undefined {
-  const t = raw.trim().toUpperCase();
-  if (!t) return undefined;
-  if (t === "CHQ" || t === "CHEQUE" || t === "CHECK") return PayMethod.CHQ;
-  if (t === "CASH") return PayMethod.CASH;
-  if (t === "NEFT" || t === "RTGS" || t === "IMPS") return PayMethod.NEFT;
-  if (t === "UPI") return PayMethod.UPI;
-  const values = Object.values(PayMethod) as string[];
-  if (values.includes(t)) return t as PayMethod;
-  return undefined;
-}
-
-function parseChequeStatus(raw: string): ChequeStatus | undefined {
-  const t = raw.trim().toUpperCase();
-  if (!t) return undefined;
-  if (t === "CLEARED" || t === "CLEAR") return ChequeStatus.CLEARED;
-  if (t === "DISHONOURED" || t === "DISHONORED" || t === "BOUNCED") return ChequeStatus.DISHONOURED;
-  if (t === "PENDING") return ChequeStatus.PENDING;
-  const values = Object.values(ChequeStatus) as string[];
-  if (values.includes(t)) return t as ChequeStatus;
-  return undefined;
 }
 
 function parseOptionalDate(raw: string): Date | undefined {
@@ -368,18 +209,6 @@ function parseOptionalInt(raw: string): number | undefined {
   const n = Number.parseInt(t, 10);
   if (Number.isNaN(n)) throw new Error(`invalid integer: ${raw}`);
   return n;
-}
-
-function paymentFieldFromMap(
-  map: Map<string, string>,
-  slot: number,
-  field: PaymentSlotFieldKey,
-): string {
-  if (slot === 1) {
-    if (field === "method") return getCsvField(map, "mode of payment");
-    return getCsvField(map, paymentSlotHeader(1, field));
-  }
-  return getCsvField(map, paymentSlotHeader(slot, field));
 }
 
 export function collectMembersFromCsvMap(
@@ -406,43 +235,6 @@ export function collectMembersFromCsvMap(
     });
   }
   return members;
-}
-
-export function collectPaymentsFromCsvMap(map: Map<string, string>): PaymentReplaceRow[] {
-  const payments: PaymentReplaceRow[] = [];
-  for (let slot = 1; slot <= POLICY_CSV_MAX_PAYMENT_SLOTS; slot++) {
-    const amountRaw = paymentFieldFromMap(map, slot, "amount");
-    const methodRaw = paymentFieldFromMap(map, slot, "method");
-    const chequeNo = paymentFieldFromMap(map, slot, "policy_cheque_no");
-    const bank = paymentFieldFromMap(map, slot, "bank");
-    if (!amountRaw && !methodRaw && !chequeNo && !bank) continue;
-
-    const method = parsePayMethod(methodRaw) ?? (chequeNo || bank ? PayMethod.CHQ : PayMethod.CASH);
-    const amount = parseOptionalDecimal(amountRaw) ?? 0;
-    const status = parseChequeStatus(paymentFieldFromMap(map, slot, "cheque_status"));
-
-    payments.push({
-      amount,
-      method,
-      status: status ?? null,
-      transactionNumber:
-        paymentFieldFromMap(map, slot, "transactionNumber") || chequeNo || null,
-      transactionDate:
-        parseOptionalDate(paymentFieldFromMap(map, slot, "cheque_date")) ??
-        parseOptionalDate(paymentFieldFromMap(map, slot, "transactionDate")) ??
-        null,
-      bankName: bank || null,
-      branchName: paymentFieldFromMap(map, slot, "branch") || null,
-      accountNumber: paymentFieldFromMap(map, slot, "account_no") || null,
-      nameAsPerCheque: paymentFieldFromMap(map, slot, "name_as_per_cheque") || null,
-      ifscCode: paymentFieldFromMap(map, slot, "ifsc") || null,
-      notOver: paymentFieldFromMap(map, slot, "not_over") || null,
-      dishonourReason: paymentFieldFromMap(map, slot, "reason_dishonoured") || null,
-      returnCharges: parseOptionalDecimal(paymentFieldFromMap(map, slot, "return charge")),
-      otherCharges: parseOptionalDecimal(paymentFieldFromMap(map, slot, "other carges")),
-    });
-  }
-  return normalizeCsvPaymentsForDb(payments);
 }
 
 /** Demo row for sample CSV (flat format v2). */

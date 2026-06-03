@@ -8,6 +8,7 @@ import { buildPolicyCsvHeadersForExport } from "./policy-csv-export-layout.js";
 import { parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
   buildPoliciesExportCsv,
+  pickExportPolicyYear,
   type PolicyExportRow,
 } from "./policy.export-csv.js";
 import { memberSlotHeader } from "./policy-csv-slots.js";
@@ -209,13 +210,15 @@ function po14010061252700000246Row(): PolicyExportRow {
 
 describe("PO- 14010061252700000246 export", () => {
   it("includes full flat template plus member 2 columns with expected values", () => {
+    const row = po14010061252700000246Row();
+    const year = pickExportPolicyYear(row.years, ["2025-26"]);
     const csv = buildPoliciesExportCsv(
-      [po14010061252700000246Row()],
+      [row],
       new Set(["policy:scope_all"]),
       ["2025-26"],
     );
     const [header, data] = parseCsv(csv.replace(/^\uFEFF/, ""));
-    expect(header).toEqual(buildPolicyCsvHeadersForExport(2, 1));
+    expect(header).toEqual(buildPolicyCsvHeadersForExport(2, 1, year ? [year] : []));
     expect(header?.indexOf(memberSlotHeader(2, "Name"))).toBeLessThan(
       header?.indexOf("nominee_name") ?? -1,
     );

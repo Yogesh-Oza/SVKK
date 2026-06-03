@@ -5,7 +5,7 @@ import {
   collectMembersFromCsvMap,
   collectPaymentsFromCsvMap,
   memberSlotHeader,
-  paymentSlotHeader,
+  paymentCsvHeader,
 } from "./policy-csv-slots.js";
 import { parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import { buildPoliciesExportCsv, type PolicyExportRow } from "./policy.export-csv.js";
@@ -58,8 +58,8 @@ describe("policy CSV slots", () => {
     expect(headers).toContain("Member 2 Name");
     expect(headers).toContain("PRE. END DATE");
     expect(headers).toContain("Member 4 Name");
-    expect(headers).toContain(paymentSlotHeader(2, "amount"));
-    expect(headers).toContain(paymentSlotHeader(2, "policy_cheque_no"));
+    expect(headers).toContain(paymentCsvHeader(2, "amountReceived"));
+    expect(headers).toContain(paymentCsvHeader(2, "method"));
     expect(headers.indexOf("Member 1 Name")).toBeLessThan(headers.indexOf("url"));
     expect(headers.indexOf("Member 2 Name")).toBeLessThan(headers.indexOf("nominee_name"));
     expect(headers.indexOf("Member 2 Name")).toBeGreaterThan(headers.indexOf("Member 1 Name"));
@@ -101,13 +101,13 @@ describe("policy CSV slots", () => {
 
   it("collects multiple payments from CSV map", () => {
     const map = new Map<string, string>([
-      [paymentSlotHeader(1, "amount"), "1000"],
-      [paymentSlotHeader(1, "method"), "CHQ"],
-      [paymentSlotHeader(1, "policy_cheque_no"), "111"],
-      [paymentSlotHeader(1, "bank"), "Bank A"],
-      [paymentSlotHeader(2, "amount"), "500"],
-      [paymentSlotHeader(2, "method"), "UPI"],
-      [paymentSlotHeader(2, "transactionNumber"), "UPI-99"],
+      [paymentCsvHeader(1, "amountReceived"), "1000"],
+      [paymentCsvHeader(1, "method"), "CHQ"],
+      ["policy_cheque_no", "111"],
+      ["bank", "Bank A"],
+      [paymentCsvHeader(2, "amountReceived"), "500"],
+      [paymentCsvHeader(2, "method"), "UPI"],
+      [paymentCsvHeader(2, "transactionNumber"), "UPI-99"],
     ]);
     const payments = collectPaymentsFromCsvMap(map);
     expect(payments).toHaveLength(2);
@@ -253,13 +253,12 @@ describe("buildPoliciesExportCsv multiple slots", () => {
     expect(map.get(memberSlotHeader(2, "Name"))).toBe("Member Two");
     expect(map.get(memberSlotHeader(3, "Name"))).toBe("Member Three");
     expect(header).toContain("Member 2 Name");
-    expect(header).toContain("Payment 2 amount");
-    expect(header).toContain("amount");
-    expect(map.get("mode of payment")).toBe("UPI");
-    expect(map.get("transaction number")).toBe("UPI-TWO");
-    expect(map.get("amount")).toBe("250");
-    expect(map.get(paymentSlotHeader(2, "policy_cheque_no"))).toBe("CHQ-ONE");
-    expect(map.get(paymentSlotHeader(2, "method"))).toBe("CHQ");
+    expect(header).toContain(paymentCsvHeader(2, "method"));
+    expect(map.get(paymentCsvHeader(1, "method"))).toBe("UPI");
+    expect(map.get(paymentCsvHeader(1, "transactionNumber"))).toBe("UPI-TWO");
+    expect(map.get(paymentCsvHeader(1, "amountReceived"))).toBe("250");
+    expect(map.get(paymentCsvHeader(2, "transactionNumber"))).toBe("CHQ-ONE");
+    expect(map.get(paymentCsvHeader(2, "method"))).toBe("CHQ");
   });
 
   it("exports three payment transactions in UI order with accurate amounts", () => {
@@ -355,20 +354,24 @@ describe("buildPoliciesExportCsv multiple slots", () => {
     const [header, data] = parseCsv(csv.replace(/^\uFEFF/, ""));
     const map = rowToHeaderMap(header!, data!);
 
-    expect(map.get("mode of payment")).toBe("UPI");
-    expect(map.get("transaction number")).toBe("testqas1");
-    expect(map.get("amount")).toBe("800");
-    expect(map.get("account_no")).toBe("8574859632");
+    expect(map.get(paymentCsvHeader(1, "method"))).toBe("UPI");
+    expect(map.get(paymentCsvHeader(1, "transactionNumber"))).toBe("testqas1");
+    expect(map.get(paymentCsvHeader(1, "amountReceived"))).toBe("800");
+    expect(map.get(paymentCsvHeader(1, "mobileNumber"))).toContain("8574859632");
     expect(data!.some((cell) => cell.includes("8574859632"))).toBe(true);
-    expect(map.get("cheque_status")).toBe("CLEARED");
+    expect(map.get(paymentCsvHeader(1, "transactionStatus"))).toBe("CLEARED");
 
-    expect(map.get(paymentSlotHeader(2, "method"))).toBe("CHQ");
-    expect(map.get(paymentSlotHeader(2, "amount"))).toBe("200");
-    expect(map.get(paymentSlotHeader(2, "transactionNumber"))).toBe("testqas");
-    expect(map.get(paymentSlotHeader(2, "reason_dishonoured"))).toBe("test 1");
+    expect(header).toContain(paymentCsvHeader(1, "mobileNumber"));
+    expect(header).not.toContain(paymentCsvHeader(1, "bankName"));
+    expect(header).toContain(paymentCsvHeader(2, "bankName"));
 
-    expect(map.get(paymentSlotHeader(3, "method"))).toBe("CASH");
-    expect(map.get(paymentSlotHeader(3, "amount"))).toBe("500");
-    expect(map.get(paymentSlotHeader(3, "cheque_status"))).toBe("DISHONOURED");
+    expect(map.get(paymentCsvHeader(2, "method"))).toBe("CHQ");
+    expect(map.get(paymentCsvHeader(2, "amountReceived"))).toBe("200");
+    expect(map.get(paymentCsvHeader(2, "transactionNumber"))).toBe("testqas");
+    expect(map.get(paymentCsvHeader(2, "dishonourReason"))).toBe("test 1");
+
+    expect(map.get(paymentCsvHeader(3, "method"))).toBe("CASH");
+    expect(map.get(paymentCsvHeader(3, "amountReceived"))).toBe("500");
+    expect(map.get(paymentCsvHeader(3, "transactionStatus"))).toBe("DISHONOURED");
   });
 });

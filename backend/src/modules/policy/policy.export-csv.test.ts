@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
+import { paymentCsvHeader } from "./policy-csv-payment-columns.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import {
   buildPoliciesExportCsv,
@@ -268,8 +269,8 @@ describe("buildPoliciesExportCsv", () => {
     expect(headerLine).toContain("Member 2 Name");
     expect(headerLine).toContain("Member 3 Name");
     expect(headerLine).not.toContain("Member 4 Name");
-    expect(headerLine).toContain("mode of payment");
-    expect(headerLine).not.toContain("Payment 2 amount");
+    expect(headerLine).toContain(paymentCsvHeader(1, "method"));
+    expect(headerLine).not.toContain(paymentCsvHeader(2, "method"));
     expect(headerLine).toContain("PRE. END DATE");
     expect(headerLine).toContain("policy remarK");
     expect(headerLine).toContain("ref no");
@@ -293,8 +294,8 @@ describe("buildPoliciesExportCsv", () => {
     const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
     expect(headerLine).toContain("Member 2 Name");
     expect(headerLine).not.toContain("Member 3 Name");
-    expect(headerLine).toContain("mode of payment");
-    expect(headerLine).not.toContain("Payment 2 amount");
+    expect(headerLine).toContain(paymentCsvHeader(1, "method"));
+    expect(headerLine).not.toContain(paymentCsvHeader(2, "method"));
     expect(dataLine).toContain("Member One");
     expect(dataLine).toContain("Member Two");
     expect(dataLine).not.toContain("Member Three");

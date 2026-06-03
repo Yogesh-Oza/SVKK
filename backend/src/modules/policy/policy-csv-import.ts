@@ -17,8 +17,8 @@ import { sanitizePaymentReplaceRow } from "./policy-payment-sanitize.js";
 import type { PaymentReplaceRow, PolicyMemberReplaceRow } from "./policy.schemas.js";
 import {
   collectMembersFromCsvMap,
-  collectPaymentsFromCsvMap,
 } from "./policy-csv-slots.js";
+import { collectPaymentsFromCsvMap } from "./policy-csv-payment-columns.js";
 import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
 import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
@@ -353,7 +353,7 @@ async function updatePolicyCsvRow(
     if (hjy) yearUpdate.holderJoiningYear = hjy;
     const hbp = getCsvField(map, "holder basic premium");
     if (hbp) yearUpdate.holderBasicPremium = parseOptionalDecimal(hbp);
-    const payMode = getCsvField(map, "mode of payment");
+    const payMode = getCsvField(map, "Payment 1 Mode of Payment", "mode of payment");
     if (payMode) yearUpdate.paymentMode = payMode;
     const gross = getCsvField(map, "Gross premium");
     if (gross) yearUpdate.grossPremium = parseOptionalDecimal(gross);

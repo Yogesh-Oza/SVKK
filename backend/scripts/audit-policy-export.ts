@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadCategoryByKeyMap } from "../src/lib/category-display.js";
 import { POLICY_CSV_FLAT_HEADERS } from "../src/modules/policy/policy-csv-flat-headers.js";
-import { buildPolicyCsvHeadersForExport } from "../src/modules/policy/policy-csv-export-layout.js";
+import { buildPolicyCsvExportLayout } from "../src/modules/policy/policy-csv-export-layout.js";
 import {
   buildLegacyPoliciesCsv,
   buildLegacyPolicyCsvCells,
@@ -49,11 +49,19 @@ async function main() {
   const categoryByKey = await loadCategoryByKeyMap();
   const permissions = new Set(["policy:scope_all", "policy:read"]);
   const year = pickExportPolicyYear(row.years, []);
-  const headers = buildPolicyCsvHeadersForExport(
+  const layout = buildPolicyCsvExportLayout(
     year?.members?.length ?? 0,
     year?.payments?.length ?? 0,
+    year ? [year] : [],
   );
-  const cells = buildLegacyPolicyCsvCells(row, row.insuredParty, year, categoryByKey, headers);
+  const cells = buildLegacyPolicyCsvCells(
+    row,
+    row.insuredParty,
+    year,
+    categoryByKey,
+    layout.headers,
+    layout.paymentPlan,
+  );
   const csv = buildLegacyPoliciesCsv([row], [row.insuredParty], [year], categoryByKey);
 
   const exportsDir = join(process.cwd(), "..", "exports");
@@ -150,7 +158,7 @@ function dumpDbHints(row: PolicyExportRow, year: NonNullable<PolicyExportRow["ye
     );
   }
   const pay = year.payments[0];
-  if (empty.some((h) => ["mode of payment", "policy_cheque_no", "bank"].includes(h)) && pay) {
+  if (empty.some((h) => h.startsWith("Payment 1")) && pay) {
     console.log("payments[0]:", {
       method: pay.method,
       paymentMode: year.paymentMode,

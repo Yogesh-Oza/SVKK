@@ -255,6 +255,27 @@ export function buildPaymentCellsForSlot(
   return out;
 }
 
+export function buildAllPaymentCellsForExport(
+  payments: YearPayment[],
+  plan: PaymentExportPlan,
+  yearPaymentMode?: string | null,
+): Record<string, string> {
+  const ordered = sortPaymentsForCsvExport(payments);
+  const cells: Record<string, string> = {};
+  for (let slot = 0; slot < plan.fieldsBySlot.length; slot++) {
+    Object.assign(
+      cells,
+      buildPaymentCellsForSlot(
+        ordered[slot],
+        slot + 1,
+        plan.fieldsBySlot[slot] ?? [],
+        yearPaymentMode,
+      ),
+    );
+  }
+  return cells;
+}
+
 /** Legacy unprefixed / snake_case import aliases for payment slot 1. */
 function legacyPaymentHeaderAliases(slot: number, field: PaymentCsvFieldKey): string[] {
   if (slot !== 1) return [];

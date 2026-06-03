@@ -3,7 +3,7 @@ import { maskInsuredParty } from "../../domain/pii.js";
 import { type CategoryRef } from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import { parsePolicyListOrderBy, POLICY_LIST_EXPORT_MAX_ROWS } from "./policy.list.js";
-import { buildPolicyCsvHeadersForExport } from "./policy-csv-export-layout.js";
+import { buildPolicyCsvExportLayout } from "./policy-csv-export-layout.js";
 import {
   buildLegacyPoliciesCsv,
   buildLegacyPolicyCsvCells,
@@ -86,11 +86,19 @@ export function buildPolicyExportCsvRow(
 ): string[] {
   const party = maskInsuredParty(permissions, row.insuredParty as Record<string, unknown>);
   const year = pickExportPolicyYear(row.years, preferredYearLabels);
-  const exportHeaders = buildPolicyCsvHeadersForExport(
+  const layout = buildPolicyCsvExportLayout(
     year?.members?.length ?? 0,
     year?.payments?.length ?? 0,
+    year ? [year] : [],
   );
-  return buildLegacyPolicyCsvCells(row, party, year, categoryByKey, exportHeaders);
+  return buildLegacyPolicyCsvCells(
+    row,
+    party,
+    year,
+    categoryByKey,
+    layout.headers,
+    layout.paymentPlan,
+  );
 }
 
 export async function queryPolicyListForExport(args: {

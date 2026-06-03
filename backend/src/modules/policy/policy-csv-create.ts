@@ -6,8 +6,8 @@ import type { GeoScope } from "../../services/mis-scope.service.js";
 import { createPolicyWithYear } from "./policy.service.js";
 import {
   collectMembersFromCsvMap,
-  collectPaymentsFromCsvMap,
 } from "./policy-csv-slots.js";
+import { collectPaymentsFromCsvMap } from "./policy-csv-payment-columns.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
   buildPolicyTypeCache,
@@ -176,7 +176,9 @@ export async function createPolicyFromCsvRow(
     adProductVariant: policyTypeKeyToAdVariant(resolvedType.key) ?? undefined,
     members,
     payments: payments.length ? payments : undefined,
-    paymentMode: parseCsvPaymentMode(getCsvField(map, "mode of payment")),
+    paymentMode: parseCsvPaymentMode(
+      getCsvField(map, "Payment 1 Mode of Payment", "mode of payment"),
+    ),
     grossPremium: parseOptionalDecimal(getCsvField(map, "Gross premium")),
     taxPercent: parseOptionalDecimal(getCsvField(map, "Tax %")),
     taxAmount: parseOptionalDecimal(getCsvField(map, "Tax amount")),
