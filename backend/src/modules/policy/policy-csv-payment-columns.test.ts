@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PayMethod } from "@prisma/client";
 import {
   buildPaymentExportPlan,
+  buildWidestPaymentExportPlan,
   paymentCsvHeader,
   unionPaymentFieldsForMethods,
 } from "./policy-csv-payment-columns.js";
@@ -18,6 +19,13 @@ describe("payment CSV columns", () => {
     expect(fields).toContain("bankName");
     expect(fields).toContain("amountReceived");
     expect(fields.filter((f) => f === "method")).toHaveLength(1);
+  });
+
+  it("builds widest template with all payment field types per slot", () => {
+    const plan = buildWidestPaymentExportPlan(2);
+    expect(plan.headers).toContain(paymentCsvHeader(1, "mobileNumber"));
+    expect(plan.headers).toContain(paymentCsvHeader(1, "bankName"));
+    expect(plan.headers).toContain(paymentCsvHeader(2, "dishonourReason"));
   });
 
   it("builds per-slot dynamic headers from batch payment methods", () => {

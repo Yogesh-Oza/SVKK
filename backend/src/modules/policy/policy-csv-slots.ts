@@ -94,6 +94,8 @@ export {
   type PaymentCsvFieldKey,
 } from "./policy-csv-payment-columns.js";
 
+import { paymentCsvHeader } from "./policy-csv-payment-columns.js";
+
 type YearMember = PolicyExportRow["years"][number]["members"][number];
 
 export function memberSlotCells(
@@ -272,6 +274,13 @@ export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
   cells[memberSlotHeader(1, "Phone")] = "9876543210";
   cells[memberSlotHeader(1, "Age at entry")] = "36";
   cells[memberJoiningHeader(1)] = "2020-04-01";
+
+  cells[paymentCsvHeader(1, "method")] = "UPI";
+  cells[paymentCsvHeader(1, "mobileNumber")] = formatPhoneForCsvExport("9876543210");
+  cells[paymentCsvHeader(1, "transactionNumber")] = "DEMO-UPI-001";
+  cells[paymentCsvHeader(1, "transactionDate")] = "2026-05-01";
+  cells[paymentCsvHeader(1, "transactionStatus")] = "CLEARED";
+  cells[paymentCsvHeader(1, "amountReceived")] = "5000";
 
   return cells;
 }

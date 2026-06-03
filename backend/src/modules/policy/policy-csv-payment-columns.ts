@@ -139,6 +139,26 @@ export function unionPaymentFieldsForMethods(
   return out;
 }
 
+/**
+ * Widest payment column set for import templates (all methods × all slots).
+ * Export uses {@link buildPaymentExportPlan} for data-driven columns instead.
+ */
+export function buildWidestPaymentExportPlan(maxPayments: number): PaymentExportPlan {
+  const allMethods = [PayMethod.UPI, PayMethod.CHQ, PayMethod.CASH];
+  const fields = unionPaymentFieldsForMethods(allMethods);
+  const fieldsBySlot: PaymentCsvFieldKey[][] = [];
+  const headers: string[] = [];
+
+  for (let slot = 1; slot <= maxPayments; slot++) {
+    fieldsBySlot.push([...fields]);
+    for (const field of fields) {
+      headers.push(paymentCsvHeader(slot, field));
+    }
+  }
+
+  return { headers, fieldsBySlot };
+}
+
 /** Builds dynamic payment headers + per-slot field plan for an export batch. */
 export function buildPaymentExportPlan(
   years: Array<{ payments?: YearPayment[] } | undefined>,

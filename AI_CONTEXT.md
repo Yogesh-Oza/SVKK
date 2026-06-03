@@ -6,6 +6,46 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy CSV import — preview before commit (CREATE_ONLY, Format v2)**
+
+Policies page uses `PolicyCsvImportInline`: **Sample CSV** → **Preview import** → dialog (first 20 rows) → **Confirm import** / **Import anyway** on duplicate checksum. Replaces inline Validate/Upload controls.
+
+| Layer | Role |
+|-------|------|
+| `policy-csv-preview.ts` | `READY` / `EXISTS` / `ERROR` / `CONFLICT`, HMAC token (15 min) |
+| `policy-csv-import-job.ts` | Shared import runner for `/upload/csv` and confirm |
+| `policy-upload.routes.ts` | `/upload/policy-csv/preview`, `/upload/policy-csv/confirm` |
+| `policy-csv-import-panel.tsx` | Frontend panel wired on `policies/page.tsx` |
+
+**Tests:** `policy-csv-preview.test.ts` (111 policy tests passing).
+
+## Previous task (completed)
+
+**Claim MIS — village drill-down popup**
+
+Claim MIS (`groupBy=village`) reuses `PolicyMemberDrillDownSheet` on village name click: category × policy grouping tables (SVKK, NVKK, RTY, OTHER) + Export CSV via existing `/mis/policy-member-report/detail` APIs. Shared filter query builder: `frontend/features/svkk-mis/mis-drill-query.ts`.
+
+## Previous task (completed)
+
+**Claim CSV import — duplicate file UX**
+
+Root cause: confirm errors used Axios generic message (`Request failed with status code 409`) instead of API `message`; duplicate checksum (`DUPLICATE_CSV_IMPORT`) was only enforced on confirm, not shown in preview.
+
+Fixes:
+- `frontend/lib/svkk/api-error.ts` — shared `getSvkkErrorMessage` / `getSvkkErrorCode` (users module re-exports)
+- `claim-csv-import-panel.tsx` — preview banner + toast, disable Confirm when duplicate, **Import anyway** sends `force: true`
+- `claim-upload.routes.ts` — preview returns `duplicateImport` when `CSV_DUPLICATE_MODE=block`
+
+**Tests:** `frontend/lib/svkk/api-error.test.ts`
+
+## Previous task (completed)
+
+**Policy CSV upload/download format alignment**
+
+Verified export → import round-trip on canonical `Payment N {UI label}` headers. Import template (`buildPolicyCsvImportTemplateHeaders`) now includes all payment field types per slot (superset of any export). Sample CSV (`/policies/import-sample.csv`) uses export-aligned UPI Payment 1 columns. Legacy `mode of payment` / `amount` still accepted on import only.
+
+## Previous task (completed)
+
 **Policy CSV export — dynamic payment columns + Payment 1 prefix**
 
 Payment transactions in CSV export now match the UI Payment & Bank Details form:
@@ -135,10 +175,26 @@ frontend/features/svkk-mis/    — Policy + Claim MIS sections
 frontend/features/svkk-policies/ — AD policy add/edit form + auto-calc lock
 ```
 
+## Policy import architecture (preview)
+
+1. **Preview:** `POST /api/v1/upload/policy-csv/preview` — multipart `file`, `mode` (default `CREATE_ONLY`); returns first 20 rows + summary + `previewToken` + optional `duplicateImport`.
+2. **Confirm:** `POST /api/v1/upload/policy-csv/confirm` — JSON `{ previewToken, force?: boolean }`; runs real import from stored preview file.
+3. **Legacy:** `POST /api/v1/upload/csv?dryRun=true|false` — validate/import without dialog (unchanged).
+
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET | `/policies/import-sample.csv` | `upload:csv` | Sample v2 template |
+| POST | `/upload/policy-csv/preview` | `upload:csv` | Preview rows + token |
+| POST | `/upload/policy-csv/confirm` | `upload:csv` | Commit after preview |
+| POST | `/upload/csv` | `upload:csv` | Direct validate/import (dryRun query) |
+| GET | `/upload/csv/:jobId/errors.csv` | `upload:csv` | Error report |
+
+Env: `POLICY_IMPORT_MAX_ROWS` (default 10000), `CSV_DUPLICATE_MODE`, `ACCESS_TOKEN_SECRET` for preview tokens.
+
 ## Claim import architecture
 
-1. **Preview:** `POST /api/v1/upload/claim-csv/preview` — parses file, returns first 20 rows + summary + signed `previewToken` (15 min TTL).
-2. **Confirm:** `POST /api/v1/upload/claim-csv/confirm` — runs batched UPSERT using stored file from preview.
+1. **Preview:** `POST /api/v1/upload/claim-csv/preview` — parses file, returns first 20 rows + summary + `duplicateImport` (if prior completed job with same checksum) + signed `previewToken` (15 min TTL).
+2. **Confirm:** `POST /api/v1/upload/claim-csv/confirm` — body `{ previewToken, force?: boolean }`; `force: true` bypasses duplicate block when `CSV_DUPLICATE_MODE=block`.
 3. **Matching (tiered):**
    - Primary (required): Policy No + Policy Type + Start Date + End Date
    - Secondary (warnings only): Holder Name + Sum Insured
@@ -183,7 +239,7 @@ Requires `REDIS_URL`. Schema reserves `CsvImportJob.progressPercent`.
 ## Pending / follow-ups
 
 - Super Admin UI to edit `claim.statusMap` in AppSetting
-- Claim drill-down sheet (category within village) mirroring policy MIS
+- Claim-native drill-down (claim counts/amounts by category × grouping) if product wants claim metrics instead of policy member metrics in the popup
 - Wire `claim:import` into default admin role seeds on deploy
 
 ## Known risks

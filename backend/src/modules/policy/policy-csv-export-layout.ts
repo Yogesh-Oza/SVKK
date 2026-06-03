@@ -1,6 +1,7 @@
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import {
   buildPaymentExportPlan,
+  buildWidestPaymentExportPlan,
   type PaymentExportPlan,
 } from "./policy-csv-payment-columns.js";
 import {
@@ -104,6 +105,36 @@ export function buildPolicyCsvHeadersForExport(
   years: Array<PolicyExportRow["years"][number] | undefined> = [],
 ): string[] {
   return buildPolicyCsvExportLayout(maxMembers, maxPayments, years).headers;
+}
+
+/**
+ * Full-width import/upload template: all payment field types for every slot.
+ * Matches canonical export header names (`Payment N Mode of Payment`, etc.).
+ */
+export function buildPolicyCsvImportTemplateLayout(
+  maxMembers: number,
+  maxPayments: number,
+): PolicyCsvExportLayout {
+  const { maxMembers: members, maxPayments: payments } = clampExportSlotCounts({
+    maxMembers,
+    maxPayments,
+  });
+  const paymentPlan = buildWidestPaymentExportPlan(payments);
+  const headers = [
+    ...POLICY_CSV_FLAT_CORE_HEADERS,
+    ...paymentPlan.headers,
+    ...POLICY_CSV_FLAT_PREMIUM_HEADERS,
+    ...buildAllMemberHeaders(members),
+    ...POLICY_CSV_FLAT_TAIL_HEADERS,
+  ];
+  return { headers, paymentPlan };
+}
+
+export function buildPolicyCsvImportTemplateHeaders(
+  maxMembers: number,
+  maxPayments: number,
+): string[] {
+  return buildPolicyCsvImportTemplateLayout(maxMembers, maxPayments).headers;
 }
 
 export function buildAllMemberHeaders(maxMembers: number): string[] {

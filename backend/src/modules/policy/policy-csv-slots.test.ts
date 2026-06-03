@@ -65,17 +65,18 @@ describe("policy CSV slots", () => {
     expect(headers.indexOf("Member 2 Name")).toBeGreaterThan(headers.indexOf("Member 1 Name"));
   });
 
-  it("sample CSV uses flat v2 headers with Member 1 only", () => {
+  it("sample CSV uses export-aligned Payment 1 UPI headers", () => {
     const rows = parseCsv(buildPolicyCsvSample());
     const header = rows[0]!;
     const data = rows[1]!;
+    const map = rowToHeaderMap(header, data);
+    expect(header).toContain("Payment 1 Mode of Payment");
+    expect(header).toContain("Payment 1 Mobile Number");
+    expect(header).not.toContain("mode of payment");
+    expect(header).not.toContain("Payment 1 Bank Name");
+    expect(map.get("Payment 1 Mode of Payment")).toBe("UPI");
     expect(header).toContain("Member 1 Name");
-    expect(header).toContain("PRE. END DATE");
-    expect(header).toContain("policy remarK");
-    expect(header).not.toContain("Member 2 Name");
-    expect(header).not.toContain("Member 4 Name");
     expect(data.join(",")).toContain("Demo Member One");
-    expect(data.join(",")).not.toContain("Demo Member Two");
   });
 
   it("collects multiple members from CSV map", () => {

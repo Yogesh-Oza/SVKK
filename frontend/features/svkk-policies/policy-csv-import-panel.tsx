@@ -13,13 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -29,28 +22,30 @@ import {
 } from "@/components/ui/table";
 import { getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { backendApi } from "@/lib/svkk/api";
-import { AlertTriangle, Download, FileSpreadsheet } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-type MatchStatus = "MATCHED_EXACT" | "UNLINKED" | "CONFLICT";
+type PolicyPreviewStatus = "READY" | "EXISTS" | "ERROR" | "CONFLICT";
 
-type PreviewRow = {
+type PolicyPreviewRow = {
   rowNumber: number;
-  claimNo: string;
+  refNo: string;
+  svkkId: string;
   policyNo: string;
-  matchStatus: MatchStatus;
-  verificationWarnings?: string[];
-  policyHolderName?: string;
-  claimAmount?: number | null;
+  holderName: string;
+  productType: string;
+  village: string;
+  status: PolicyPreviewStatus;
+  errorMessage?: string;
 };
 
-type MatchSummary = {
+type PolicyPreviewSummary = {
   totalRows: number;
-  matchedExact: number;
-  unlinked: number;
+  ready: number;
+  alreadyExists: number;
+  errors: number;
   conflicts: number;
-  verificationWarnings: number;
 };
 
 type DuplicateImportInfo = {
@@ -62,20 +57,22 @@ type DuplicateImportInfo = {
 type ImportResult = {
   jobId: string;
   created: number;
-  updated: number;
   failed: number;
-  matchStats: MatchSummary;
+  valid: number;
+  invalid: number;
+  durationMs: number;
+  csvVersion?: string;
+  warnings?: string[];
   errorReportUrl?: string;
 };
 
-function matchBadge(status: MatchStatus): { label: string; className: string } {
-  if (status === "MATCHED_EXACT") {
-    return { label: "Matched", className: "text-emerald-600" };
-  }
-  if (status === "CONFLICT") {
-    return { label: "Conflict", className: "text-amber-600" };
-  }
-  return { label: "Not found", className: "text-destructive" };
+const POLICY_IMPORT_MODE = "CREATE_ONLY" as const;
+
+function statusBadge(status: PolicyPreviewStatus): { label: string; className: string } {
+  if (status === "READY") return { label: "Ready", className: "text-emerald-600" };
+  if (status === "EXISTS") return { label: "Exists", className: "text-amber-600" };
+  if (status === "CONFLICT") return { label: "Conflict", className: "text-destructive" };
+  return { label: "Error", className: "text-destructive" };
 }
 
 function formatImportTimestamp(iso: string): string {
@@ -89,43 +86,52 @@ function duplicateImportDescription(info: DuplicateImportInfo): string {
   return `This file was already imported on ${when}${file}. Job ${info.jobId.slice(0, 8)}…`;
 }
 
-const CLAIM_IMPORT_MODE = "CREATE_ONLY" as const;
-
-type ClaimCsvImportInlineProps = {
+type PolicyCsvImportInlineProps = {
   disabled?: boolean;
   onImported?: () => void;
+  onDownloadSample?: () => void | Promise<void>;
+  onDownloadErrorReport?: (jobId: string) => void | Promise<void>;
 };
 
-export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvImportInlineProps) {
+export function PolicyCsvImportInline({
+  disabled = false,
+  onImported,
+  onDownloadSample,
+  onDownloadErrorReport,
+}: PolicyCsvImportInlineProps) {
   const [file, setFile] = useState<File | null>(null);
-  const [linkMode, setLinkMode] = useState<"STRICT_MATCH" | "ALLOW_UNLINKED">("STRICT_MATCH");
   const [previewBusy, setPreviewBusy] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewToken, setPreviewToken] = useState<string | null>(null);
-  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
+  const [previewRows, setPreviewRows] = useState<PolicyPreviewRow[]>([]);
+  const [summary, setSummary] = useState<PolicyPreviewSummary | null>(null);
+  const [headerWarnings, setHeaderWarnings] = useState<string[]>([]);
   const [duplicateImport, setDuplicateImport] = useState<DuplicateImportInfo | null>(null);
   const [lastResult, setLastResult] = useState<ImportResult | null>(null);
   const [importMsg, setImportMsg] = useState("");
 
   const downloadSample = useCallback(async () => {
+    if (onDownloadSample) {
+      await onDownloadSample();
+      return;
+    }
     try {
-      const res = await backendApi.get("/claims/export-sample.csv", { responseType: "blob" });
+      const res = await backendApi.get("/policies/export-sample.csv", { responseType: "blob" });
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "claim-import-sample.csv";
+      a.download = "policies-import-sample.csv";
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
       toast.error(getSvkkErrorMessage(e, "Download failed"));
     }
-  }, []);
+  }, [onDownloadSample]);
 
   const runPreview = useCallback(async () => {
     if (!file) {
-      toast.error("Choose a CSV or XLSX file first");
+      toast.error("Choose a CSV file first");
       return;
     }
     setPreviewBusy(true);
@@ -135,17 +141,18 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("linkMode", linkMode);
-      fd.append("importMode", CLAIM_IMPORT_MODE);
+      fd.append("mode", POLICY_IMPORT_MODE);
       const { data } = await backendApi.post<{
         previewToken: string;
-        previewRows: PreviewRow[];
-        summary: MatchSummary;
+        previewRows: PolicyPreviewRow[];
+        summary: PolicyPreviewSummary;
+        warnings?: string[];
         duplicateImport?: DuplicateImportInfo | null;
-      }>("/upload/claim-csv/preview", fd);
+      }>("/upload/policy-csv/preview", fd);
       setPreviewToken(data.previewToken);
       setPreviewRows(data.previewRows);
       setSummary(data.summary);
+      setHeaderWarnings(data.warnings ?? []);
       setDuplicateImport(data.duplicateImport ?? null);
       setPreviewOpen(true);
       if (data.duplicateImport) {
@@ -158,24 +165,31 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
     } finally {
       setPreviewBusy(false);
     }
-  }, [file, linkMode]);
+  }, [file]);
 
   const confirmImport = useCallback(
     async (force = false) => {
       if (!previewToken) return;
       setConfirmBusy(true);
       try {
-        const { data } = await backendApi.post<ImportResult>("/upload/claim-csv/confirm", {
+        const { data } = await backendApi.post<ImportResult>("/upload/policy-csv/confirm", {
           previewToken,
           force,
         });
         setLastResult(data);
         setDuplicateImport(null);
         setPreviewOpen(false);
+        setFile(null);
         setImportMsg(
-          `Import job ${data.jobId.slice(0, 8)}… — ${data.created} created, ${data.failed} failed`,
+          `Import job ${data.jobId.slice(0, 8)}… — ${data.created} created, ${data.failed} failed (${data.durationMs} ms).`,
         );
-        toast.success(`Import complete: ${data.created} claim(s) created`);
+        if (data.failed > 0) {
+          toast.message("Import finished with errors", {
+            description: `${data.failed} row(s) failed.`,
+          });
+        } else {
+          toast.success(`Import complete: ${data.created} policy row(s) created`);
+        }
         onImported?.();
       } catch (e) {
         toast.error(getSvkkErrorMessage(e, "Import failed"));
@@ -187,16 +201,16 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
   );
 
   const confirmDisabled =
-    linkMode === "STRICT_MATCH" && summary != null && (summary.conflicts > 0 || summary.unlinked > 0);
+    summary != null && (summary.errors > 0 || summary.conflicts > 0 || summary.alreadyExists > 0);
 
   const blockConfirm = Boolean(duplicateImport) && !confirmDisabled;
 
   return (
     <>
       <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
-        Upload CSV / XLSX
+        Upload CSV
         <span className="text-muted-foreground ml-2 font-normal">
-          Create only (update/upsert in a later phase)
+          Format v2 — create only (update/upsert in a later phase)
         </span>
       </Label>
       <div className="border-primary/20 bg-muted/20 rounded-xl border border-dashed p-3">
@@ -206,7 +220,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
               <FileSpreadsheet className="text-muted-foreground size-5 shrink-0" />
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls,text/csv"
+                accept=".csv,text/csv"
                 disabled={disabled}
                 onChange={(e) => {
                   setFile(e.target.files?.[0] ?? null);
@@ -220,24 +234,6 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             <Badge variant="secondary" className="shrink-0 font-bold">
               Create only
             </Badge>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Link mode</Label>
-              <Select
-                value={linkMode}
-                disabled={disabled}
-                onValueChange={(v) => setLinkMode(v as typeof linkMode)}
-              >
-                <SelectTrigger className="h-9 font-bold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="STRICT_MATCH">Strict match</SelectItem>
-                  <SelectItem value="ALLOW_UNLINKED">Allow unlinked</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -267,23 +263,40 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       {lastResult ? (
         <div className="text-muted-foreground mt-2 space-y-1 text-xs leading-relaxed">
           <p>
-            Matched {lastResult.matchStats.matchedExact} · Unlinked {lastResult.matchStats.unlinked} ·
-            Conflicts {lastResult.matchStats.conflicts}
+            {lastResult.valid} valid · {lastResult.invalid} failed
+            {lastResult.csvVersion ? ` (${lastResult.csvVersion})` : ""}
           </p>
-          {lastResult.errorReportUrl ? (
-            <a className="text-primary font-bold underline" href={lastResult.errorReportUrl}>
-              Download error report
-            </a>
+          {lastResult.warnings?.length ? (
+            <p className="text-amber-700 dark:text-amber-400">
+              Warnings: {lastResult.warnings.slice(0, 3).join("; ")}
+              {lastResult.warnings.length > 3 ? "…" : ""}
+            </p>
+          ) : null}
+          {lastResult.errorReportUrl && lastResult.invalid > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs font-bold"
+              onClick={() =>
+                onDownloadErrorReport
+                  ? void onDownloadErrorReport(lastResult.jobId)
+                  : undefined
+              }
+            >
+              Download error CSV
+            </Button>
           ) : null}
         </div>
       ) : null}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Import preview</DialogTitle>
+            <DialogTitle>Policy import preview</DialogTitle>
             <DialogDescription>
-              First 20 rows shown. Review match status before confirming.
+              First {previewRows.length} row(s) shown. Review status before confirming create-only
+              import.
             </DialogDescription>
           </DialogHeader>
 
@@ -295,11 +308,16 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             </Alert>
           ) : null}
 
+          {headerWarnings.length > 0 ? (
+            <p className="text-amber-700 text-xs dark:text-amber-400">
+              Header warnings: {headerWarnings.join("; ")}
+            </p>
+          ) : null}
+
           {summary ? (
             <p className="text-muted-foreground text-sm">
-              {summary.matchedExact} matched · {summary.unlinked} unlinked · {summary.conflicts}{" "}
-              conflicts · {summary.verificationWarnings} verification warnings · {summary.totalRows}{" "}
-              total rows
+              {summary.ready} ready · {summary.alreadyExists} already exist · {summary.errors} errors
+              · {summary.conflicts} conflicts · {summary.totalRows} total rows
             </p>
           ) : null}
 
@@ -307,24 +325,30 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Claim #</TableHead>
-                  <TableHead>Policy #</TableHead>
-                  <TableHead>Match</TableHead>
-                  <TableHead>Warnings</TableHead>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Policy no</TableHead>
+                  <TableHead>SVKK ID</TableHead>
+                  <TableHead>Holder</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Detail</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {previewRows.map((row) => {
-                  const badge = matchBadge(row.matchStatus);
+                  const badge = statusBadge(row.status);
                   return (
                     <TableRow key={row.rowNumber}>
-                      <TableCell className="font-mono text-xs">{row.claimNo}</TableCell>
+                      <TableCell className="text-xs">{row.rowNumber}</TableCell>
                       <TableCell className="font-mono text-xs">{row.policyNo || "—"}</TableCell>
-                      <TableCell className={badge.className}>{badge.label}</TableCell>
-                      <TableCell className="text-xs">
-                        {row.verificationWarnings?.length
-                          ? row.verificationWarnings.join(", ")
-                          : "—"}
+                      <TableCell className="font-mono text-xs">{row.svkkId || "—"}</TableCell>
+                      <TableCell className="text-xs">{row.holderName || "—"}</TableCell>
+                      <TableCell className="text-xs">{row.productType || "—"}</TableCell>
+                      <TableCell className={`text-xs font-bold ${badge.className}`}>
+                        {badge.label}
+                      </TableCell>
+                      <TableCell className="text-destructive max-w-[200px] truncate text-xs">
+                        {row.errorMessage ?? "—"}
                       </TableCell>
                     </TableRow>
                   );
@@ -335,8 +359,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
 
           {confirmDisabled ? (
             <p className="text-destructive text-xs">
-              Strict match mode: resolve unlinked/conflict rows or switch to Allow unlinked before
-              importing.
+              Create-only mode: fix error, conflict, or duplicate rows before importing.
             </p>
           ) : null}
 
@@ -356,24 +379,16 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             ) : null}
             <Button
               type="button"
+              className="gap-1.5"
               disabled={confirmBusy || confirmDisabled || blockConfirm}
               onClick={() => void confirmImport(false)}
             >
+              <Upload className="size-3.5" />
               {confirmBusy ? "Importing…" : "Confirm import"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-/** @deprecated Use ClaimCsvImportInline inside the filters card. */
-export function ClaimCsvImportPanel({ onImported }: { onImported?: () => void }) {
-  return (
-    <div className="bg-muted/30 space-y-3 rounded-lg border p-4">
-      <h2 className="font-medium">Import claims (CSV / XLSX)</h2>
-      <ClaimCsvImportInline onImported={onImported} />
-    </div>
   );
 }

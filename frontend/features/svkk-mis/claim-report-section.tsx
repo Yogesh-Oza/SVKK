@@ -30,6 +30,8 @@ import { getSvkkApiBase } from "@/lib/svkk/config";
 import { todayFormDate, toIsoDateParam, formatDateForFormInput } from "@/lib/svkk/form-date";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
+import { PolicyMemberDrillDownSheet } from "@/features/svkk-mis/policy-member-drill-down-sheet";
+import { buildPolicyMemberDrillQueryString } from "@/features/svkk-mis/mis-drill-query";
 import { Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -119,6 +121,8 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const [importStats, setImportStats] = useState<ImportStats["totals"] | null>(null);
+  const [drillOpen, setDrillOpen] = useState(false);
+  const [drillVillage, setDrillVillage] = useState<string | null>(null);
 
   const reportFetchGenerationRef = useRef(0);
   const reportDebounceReadyRef = useRef(false);
@@ -202,6 +206,36 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
   ]);
 
   const reportQueryString = useMemo(() => buildQuery().toString(), [buildQuery]);
+
+  const policyDrillQueryString = useMemo(
+    () =>
+      buildPolicyMemberDrillQueryString({
+        dateFrom,
+        dateTo,
+        categoryKeys,
+        villages,
+        sumInsureds,
+        policyGroupings,
+        periodMonthTexts: periodMonths,
+        fiscalLabels: fiscalYears,
+      }),
+    [
+      categoryKeys,
+      dateFrom,
+      dateTo,
+      fiscalYears,
+      periodMonths,
+      policyGroupings,
+      sumInsureds,
+      villages,
+    ],
+  );
+
+  const openVillageDrill = useCallback((label: string) => {
+    if (!label || label === "—") return;
+    setDrillVillage(label);
+    setDrillOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!getSvkkApiBase()) return;
@@ -500,6 +534,12 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
           onChange={(e) => setFilterText(e.target.value)}
           placeholder="Filter group label…"
         />
+        {groupBy === "village" ? (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            Click a village name to open category breakdown (SVKK, NVKK, RTY, OTHER) with policy
+            metrics for that village. Uses the same filters as this report.
+          </p>
+        ) : null}
       </div>
 
       <div className="relative max-w-full overflow-x-auto rounded-md border">
@@ -541,7 +581,19 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
             ) : filteredRows.length ? (
               filteredRows.map((r) => (
                 <TableRow key={r.label} className="text-sm">
-                  <TableCell className="font-medium">{r.label}</TableCell>
+                  <TableCell className="font-medium">
+                    {groupBy === "village" ? (
+                      <button
+                        type="button"
+                        className="cursor-pointer text-left font-medium text-primary underline-offset-2 hover:underline"
+                        onClick={() => openVillageDrill(r.label)}
+                      >
+                        {r.label}
+                      </button>
+                    ) : (
+                      r.label
+                    )}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{r.claimCount.toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatInr(r.sumClaimAmount)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatInr(r.sumApprovedAmount)}</TableCell>
@@ -577,6 +629,14 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
           </TableBody>
         </Table>
       </div>
+
+      <PolicyMemberDrillDownSheet
+        open={drillOpen}
+        onOpenChange={setDrillOpen}
+        drillType={drillVillage ? "village" : null}
+        drillLabel={drillVillage}
+        reportQueryString={policyDrillQueryString}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   buildPolicyCsvExportLayout,
   buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
+  buildPolicyCsvImportTemplateHeaders,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
 import { buildAllPaymentCellsForExport } from "./policy-csv-payment-columns.js";
@@ -58,12 +59,12 @@ import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 /** @deprecated Use POLICY_CSV_FLAT_HEADERS */
 export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
 
-/** Widest import/tooling layout (12 members, 8 payments). */
+/** Widest import/upload template (12 members, 8 payments, all payment field types). */
 export function buildPolicyCsvHeaders(
   maxMembers = POLICY_CSV_MAX_MEMBER_SLOTS,
   maxPayments = POLICY_CSV_MAX_PAYMENT_SLOTS,
 ): string[] {
-  return buildPolicyCsvHeadersForExport(maxMembers, maxPayments);
+  return buildPolicyCsvImportTemplateHeaders(maxMembers, maxPayments);
 }
 
 /** Full-width headers (import round-trip, tests). */
@@ -253,9 +254,23 @@ export function buildPolicyCsvHeaderLine(): string {
   return buildPolicyCsvExportHeaderLine();
 }
 
-/** Sample CSV: flat v2 headers + one demo row (no CSV_VERSION row). */
+/** Sample CSV: export-aligned headers + one demo row (no CSV_VERSION row). */
 export function buildPolicyCsvSample(): string {
-  const sampleHeaders = buildPolicyCsvFlatExportHeaders();
+  const demoYear = {
+    payments: [
+      {
+        method: "UPI" as const,
+        amount: { toString: () => "5000" },
+        accountNumber: "9876543210",
+        transactionNumber: "DEMO-UPI-001",
+        transactionDate: new Date("2026-05-01T00:00:00.000Z"),
+        status: "COMPLETED" as const,
+        createdAt: new Date("2026-06-01T10:00:00.000Z"),
+        id: "demo-pay",
+      },
+    ],
+  };
+  const sampleHeaders = buildPolicyCsvFlatExportHeaders([demoYear as PolicyExportRow["years"][number]]);
   const demo = buildPolicyCsvSampleDemoRow();
   const headerLine = sampleHeaders.map(csvCell).join(",");
   const cells = sampleHeaders.map((h) => demo[h] ?? "");

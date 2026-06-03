@@ -45,6 +45,32 @@ import { loadClaimStatusMap } from "./claim-status-map.js";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
 
+/** Latest successful claim import for the same file checksum (SHA-256). */
+async function findPriorCompletedClaimImport(checksum: string) {
+  return prisma.csvImportJob.findFirst({
+    where: {
+      checksum,
+      importEntity: CsvImportEntity.CLAIM,
+      status: CsvJobStatus.COMPLETED,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+function duplicateImportPayload(
+  env: Env,
+  prior: Awaited<ReturnType<typeof findPriorCompletedClaimImport>>,
+) {
+  if (!prior || env.CSV_DUPLICATE_MODE !== "block") {
+    return null;
+  }
+  return {
+    jobId: prior.id,
+    completedAt: prior.completedAt?.toISOString() ?? prior.createdAt.toISOString(),
+    fileName: prior.fileName ?? undefined,
+  };
+}
+
 function parseClaimImportMode(_raw: unknown): CsvImportMode {
   return CsvImportMode.CREATE_ONLY;
 }
@@ -156,14 +182,7 @@ async function runClaimImport(
     );
   }
 
-  const prior = await prisma.csvImportJob.findFirst({
-    where: {
-      checksum: opts.checksum,
-      importEntity: CsvImportEntity.CLAIM,
-      status: CsvJobStatus.COMPLETED,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const prior = await findPriorCompletedClaimImport(opts.checksum);
 
   if (prior && env.CSV_DUPLICATE_MODE === "block" && !opts.force) {
     throw new AppError("DUPLICATE_CSV_IMPORT", "This file was already imported successfully", 409);
@@ -337,6 +356,7 @@ export function createClaimUploadRouter(env: Env) {
           matches.push(await evaluateClaimRow(row, typeCache, stats));
         }
 
+        const prior = await findPriorCompletedClaimImport(checksum);
         const previewToken = createPreviewToken(env, {
           userId: req.userId!,
           checksum,
@@ -350,6 +370,7 @@ export function createClaimUploadRouter(env: Env) {
           previewToken,
           previewRows: buildPreviewRows(parsedRows, matches),
           summary: stats,
+          duplicateImport: duplicateImportPayload(env, prior),
         });
       } catch (e) {
         next(e);

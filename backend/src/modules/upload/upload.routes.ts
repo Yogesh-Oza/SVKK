@@ -1,17 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
-import { createHash } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
-import type { Prisma } from "@prisma/client";
-import { CsvJobStatus, CsvImportMode, CsvUpdateMode } from "@prisma/client";
+import { CsvImportMode, CsvUpdateMode } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
-import { normalizeMobile } from "../../domain/phone.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { uploadBufferToGoogleDrive } from "../../services/google-drive.service.js";
 import {
@@ -21,29 +16,19 @@ import {
   uploadBufferToOneDrive,
 } from "../../services/one-drive.service.js";
 import { updatePolicySections } from "../policy/policy.service.js";
-import { isLegacyPolicyCsvFormat, parseCsvWithOptionalVersion } from "../policy/policy-csv-format.js";
-import {
-  processLegacyPolicyCsvRow,
-  validateLegacyPolicyCsvRow,
-} from "../policy/policy-csv-import.js";
-import { buildPolicyTypeCache } from "../policy/policy-csv-resolve.js";
-import { buildErrorReportCsv, type CsvRowError } from "../policy/policy-csv-errors.js";
-import { collectDeprecatedHeaderWarnings } from "../policy/policy-csv-slots.js";
-import { parseCsv } from "../policy/policy-csv-parse.js";
 import {
   assertPolicyReadable,
   loadMisScope,
-  type GeoScope,
 } from "../../services/mis-scope.service.js";
 import { createClaimUploadRouter } from "../claim/claim-upload.routes.js";
+import { createPolicyUploadRouter } from "../policy/policy-upload.routes.js";
+import { runPolicyCsvImportJob } from "../policy/policy-csv-import-job.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const uploadDrive = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 32 * 1024 * 1024 },
 });
-
-const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
 
 const MAX_POLICY_URLS = 5;
 
@@ -109,193 +94,21 @@ export function createUploadRouter(env: Env) {
             force: req.body.force,
           });
 
-        const checksum = createHash("sha256").update(req.file.buffer).digest("hex");
-
-        const prior = await prisma.csvImportJob.findFirst({
-          where: {
-            checksum,
-            updateMode: body.updateMode,
-            status: CsvJobStatus.COMPLETED,
-            dryRun: false,
-          },
-          orderBy: { createdAt: "desc" },
-        });
-
-        if (prior && env.CSV_DUPLICATE_MODE === "block" && !body.force) {
-          throw new AppError(
-            "DUPLICATE_CSV_IMPORT",
-            "This file was already imported successfully",
-            409,
-          );
-        }
-
-        await mkdir(env.UPLOAD_DIR, { recursive: true });
-
-        const startedAt = performance.now();
-        const fileName = req.file.originalname ?? "upload.csv";
-
-        const job = await prisma.csvImportJob.create({
-          data: {
-            s3Key: "",
-            checksum,
-            updateMode: body.updateMode,
-            importMode,
-            dryRun,
-            duplicateOfJobId: prior?.id,
-            forceApplied: body.force,
-            fileName,
-            createdById: req.userId,
-            status: CsvJobStatus.PENDING,
-          },
-        });
-
-        const diskPath = join(env.UPLOAD_DIR, `${job.id}.csv`);
-        await writeFile(diskPath, req.file.buffer);
-
-        await prisma.csvImportJob.update({
-          where: { id: job.id },
-          data: { s3Key: diskPath },
-        });
-
-        const text = req.file.buffer.toString("utf8");
-        const allRows = parseCsv(text);
-        const { csvVersion, header, dataRows } = parseCsvWithOptionalVersion(allRows);
-        if (!header.length) {
-          throw new AppError("CSV_EMPTY", "CSV has no header row", 400);
-        }
-
-        let created = 0;
-        let updated = 0;
-        let fail = 0;
-        const errors: string[] = [];
-        const rowErrors: CsvRowError[] = [];
-        const warnings = collectDeprecatedHeaderWarnings(header);
-
-        const policyScope = await loadMisScope(req.userId!, req.permissions!, "policy");
-        const legacyFormat = isLegacyPolicyCsvFormat(header);
-        const typeCache = legacyFormat ? await buildPolicyTypeCache(prisma) : null;
-
-        for (let batchStart = 0; batchStart < dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
-          const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, dataRows.length);
-          const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
-          for (let i = batchStart; i < batchEnd; i++) {
-            const row = dataRows[i]!;
-            const rowNum = i + headerOffset;
-            const svkkIdx = header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
-            const policyIdx = header.findIndex((h) => h.trim().toLowerCase() === "policy no");
-            const refIdx = header.findIndex((h) => h.trim().toLowerCase() === "ref no");
-            const svkkId = svkkIdx >= 0 ? (row[svkkIdx] ?? "") : "";
-            const policyNo = policyIdx >= 0 ? (row[policyIdx] ?? "") : "";
-            const refNo = refIdx >= 0 ? (row[refIdx] ?? "") : "";
-
-            try {
-              if (dryRun) {
-                if (legacyFormat && typeCache) {
-                  const outcome = await processLegacyPolicyCsvRow(header, row, {
-                    userId: req.userId!,
-                    permissions: req.permissions!,
-                    scope: policyScope,
-                    importMode,
-                    typeCache,
-                    dryRun: true,
-                  });
-                  if (outcome === "created") created++;
-                  else updated++;
-                } else {
-                  validateRow(body.updateMode, header, row);
-                  updated++;
-                }
-                continue;
-              }
-
-              if (legacyFormat && typeCache) {
-                const outcome = await processLegacyPolicyCsvRow(header, row, {
-                  userId: req.userId!,
-                  permissions: req.permissions!,
-                  scope: policyScope,
-                  importMode,
-                  typeCache,
-                });
-                if (outcome === "created") created++;
-                else updated++;
-              } else {
-                await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-                  await applyRow(tx, body.updateMode, header, row, {
-                    userId: req.userId!,
-                    permissions: req.permissions!,
-                    scope: policyScope,
-                  });
-                });
-                updated++;
-              }
-            } catch (err) {
-              fail++;
-              const message = err instanceof Error ? err.message : String(err);
-              errors.push(`row ${rowNum}: ${message}`);
-              rowErrors.push({
-                row: rowNum,
-                error: message,
-                svkkId: svkkId || undefined,
-                policyNo: policyNo || undefined,
-                refNo: refNo || undefined,
-              });
-            }
-          }
-        }
-
-        const durationMs = Math.round(performance.now() - startedAt);
-        const valid = created + updated;
-        const status = fail > 0 && valid === 0 ? CsvJobStatus.FAILED : CsvJobStatus.COMPLETED;
-
-        let errorReportPath: string | undefined;
-        if (rowErrors.length > 0) {
-          errorReportPath = join(env.UPLOAD_DIR, `errors-${job.id}.csv`);
-          await writeFile(errorReportPath, buildErrorReportCsv(rowErrors), "utf8");
-        }
-
-        await prisma.csvImportJob.update({
-          where: { id: job.id },
-          data: {
-            status,
-            rowCount: dataRows.length,
-            successCount: valid,
-            failCount: fail,
-            createdCount: created,
-            updatedCount: updated,
-            durationMs,
-            csvVersion,
-            warningsJson: warnings.length ? JSON.stringify(warnings) : undefined,
-            errorReportS3Key: errorReportPath,
-            completedAt: new Date(),
-          },
-        });
-
-        await writeActivityLog({
-          userId: req.userId,
-          module: "upload",
-          action: dryRun ? "CSV_VALIDATED" : "CSV_IMPORTED",
-          entityType: "CsvImportJob",
-          entityId: job.id,
-          afterData: { created, updated, fail, dryRun, durationMs, importMode },
+        const result = await runPolicyCsvImportJob(env, {
+          userId: req.userId!,
+          permissions: req.permissions!,
+          fileBuffer: req.file.buffer,
+          fileName: req.file.originalname ?? "upload.csv",
+          importMode,
+          updateMode: body.updateMode,
+          dryRun,
+          force: body.force,
         });
 
         res.status(201).json({
-          jobId: job.id,
-          mode: importMode,
-          dryRun,
-          rowCount: dataRows.length,
-          created,
-          updated,
-          failed: fail,
-          valid,
-          invalid: fail,
-          successCount: valid,
-          failCount: fail,
-          durationMs,
-          csvVersion,
-          errors: errors.slice(0, 50),
-          warnings,
-          errorReportUrl: errorReportPath ? `/upload/csv/${job.id}/errors.csv` : undefined,
+          ...result,
+          successCount: result.valid,
+          failCount: result.invalid,
         });
       } catch (e) {
         next(e);
@@ -565,105 +378,8 @@ export function createUploadRouter(env: Env) {
     }
   });
 
+  r.use(createPolicyUploadRouter(env));
   r.use(createClaimUploadRouter(env));
 
   return r;
-}
-
-function colIndex(header: string[], name: string): number {
-  const i = header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
-  if (i < 0) throw new Error(`missing column ${name}`);
-  return i;
-}
-
-function validateRow(mode: CsvUpdateMode, header: string[], row: string[]) {
-  if (mode === CsvUpdateMode.POD_ONLY) {
-    colIndex(header, "policyNo");
-    colIndex(header, "pod");
-  } else if (mode === CsvUpdateMode.POLICY_ONLY) {
-    colIndex(header, "oldPolicyNo");
-    colIndex(header, "newPolicyNo");
-  } else {
-    colIndex(header, "policyNo");
-    colIndex(header, "mobile");
-  }
-}
-
-async function assertCsvPolicyInScope(
-  tx: Prisma.TransactionClient,
-  policyNo: string,
-  ctx: { userId: string; permissions: Set<string>; scope: GeoScope },
-): Promise<void> {
-  const policy = await tx.policy.findFirst({
-    where: { policyNo, deletedAt: null },
-    select: { village: true, area: true, createdById: true },
-  });
-  if (!policy) {
-    throw new Error(`policy ${policyNo} not found`);
-  }
-  assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
-}
-
-async function applyRow(
-  tx: Prisma.TransactionClient,
-  mode: CsvUpdateMode,
-  header: string[],
-  row: string[],
-  ctx?: { userId: string; permissions: Set<string>; scope: GeoScope },
-) {
-  if (mode === CsvUpdateMode.POD_ONLY) {
-    const iNo = colIndex(header, "policyNo");
-    const iPod = colIndex(header, "pod");
-    const policyNo = row[iNo];
-    const pod = row[iPod];
-    if (!policyNo) throw new Error("policyNo empty");
-    if (ctx) await assertCsvPolicyInScope(tx, policyNo, ctx);
-    await tx.policy.updateMany({ where: { policyNo }, data: { pod } });
-    return;
-  }
-  if (mode === CsvUpdateMode.POLICY_ONLY) {
-    const iOld = colIndex(header, "oldPolicyNo");
-    const iNew = colIndex(header, "newPolicyNo");
-    const oldPolicyNo = row[iOld];
-    const newPolicyNo = row[iNew];
-    if (!oldPolicyNo || !newPolicyNo) throw new Error("oldPolicyNo/newPolicyNo required");
-    if (ctx) await assertCsvPolicyInScope(tx, oldPolicyNo, ctx);
-    await tx.policy.updateMany({
-      where: { policyNo: oldPolicyNo },
-      data: { policyNo: newPolicyNo },
-    });
-    return;
-  }
-  const iNo = colIndex(header, "policyNo");
-  const iMob = colIndex(header, "mobile");
-  const iPod = header.findIndex((h) => h.toLowerCase() === "pod");
-  const policyNo = row[iNo];
-  const mobileRaw = row[iMob];
-  if (!policyNo || !mobileRaw) throw new Error("policyNo/mobile required");
-  const mobile = normalizeMobile(mobileRaw);
-  const data: { policyNo?: string; village?: string; pod?: string } = { policyNo };
-  const iV = header.findIndex((h) => h.toLowerCase() === "village");
-  if (iV >= 0 && row[iV]) data.village = row[iV];
-  if (iPod >= 0 && row[iPod]) data.pod = row[iPod];
-  const existing = await tx.policy.findFirst({
-    where: { OR: [{ policyNo }, { insuredParty: { mobile } }] },
-    select: { id: true, village: true, area: true, createdById: true },
-  });
-  if (existing) {
-    if (ctx) {
-      assertPolicyReadable(
-        {
-          village: existing.village,
-          area: existing.area,
-          createdById: existing.createdById,
-        },
-        ctx.userId,
-        ctx.permissions,
-        ctx.scope,
-      );
-    }
-    await tx.policy.update({ where: { id: existing.id }, data });
-  } else {
-    throw new Error("FULL upsert requires existing policy in Phase 1 stub");
-  }
 }
