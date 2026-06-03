@@ -284,6 +284,53 @@ function composeIdsFromSeq(grouping: string, month: string, year: string, svkkSe
   };
 }
 
+/** Flatten Formik/Yup nested errors into paths Formik accepts for `setFieldTouched`. */
+function collectFormikErrorPaths(errors: unknown, prefix = ""): string[] {
+  if (errors == null) {
+    return [];
+  }
+  if (typeof errors === "string") {
+    return prefix && errors.trim() ? [prefix] : [];
+  }
+  if (Array.isArray(errors)) {
+    return errors.flatMap((item, index) => {
+      const path = prefix ? `${prefix}[${index}]` : `[${index}]`;
+      return collectFormikErrorPaths(item, prefix ? `${prefix}[${index}]` : path);
+    });
+  }
+  if (typeof errors === "object") {
+    return Object.entries(errors as Record<string, unknown>).flatMap(([key, val]) => {
+      const path = prefix ? `${prefix}.${key}` : key;
+      return collectFormikErrorPaths(val, path);
+    });
+  }
+  return [];
+}
+
+function firstFormikErrorMessage(errors: unknown): string {
+  if (typeof errors === "string" && errors.trim()) {
+    return errors;
+  }
+  if (Array.isArray(errors)) {
+    for (const item of errors) {
+      const msg = firstFormikErrorMessage(item);
+      if (msg) {
+        return msg;
+      }
+    }
+    return "";
+  }
+  if (errors && typeof errors === "object") {
+    for (const val of Object.values(errors as Record<string, unknown>)) {
+      const msg = firstFormikErrorMessage(val);
+      if (msg) {
+        return msg;
+      }
+    }
+  }
+  return "";
+}
+
 /**
  * Field label paired with a small sparkles icon + tooltip indicating the
  * value is filled in by the system. Used for SVKK ID / Reference No on the
@@ -1213,7 +1260,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     ) {
       return "policy_details";
     }
-    if (path.startsWith("policyHolder") || path.startsWith("dob") || path.startsWith("holderGender") || path.startsWith("relation")) {
+    if (path.startsWith("policyHolder") || path.startsWith("panNo") || path.startsWith("aadhaarNo") || path.startsWith("dob") || path.startsWith("holderGender") || path.startsWith("relation")) {
       return "policy_holder_details";
     }
     if (path.startsWith("members")) {
@@ -1295,13 +1342,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const redirectToFirstError = useCallback(
     async (formErrors: unknown) => {
-      const keys = formErrors && typeof formErrors === "object" ? Object.keys(formErrors as Record<string, unknown>) : [];
-      const firstPath = keys[0] ?? "";
+      const paths = collectFormikErrorPaths(formErrors);
+      const firstPath = paths[0] ?? "";
       const section = sectionForFieldPath(firstPath);
       setActiveSection(section);
 
-      // Ensure errors render even if the field wasn't touched yet.
-      await formik.setFieldTouched(firstPath, true, true);
+      await Promise.all(paths.map((path) => formik.setFieldTouched(path, true, false)));
 
       // Try to focus/scroll the first invalid input for immediate visibility.
       requestAnimationFrame(() => {
@@ -1634,10 +1680,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   };
 
   const addPaymentTransaction = () => {
-    void formik.setValues({
-      ...formik.values,
-      paymentTransactions: [getEmptyPaymentTransaction(), ...formik.values.paymentTransactions],
-    });
+    // Only update the array — avoid setValues({ ...formik.values }) which can
+    // drop in-flight nested field edits and lead to payments: [] on save.
+    void setFieldValue("paymentTransactions", [
+      getEmptyPaymentTransaction(),
+      ...values.paymentTransactions,
+    ]);
   };
 
   const removePaymentTransaction = (index: number) => {
@@ -1869,8 +1917,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           e.preventDefault();
           void (async () => {
             const formErrors = await formik.validateForm();
-            if (Object.keys(formErrors).length > 0) {
-              setApiErr("Please fill all required fields (check each section) and try again.");
+            const errorPaths = collectFormikErrorPaths(formErrors);
+            if (errorPaths.length > 0) {
+              const detail = firstFormikErrorMessage(formErrors);
+              setApiErr(
+                detail ||
+                  "Please fill all required fields (check each section) and try again.",
+              );
               await redirectToFirstError(formErrors);
               return;
             }
@@ -2558,6 +2611,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       maxLength={10}
                       autoComplete="off"
                     />
+                    <FormikError name="panNo" errors={errors} touched={touched} submitCount={submitCount} />
                   </div>
                   <div className="space-y-2">
                     <Label>Aadhaar</Label>

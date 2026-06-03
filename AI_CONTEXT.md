@@ -6,7 +6,16 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
-**Policy CSV export — all members & payments**
+**Edit AD policy — false “fill all required fields” on save**
+
+Root cause: Yup treated empty optional strings as invalid for `panNo` (`.optional()` + `.matches()` rejects `""`) and could reject blank `paymentMode`. CSV-imported policies often have blank PAN, so edit save failed while Policy Details looked complete.
+
+Fixes:
+- `ad-policy-validation-schema.ts` — optional PAN via empty-aware test; blank `paymentMode` coerced to undefined
+- `ad-policy-add-form.tsx` — touch all invalid fields on submit, show first concrete error message, map `panNo`/`aadhaarNo` to Policy Holder section, PAN field error display
+- `ad-policy-validation-schema.test.ts` — regression tests
+
+## Previous task (completed)
 
 List export (`/policies/export.csv`) now uses `POLICY_CSV_EXPORT_HEADERS` = flat block + Member 2–12 + Payment 2–8 (was flat-only; slot data was built but dropped). Import sample CSV unchanged (flat + Member 1).
 

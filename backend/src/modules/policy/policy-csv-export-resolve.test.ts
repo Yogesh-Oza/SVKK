@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
 import { buildPoliciesExportCsv, type PolicyExportRow } from "./policy.export-csv.js";
-import { formatPhoneForCsvExport } from "./policy-csv-utils.js";
+import { formatAadhaarForCsvExport, formatPhoneForCsvExport, fmtCsvDateTime } from "./policy-csv-utils.js";
 
 function dec(n: string): Prisma.Decimal {
   return new Prisma.Decimal(n);
@@ -81,6 +81,30 @@ describe("formatPhoneForCsvExport", () => {
   it("returns empty for blank input", () => {
     expect(formatPhoneForCsvExport("")).toBe("");
     expect(formatPhoneForCsvExport(null)).toBe("");
+  });
+});
+
+describe("formatAadhaarForCsvExport", () => {
+  it("prefixes tab and preserves full 12-digit Aadhaar", () => {
+    expect(formatAadhaarForCsvExport("255242000000")).toBe("\t255242000000");
+    expect(formatAadhaarForCsvExport("2552 4200 0000")).toBe("\t255242000000");
+  });
+
+  it("returns empty for blank input", () => {
+    expect(formatAadhaarForCsvExport("")).toBe("");
+    expect(formatAadhaarForCsvExport(null)).toBe("");
+  });
+});
+
+describe("fmtCsvDateTime", () => {
+  it("formats UTC timestamps as DD-MM-YYYY HH:mm:ss in IST", () => {
+    expect(fmtCsvDateTime(new Date("2026-06-01T06:57:23.408Z"))).toBe("01-06-2026 12:27:23");
+    expect(fmtCsvDateTime(new Date("2026-06-03T01:33:33.063Z"))).toBe("03-06-2026 07:03:33");
+  });
+
+  it("returns empty for missing values", () => {
+    expect(fmtCsvDateTime(null)).toBe("");
+    expect(fmtCsvDateTime(undefined)).toBe("");
   });
 });
 

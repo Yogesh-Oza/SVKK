@@ -16,6 +16,7 @@ import {
   resolvePolicyTypeFromCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
+import { buildCombinedRemarksFromParts } from "./policy-csv-utils.js";
 
 function parseOptionalDate(raw: string): Date | undefined {
   const t = raw.trim();
@@ -169,7 +170,11 @@ export async function createPolicyFromCsvRow(
     city: getCsvField(map, "city") || undefined,
     pincode: getCsvField(map, "pincode") || undefined,
     mobileSecondary: getCsvField(map, "Secondary Mobile Number") || undefined,
-    remarks: getCsvField(map, "gen remark") || undefined,
+    remarks:
+      buildCombinedRemarksFromParts(
+        getCsvField(map, "gen remark"),
+        getCsvField(map, "policy remarK", "policy remar"),
+      ) || undefined,
     policyUrl: getCsvField(map, "policy url") || undefined,
     policyUrl2: getCsvField(map, "url") || undefined,
     adProductVariant: policyTypeKeyToAdVariant(resolvedType.key) ?? undefined,
@@ -184,7 +189,6 @@ export async function createPolicyFromCsvRow(
     vkkCommission: parseOptionalDecimal(getCsvField(map, "VKK commission")),
     commissionAmount: parseOptionalDecimal(getCsvField(map, "Commission amount")),
     yearPolicyHolderPremium: parseOptionalDecimal(getCsvField(map, "Policy Holder Premium")),
-    yearRemarks: getCsvField(map, "policy remarK", "policy remar") || undefined,
   });
 }
 

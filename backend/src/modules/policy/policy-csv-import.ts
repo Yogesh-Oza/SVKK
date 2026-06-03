@@ -21,6 +21,7 @@ import {
 } from "./policy-csv-slots.js";
 import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
+import { buildCombinedRemarksFromParts } from "./policy-csv-utils.js";
 import {
   policyTypeKeyToAdVariant,
   resolveImportPolicyChart,
@@ -303,7 +304,7 @@ async function updatePolicyCsvRow(
   if (secondary) policyUpdate.mobileSecondary = secondary;
   const whatsapp = getCsvField(map, "whatsapp");
   if (whatsapp) policyUpdate.whatsappNo = whatsapp;
-  const notCourier = getCsvField(map, "not_courier");
+  const notCourier = getCsvField(map, "Courier Status", "not_courier");
   if (notCourier) policyUpdate.courierStatus = notCourier;
   const courierDate = getCsvField(map, "courier_date");
   if (courierDate) policyUpdate.courierDate = parseOptionalDate(courierDate);
@@ -311,10 +312,12 @@ async function updatePolicyCsvRow(
   if (courierAddr) policyUpdate.courierAddress = courierAddr;
   const pod = getCsvField(map, "pod");
   if (pod) policyUpdate.podNumber = pod;
-  const courierCo = getCsvField(map, "courier co");
+  const courierCo = getCsvField(map, "Courier Company", "courier co");
   if (courierCo) policyUpdate.courierCompany = courierCo;
   const genRemark = getCsvField(map, "gen remark");
-  if (genRemark) policyUpdate.remarks = genRemark;
+  const policyChangeRemark = getCsvField(map, "policy remarK", "policy remar");
+  const combinedRemarks = buildCombinedRemarksFromParts(genRemark, policyChangeRemark);
+  if (combinedRemarks) policyUpdate.remarks = combinedRemarks;
   const refFromCsv = getCsvField(map, "ref no");
   if (refFromCsv) policyUpdate.referenceNo = refFromCsv;
 
@@ -380,8 +383,6 @@ async function updatePolicyCsvRow(
     if (excess) yearUpdate.excessShortAmount = parseOptionalDecimal(excess);
     const diff = getCsvField(map, "Diff paid by holder");
     if (diff) yearUpdate.diffPaidByHolder = parseOptionalDecimal(diff);
-    const yearRemarks = getCsvField(map, "policy remarK", "policy remar");
-    if (yearRemarks) yearUpdate.yearRemarks = yearRemarks;
 
     if (productTypeRaw) {
       const resolved = resolvePolicyTypeFromCache(productTypeRaw, ctx.typeCache);

@@ -124,8 +124,42 @@ export function mapPaymentTransactionsToApi(values: AdPolicyFormValues) {
   });
 }
 
+function paymentRowHasDetails(row: AdPolicyPaymentTransactionForm): boolean {
+  return (
+    parseNum(row.amountReceived) != null ||
+    row.transactionNumber.trim().length > 0 ||
+    row.transactionDate.trim().length > 0 ||
+    row.transactionStatus !== "" ||
+    parseNum(row.returnCharges) != null ||
+    parseNum(row.otherCharges) != null ||
+    row.dishonourReason.trim().length > 0 ||
+    row.bankName.trim().length > 0 ||
+    row.mobileNumber.trim().length > 0
+  );
+}
+
 /** Validates rows that have an amount — cheque rows need bank + transaction/cheque number. */
 export function validatePaymentTransactions(values: AdPolicyFormValues): void {
+  const detailedRows = values.paymentTransactions.filter(paymentRowHasDetails);
+  const apiRows = values.paymentTransactions.filter(
+    (row) => parseNum(row.amountReceived) != null,
+  );
+
+  if (detailedRows.length > 0 && apiRows.length === 0) {
+    throw new Error(
+      "Enter Amount Received for each payment transaction before saving.",
+    );
+  }
+
+  values.paymentTransactions.forEach((row, index) => {
+    if (!paymentRowHasDetails(row) || parseNum(row.amountReceived) != null) {
+      return;
+    }
+    throw new Error(
+      `Payment ${index + 1}: enter Amount Received or clear unused transaction rows.`,
+    );
+  });
+
   values.paymentTransactions.forEach((row, index) => {
     if (parseNum(row.amountReceived) == null) return;
     const check = sanitizePaymentTransactionForMode(row);

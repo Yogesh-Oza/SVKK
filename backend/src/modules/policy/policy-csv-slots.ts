@@ -285,6 +285,12 @@ export function collectDeprecatedHeaderWarnings(header: string[]): string[] {
   if (normalized.has("policy remar") && !normalized.has("policy remark")) {
     warnings.push("Deprecated column 'policy remar' — migrate to 'policy remarK'");
   }
+  if (normalized.has("courier co") && !normalized.has("courier company")) {
+    warnings.push("Deprecated column 'courier co' — migrate to 'Courier Company'");
+  }
+  if (normalized.has("not_courier") && !normalized.has("courier status")) {
+    warnings.push("Deprecated column 'not_courier' — migrate to 'Courier Status'");
+  }
   return warnings;
 }
 

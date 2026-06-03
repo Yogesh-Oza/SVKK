@@ -255,6 +255,8 @@ export async function submitAdPolicyPatchRequest({
   const combinedRemarks = buildCombinedRemarks(values);
   validatePaymentTransactions(values);
 
+  const apiPayments = mapPaymentTransactionsToApi(values);
+
   const body: Record<string, unknown> = {
     expectedUpdatedAt,
     yearLabel,
@@ -355,7 +357,7 @@ export async function submitAdPolicyPatchRequest({
     gaamMahajanVkk: parseNum(values.gaamMahajan) ?? null,
     excessShortAmount: parseNum(values.excessShort) ?? null,
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
-    payments: mapPaymentTransactionsToApi(values),
+    payments: apiPayments,
   };
 
   if (policyTypeId) {
@@ -373,6 +375,8 @@ export async function submitAdPolicyPatchRequest({
     policyTypeId: policyTypeId ?? null,
     policyChartId: policyChartId ?? null,
     expectedUpdatedAt,
+    paymentTransactionCount: values.paymentTransactions.length,
+    paymentApiCount: apiPayments.length,
   });
 
   applyPrimaryPaymentModeToBody(body, values);

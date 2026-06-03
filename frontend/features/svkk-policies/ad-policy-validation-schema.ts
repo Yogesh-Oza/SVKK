@@ -24,9 +24,8 @@ export const adPolicyValidationSchema = yup.object({
   panNo: yup
     .string()
     .trim()
-    .optional()
     .transform((v) => (v ? v.toUpperCase() : v))
-    .matches(PAN_RE, "Invalid PAN format"),
+    .test("pan", "Invalid PAN format", (v) => !v || PAN_RE.test(v)),
   aadhaarNo: yup
     .string()
     .trim()
@@ -46,6 +45,7 @@ export const adPolicyValidationSchema = yup.object({
   coPremium: yup.string().optional(),
   paymentMode: yup
     .string()
+    .transform((v) => v || undefined)
     .oneOf(["ONLINE", "CHEQUE", "CASH"], "Invalid mode of payment")
     .optional(),
   onlineTransactionRef: yup.string().optional(),

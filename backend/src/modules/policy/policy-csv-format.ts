@@ -3,6 +3,7 @@ import {
   formatCategoryLabel,
   type CategoryRef,
 } from "../../lib/category-display.js";
+import { parsePolicyUrls } from "../../services/notification/policy-url.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
   buildPolicyCsvFlatExportHeaders,
@@ -22,9 +23,25 @@ import {
   resolveHolderJoiningYearForExport,
 } from "./policy-csv-export-fill.js";
 import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
-import { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
+import {
+  csvCell,
+  fmtCsvDate,
+  fmtCsvDateTime,
+  fmtCsvDecimal,
+  formatAadhaarForCsvExport,
+  formatPhoneForCsvExport,
+  resolvePolicyRemarkCsvCells,
+} from "./policy-csv-utils.js";
 
-export { csvCell, fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport, csvPhoneCell } from "./policy-csv-utils.js";
+export {
+  csvCell,
+  fmtCsvDate,
+  fmtCsvDateTime,
+  fmtCsvDecimal,
+  formatAadhaarForCsvExport,
+  formatPhoneForCsvExport,
+  csvPhoneCell,
+} from "./policy-csv-utils.js";
 
 /** Documented format version (not embedded as a required CSV row). */
 export const POLICY_CSV_VERSION = "v2";
@@ -102,18 +119,16 @@ export function parseCsvWithOptionalVersion(rows: string[][]): ParsedCsvLayout {
   };
 }
 
+/** Export actual document URL(s), not a document count summary. */
+export function formatPolicyUrlForCsvExport(raw: string | null | undefined): string {
+  const urls = parsePolicyUrls(raw);
+  if (urls.length === 0) return "";
+  if (urls.length === 1) return urls[0]!;
+  return JSON.stringify(urls);
+}
+
 function formatPolicyUrl(raw: string | null | undefined): string {
-  if (!raw?.trim()) return "";
-  const t = raw.trim();
-  if (t.startsWith("[")) {
-    try {
-      const arr = JSON.parse(t) as unknown[];
-      if (Array.isArray(arr)) return `${arr.length} document(s)`;
-    } catch {
-      /* fall through */
-    }
-  }
-  return t.length > 200 ? `${t.slice(0, 197)}…` : t;
+  return formatPolicyUrlForCsvExport(raw);
 }
 
 function cdAccountStatusLabel(used: boolean | null | undefined): string {
@@ -143,6 +158,7 @@ export function buildLegacyPolicyCsvCells(
     r.categoryText,
     categoryByKey,
   );
+  const remarkCells = resolvePolicyRemarkCsvCells(r.remarks, year?.yearRemarks);
 
   const byHeader: Record<string, string> = {
     year: r.periodYearText ?? year?.yearLabel ?? "",
@@ -152,7 +168,7 @@ export function buildLegacyPolicyCsvCells(
     "SVKK ID": String(party?.svkkPublicId ?? ""),
     "Holder name": String(party?.name ?? ""),
     "Holder PAN": String(party?.pan ?? ""),
-    "Holder Aadhaar": String(party?.aadhaarNo ?? ""),
+    "Holder Aadhaar": formatAadhaarForCsvExport(party?.aadhaarNo),
     "previous policy no": r.previousPolicyNo ?? "",
     "PRE. END DATE": fmtCsvDate(r.previousEndDate),
     "policy no": r.policyNo ?? "",
@@ -206,16 +222,16 @@ export function buildLegacyPolicyCsvCells(
     "Secondary Mobile Number": formatPhoneForCsvExport(r.mobileSecondary),
     whatsapp: formatPhoneForCsvExport(r.whatsappNo),
     email: String(party?.email ?? ""),
-    not_courier: r.courierStatus ?? "",
+    "Courier Status": r.courierStatus ?? "",
     courier_date: fmtCsvDate(r.courierDate),
     courier_address: r.courierAddress ?? "",
     pod: r.podNumber ?? r.pod ?? "",
-    "courier co": r.courierCompany ?? "",
-    "gen remark": r.remarks ?? "",
-    "policy remarK": year?.yearRemarks ?? "",
+    "Courier Company": r.courierCompany ?? "",
+    "gen remark": remarkCells.genRemark,
+    "policy remarK": remarkCells.policyRemark,
     "ref no": r.referenceNo ?? "",
-    "Created at": r.createdAt.toISOString(),
-    "Updated at": r.updatedAt.toISOString(),
+    "Created at": fmtCsvDateTime(r.createdAt),
+    "Updated at": fmtCsvDateTime(r.updatedAt),
     "policy url": formatPolicyUrl(r.policyUrl),
     url: r.policyUrl2 ?? "",
     ...buildFlatMember1Cells(members),

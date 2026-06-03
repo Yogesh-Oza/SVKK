@@ -3,12 +3,19 @@ import {
   POLICY_CSV_EXPORT_HEADERS,
   POLICY_CSV_FLAT_HEADERS,
   POLICY_CSV_VERSION,
+  buildLegacyPolicyCsvCells,
   buildPolicyCsvExportHeaderLine,
   buildPolicyCsvSample,
   detectFormatFromHeaders,
+  formatPolicyUrlForCsvExport,
   parseCsvWithOptionalVersion,
 } from "./policy-csv-format.js";
 import { parseCsv } from "./policy-csv-parse.js";
+import {
+  buildCombinedRemarksFromParts,
+  parseRemarks,
+  resolvePolicyRemarkCsvCells,
+} from "./policy-csv-utils.js";
 
 describe("policy-csv-format v2", () => {
   it("flat headers include PRE. END DATE and Member 1 block", () => {
@@ -51,5 +58,57 @@ describe("policy-csv-format v2", () => {
     expect(parsed.csvVersion).toBe("v2");
     expect(parsed.header[0]).toBe("year");
     expect(parsed.dataRows).toHaveLength(1);
+  });
+});
+
+describe("formatPolicyUrlForCsvExport", () => {
+  const oneDrive =
+    "https://1drv.ms/i/c/52807dc0312d4da3/IQCIsC2JTCmBQJ4qujAzUweCAWNcu4IzQTVJjcEPTO85UmQ";
+
+  it("exports a single OneDrive URL from JSON array storage", () => {
+    expect(formatPolicyUrlForCsvExport(JSON.stringify([oneDrive]))).toBe(oneDrive);
+  });
+
+  it("exports a legacy plain URL as-is", () => {
+    expect(formatPolicyUrlForCsvExport(oneDrive)).toBe(oneDrive);
+  });
+
+  it("does not export document count summaries", () => {
+    expect(formatPolicyUrlForCsvExport(JSON.stringify([oneDrive, "https://example.com/doc2"]))).not.toContain(
+      "document(s)",
+    );
+  });
+});
+
+describe("policy remark CSV columns", () => {
+  it("splits combined Policy.remarks into gen remark and policy remarK", () => {
+    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+    expect(parseRemarks(combined)).toEqual({
+      generalRemark: "test 1",
+      policyChangeRemark: "test 1",
+    });
+    expect(resolvePolicyRemarkCsvCells(combined, "Sample import row")).toEqual({
+      genRemark: "test 1",
+      policyRemark: "test 1",
+    });
+  });
+
+  it("falls back to yearRemarks for policy remarK when no policy change remark stored", () => {
+    expect(resolvePolicyRemarkCsvCells("Legacy general note", "Sample import row")).toEqual({
+      genRemark: "Legacy general note",
+      policyRemark: "Sample import row",
+    });
+  });
+
+  it("exports split remark columns without label prefixes", () => {
+    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+    const row = {
+      remarks: combined,
+      years: [{ yearRemarks: "Sample import row", members: [], payments: [] }],
+    } as Parameters<typeof buildLegacyPolicyCsvCells>[0];
+    const headers = ["gen remark", "policy remarK"];
+    const cells = buildLegacyPolicyCsvCells(row, null, row.years[0], new Map(), headers);
+    expect(cells[headers.indexOf("gen remark")]).toBe("test 1");
+    expect(cells[headers.indexOf("policy remarK")]).toBe("test 1");
   });
 });
