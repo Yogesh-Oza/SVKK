@@ -21,7 +21,7 @@ import {
 } from "./policy-csv-slots.js";
 import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
-import { buildCombinedRemarksFromParts } from "./policy-csv-utils.js";
+import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
 import {
   policyTypeKeyToAdVariant,
   resolveImportPolicyChart,
@@ -44,11 +44,7 @@ export type LegacyCsvRowContext = {
 };
 
 function parseOptionalDate(raw: string): Date | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) throw new Error(`invalid date: ${raw}`);
-  return d;
+  return parseCsvDate(raw);
 }
 
 function parseOptionalDecimal(raw: string): PrismaNamespace.Decimal | undefined | null {

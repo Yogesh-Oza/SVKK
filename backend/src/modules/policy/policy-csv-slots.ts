@@ -3,7 +3,7 @@ import { PayMethod, ChequeStatus } from "@prisma/client";
 import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import { formatGenderForCsvExport } from "./policy-csv-export-fill.js";
-import { fmtCsvDate, fmtCsvDecimal, formatDigitsForCsvExport, formatPhoneForCsvExport } from "./policy-csv-utils.js";
+import { fmtCsvDate, fmtCsvDecimal, formatDigitsForCsvExport, formatPhoneForCsvExport, parseCsvDate } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
@@ -351,11 +351,7 @@ function parseChequeStatus(raw: string): ChequeStatus | undefined {
 }
 
 function parseOptionalDate(raw: string): Date | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) throw new Error(`invalid date: ${raw}`);
-  return d;
+  return parseCsvDate(raw);
 }
 
 function parseOptionalDecimal(raw: string): number | undefined {

@@ -1,5 +1,4 @@
 import type { PolicyExportRow } from "./policy.export-csv.js";
-import { fmtCsvDate } from "./policy-csv-utils.js";
 
 /** Gender codes stored in DB → labels shown on policy profile. */
 export function formatGenderForCsvExport(raw: string | null | undefined): string {
@@ -19,7 +18,7 @@ export function resolveHolderJoiningYearForExport(
   const fromYear = year?.holderJoiningYear?.trim();
   if (fromYear) return fromYear;
   if (row.holderJoiningDate) {
-    return fmtCsvDate(row.holderJoiningDate).slice(0, 4);
+    return String(row.holderJoiningDate.getUTCFullYear());
   }
   return "";
 }

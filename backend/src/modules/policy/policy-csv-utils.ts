@@ -2,9 +2,48 @@ import type { Prisma } from "@prisma/client";
 
 const CSV_DATETIME_TIME_ZONE = "Asia/Kolkata";
 
+function csvDateParts(d: Date): { day: string; month: string; year: string } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: CSV_DATETIME_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(d);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return { day: pick("day"), month: pick("month"), year: pick("year") };
+}
+
+/** Date-only columns for CSV export (DD-MM-YYYY, India time). Leading tab keeps Excel from reformatting. */
 export function fmtCsvDate(d: Date | null | undefined): string {
   if (!d) return "";
-  return d.toISOString().slice(0, 10);
+  const { day, month, year } = csvDateParts(d);
+  return `\t${day}-${month}-${year}`;
+}
+
+/** Parse policy CSV date cells (export format, ISO legacy, or locale fallback). */
+export function parseCsvDate(raw: string): Date | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+
+  const ddMmYyyy = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(t);
+  if (ddMmYyyy) {
+    const day = Number(ddMmYyyy[1]);
+    const month = Number(ddMmYyyy[2]);
+    const year = Number(ddMmYyyy[3]);
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (iso) {
+    const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00.000Z`);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) throw new Error(`invalid date: ${raw}`);
+  return d;
 }
 
 /** User-readable timestamp for CSV export (DD-MM-YYYY HH:mm:ss, India time). */

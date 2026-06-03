@@ -16,14 +16,10 @@ import {
   resolvePolicyTypeFromCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
-import { buildCombinedRemarksFromParts } from "./policy-csv-utils.js";
+import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
 
 function parseOptionalDate(raw: string): Date | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) throw new Error(`invalid date: ${raw}`);
-  return d;
+  return parseCsvDate(raw);
 }
 
 function parseOptionalDecimal(raw: string): number | undefined {

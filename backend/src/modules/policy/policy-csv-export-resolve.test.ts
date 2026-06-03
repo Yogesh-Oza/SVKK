@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
 import { buildPoliciesExportCsv, type PolicyExportRow } from "./policy.export-csv.js";
-import { formatAadhaarForCsvExport, formatPhoneForCsvExport, fmtCsvDateTime } from "./policy-csv-utils.js";
+import { formatAadhaarForCsvExport, formatPhoneForCsvExport, fmtCsvDate, fmtCsvDateTime, parseCsvDate } from "./policy-csv-utils.js";
 
 function dec(n: string): Prisma.Decimal {
   return new Prisma.Decimal(n);
@@ -105,6 +105,30 @@ describe("fmtCsvDateTime", () => {
   it("returns empty for missing values", () => {
     expect(fmtCsvDateTime(null)).toBe("");
     expect(fmtCsvDateTime(undefined)).toBe("");
+  });
+});
+
+describe("fmtCsvDate", () => {
+  it("formats date-only columns as DD-MM-YYYY with Excel text hint", () => {
+    expect(fmtCsvDate(new Date("1996-09-29T00:00:00.000Z"))).toBe("\t29-09-1996");
+    expect(fmtCsvDate(new Date("2026-12-02T00:00:00.000Z"))).toBe("\t02-12-2026");
+  });
+
+  it("returns empty for missing values", () => {
+    expect(fmtCsvDate(null)).toBe("");
+    expect(fmtCsvDate(undefined)).toBe("");
+  });
+});
+
+describe("parseCsvDate", () => {
+  it("parses DD-MM-YYYY export format", () => {
+    const d = parseCsvDate("29-09-1996");
+    expect(d?.toISOString()).toBe("1996-09-29T00:00:00.000Z");
+  });
+
+  it("still parses legacy YYYY-MM-DD imports", () => {
+    const d = parseCsvDate("1996-09-29");
+    expect(d?.toISOString()).toBe("1996-09-29T00:00:00.000Z");
   });
 });
 
