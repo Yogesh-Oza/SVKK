@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import { buildPolicyCsvHeadersForExport } from "./policy-csv-export-layout.js";
+import { paymentCsvHeader } from "./policy-csv-payment-columns.js";
 import { parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
   buildPoliciesExportCsv,
@@ -230,7 +231,7 @@ describe("PO- 14010061252700000246 export", () => {
     expect(map.get("Gross premium")).toBe("11872");
     expect(map.get("SVKK premium")).toBe("11872");
     expect(map.get("Net premium")).toBe("11872");
-    expect(map.get("policy_cheque_no")).toBe("CH-000038");
+    expect(map.get(paymentCsvHeader(1, "transactionNumber"))).toBe("CH-000038");
     expect(map.get("Member 1 Name")).toBe("Charmi Viren Chheda");
     expect(map.get("Member 1 Gender")).toBe("Other");
     expect(map.get(memberSlotHeader(2, "Name"))).toBe("Naysha Viren Chheda");
