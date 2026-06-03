@@ -3,7 +3,7 @@ import { PayMethod, ChequeStatus } from "@prisma/client";
 import type { PolicyMemberReplaceRow, PaymentReplaceRow } from "./policy.schemas.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import { formatGenderForCsvExport } from "./policy-csv-export-fill.js";
-import { fmtCsvDate, fmtCsvDecimal, formatPhoneForCsvExport } from "./policy-csv-utils.js";
+import { fmtCsvDate, fmtCsvDecimal, formatDigitsForCsvExport, formatPhoneForCsvExport } from "./policy-csv-utils.js";
 import { getCsvField } from "./policy-csv-parse.js";
 
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
@@ -150,6 +150,25 @@ export function buildExtendedPaymentHeaders(maxSlots = POLICY_CSV_MAX_PAYMENT_SL
 type YearMember = PolicyExportRow["years"][number]["members"][number];
 type YearPayment = PolicyExportRow["years"][number]["payments"][number];
 
+/** Newest first — matches Payment Transactions UI (Transaction 1 = latest). */
+export function sortPaymentsForCsvExport<T extends { createdAt?: Date | null; id?: string | null }>(
+  payments: readonly T[],
+): T[] {
+  return [...payments].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (ta !== tb) return tb - ta;
+    if (a.id && b.id) return b.id.localeCompare(a.id);
+    return 0;
+  });
+}
+
+/** CSV slot 1 = newest; persist oldest-first like the policy form save path. */
+export function normalizeCsvPaymentsForDb(payments: PaymentReplaceRow[]): PaymentReplaceRow[] {
+  if (payments.length <= 1) return payments;
+  return [...payments].reverse();
+}
+
 export function memberSlotCells(
   member: YearMember | undefined,
   slot: number,
@@ -186,6 +205,16 @@ function memberFieldValue(member: YearMember | undefined, key: MemberSlotFieldKe
   }
 }
 
+function formatPaymentStatusForCsvExport(
+  payment: YearPayment,
+  cheque: YearPayment["cheque"],
+): string {
+  if (cheque?.status === "DISHONOURED" || payment.status === "FAILED") return "DISHONOURED";
+  if (cheque?.status === "CLEARED" || payment.status === "COMPLETED") return "CLEARED";
+  if (cheque?.status === "PENDING" || payment.status === "PENDING") return "PENDING";
+  return cheque?.status ?? payment.status ?? "";
+}
+
 export function paymentSlotCells(
   payment: YearPayment | undefined,
   slot: number,
@@ -209,18 +238,21 @@ export function paymentSlotCells(
   }
 
   set("amount", fmtCsvDecimal(payment.amount));
-  set("method", slot === 1 ? (yearPaymentMode ?? payment.method) : payment.method);
+  set("method", payment.method ?? (slot === 1 ? (yearPaymentMode ?? "") : ""));
   set("transactionNumber", payment.transactionNumber ?? "");
   set("transactionDate", fmtCsvDate(payment.transactionDate));
   set("policy_cheque_no", cheque?.number ?? payment.transactionNumber ?? "");
   set("bank", cheque?.bankName ?? payment.bankName ?? "");
-  set("account_no", cheque?.accountNo ?? payment.accountNumber ?? "");
+  set(
+    "account_no",
+    formatDigitsForCsvExport(cheque?.accountNo ?? payment.accountNumber ?? ""),
+  );
   set("branch", cheque?.branch ?? payment.branchName ?? "");
   set("name_as_per_cheque", cheque?.nameAsPerCheque ?? payment.nameAsPerCheque ?? "");
   set("ifsc", cheque?.ifsc ?? payment.ifscCode ?? "");
   set("not_over", cheque?.notOver ?? payment.notOver ?? "");
   set("cheque_date", fmtCsvDate(cheque?.chequeDate ?? payment.transactionDate));
-  set("cheque_status", cheque?.status ?? payment.status ?? "");
+  set("cheque_status", formatPaymentStatusForCsvExport(payment, cheque));
   set("reason_dishonoured", cheque?.reason ?? payment.dishonourReason ?? "");
   set("return charge", fmtCsvDecimal(payment.returnCharges));
   set("other carges", fmtCsvDecimal(payment.otherCharges));
@@ -245,9 +277,10 @@ export function buildAllPaymentSlotCells(
   payments: YearPayment[],
   yearPaymentMode?: string | null,
 ): Record<string, string> {
+  const ordered = sortPaymentsForCsvExport(payments);
   const cells: Record<string, string> = {};
   for (let slot = 1; slot <= POLICY_CSV_MAX_PAYMENT_SLOTS; slot++) {
-    Object.assign(cells, paymentSlotCells(payments[slot - 1], slot, yearPaymentMode));
+    Object.assign(cells, paymentSlotCells(ordered[slot - 1], slot, yearPaymentMode));
   }
   return cells;
 }
@@ -413,7 +446,7 @@ export function collectPaymentsFromCsvMap(map: Map<string, string>): PaymentRepl
       otherCharges: parseOptionalDecimal(paymentFieldFromMap(map, slot, "other carges")),
     });
   }
-  return payments;
+  return normalizeCsvPaymentsForDb(payments);
 }
 
 /** Demo row for sample CSV (flat format v2). */

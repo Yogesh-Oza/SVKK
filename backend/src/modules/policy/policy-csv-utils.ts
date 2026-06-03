@@ -82,6 +82,18 @@ export function formatAadhaarForCsvExport(raw: string | null | undefined): strin
   return `\t${digits}`;
 }
 
+/** Keeps long numeric IDs (account/mobile) out of Excel scientific notation. */
+export function formatDigitsForCsvExport(raw: string | null | undefined): string {
+  if (raw == null) return "";
+  const trimmed = String(raw).trim();
+  if (!trimmed) return "";
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length >= 10 && /^\d[\d\s]*$/.test(trimmed)) {
+    return `\t${digits}`;
+  }
+  return trimmed;
+}
+
 const GENERAL_REMARK_MARKER = "General Remark:";
 const POLICY_CHANGE_REMARK_MARKER = "Policy Change Remark:";
 

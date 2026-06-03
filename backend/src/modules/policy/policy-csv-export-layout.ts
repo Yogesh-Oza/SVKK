@@ -133,7 +133,7 @@ export function flatMember1FieldHeaders(): string[] {
   return [...POLICY_CSV_FLAT_MEMBER1_HEADERS];
 }
 
-/** Payment 1 field headers in flat block (excludes `amount`, which is not in v2 flat). */
+/** Payment 1 field headers in flat block. */
 export function flatPayment1FieldHeaders(): string[] {
   return [...POLICY_CSV_FLAT_PAYMENT1_HEADERS];
 }

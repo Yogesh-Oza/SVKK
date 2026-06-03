@@ -111,10 +111,11 @@ describe("policy CSV slots", () => {
     ]);
     const payments = collectPaymentsFromCsvMap(map);
     expect(payments).toHaveLength(2);
-    expect(payments[0]?.amount).toBe(1000);
-    expect(payments[0]?.method).toBe(PayMethod.CHQ);
-    expect(payments[1]?.method).toBe(PayMethod.UPI);
-    expect(payments[1]?.transactionNumber).toBe("UPI-99");
+    // CSV slot 1 = newest; persisted oldest-first.
+    expect(payments[0]?.amount).toBe(500);
+    expect(payments[0]?.method).toBe(PayMethod.UPI);
+    expect(payments[1]?.amount).toBe(1000);
+    expect(payments[1]?.method).toBe(PayMethod.CHQ);
   });
 });
 
@@ -212,6 +213,7 @@ describe("buildPoliciesExportCsv multiple slots", () => {
           payments: [
             paymentRow({
               id: "p1",
+              createdAt: new Date("2026-01-10T10:00:00.000Z"),
               transactionNumber: "CHQ-ONE",
               cheque: {
                 number: "CHQ-ONE",
@@ -228,9 +230,11 @@ describe("buildPoliciesExportCsv multiple slots", () => {
             }),
             paymentRow({
               id: "p2",
+              createdAt: new Date("2026-01-11T10:00:00.000Z"),
               method: "UPI",
               transactionNumber: "UPI-TWO",
               amount: new Prisma.Decimal(250),
+              accountNumber: "8574859632",
               cheque: null,
               chequeId: null,
             }),
@@ -250,8 +254,121 @@ describe("buildPoliciesExportCsv multiple slots", () => {
     expect(map.get(memberSlotHeader(3, "Name"))).toBe("Member Three");
     expect(header).toContain("Member 2 Name");
     expect(header).toContain("Payment 2 amount");
-    expect(map.get(paymentSlotHeader(1, "policy_cheque_no"))).toBe("CHQ-ONE");
-    expect(map.get("mode of payment")).toBe("CHQ");
-    expect(map.get(paymentSlotHeader(2, "transactionNumber"))).toBe("UPI-TWO");
+    expect(header).toContain("amount");
+    expect(map.get("mode of payment")).toBe("UPI");
+    expect(map.get("transaction number")).toBe("UPI-TWO");
+    expect(map.get("amount")).toBe("250");
+    expect(map.get(paymentSlotHeader(2, "policy_cheque_no"))).toBe("CHQ-ONE");
+    expect(map.get(paymentSlotHeader(2, "method"))).toBe("CHQ");
+  });
+
+  it("exports three payment transactions in UI order with accurate amounts", () => {
+    const mk = (
+      id: string,
+      createdAt: string,
+      overrides: Partial<PolicyExportRow["years"][number]["payments"][number]>,
+    ) =>
+      paymentRow({
+        id,
+        createdAt: new Date(createdAt),
+        cheque: null,
+        chequeId: null,
+        ...overrides,
+      });
+
+    const row = {
+      id: "p-multi",
+      insuredPartyId: "ip1",
+      policyTypeId: "pt1",
+      categoryId: null,
+      policyNo: "PN-MULTI",
+      village: "V1",
+      referenceNo: "REF-M",
+      periodYearText: "2026-27",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      insuredParty: {
+        id: "ip1",
+        customerId: "C1",
+        mobile: "+919999999999",
+        svkkPublicId: "SVKK1",
+        name: "Holder",
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      policyType: { key: "ad_policy", name: "AD Policy" },
+      category: null,
+      years: [
+        {
+          id: "y1",
+          policyId: "p-multi",
+          yearLabel: "2026-27",
+          policyChartId: "c1",
+          paymentMode: "UPI",
+          members: [],
+          payments: [
+            mk("pay-cash", "2026-06-01T08:00:00.000Z", {
+              method: "CASH",
+              amount: new Prisma.Decimal(500),
+              transactionDate: new Date("2002-09-05T00:00:00.000Z"),
+              status: "FAILED",
+              returnCharges: new Prisma.Decimal(500),
+              otherCharges: new Prisma.Decimal(500),
+            }),
+            mk("pay-chq", "2026-06-01T09:00:00.000Z", {
+              method: "CHQ",
+              amount: new Prisma.Decimal(200),
+              transactionNumber: "testqas",
+              transactionDate: new Date("2026-12-02T00:00:00.000Z"),
+              bankName: "testqas",
+              branchName: "testqas",
+              accountNumber: "1234265",
+              nameAsPerCheque: "testqas",
+              ifscCode: "testqas",
+              notOver: "testqas",
+              status: "FAILED",
+              dishonourReason: "test 1",
+              returnCharges: new Prisma.Decimal(200),
+              otherCharges: new Prisma.Decimal(200),
+            }),
+            mk("pay-upi", "2026-06-01T10:00:00.000Z", {
+              method: "UPI",
+              amount: new Prisma.Decimal(800),
+              transactionNumber: "testqas1",
+              transactionDate: new Date("2026-12-02T00:00:00.000Z"),
+              accountNumber: "8574859632",
+              status: "COMPLETED",
+              returnCharges: new Prisma.Decimal(800),
+              otherCharges: new Prisma.Decimal(800),
+            }),
+          ],
+        },
+      ],
+    } as PolicyExportRow;
+
+    const csv = buildPoliciesExportCsv([row], new Set(["policy:scope_all"]), ["2026-27"]);
+    const [header, data] = parseCsv(csv.replace(/^\uFEFF/, ""));
+    const map = rowToHeaderMap(header!, data!);
+
+    expect(map.get("mode of payment")).toBe("UPI");
+    expect(map.get("transaction number")).toBe("testqas1");
+    expect(map.get("amount")).toBe("800");
+    expect(map.get("account_no")).toBe("8574859632");
+    expect(data!.some((cell) => cell.includes("8574859632"))).toBe(true);
+    expect(map.get("cheque_status")).toBe("CLEARED");
+
+    expect(map.get(paymentSlotHeader(2, "method"))).toBe("CHQ");
+    expect(map.get(paymentSlotHeader(2, "amount"))).toBe("200");
+    expect(map.get(paymentSlotHeader(2, "transactionNumber"))).toBe("testqas");
+    expect(map.get(paymentSlotHeader(2, "reason_dishonoured"))).toBe("test 1");
+
+    expect(map.get(paymentSlotHeader(3, "method"))).toBe("CASH");
+    expect(map.get(paymentSlotHeader(3, "amount"))).toBe("500");
+    expect(map.get(paymentSlotHeader(3, "cheque_status"))).toBe("DISHONOURED");
   });
 });
