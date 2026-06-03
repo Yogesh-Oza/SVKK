@@ -6,7 +6,24 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
-**Edit AD policy — false “fill all required fields” on save**
+**Policy CSV export — dynamic payment columns + Payment 1 prefix**
+
+Payment transactions in CSV export now match the UI Payment & Bank Details form:
+
+- Every slot uses `Payment N {UI label}` headers (including Payment 1; legacy unprefixed columns remain import aliases only).
+- Columns are **dynamic per slot** based on payment method (UPI → Mobile Number; Cheque → bank fields; Cash → minimal set).
+- Export order is **newest first** (Transaction 1 = Payment 1); import reverses to oldest-first for DB.
+- Import/create accept `Payment 1 Mode of Payment` with fallback to legacy `mode of payment`.
+
+| Module | Role |
+|--------|------|
+| `policy-csv-payment-columns.ts` | Field orders, `buildPaymentExportPlan`, export cells, `collectPaymentsFromCsvMap` |
+| `policy-csv-export-layout.ts` | Inserts dynamic payment headers between core and premium blocks |
+| `policy-csv-flat-headers.ts` | Payment columns removed from flat block (now dynamic) |
+
+**Tests:** `policy-csv-payment-columns.test.ts`, updated slots/export tests (102 policy tests passing).
+
+## Previous task (completed)
 
 Root cause: Yup treated empty optional strings as invalid for `panNo` (`.optional()` + `.matches()` rejects `""`) and could reject blank `paymentMode`. CSV-imported policies often have blank PAN, so edit save failed while Policy Details looked complete.
 
