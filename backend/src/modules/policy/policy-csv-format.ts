@@ -168,7 +168,7 @@ export function buildLegacyPolicyCsvCells(
     "SVKK ID": String(party?.svkkPublicId ?? ""),
     "Holder name": String(party?.name ?? ""),
     "Holder PAN": String(party?.pan ?? ""),
-    "Holder Aadhaar": formatAadhaarForCsvExport(party?.aadhaarNo),
+    "Holder Aadhaar": formatAadhaarForCsvExport(party?.aadhaarNo as string | null | undefined),
     "previous policy no": r.previousPolicyNo ?? "",
     "PRE. END DATE": fmtCsvDate(r.previousEndDate),
     "policy no": r.policyNo ?? "",

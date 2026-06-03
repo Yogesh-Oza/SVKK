@@ -207,7 +207,7 @@ function memberFieldValue(member: YearMember | undefined, key: MemberSlotFieldKe
 
 function formatPaymentStatusForCsvExport(
   payment: YearPayment,
-  cheque: YearPayment["cheque"],
+  cheque: YearPayment["cheque"] | null | undefined,
 ): string {
   if (cheque?.status === "DISHONOURED" || payment.status === "FAILED") return "DISHONOURED";
   if (cheque?.status === "CLEARED" || payment.status === "COMPLETED") return "CLEARED";
