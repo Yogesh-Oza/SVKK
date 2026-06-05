@@ -83,6 +83,7 @@ import {
   shouldClearBasicOnChartError,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
+import { buildMemberAge25AlertMessage } from "./member-age-25-alert";
 
 export type { AdMemberRow } from "./ad-member-types";
 
@@ -481,6 +482,36 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [premiumState, setPremiumStateValue] = useState<PremiumState>(() => ({ defs: {}, charts: {} }));
   const [fetchedPolicyForUpdate, setFetchedPolicyForUpdate] = useState<SvkkPolicyDetailForForm | null>(null);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
+  const [memberAgeAlertOpen, setMemberAgeAlertOpen] = useState(false);
+  const [memberAgeAlertMessage, setMemberAgeAlertMessage] = useState("");
+  const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
+
+  /** Age ≥ 25 pre-check modal.
+   * If an alert message exists, show the modal and run `afterDismiss` only
+   * after the user clicks OK. If no alert message exists, run `afterDismiss`
+   * immediately. */
+  const showMemberAge25Alert = useCallback(
+    (members: AdMemberRow[], anchorIso: string, afterDismiss?: () => void) => {
+      const message = buildMemberAge25AlertMessage(members, anchorIso);
+      if (!message) {
+        afterDismiss?.();
+        return false;
+      }
+      runAfterMemberAgeAlertRef.current = afterDismiss ?? null;
+      setMemberAgeAlertMessage(message);
+      setMemberAgeAlertOpen(true);
+      return true;
+    },
+    [],
+  );
+
+  const dismissMemberAge25Alert = useCallback(() => {
+    setMemberAgeAlertOpen(false);
+    const next = runAfterMemberAgeAlertRef.current;
+    runAfterMemberAgeAlertRef.current = null;
+    next?.();
+  }, []);
+
   /** UI-only: set after successful Carry Forward / Renew. */
   const [carriedForwardNotice, setCarriedForwardNotice] = useState<string | null>(null);
   /** Remounts Policy Type / Month selects after edit hydration (Radix Select stale value fix). */
@@ -635,15 +666,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         // Auto Receipt: fetch the freshly saved policy and open the receipt
         // preview. The user can Print → "Save as PDF" from there. When the
         // modal closes, navigate to the policy detail page.
-        try {
-          const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
-          const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
-          setReceiptPreviewHtml(buildReceiptDocumentHtml(saved, { embedded: true, ...resolved }));
-          setNavigateAfterReceiptClose(`/policies/${id}`);
-        } catch {
-          // If fetching the receipt fails for any reason, just navigate.
-          void router.push(`/policies/${id}`);
-        }
+        void (async () => {
+          try {
+            const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
+            const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+            setReceiptPreviewHtml(buildReceiptDocumentHtml(saved, { embedded: true, ...resolved }));
+            setNavigateAfterReceiptClose(`/policies/${id}`);
+          } catch {
+            void router.push(`/policies/${id}`);
+          }
+        })();
       } catch (e) {
         if (tryApplyBackendValidationErrors(e)) {
           setApiErr("Please fix the highlighted fields and try again.");
@@ -1044,7 +1076,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       if (carryForwardBusy) return;
       setSelectedFetchId(policyIdToUse);
       setCarryForwardBusy(true);
-      const loadingToastId = toast.loading("Carrying forward policy…");
       try {
         const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${policyIdToUse}`);
         const fetchMeta = fetchRows.find((item) => item.id === policyIdToUse);
@@ -1055,128 +1086,156 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           matchedYearRows.find((r) => r.id === policyIdToUse)?.yearLabel ||
           formik.values.year?.trim() ||
           undefined;
-      const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
-      const shiftedYear = nextYearLabel(carriedValues.year);
-      const previousYear = carriedValues.year || "—";
-      // Baseline: shift the year token inside the prior Reference No so we never
-      // submit the same number for two different years. This works even when the
-      // auto-id endpoint can't run (e.g. Policy Grouping is empty on the prior
-      // policy). SVKK Public ID is untouched — it's holder-stable across years.
-      let nextReferenceNo = shiftReferenceNoYear(carriedValues.refNo, carriedValues.year, shiftedYear);
-      let autoIdNotice = "";
-      try {
-        const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
-        if (generated.referenceNo) {
-          nextReferenceNo = generated.referenceNo;
-        } else if (nextReferenceNo === carriedValues.refNo) {
-          autoIdNotice = " (reference number kept from prior policy — auto-generator unavailable)";
-        } else {
-          autoIdNotice = " (reference number year shifted; verify before submitting)";
+        const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
+        const carryAgeAnchor = carriedValues.policyEnd || carriedValues.previousEndDate;
+
+        const proceed = async () => {
+          const loadingToastId = toast.loading("Carrying forward policy…");
+          try {
+            const shiftedYear = nextYearLabel(carriedValues.year);
+            const previousYear = carriedValues.year || "—";
+
+            // Baseline: shift the year token inside the prior Reference No so we never
+            // submit the same number for two different years. This works even when the
+            // auto-id endpoint can't run (e.g. Policy Grouping is empty on the prior
+            // policy). SVKK Public ID is untouched — it's holder-stable across years.
+            let nextReferenceNo = shiftReferenceNoYear(carriedValues.refNo, carriedValues.year, shiftedYear);
+            let autoIdNotice = "";
+            try {
+              const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
+              if (generated.referenceNo) {
+                nextReferenceNo = generated.referenceNo;
+              } else if (nextReferenceNo === carriedValues.refNo) {
+                autoIdNotice = " (reference number kept from prior policy — auto-generator unavailable)";
+              } else {
+                autoIdNotice = " (reference number year shifted; verify before submitting)";
+              }
+            } catch {
+              autoIdNotice =
+                nextReferenceNo === carriedValues.refNo
+                  ? " (reference number kept from prior policy — auto-generator unavailable)"
+                  : " (reference number year shifted; verify before submitting)";
+            }
+
+            const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
+            // Keep Net Premium blank for manual entry; other premium fields may still auto-calc.
+            isHydratingRef.current = true;
+            setPremiumManual({ coPremium: true, netPremiumCalc: true });
+            setAgeManual({});
+            setAutoCalcLocked(false);
+
+            await formik.setValues({
+              ...carriedValues,
+              year: shiftedYear,
+              previousPolicyNo: carriedValues.policyNo,
+              previousEndDate: carriedValues.policyEnd,
+              policyNo: "",
+              policyStart: "",
+              policyEnd: "",
+              refNo: nextReferenceNo,
+              // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
+              basicPremiumPs: "",
+              members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
+              twoLakhF: "",
+              grossPremium: "",
+              taxAmount: "",
+              svkkPremiumCalc: "",
+              vkkPremium: "",
+              netPremiumCalc: "",
+              coPremium: "",
+              commission: "",
+              vkkCommission: "",
+              policyHolderPremium: "",
+              contribution: "",
+              gaamMahajan: "",
+              excessShort: "",
+              differenceAmountPaidByHolder: "",
+              diffAmt: "",
+              ...paymentDetails,
+              loanStatus: "",
+              loanAmt: "",
+              loanNo: "",
+              cdAccountStatus: "",
+              cdAmount: "",
+              refundChequeAmt: "",
+              refundChequeNo: "",
+              refundChequeDate: "",
+              notCourier: "",
+              courierDate: "",
+              courierCompany: "",
+              podNumber: "",
+              courierAddress: "",
+              generalRemark: "",
+              policyChangeRemark: "",
+            });
+
+            await syncPolicyTypeFromKey(carriedValues.adProduct);
+            // Carry forward creates a *new* policy/year; do not show Update button.
+            setFetchedPolicyForUpdate(null);
+
+            // Seed the auto-id cache so the useEffect treats the carried state as
+            // "already auto-id'd". Subsequent edits to Month / Policy Group / Year then
+            // re-compose SVKK ID and Reference No from these seqs (the last 4 digits
+            // of each id, by the {group}{[year]}{month}{seq:4} format).
+            const carriedSvkkPublicId = carriedValues.svkkPublicId || "";
+            const seededSvkkSeq = carriedSvkkPublicId.slice(-4).padStart(4, "0");
+            const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
+            svkkSeqRef.current = seededSvkkSeq;
+            refSeqRef.current = seededRefSeq;
+
+            // Seed the group prefix. Prefer the form field; if blank, extract the
+            // leading group token from the existing SVKK ID by stripping the trailing
+            // 4-digit seq and the carried month token.
+            const carriedGroupRaw = (carriedValues.policyGroup ?? "").trim();
+            let seededGroup = carriedGroupRaw ? normalizeGroupingToken(carriedGroupRaw) : "";
+            if (!seededGroup && carriedSvkkPublicId.length > 4) {
+              const svkkBody = carriedSvkkPublicId.slice(0, -4);
+              const carriedMonTok = monthToken(carriedValues.month ?? "");
+              if (carriedMonTok && svkkBody.endsWith(carriedMonTok)) {
+                seededGroup = svkkBody.slice(0, -carriedMonTok.length);
+              } else {
+                // Best-effort: leading uppercase-letter run.
+                const m = svkkBody.match(/^[A-Z]+/);
+                seededGroup = m ? m[0] : "";
+              }
+            }
+            seededGroupRef.current = seededGroup;
+            const effectiveGroupForKey = carriedGroupRaw || seededGroup;
+            lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
+
+            const txnCount = paymentDetails.paymentTransactions.length;
+            const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, 1L/2L premium, loan, courier and remarks cleared.${autoIdNotice}`;
+            setCarriedForwardNotice(`${previousYear} → ${shiftedYear}`);
+            setFetchNotice(summary);
+            toast.success(`Carried forward to ${shiftedYear}`, {
+              id: loadingToastId,
+              description: summary,
+            });
+          } catch (e) {
+            const msg = e instanceof Error && e.message ? e.message : "Carry Forward failed.";
+            setFetchNotice(msg);
+            toast.error("Carry Forward failed", {
+              id: loadingToastId,
+              description: msg,
+            });
+          } finally {
+            isHydratingRef.current = false;
+            setCarryForwardBusy(false);
+          }
+        };
+
+        // Run the age ≥ 25 popup *before* applying carry-forward changes.
+        const didShow = showMemberAge25Alert(carriedValues.members, carryAgeAnchor, () => {
+          void proceed();
+        });
+        if (!didShow) {
+          await proceed();
         }
-      } catch {
-        autoIdNotice =
-          nextReferenceNo === carriedValues.refNo
-            ? " (reference number kept from prior policy — auto-generator unavailable)"
-            : " (reference number year shifted; verify before submitting)";
-      }
-      const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
-      // Keep Net Premium blank for manual entry; other premium fields may still auto-calc.
-      isHydratingRef.current = true;
-      setPremiumManual({ coPremium: true, netPremiumCalc: true });
-      setAgeManual({});
-      setAutoCalcLocked(false);
-      await formik.setValues({
-        ...carriedValues,
-        year: shiftedYear,
-        previousPolicyNo: carriedValues.policyNo,
-        previousEndDate: carriedValues.policyEnd,
-        policyNo: "",
-        policyStart: "",
-        policyEnd: "",
-        refNo: nextReferenceNo,
-        // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
-        basicPremiumPs: "",
-        members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
-        twoLakhF: "",
-        grossPremium: "",
-        taxAmount: "",
-        svkkPremiumCalc: "",
-        vkkPremium: "",
-        netPremiumCalc: "",
-        coPremium: "",
-        commission: "",
-        vkkCommission: "",
-        policyHolderPremium: "",
-        contribution: "",
-        gaamMahajan: "",
-        excessShort: "",
-        differenceAmountPaidByHolder: "",
-        diffAmt: "",
-        ...paymentDetails,
-        loanStatus: "",
-        loanAmt: "",
-        loanNo: "",
-        cdAccountStatus: "",
-        cdAmount: "",
-        refundChequeAmt: "",
-        refundChequeNo: "",
-        refundChequeDate: "",
-        notCourier: "",
-        courierDate: "",
-        courierCompany: "",
-        podNumber: "",
-        courierAddress: "",
-        generalRemark: "",
-        policyChangeRemark: "",
-      });
-      await syncPolicyTypeFromKey(carriedValues.adProduct);
-      // Carry forward creates a *new* policy/year; do not show Update button.
-      setFetchedPolicyForUpdate(null);
-      // Seed the auto-id cache so the useEffect treats the carried state as
-      // "already auto-id'd". Subsequent edits to Month / Policy Group / Year then
-      // re-compose SVKK ID and Reference No from these seqs (the last 4 digits
-      // of each id, by the {group}{[year]}{month}{seq:4} format).
-      const carriedSvkkPublicId = carriedValues.svkkPublicId || "";
-      const seededSvkkSeq = carriedSvkkPublicId.slice(-4).padStart(4, "0");
-      const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
-      svkkSeqRef.current = seededSvkkSeq;
-      refSeqRef.current = seededRefSeq;
-      // Seed the group prefix. Prefer the form field; if blank, extract the
-      // leading group token from the existing SVKK ID by stripping the trailing
-      // 4-digit seq and the carried month token.
-      const carriedGroupRaw = (carriedValues.policyGroup ?? "").trim();
-      let seededGroup = carriedGroupRaw ? normalizeGroupingToken(carriedGroupRaw) : "";
-      if (!seededGroup && carriedSvkkPublicId.length > 4) {
-        const svkkBody = carriedSvkkPublicId.slice(0, -4);
-        const carriedMonTok = monthToken(carriedValues.month ?? "");
-        if (carriedMonTok && svkkBody.endsWith(carriedMonTok)) {
-          seededGroup = svkkBody.slice(0, -carriedMonTok.length);
-        } else {
-          // Best-effort: leading uppercase-letter run.
-          const m = svkkBody.match(/^[A-Z]+/);
-          seededGroup = m ? m[0] : "";
-        }
-      }
-      seededGroupRef.current = seededGroup;
-      const effectiveGroupForKey = carriedGroupRaw || seededGroup;
-      lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
-      const txnCount = paymentDetails.paymentTransactions.length;
-      const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, 1L/2L premium, loan, courier and remarks cleared.${autoIdNotice}`;
-      setCarriedForwardNotice(`${previousYear} → ${shiftedYear}`);
-      setFetchNotice(summary);
-      toast.success(`Carried forward to ${shiftedYear}`, {
-        id: loadingToastId,
-        description: summary,
-      });
+        return;
     } catch (e) {
       const msg = e instanceof Error && e.message ? e.message : "Carry Forward failed.";
       setFetchNotice(msg);
-      toast.error("Carry Forward failed", {
-        id: loadingToastId,
-        description: msg,
-      });
-    } finally {
-      isHydratingRef.current = false;
+      toast.error("Carry Forward failed", { description: msg });
       setCarryForwardBusy(false);
     }
   }, [
@@ -1187,6 +1246,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     requestAutoIds,
     selectedFetchId,
     syncPolicyTypeFromKey,
+    showMemberAge25Alert,
   ]);
 
   useEffect(() => {
@@ -1928,7 +1988,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               return;
             }
             setApiErr(null);
-            await formik.submitForm();
+
+            // Run the age ≥ 25 popup *before* saving/updating.
+            const anchor = values.previousEndDate || values.policyEnd;
+            const didShow = showMemberAge25Alert(values.members, anchor, () => {
+              void formik.submitForm();
+            });
+            if (!didShow) {
+              await formik.submitForm();
+            }
           })();
         }}
         className="space-y-6 select-text"
@@ -3486,6 +3554,28 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </Button>
         </div>
       </form>
+      <Dialog
+        open={memberAgeAlertOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setMemberAgeAlertOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Member age notice</DialogTitle>
+            <DialogDescription className="text-foreground pt-1 text-sm leading-relaxed">
+              {memberAgeAlertMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" onClick={dismissMemberAge25Alert}>
+              OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={receiptPreviewHtml != null}
         onOpenChange={(o) => {

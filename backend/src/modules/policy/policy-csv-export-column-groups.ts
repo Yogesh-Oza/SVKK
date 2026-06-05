@@ -119,7 +119,9 @@ function paymentFieldColumns(): PolicyCsvExportColumn[] {
 }
 
 function memberFieldColumns(): PolicyCsvExportColumn[] {
-  const standard = MEMBER_SLOT_FIELD_LABELS.map((label) => ({
+  // Widen `label` to `PolicyCsvExportColumn["label"]` so we can extend with
+  // additional non-slot fields (e.g. "Date of joining") without TS rejecting it.
+  const standard: PolicyCsvExportColumn[] = MEMBER_SLOT_FIELD_LABELS.map((label) => ({
     key: `members:${label}`,
     label,
     expandsTo: Array.from({ length: POLICY_CSV_MAX_MEMBER_SLOTS }, (_, i) =>

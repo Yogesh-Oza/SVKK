@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy form — member age ≥ 25 alert popup**
+
+On **Add/Edit AD policy** (`ad-policy-add-form.tsx`): age ≥ 25 popup runs as a **pre-check** when clicking **Save**, **Update**, or **Carry Forward**. Message uses “now 25” for exact 25 and “now over 25” for >25. **OK** dismisses the modal and then continues the original action (save/update/carry-forward). Helpers: `member-age-25-alert.ts` (`resolveMemberAge`, `membersNeedingAge25Alert`, `formatMemberAge25AlertMessage`). Age anchor: `previousEndDate || policyEnd`. Unit tests: `member-age-25-alert.test.ts` pass.
+
+## Previous task (completed)
+
 **Policies CSV export — grouped column picker**
 
 Export CSV on Policies page opens `PolicyCsvExportDialog`: grouped multi-select. **Payments** and **Members** show each field once (e.g. Mode of Payment, Name) with subtitle `Payment 1–8` / `Member 1–12`; selecting a field expands to every slot in CSV. Other groups unchanged. `expandsTo` on export. `GET /policies/export-columns`; `GET /policies/export.csv?columns=…`.
