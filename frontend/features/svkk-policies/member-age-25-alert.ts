@@ -27,6 +27,12 @@ function dateParse(value: string): Date | null {
 
 export const MEMBER_AGE_ALERT_THRESHOLD = 25;
 
+/** Alert applies only to male members (form values M / Male / MALE). */
+export function isMaleMember(member: AdMemberRow): boolean {
+  const gender = member.gender.trim().toUpperCase();
+  return gender === "M" || gender === "MALE";
+}
+
 type MemberAge25AlertDetail = {
   name: string;
   age: number;
@@ -77,6 +83,9 @@ function membersNeedingAge25AlertDetails(
 ): MemberAge25AlertDetail[] {
   const rows: MemberAge25AlertDetail[] = [];
   for (const member of members) {
+    if (!isMaleMember(member)) {
+      continue;
+    }
     const age = resolveMemberAge(member, anchorIso);
     if (age === null || age < MEMBER_AGE_ALERT_THRESHOLD) {
       continue;

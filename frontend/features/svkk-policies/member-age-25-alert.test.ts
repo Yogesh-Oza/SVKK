@@ -24,10 +24,33 @@ function member(partial: Partial<AdMemberRow>): AdMemberRow {
 }
 
 describe("member age 25 alert", () => {
-  it("flags members aged 25 or older", () => {
+  it("flags male members aged 25 or older", () => {
     const names = membersNeedingAge25Alert(
-      [member({ name: "Ravi", age: "25" }), member({ name: "Anita", age: "24" })],
+      [
+        member({ name: "Ravi", age: "25", gender: "M" }),
+        member({ name: "Anita", age: "30", gender: "F" }),
+        member({ name: "Kiran", age: "24", gender: "M" }),
+      ],
       "2026-05-01",
+    );
+    expect(names).toEqual(["Ravi"]);
+  });
+
+  it("does not flag female members even when age is 25 or older", () => {
+    const names = membersNeedingAge25Alert(
+      [member({ name: "Anita", age: "27", gender: "F" })],
+      "2026-05-01",
+    );
+    expect(names).toEqual([]);
+  });
+
+  it("derives DOB age for males only", () => {
+    const names = membersNeedingAge25Alert(
+      [
+        member({ name: "Ravi", dob: "2000-06-01", age: "", gender: "M" }),
+        member({ name: "Anita", dob: "2000-06-01", age: "", gender: "F" }),
+      ],
+      "2026-06-01",
     );
     expect(names).toEqual(["Ravi"]);
   });
