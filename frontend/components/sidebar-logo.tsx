@@ -26,6 +26,9 @@ export function SidebarLogo() {
               <div className="grid min-w-0 flex-1 text-left leading-tight">
                 <span className="text-sidebar-foreground truncate text-base font-bold">SVKK</span>
                 <span className="text-sidebar-foreground/75 truncate text-sm font-bold">MediClaim Insurance</span>
+                <span className="truncate text-[11px] font-normal text-black">
+                  concept by rknishar
+                </span>
               </div>
             )}
           </Link>

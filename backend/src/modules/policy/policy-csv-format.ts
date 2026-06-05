@@ -55,6 +55,7 @@ export {
 } from "./policy-csv-flat-headers.js";
 
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
+import { pickExportHeaders } from "./policy-csv-export-column-groups.js";
 
 /** @deprecated Use POLICY_CSV_FLAT_HEADERS */
 export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
@@ -282,6 +283,7 @@ export function buildLegacyPoliciesCsv(
   partyByRow: Array<Record<string, unknown> | null>,
   years: Array<PolicyExportRow["years"][number] | undefined>,
   categoryByKey: Map<string, CategoryRef>,
+  selectedHeaders?: string[] | null,
 ): string {
   const slotCounts = resolveExportSlotCounts(years);
   const layout = buildPolicyCsvExportLayout(
@@ -289,14 +291,15 @@ export function buildLegacyPoliciesCsv(
     slotCounts.maxPayments,
     years,
   );
-  const lines = [layout.headers.map(csvCell).join(",")];
+  const headers = pickExportHeaders(layout.headers, selectedHeaders);
+  const lines = [headers.map(csvCell).join(",")];
   for (let i = 0; i < rows.length; i++) {
     const cells = buildLegacyPolicyCsvCells(
       rows[i]!,
       partyByRow[i] ?? null,
       years[i],
       categoryByKey,
-      layout.headers,
+      headers,
       layout.paymentPlan,
     );
     lines.push(cells.map(csvCell).join(","));

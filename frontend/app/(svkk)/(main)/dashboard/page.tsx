@@ -9,7 +9,6 @@ import { DashboardDateToolbar } from "@/features/svkk-dashboard/dashboard-date-t
 import {
   DashboardMetricCards,
   type DashboardChartsPayload,
-  type DashboardMetrics,
 } from "@/features/svkk-dashboard/dashboard-metric-cards";
 import {
   DashboardClaimMetricCards,
@@ -48,7 +47,6 @@ export default function SvkkDashboardPage() {
   const [preset, setPreset] = useState<DashboardDatePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState(todayFormDate);
-  const [dashboard, setDashboard] = useState<DashboardMetrics | null>(null);
   const [charts, setCharts] = useState<DashboardChartsPayload | null>(null);
   const [misTotals, setMisTotals] = useState<PolicyMemberRow | null>(null);
   const [productPie, setProductPie] = useState<ReturnType<typeof rowsToPieSlices>>([]);
@@ -83,7 +81,6 @@ export default function SvkkDashboardPage() {
   const load = useCallback(async () => {
     if (!canLoadDashboardMis) return;
 
-    const asOfQ = "?asOfDate=" + encodeURIComponent(range.dateTo);
     const vQ = buildMisQuery(range, "village");
     const pQ = buildMisQuery(range, "policy_type");
     const aQ = buildMisQuery(range, "age");
@@ -93,12 +90,12 @@ export default function SvkkDashboardPage() {
     if (range.dateTo) claimQ.set("dateTo", range.dateTo);
     const claimQs = claimQ.toString();
 
-    const [villageReport, productReport, ageReport, d, c, claims] = await Promise.all([
+    const chartsQ = "?asOfDate=" + encodeURIComponent(range.dateTo);
+    const [villageReport, productReport, ageReport, c, claims] = await Promise.all([
       svkkJson<MisReport>("/mis/policy-member-report?" + vQ),
       svkkJson<MisReport>("/mis/policy-member-report?" + pQ),
       svkkJson<MisReport>("/mis/policy-member-report?" + aQ),
-      svkkJson<DashboardMetrics>("/mis/dashboard" + asOfQ),
-      svkkJson<DashboardChartsPayload>("/mis/dashboard-charts" + asOfQ),
+      svkkJson<DashboardChartsPayload>("/mis/dashboard-charts" + chartsQ),
       svkkJson<DashboardClaimMetrics>("/mis/dashboard-claims" + (claimQs ? "?" + claimQs : "")),
     ]);
 
@@ -107,7 +104,6 @@ export default function SvkkDashboardPage() {
     setProductPie(rowsToPieSlices(productReport.rows, "sumCo"));
     setVillagePie(rowsToPieSlices(villageReport.rows, "sumCo"));
     setAgePie(rowsToPieSlices(ageReport.rows, "membersPlusPolicies"));
-    setDashboard(d);
     setCharts(c);
     setClaimMetrics(claims);
     setClaimVillagePie(claimRowsToPieSlices(claims.byVillage, "sumClaimAmount"));
@@ -118,7 +114,6 @@ export default function SvkkDashboardPage() {
     if (missingUrl) return;
     if (!canLoadDashboardMis) {
       setMisLoading(false);
-      setDashboard(null);
       setCharts(null);
       setMisTotals(null);
       setClaimMetrics(null);
@@ -135,7 +130,6 @@ export default function SvkkDashboardPage() {
         await load();
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Could not load dashboard");
-        setDashboard(null);
         setCharts(null);
         setMisTotals(null);
         setClaimMetrics(null);
@@ -187,7 +181,6 @@ export default function SvkkDashboardPage() {
       <DashboardMetricCards
         range={range}
         misTotals={misTotals}
-        dashboard={dashboard}
         canSeeMis={canLoadDashboardMis}
         loading={misLoading}
       />

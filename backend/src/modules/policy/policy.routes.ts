@@ -35,6 +35,12 @@ import {
   buildPolicyCsvSample,
   queryPolicyListForExport,
 } from "./policy.export-csv.js";
+import {
+  buildPolicyCsvExportColumnGroups,
+  expandExportColumnSelection,
+  sanitizeSelectedExportHeaders,
+  serializePolicyCsvExportColumnGroups,
+} from "./policy-csv-export-column-groups.js";
 import { queryPolicyListGrouped } from "./policy.list-grouped.js";
 import { AdProductVariant, ChequeStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
@@ -109,6 +115,10 @@ const policyListFiltersSchema = z.object({
     .enum(["expired", "due_2", "due_8", "due_30", "due_60", "active", "no_end_date", "pending_all"])
     .optional(),
   sort: z.string().optional(),
+});
+
+const policyExportQuerySchema = policyListFiltersSchema.extend({
+  columns: stringArrayQuery,
 });
 
 const policyListPagedQuerySchema = policyListFiltersSchema.extend({
@@ -451,9 +461,19 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
+  r.get("/export-columns", requirePermission("policy:read"), async (req, res, next) => {
+    try {
+      const includeCommission = hasPermissionInSet(req.permissions!, "policy:commission");
+      const groups = buildPolicyCsvExportColumnGroups({ includeCommission });
+      res.json({ groups: serializePolicyCsvExportColumnGroups(groups) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.get("/export.csv", requirePermission("policy:read"), async (req, res, next) => {
     try {
-      const q = policyListFiltersSchema.parse(req.query);
+      const q = policyExportQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
       const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
@@ -465,11 +485,20 @@ export function createPolicyRouter(env: Env) {
         }
       }
       const categoryByKey = await loadCategoryByKeyMap();
+      const includeCommission = hasPermissionInSet(req.permissions!, "policy:commission");
+      const columnGroups = buildPolicyCsvExportColumnGroups({ includeCommission });
+      const selectedHeaders = q.columns?.length
+        ? sanitizeSelectedExportHeaders(
+            expandExportColumnSelection(columnGroups, q.columns),
+            includeCommission,
+          )
+        : undefined;
       const csv = buildPoliciesExportCsv(
         rows,
         req.permissions!,
         preferredYearLabelsFromFilter(listFilter),
         categoryByKey,
+        selectedHeaders,
       );
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-export.csv"');

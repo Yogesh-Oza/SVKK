@@ -6,6 +6,32 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policies CSV export — grouped column picker**
+
+Export CSV on Policies page opens `PolicyCsvExportDialog`: grouped multi-select. **Payments** and **Members** show each field once (e.g. Mode of Payment, Name) with subtitle `Payment 1–8` / `Member 1–12`; selecting a field expands to every slot in CSV. Other groups unchanged. `expandsTo` on export. `GET /policies/export-columns`; `GET /policies/export.csv?columns=…`.
+
+| Layer | Role |
+|-------|------|
+| `policy-csv-export-column-groups.ts` | Group definitions, `pickExportHeaders`, commission sanitize |
+| `policy-csv-export-dialog.tsx` | Frontend picker UI |
+| `policy.routes.ts` | `/export-columns`, `columns` query on export |
+
+**Tests:** `policy-csv-export-column-groups.test.ts`
+
+## Previous task (completed)
+
+**Sidebar — concept attribution**
+
+Added `concept by rknishar` below **MediClaim Insurance** in `frontend/components/sidebar-logo.tsx` (hidden when sidebar is collapsed).
+
+## Previous task (completed)
+
+**Dashboard — remove commission & reconciliation metric cards**
+
+Removed from Policy dashboard: Commission, Expected premium, Paid (completed), and Gap (expected − paid) cards. Dropped `/mis/dashboard` fetch from `dashboard/page.tsx`; `dashboard-metric-cards.tsx` now shows only Policies, Members + policies, Co/Gross/VKK premium. Commission fields remain on policy forms and full MIS report (permission-gated).
+
+## Previous task (completed)
+
 **Policy CSV import — preview before commit (CREATE_ONLY, Format v2)**
 
 Policies page uses `PolicyCsvImportInline`: **Sample CSV** → **Preview import** → dialog (first 20 rows) → **Confirm import** / **Import anyway** on duplicate checksum. Replaces inline Validate/Upload controls.

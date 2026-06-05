@@ -60,6 +60,7 @@ import {
 } from "@/features/svkk-policies/policy-filter-multi";
 import { policyTypeKeyToAdVariant } from "@/features/svkk-policies/ad-product-variant";
 import { PolicyCsvImportInline } from "@/features/svkk-policies/policy-csv-import-panel";
+import { PolicyCsvExportDialog } from "@/features/svkk-policies/policy-csv-export-dialog";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import {
@@ -271,6 +272,7 @@ export default function SvkkPoliciesPage() {
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [receiptFilenameHint, setReceiptFilenameHint] = useState<string>("policy-receipt");
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [expandedSvkkId, setExpandedSvkkId] = useState<string | null>(null);
   const [rowYearAction, setRowYearAction] = useState<{
     svkkPublicId: string;
@@ -442,10 +444,16 @@ export default function SvkkPoliciesPage() {
     return q.toString();
   }, [queryString]);
 
-  const exportPoliciesCsv = useCallback(async () => {
+  const exportPoliciesCsv = useCallback(async (columns: string[]) => {
     setExportBusy(true);
     try {
-      const res = await backendApi.get(`/policies/export.csv?${exportQueryString}`, {
+      const q = new URLSearchParams(exportQueryString);
+      if (columns.length > 0) {
+        for (const col of columns) {
+          q.append("columns", col);
+        }
+      }
+      const res = await backendApi.get(`/policies/export.csv?${q.toString()}`, {
         responseType: "blob",
       });
       const truncated = String(res.headers["x-export-truncated"] ?? "").toLowerCase() === "true";
@@ -466,6 +474,7 @@ export default function SvkkPoliciesPage() {
       } else {
         toast.success("Policies exported");
       }
+      setExportDialogOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export failed");
     } finally {
@@ -1203,10 +1212,10 @@ export default function SvkkPoliciesPage() {
                   size="sm"
                   className="gap-1.5"
                   disabled={loading || exportBusy}
-                  onClick={() => void exportPoliciesCsv()}
+                  onClick={() => setExportDialogOpen(true)}
                 >
                   <Download className="size-3.5" />
-                  {exportBusy ? "Exporting…" : "Export CSV"}
+                  Export CSV
                 </Button>
                 <Button
                   type="button"
@@ -1666,6 +1675,13 @@ export default function SvkkPoliciesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PolicyCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        exporting={exportBusy}
+        onExport={exportPoliciesCsv}
+      />
     </motion.div>
   );
 }

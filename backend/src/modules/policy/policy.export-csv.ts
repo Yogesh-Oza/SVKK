@@ -69,12 +69,13 @@ export function buildPoliciesExportCsv(
   permissions: Set<string>,
   preferredYearLabels: string[] = [],
   categoryByKey: Map<string, CategoryRef> = new Map(),
+  selectedHeaders?: string[] | null,
 ): string {
   const parties = rows.map((r) =>
     maskInsuredParty(permissions, r.insuredParty as Record<string, unknown>),
   );
   const years = rows.map((r) => pickExportPolicyYear(r.years, preferredYearLabels));
-  return buildLegacyPoliciesCsv(rows, parties, years, categoryByKey);
+  return buildLegacyPoliciesCsv(rows, parties, years, categoryByKey, selectedHeaders);
 }
 
 /** Single-row builder exposed for tests. */

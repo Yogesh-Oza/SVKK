@@ -280,6 +280,19 @@ describe("buildPoliciesExportCsv", () => {
     expect(dataLine).toContain("REF-1");
   });
 
+  it("exports only selected columns when columns filter is provided", () => {
+    const csv = buildPoliciesExportCsv(
+      [minimalRow()],
+      new Set(["policy:scope_all"]),
+      ["2026-27"],
+      new Map(),
+      ["SVKK ID", "policy no", "Holder name"],
+    );
+    const [headerLine, dataLine] = csv.replace(/^\uFEFF/, "").split("\r\n");
+    expect(headerLine).toBe("SVKK ID,Holder name,policy no");
+    expect(dataLine?.split(",").length).toBe(3);
+  });
+
   it("exports two members and one payment without extra slots", () => {
     const row = minimalRow({
       years: [

@@ -9,15 +9,6 @@ import { formatInr } from "./currency";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Minus } from "lucide-react";
 import Link from "next/link";
 
-export type DashboardMetrics = {
-  asOfDate: string;
-  totalPolicies: number;
-  policyYearRowsInWindow: number;
-  totalExpectedPremium: number;
-  totalPaidCompleted: number;
-  paymentGap: number;
-};
-
 export type RenewalBucketPayload = {
   key: string;
   label: string;
@@ -69,123 +60,51 @@ function Trend({ trend: trendData }: { trend: CardDef["trend"] }) {
   );
 }
 
-function buildCards(
-  range: DashboardDateRange,
-  mis: PolicyMemberRow | null,
-  dashboard: DashboardMetrics | null,
-): CardDef[] {
+function buildCards(range: DashboardDateRange, mis: PolicyMemberRow | null): CardDef[] {
   const misQ = misQueryFromRange(range);
   const polQ = policiesQueryFromRange(range);
 
-  if (mis) {
-    const cards: CardDef[] = [
-      {
-        title: "Policies",
-        value: String(mis.totalPolicies),
-        sub: "In selected period (MIS scope)",
-        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
-        trend: { label: "View list", positive: true },
-      },
-      {
-        title: "Members + policies",
-        value: String(mis.membersPlusPolicies),
-        sub: "Insured rows in period",
-        href: buildDashboardHref({ pathname: "/mis", query: { ...misQ, groupBy: "village" } }),
-        trend: { label: "Open MIS", positive: true },
-      },
-      {
-        title: "Co premium",
-        value: formatInr(mis.sumCo),
-        sub: "Same basis as MIS report",
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS breakdown", positive: true },
-      },
-      {
-        title: "Gross premium",
-        value: formatInr(mis.sumGross),
-        sub: "Gross in scope",
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS breakdown" },
-      },
-      {
-        title: "VKK premium",
-        value: formatInr(mis.sumVkk),
-        sub: "Total VKK column",
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS breakdown" },
-      },
-      {
-        title: "Commission",
-        value: formatInr(mis.sumComm),
-        sub: "Commission total",
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS breakdown" },
-      },
-    ];
-
-    if (dashboard) {
-      cards.push(
-        {
-          title: "Expected premium",
-          value: formatInr(dashboard.totalExpectedPremium),
-          sub: "Policy-year window (as-of)",
-          href: buildDashboardHref({ pathname: "/policies", query: polQ }),
-          trend: { label: "Policy years" },
-        },
-        {
-          title: "Paid (completed)",
-          value: formatInr(dashboard.totalPaidCompleted),
-          sub: "Completed payments",
-          href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-          trend: { label: "Reconciliation", positive: true },
-        },
-        {
-          title: "Gap (expected − paid)",
-          value: formatInr(dashboard.paymentGap),
-          sub: "As of " + new Date(dashboard.asOfDate).toLocaleDateString("en-IN"),
-          href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-          trend: { label: "View MIS", negative: dashboard.paymentGap > 0 },
-        },
-      );
-    }
-
-    return cards;
+  if (!mis) {
+    return [];
   }
 
-  if (dashboard) {
-    return [
-      {
-        title: "Policies (scoped)",
-        value: String(dashboard.totalPolicies),
-        sub: "Active window per as-of",
-        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
-        trend: { label: "View list", positive: true },
-      },
-      {
-        title: "Expected premium",
-        value: formatInr(dashboard.totalExpectedPremium),
-        sub: "Policy year expectations",
-        href: buildDashboardHref({ pathname: "/policies", query: polQ }),
-        trend: { label: "Policies" },
-      },
-      {
-        title: "Paid (completed)",
-        value: formatInr(dashboard.totalPaidCompleted),
-        sub: "Payment rows",
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS", positive: true },
-      },
-      {
-        title: "Gap (expected − paid)",
-        value: formatInr(dashboard.paymentGap),
-        sub: "As of " + new Date(dashboard.asOfDate).toLocaleDateString("en-IN"),
-        href: buildDashboardHref({ pathname: "/mis", query: misQ }),
-        trend: { label: "MIS", negative: dashboard.paymentGap > 0 },
-      },
-    ];
-  }
-
-  return [];
+  return [
+    {
+      title: "Policies",
+      value: String(mis.totalPolicies),
+      sub: "In selected period (MIS scope)",
+      href: buildDashboardHref({ pathname: "/policies", query: polQ }),
+      trend: { label: "View list", positive: true },
+    },
+    {
+      title: "Members + policies",
+      value: String(mis.membersPlusPolicies),
+      sub: "Insured rows in period",
+      href: buildDashboardHref({ pathname: "/mis", query: { ...misQ, groupBy: "village" } }),
+      trend: { label: "Open MIS", positive: true },
+    },
+    {
+      title: "Co premium",
+      value: formatInr(mis.sumCo),
+      sub: "Same basis as MIS report",
+      href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+      trend: { label: "MIS breakdown", positive: true },
+    },
+    {
+      title: "Gross premium",
+      value: formatInr(mis.sumGross),
+      sub: "Gross in scope",
+      href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+      trend: { label: "MIS breakdown" },
+    },
+    {
+      title: "VKK premium",
+      value: formatInr(mis.sumVkk),
+      sub: "Total VKK column",
+      href: buildDashboardHref({ pathname: "/mis", query: misQ }),
+      trend: { label: "MIS breakdown" },
+    },
+  ];
 }
 
 function MetricCardSkeleton() {
@@ -226,13 +145,11 @@ function ClickableMetricCard({ card }: { card: CardDef }) {
 export function DashboardMetricCards({
   range,
   misTotals,
-  dashboard,
   canSeeMis,
   loading,
 }: {
   range: DashboardDateRange;
   misTotals: PolicyMemberRow | null;
-  dashboard: DashboardMetrics | null;
   canSeeMis: boolean;
   loading: boolean;
 }) {
@@ -243,14 +160,14 @@ export function DashboardMetricCards({
   if (loading) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }, (_, i) => (
+        {Array.from({ length: 5 }, (_, i) => (
           <MetricCardSkeleton key={i} />
         ))}
       </div>
     );
   }
 
-  const cards = buildCards(range, misTotals, dashboard);
+  const cards = buildCards(range, misTotals);
   if (!cards.length) {
     return (
       <p className="text-muted-foreground text-sm">No metrics for this period. Try another date range.</p>
