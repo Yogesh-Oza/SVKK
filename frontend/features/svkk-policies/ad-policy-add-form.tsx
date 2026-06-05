@@ -83,6 +83,7 @@ import {
   shouldClearBasicOnChartError,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
+import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
 import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
 
 export type { AdMemberRow } from "./ad-member-types";
@@ -1049,12 +1050,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         `/policies/next-reference-no?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}&year=${encodeURIComponent(trimmedYear)}`,
       );
       const [svkkRes, refRes] = await Promise.all([svkkPromise, refPromise]);
-      const svkkSeq = (svkkRes.svkkPublicId ?? "").slice(-4).padStart(4, "0");
-      const refSeq = (refRes.referenceNo ?? "").slice(-4).padStart(4, "0");
+      const svkkFromApi = (svkkRes.svkkPublicId ?? "").trim();
+      const refFromApi = (refRes.referenceNo ?? "").trim();
+      const svkkSeq = svkkFromApi.slice(-4).padStart(4, "0");
+      const refSeq = refFromApi.slice(-4).padStart(4, "0");
       const composed = composeIdsFromSeq(trimmedGrouping, trimmedMonth, trimmedYear, svkkSeq, refSeq);
       return {
-        svkkPublicId: composed.svkkPublicId,
-        referenceNo: composed.referenceNo,
+        svkkPublicId: svkkFromApi || composed.svkkPublicId,
+        referenceNo: refFromApi || composed.referenceNo,
         svkkSeq,
         refSeq,
       };
@@ -1091,28 +1094,48 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           try {
             const shiftedYear = nextYearLabel(carriedValues.year);
             const previousYear = carriedValues.year || "—";
+            const resolvedGrouping = resolvePolicyGroupingForAutoId({
+              policyGroup: carriedValues.policyGroup,
+              policyGrouping: carriedValues.policyGrouping,
+              refNo: carriedValues.refNo,
+              svkkPublicId: carriedValues.svkkPublicId,
+            });
 
-            // Baseline: shift the year token inside the prior Reference No so we never
-            // submit the same number for two different years. This works even when the
-            // auto-id endpoint can't run (e.g. Policy Grouping is empty on the prior
-            // policy). SVKK Public ID is untouched — it's holder-stable across years.
-            let nextReferenceNo = shiftReferenceNoYear(carriedValues.refNo, carriedValues.year, shiftedYear);
+            // Always allocate a fresh Reference No for the target year so we never
+            // reuse the prior year's 4-digit sequence (e.g. OTHER2024JUN3001 → 3002).
+            let nextReferenceNo = "";
             let autoIdNotice = "";
             try {
-              const generated = await requestAutoIds(carriedValues.policyGroup, carriedValues.month, shiftedYear);
+              const generated = await requestAutoIds(
+                resolvedGrouping,
+                carriedValues.month,
+                shiftedYear,
+              );
               if (generated.referenceNo) {
-                nextReferenceNo = generated.referenceNo;
-              } else if (nextReferenceNo === carriedValues.refNo) {
-                autoIdNotice = " (reference number kept from prior policy — auto-generator unavailable)";
-              } else {
-                autoIdNotice = " (reference number year shifted; verify before submitting)";
+                nextReferenceNo = generated.referenceNo.toUpperCase();
               }
             } catch {
-              autoIdNotice =
-                nextReferenceNo === carriedValues.refNo
-                  ? " (reference number kept from prior policy — auto-generator unavailable)"
-                  : " (reference number year shifted; verify before submitting)";
+              /* fall through to year-shift fallback */
             }
+            if (!nextReferenceNo) {
+              nextReferenceNo = shiftReferenceNoYear(
+                carriedValues.refNo,
+                carriedValues.year,
+                shiftedYear,
+              ).toUpperCase();
+              autoIdNotice =
+                " (reference number year-shifted only — auto-generator unavailable; verify uniqueness)";
+            }
+
+            const carriedSvkkPublicId = carriedValues.svkkPublicId || "";
+            const seededSvkkSeq = carriedSvkkPublicId.slice(-4).padStart(4, "0");
+            const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
+            svkkSeqRef.current = seededSvkkSeq;
+            refSeqRef.current = seededRefSeq;
+            seededGroupRef.current = resolvedGrouping;
+            const carriedGroupRaw = (carriedValues.policyGroup ?? "").trim();
+            const effectiveGroupForKey = carriedGroupRaw || resolvedGrouping;
+            lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
 
             const paymentDetails = clonePaymentDetailsForCarryForward(carriedValues);
             // Keep Net Premium blank for manual entry; other premium fields may still auto-calc.
@@ -1130,6 +1153,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               policyStart: "",
               policyEnd: "",
               refNo: nextReferenceNo,
+              policyGroup: carriedGroupRaw || resolvedGrouping,
               // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
               basicPremiumPs: "",
               members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
@@ -1169,36 +1193,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             await syncPolicyTypeFromKey(carriedValues.adProduct);
             // Carry forward creates a *new* policy/year; do not show Update button.
             setFetchedPolicyForUpdate(null);
-
-            // Seed the auto-id cache so the useEffect treats the carried state as
-            // "already auto-id'd". Subsequent edits to Month / Policy Group / Year then
-            // re-compose SVKK ID and Reference No from these seqs (the last 4 digits
-            // of each id, by the {group}{[year]}{month}{seq:4} format).
-            const carriedSvkkPublicId = carriedValues.svkkPublicId || "";
-            const seededSvkkSeq = carriedSvkkPublicId.slice(-4).padStart(4, "0");
-            const seededRefSeq = nextReferenceNo.slice(-4).padStart(4, "0");
-            svkkSeqRef.current = seededSvkkSeq;
-            refSeqRef.current = seededRefSeq;
-
-            // Seed the group prefix. Prefer the form field; if blank, extract the
-            // leading group token from the existing SVKK ID by stripping the trailing
-            // 4-digit seq and the carried month token.
-            const carriedGroupRaw = (carriedValues.policyGroup ?? "").trim();
-            let seededGroup = carriedGroupRaw ? normalizeGroupingToken(carriedGroupRaw) : "";
-            if (!seededGroup && carriedSvkkPublicId.length > 4) {
-              const svkkBody = carriedSvkkPublicId.slice(0, -4);
-              const carriedMonTok = monthToken(carriedValues.month ?? "");
-              if (carriedMonTok && svkkBody.endsWith(carriedMonTok)) {
-                seededGroup = svkkBody.slice(0, -carriedMonTok.length);
-              } else {
-                // Best-effort: leading uppercase-letter run.
-                const m = svkkBody.match(/^[A-Z]+/);
-                seededGroup = m ? m[0] : "";
-              }
-            }
-            seededGroupRef.current = seededGroup;
-            const effectiveGroupForKey = carriedGroupRaw || seededGroup;
-            lastAutoIdKeyRef.current = `${effectiveGroupForKey}|${(carriedValues.month ?? "").trim()}|${shiftedYear.trim()}`;
 
             const txnCount = paymentDetails.paymentTransactions.length;
             const summary = `Copied ${previousYear} → ${shiftedYear}. Holder, members, and payment details (${txnCount} transaction${txnCount === 1 ? "" : "s"}) carried forward; year totals, 1L/2L premium, loan, courier and remarks cleared.${autoIdNotice}`;
@@ -1618,7 +1612,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       return;
     }
     const groupFromForm = values.policyGroup.trim();
-    const effectiveGroup = groupFromForm || seededGroupRef.current;
+    const effectiveGroup =
+      groupFromForm ||
+      seededGroupRef.current ||
+      resolvePolicyGroupingForAutoId({
+        policyGroup: values.policyGroup,
+        policyGrouping: values.policyGrouping,
+        refNo: values.refNo,
+        svkkPublicId: values.svkkPublicId,
+      });
     const month = values.month.trim();
     const year = values.year.trim();
     if (!effectiveGroup || !month) {

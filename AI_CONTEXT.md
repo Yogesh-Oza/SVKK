@@ -6,6 +6,14 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Carry Forward — duplicate Reference No fix**
+
+Root cause: when **Policy Group** was blank on the prior policy, `requestAutoIds` returned early and carry forward only **year-shifted** the old Reference No (e.g. `OTHER2024JUN3001` → `OTHER2025JUN3001`), reusing sequence `3001` even if that 2025 number already existed.
+
+Fix: `ad-policy-id-helpers.ts` resolves grouping from `policyGroup` → `refNo` → `svkkPublicId` → `OTHER`; carry forward always calls `/policies/next-reference-no` for a **fresh** sequence; auto-id refs seeded **before** `setValues` to avoid race with the auto-id `useEffect`.
+
+## Previous task (completed)
+
 **Policy form — member age ≥ 25 alert popup**
 
 On **Add AD policy** (`ad-policy-add-form.tsx`): informational popup **only on Carry Forward / Renew** (not create, save, or update). Triggers when a **male** member was **24** on the prior policy end and turns **25** on the projected next policy year (`projectPolicyEndAfterCarryForward`). Message: `{name} is now 25 so need to take action - new policy or make him policy holder`. **OK** dismisses then carry-forward continues. Helpers: `member-age-25-alert.ts` (`membersTurning25OnCarryForward`, `buildCarryForwardTurning25AlertMessage`). Unit tests: `member-age-25-alert.test.ts`.
