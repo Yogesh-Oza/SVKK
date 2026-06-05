@@ -83,7 +83,7 @@ import {
   shouldClearBasicOnChartError,
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
-import { buildMemberAge25AlertMessage } from "./member-age-25-alert";
+import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
 
 export type { AdMemberRow } from "./ad-member-types";
 
@@ -486,13 +486,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [memberAgeAlertMessage, setMemberAgeAlertMessage] = useState("");
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
 
-  /** Age ≥ 25 pre-check modal.
-   * If an alert message exists, show the modal and run `afterDismiss` only
-   * after the user clicks OK. If no alert message exists, run `afterDismiss`
-   * immediately. */
-  const showMemberAge25Alert = useCallback(
-    (members: AdMemberRow[], anchorIso: string, afterDismiss?: () => void) => {
-      const message = buildMemberAge25AlertMessage(members, anchorIso);
+  /** Carry Forward only: male member was 24 and turns 25 on the new policy year. */
+  const showCarryForwardTurning25Alert = useCallback(
+    (members: AdMemberRow[], priorAnchorIso: string, afterDismiss?: () => void) => {
+      const message = buildCarryForwardTurning25AlertMessage(members, priorAnchorIso);
       if (!message) {
         afterDismiss?.();
         return false;
@@ -1087,7 +1084,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           formik.values.year?.trim() ||
           undefined;
         const carriedValues = policyDetailToAdFormValues(row, { yearLabel: yearForPick });
-        const carryAgeAnchor = carriedValues.policyEnd || carriedValues.previousEndDate;
+        const priorPolicyEnd = carriedValues.policyEnd || carriedValues.previousEndDate;
 
         const proceed = async () => {
           const loadingToastId = toast.loading("Carrying forward policy…");
@@ -1224,8 +1221,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           }
         };
 
-        // Run the age ≥ 25 popup *before* applying carry-forward changes.
-        const didShow = showMemberAge25Alert(carriedValues.members, carryAgeAnchor, () => {
+        // Male 24 → 25 turning-age popup before applying carry-forward changes.
+        const didShow = showCarryForwardTurning25Alert(carriedValues.members, priorPolicyEnd, () => {
           void proceed();
         });
         if (!didShow) {
@@ -1246,7 +1243,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     requestAutoIds,
     selectedFetchId,
     syncPolicyTypeFromKey,
-    showMemberAge25Alert,
+    showCarryForwardTurning25Alert,
   ]);
 
   useEffect(() => {
@@ -1988,15 +1985,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               return;
             }
             setApiErr(null);
-
-            // Run the age ≥ 25 popup *before* saving/updating.
-            const anchor = values.previousEndDate || values.policyEnd;
-            const didShow = showMemberAge25Alert(values.members, anchor, () => {
-              void formik.submitForm();
-            });
-            if (!didShow) {
-              await formik.submitForm();
-            }
+            await formik.submitForm();
           })();
         }}
         className="space-y-6 select-text"

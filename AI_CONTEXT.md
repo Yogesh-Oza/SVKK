@@ -8,7 +8,7 @@ Standalone Next.js + Express insurance management system for policy registration
 
 **Policy form — member age ≥ 25 alert popup**
 
-On **Add/Edit AD policy** (`ad-policy-add-form.tsx`): informational popup when any **male** member age is **≥ 25** (female members excluded) during **create**, **update**, or **carry forward**. Message uses “now 25” for exact 25 and “now over 25” for >25. **OK** dismisses the modal — no policy-holder / new-policy automation. Helpers: `member-age-25-alert.ts` (`isMaleMember`, `resolveMemberAge`, `membersNeedingAge25Alert`, `formatMemberAge25AlertMessage`). Age anchor: `previousEndDate || policyEnd`. Unit tests: `member-age-25-alert.test.ts`.
+On **Add AD policy** (`ad-policy-add-form.tsx`): informational popup **only on Carry Forward / Renew** (not create, save, or update). Triggers when a **male** member was **24** on the prior policy end and turns **25** on the projected next policy year (`projectPolicyEndAfterCarryForward`). Message: `{name} is now 25 so need to take action - new policy or make him policy holder`. **OK** dismisses then carry-forward continues. Helpers: `member-age-25-alert.ts` (`membersTurning25OnCarryForward`, `buildCarryForwardTurning25AlertMessage`). Unit tests: `member-age-25-alert.test.ts`.
 
 ## Previous task (completed)
 
