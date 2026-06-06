@@ -3,9 +3,12 @@ import { SAMPLE_CHARTS, SAMPLE_DEFS } from "../../lib/svkk/premium/sample-data";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
 import {
   canEnableLiveAutoCalc,
+  isAgeAnchorPath,
   isCalcTriggerPath,
   parseInrForCalc,
+  parseStoredAge,
   quoteFromStoredFormValues,
+  resolveQuoteRowAge,
   resolveQuoteSumInsured,
   shouldApplyChartBasicToField,
   shouldClearBasicOnChartError,
@@ -115,6 +118,45 @@ function minimalFormValues(overrides: Partial<AdPolicyFormValues>): AdPolicyForm
 }
 
 const premiumState = { defs: SAMPLE_DEFS, charts: SAMPLE_CHARTS };
+
+describe("isAgeAnchorPath", () => {
+  it("matches holder and member age anchor fields", () => {
+    expect(isAgeAnchorPath("dob")).toBe(true);
+    expect(isAgeAnchorPath("age")).toBe(true);
+    expect(isAgeAnchorPath("policyEnd")).toBe(true);
+    expect(isAgeAnchorPath("previousEndDate")).toBe(true);
+    expect(isAgeAnchorPath("members[0].dob")).toBe(true);
+    expect(isAgeAnchorPath("members[1].age")).toBe(true);
+  });
+
+  it("does not match unrelated fields", () => {
+    expect(isAgeAnchorPath("customerId")).toBe(false);
+    expect(isAgeAnchorPath("basicPremiumPs")).toBe(false);
+  });
+});
+
+describe("parseStoredAge", () => {
+  it("parses valid integer ages", () => {
+    expect(parseStoredAge("49")).toBe(49);
+    expect(parseStoredAge(" 50 ")).toBe(50);
+  });
+
+  it("returns null for empty or invalid values", () => {
+    expect(parseStoredAge("")).toBeNull();
+    expect(parseStoredAge("abc")).toBeNull();
+  });
+});
+
+describe("resolveQuoteRowAge", () => {
+  it("prefers stored age when useStoredAge is true", () => {
+    expect(resolveQuoteRowAge("49", "12-09-1976", "31-12-2026", true)).toBe(49);
+  });
+
+  it("derives age from DOB when stored age is missing or live mode requested", () => {
+    expect(resolveQuoteRowAge("", "12-09-1976", "31-12-2026", true)).toBe(50);
+    expect(resolveQuoteRowAge("49", "12-09-1976", "31-12-2026", false)).toBe(50);
+  });
+});
 
 describe("isCalcTriggerPath", () => {
   it("matches top-level calc fields", () => {
@@ -230,6 +272,31 @@ describe("quoteFromStoredFormValues", () => {
     expect(quote.rows[0]?.gross).toBe(6023);
     expect(quote.basic).toBe(6023);
     expect(quote.net).toBe(6023);
+  });
+
+  it("uses stored ages from form on fetch/edit hydrate", () => {
+    const values = minimalFormValues({
+      adProduct: "family_floater",
+      policyHolder: "Kishor Kherajbhai Furiya",
+      dob: "12-09-1976",
+      age: "49",
+      relation: "self",
+      holderGender: "M",
+      basicPremiumPs: "20042",
+      person: "1",
+      sumInsured: "500000",
+      members: [],
+    });
+
+    const stored = quoteFromStoredFormValues(values, premiumState, "31-12-2026", {
+      useStoredAges: true,
+    });
+    const derived = quoteFromStoredFormValues(values, premiumState, "31-12-2026", {
+      useStoredAges: false,
+    });
+
+    expect(stored.rows[0]?.age).toBe(49);
+    expect(derived.rows[0]?.age).toBe(50);
   });
 
   it("uses stored member basic premiums when present", () => {

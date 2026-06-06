@@ -14,6 +14,15 @@ function normPolicyKeyForCalc(raw: string): string {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
+/** Form field paths that should refresh summary ages when edited during fetch/edit. */
+export const AGE_ANCHOR_FIELD_PREFIXES = [
+  "dob",
+  "age",
+  "policyEnd",
+  "previousEndDate",
+  "members",
+] as const;
+
 /** Form field paths that should unlock live premium auto-calculation when edited by the user. */
 export const CALC_TRIGGER_FIELD_PREFIXES = [
   "adProduct",
@@ -34,17 +43,30 @@ export const CALC_TRIGGER_FIELD_PREFIXES = [
  *
  * @param path - Formik `name` or dotted path (e.g. `members[0].dob`).
  */
-export function isCalcTriggerPath(path: string): boolean {
+function matchesFieldPrefix(path: string, prefixes: readonly string[]): boolean {
   const normalized = path.trim();
   if (!normalized) {
     return false;
   }
-  return CALC_TRIGGER_FIELD_PREFIXES.some(
+  return prefixes.some(
     (prefix) =>
       normalized === prefix ||
       normalized.startsWith(`${prefix}.`) ||
       normalized.startsWith(`${prefix}[`),
   );
+}
+
+/**
+ * Returns whether a Formik field path affects premium-summary age display.
+ *
+ * @param path - Formik `name` or dotted path (e.g. `members[0].dob`).
+ */
+export function isAgeAnchorPath(path: string): boolean {
+  return matchesFieldPrefix(path, AGE_ANCHOR_FIELD_PREFIXES);
+}
+
+export function isCalcTriggerPath(path: string): boolean {
+  return matchesFieldPrefix(path, CALC_TRIGGER_FIELD_PREFIXES);
 }
 
 /** Policy form context that controls whether live chart auto-calculation may run. */
@@ -165,15 +187,58 @@ function memberGenderToInput(gender: string): MemberInput["gender"] {
   return "";
 }
 
+/** Parse integer age from a form age field. */
+export function parseStoredAge(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.round(parsed);
+}
+
+export type QuoteFromStoredOptions = {
+  /** Prefer hydrated form age fields; when false, derive ages from DOB + policy end. */
+  useStoredAges?: boolean;
+};
+
+/**
+ * Resolve a quote-row age from stored form value or DOB + policy end.
+ *
+ * @param storedAgeStr - Holder or member `age` field from the form.
+ * @param dob - Member date of birth.
+ * @param endDate - Policy age anchor (`previousEndDate` or `policyEnd`).
+ * @param useStoredAge - When true, prefer `storedAgeStr` before DOB derivation.
+ */
+export function resolveQuoteRowAge(
+  storedAgeStr: string,
+  dob: string,
+  endDate: string,
+  useStoredAge: boolean,
+): number | null {
+  if (useStoredAge) {
+    const stored = parseStoredAge(storedAgeStr);
+    if (stored != null) {
+      return stored;
+    }
+  }
+  return customAge(dob, endDate);
+}
+
 /**
  * Build a premium summary from stored form amounts (no chart lookup for basic premium).
- * Discount percentages still follow product rules; ages are derived from DOB for display.
+ * Discount percentages still follow product rules; ages prefer stored form values on fetch/edit.
  */
 export function quoteFromStoredFormValues(
   values: AdPolicyFormValues,
   premiumState: PremiumState,
   endDate: string,
+  options: QuoteFromStoredOptions = {},
 ): Quote {
+  const useStoredAges = options.useStoredAges !== false;
   const rawKey = normPolicyKeyForCalc(values.adProduct || "");
   const policyKey: PolicyKey = premiumState.charts[rawKey] ? rawKey : "individual";
   const validMembers = (values.members || []).filter((m) => Boolean(m.name?.trim()) && Boolean(m.dob));
@@ -200,11 +265,12 @@ export function quoteFromStoredFormValues(
     parseInrForCalc(values.basicPremiumPs),
     ...validMembers.map((m) => parseInrForCalc(m.basicPremium)),
   ];
+  const storedAges = [values.age, ...validMembers.map((m) => m.age)];
 
   const rows: QuoteRow[] = allMembers.map((member, index) => {
     const normalized = normalizeMember(member, index, policyKey);
     const role: "holder" | "member" = index === 0 ? "holder" : "member";
-    const age = customAge(normalized.dob, endDate);
+    const age = resolveQuoteRowAge(storedAges[index] ?? "", normalized.dob, endDate, useStoredAges);
     if (age == null) {
       return {
         ...normalized,

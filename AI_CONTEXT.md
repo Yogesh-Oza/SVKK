@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Add AD policy — Calculated Premium Summary ages on fetch/edit**
+
+On fetch or edit (`autoCalcLocked`), the member table in **Calculated Premium Summary** now shows **stored ages** from the database (`holderAge` / `ageAtEntry` via form `age` fields), matching Holder Details. Ages recalculate from DOB + policy end (`customAge`) only after the user edits age-anchor fields (`dob`, `age`, `policyEnd`, `previousEndDate`, `members[].dob|age`). Helpers: `parseStoredAge`, `resolveQuoteRowAge`, `isAgeAnchorPath`, `useStoredSummaryAges` state in `ad-policy-add-form.tsx`. Tests: `ad-policy-auto-calc.test.ts`.
+
+## Previous task (completed)
+
 **Carry Forward — duplicate Reference No fix**
 
 Root cause: when **Policy Group** was blank on the prior policy, `requestAutoIds` returned early and carry forward only **year-shifted** the old Reference No (e.g. `OTHER2024JUN3001` → `OTHER2025JUN3001`), reusing sequence `3001` even if that 2025 number already existed.

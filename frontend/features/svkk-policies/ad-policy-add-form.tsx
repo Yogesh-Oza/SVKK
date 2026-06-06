@@ -77,6 +77,7 @@ import {
 import { PolicyDriveUploadButton } from "./policy-drive-upload";
 import {
   genderToQuoteInput,
+  isAgeAnchorPath,
   quoteFromStoredFormValues,
   resolveQuoteSumInsured,
   shouldApplyChartBasicToField,
@@ -700,6 +701,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [ageManual, setAgeManual] = useState<Record<string, boolean>>({});
   /** After DB hydrate (fetch/edit): show stored premiums until user edits a calc-trigger field. */
   const [autoCalcLocked, setAutoCalcLocked] = useState(false);
+  /** After fetch/edit hydrate: summary ages match DB until user edits age-anchor fields. */
+  const [useStoredSummaryAges, setUseStoredSummaryAges] = useState(true);
   const isHydratingRef = useRef(false);
 
   const autoCalcContext = useMemo(
@@ -716,20 +719,34 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     [autoCalcContext],
   );
 
+  const tryRefreshSummaryAges = useCallback(
+    (path: string) => {
+      if (isHydratingRef.current || !autoCalcLocked) {
+        return;
+      }
+      if (isAgeAnchorPath(path)) {
+        setUseStoredSummaryAges(false);
+      }
+    },
+    [autoCalcLocked],
+  );
+
   const setFieldValueWithUnlock = useCallback(
     (field: string, value: unknown, shouldValidate?: boolean) => {
       tryUnlockAutoCalc(field);
+      tryRefreshSummaryAges(field);
       return setFieldValue(field, value, shouldValidate);
     },
-    [setFieldValue, tryUnlockAutoCalc],
+    [setFieldValue, tryRefreshSummaryAges, tryUnlockAutoCalc],
   );
 
   const handleChangeWithUnlock = useCallback(
     (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       tryUnlockAutoCalc(e.target.name);
+      tryRefreshSummaryAges(e.target.name);
       handleChange(e);
     },
-    [handleChange, tryUnlockAutoCalc],
+    [handleChange, tryRefreshSummaryAges, tryUnlockAutoCalc],
   );
 
   const markPremiumManual = useCallback((field: string) => {
@@ -801,11 +818,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       return liveQuote;
     }
     const endDate = values.previousEndDate || values.policyEnd || "";
-    return quoteFromStoredFormValues(values, premiumState, endDate);
+    return quoteFromStoredFormValues(values, premiumState, endDate, {
+      useStoredAges: useStoredSummaryAges,
+    });
   }, [
     autoCalcLocked,
     liveQuote,
     premiumState,
+    useStoredSummaryAges,
     values,
     values.previousEndDate,
     values.policyEnd,
@@ -923,6 +943,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         setPremiumManual({});
         setAgeManual({});
         setAutoCalcLocked(true);
+        setUseStoredSummaryAges(true);
         await formik.setValues(nextValues);
         await syncPolicyTypeFromKey(nextValues.adProduct);
         setSelectFieldsMountKey((k) => k + 1);
@@ -1594,6 +1615,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         setPremiumManual({});
         setAgeManual({});
         setAutoCalcLocked(true);
+        setUseStoredSummaryAges(true);
         await formik.resetForm({ values: nextValues });
         setSelectFieldsMountKey((k) => k + 1);
         setEditHydrated(true);
@@ -1712,7 +1734,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const updateMember = (i: number, patch: Partial<AdMemberRow>) => {
     for (const key of Object.keys(patch) as Array<keyof AdMemberRow>) {
-      tryUnlockAutoCalc(`members[${i}].${String(key)}`);
+      const memberPath = `members[${i}].${String(key)}`;
+      tryUnlockAutoCalc(memberPath);
+      tryRefreshSummaryAges(memberPath);
     }
     const next = [...values.members];
     next[i] = { ...next[i]!, ...patch };
