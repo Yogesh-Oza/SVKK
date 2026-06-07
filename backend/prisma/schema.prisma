@@ -326,6 +326,11 @@ model Policy {
   categoryText        String?           @db.VarChar(200)
   holderRelationship  String?           @db.VarChar(100)
   holderGender        String?           @db.VarChar(16)
+  /// Per-policy-year holder snapshot (does not mutate linked InsuredParty on update).
+  holderName          String?           @db.VarChar(200)
+  holderDateOfBirth   DateTime?
+  holderPan           String?           @db.VarChar(20)
+  holderAadhaarNo     String?           @db.VarChar(12)
   holderAge           Int?
   holderJoiningDate   DateTime?
   holderAddOns        Decimal?          @db.Decimal(14, 2)

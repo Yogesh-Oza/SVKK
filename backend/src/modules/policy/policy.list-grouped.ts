@@ -13,6 +13,7 @@ import {
 } from "./policy.list.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { applyDisplayYearLabels } from "./policy-year-display.js";
+import { resolvePolicyHolderName } from "./policy-holder-snapshot.js";
 
 export type PolicyListYearEntry = {
   policyId: string;
@@ -125,7 +126,7 @@ function buildGroupedItem(
     insuredParty: {
       id: party.id,
       svkkPublicId: party.svkkPublicId,
-      name: party.name,
+      name: resolvePolicyHolderName(primary, party),
       mobile: party.mobile,
       email: party.email,
       customerId: party.customerId,

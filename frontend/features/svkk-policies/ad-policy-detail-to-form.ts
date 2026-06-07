@@ -80,6 +80,10 @@ export type SvkkPolicyDetailForForm = {
   periodMonthText: string | null;
   holderRelationship: string | null;
   holderGender: string | null;
+  holderName?: string | null;
+  holderDateOfBirth?: string | null;
+  holderPan?: string | null;
+  holderAadhaarNo?: string | null;
   holderJoiningDate: string | null;
   holderAge: number | null;
   holderAddOns: Decimalish;
@@ -513,7 +517,7 @@ export function policyDetailToAdFormValues(
         })
       : [];
 
-  const holderDob = isoToDateInput(row.insuredParty.dateOfBirth ?? "");
+  const holderDob = isoToDateInput(row.holderDateOfBirth ?? row.insuredParty.dateOfBirth ?? "");
 
   return {
     ...base,
@@ -521,9 +525,9 @@ export function policyDetailToAdFormValues(
     adProduct: policyTypeKeyForForm(row.policyType, row.adProductVariant),
     customerId: row.insuredParty.customerId ?? "",
     svkkPublicId: row.insuredParty.svkkPublicId ?? "",
-    policyHolder: row.insuredParty.name ?? "",
-    panNo: row.insuredParty.pan ?? "",
-    aadhaarNo: row.insuredParty.aadhaarNo ?? "",
+    policyHolder: row.holderName?.trim() || row.insuredParty.name || "",
+    panNo: row.holderPan?.trim() || row.insuredParty.pan || "",
+    aadhaarNo: row.holderAadhaarNo?.trim() || row.insuredParty.aadhaarNo || "",
     company: row.insuranceCompany ?? "",
     tpa: row.tpa ?? "",
     policyStart: isoToDateInput(y.policyStart ?? ""),
@@ -531,7 +535,10 @@ export function policyDetailToAdFormValues(
     village: row.village ?? "",
     cat: row.category?.key ?? row.categoryText ?? "",
     dob: holderDob,
-    age: row.holderAge != null ? String(row.holderAge) : ageFromDob(row.insuredParty.dateOfBirth ?? ""),
+    age:
+      row.holderAge != null
+        ? String(row.holderAge)
+        : ageFromDob(row.holderDateOfBirth ?? row.insuredParty.dateOfBirth ?? ""),
     relation: row.holderRelationship ?? "",
     holderGender: row.holderGender ?? "",
     holderJoiningDate: isoToDateInput(row.holderJoiningDate ?? ""),

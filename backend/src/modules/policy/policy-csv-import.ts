@@ -210,18 +210,10 @@ async function updatePolicyCsvRow(
     : policy.years[0];
 
   const partyUpdate: Prisma.InsuredPartyUpdateInput = {};
-  const holderName = getCsvField(map, "Holder name");
-  if (holderName) partyUpdate.name = holderName;
-  const pan = getCsvField(map, "Holder PAN");
-  if (pan) partyUpdate.pan = pan;
-  const aadhaar = getCsvField(map, "Holder Aadhaar");
-  if (aadhaar) partyUpdate.aadhaarNo = aadhaar;
   const customerId = getCsvField(map, "Customer ID");
   if (customerId) partyUpdate.customerId = customerId;
   const email = getCsvField(map, "email");
   if (email) partyUpdate.email = email;
-  const holderDob = getCsvField(map, "Holder DOB");
-  if (holderDob) partyUpdate.dateOfBirth = parseOptionalDate(holderDob);
   const primaryMobile = getCsvField(map, "Primary Mobile Number");
   if (primaryMobile) partyUpdate.mobile = normalizeMobile(primaryMobile);
 
@@ -233,6 +225,14 @@ async function updatePolicyCsvRow(
   }
 
   const policyUpdate: Prisma.PolicyUpdateInput = {};
+  const holderName = getCsvField(map, "Holder name");
+  if (holderName) policyUpdate.holderName = holderName;
+  const pan = getCsvField(map, "Holder PAN");
+  if (pan) policyUpdate.holderPan = pan;
+  const aadhaar = getCsvField(map, "Holder Aadhaar");
+  if (aadhaar) policyUpdate.holderAadhaarNo = aadhaar;
+  const holderDob = getCsvField(map, "Holder DOB");
+  if (holderDob) policyUpdate.holderDateOfBirth = parseOptionalDate(holderDob);
   const newPolicyNo = getCsvField(map, "policy no");
   if (newPolicyNo) policyUpdate.policyNo = newPolicyNo;
   const prevNo = getCsvField(map, "previous policy no");

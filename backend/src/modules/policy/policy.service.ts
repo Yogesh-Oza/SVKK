@@ -41,6 +41,11 @@ import {
   sanitizePaymentReplaceRow,
   sanitizeYearPaymentSummary,
 } from "./policy-payment-sanitize.js";
+import {
+  holderSnapshotFromInput,
+  resolvePolicyHolderName,
+  routeInsuredPartyPatchToPolicySnapshot,
+} from "./policy-holder-snapshot.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -159,20 +164,26 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         throw e;
       }
     } else {
-      const updated = await tx.insuredParty.update({
-        where: { id: party.id },
-        data: {
-          name: input.partyName,
-          email: input.email ?? undefined,
-          customerId: customerId ?? party.customerId ?? undefined,
-          pan: input.pan?.toUpperCase() ?? party.pan,
-          aadhaarNo: input.aadhaarNo ?? party.aadhaarNo,
-          dateOfBirth: input.dateOfBirth ?? party.dateOfBirth,
-          ...(customSvkk ? { svkkPublicId: customSvkk } : {}),
-        },
-      });
-      party = updated;
+      const partyUpdate: Prisma.InsuredPartyUpdateInput = {
+        email: input.email ?? undefined,
+        customerId: customerId ?? party.customerId ?? undefined,
+        ...(customSvkk ? { svkkPublicId: customSvkk } : {}),
+      };
+      const hasPartyUpdate = Object.values(partyUpdate).some((v) => v !== undefined);
+      if (hasPartyUpdate) {
+        party = await tx.insuredParty.update({
+          where: { id: party.id },
+          data: partyUpdate,
+        });
+      }
     }
+
+    const holderSnapshot = holderSnapshotFromInput({
+      partyName: input.partyName,
+      dateOfBirth: input.dateOfBirth ?? null,
+      pan: input.pan ?? null,
+      aadhaarNo: input.aadhaarNo ?? null,
+    });
 
     const expected =
       input.expectedNetPremium != null
@@ -232,6 +243,10 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           categoryText: input.categoryText ?? undefined,
           holderRelationship: input.holderRelationship ?? undefined,
           holderGender: input.holderGender ?? undefined,
+          holderName: holderSnapshot.holderName ?? undefined,
+          holderDateOfBirth: holderSnapshot.holderDateOfBirth ?? undefined,
+          holderPan: holderSnapshot.holderPan ?? undefined,
+          holderAadhaarNo: holderSnapshot.holderAadhaarNo ?? undefined,
           holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
           personsInsuredCount: personsCount,
           area: input.area ?? undefined,
@@ -407,7 +422,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       referenceNo: result.policy.referenceNo,
       svkkPublicId: result.party.svkkPublicId,
       village: result.policy.village,
-      holderName: result.party.name,
+      holderName: holderSnapshot.holderName ?? result.party.name,
       yearLabel: result.year.yearLabel,
     } as unknown as Prisma.InputJsonValue,
   });
@@ -542,6 +557,10 @@ export type PolicySectionPatch = {
   categoryText?: string | null;
   holderRelationship?: string | null;
   holderGender?: string | null;
+  holderName?: string | null;
+  holderDateOfBirth?: Date | null;
+  holderPan?: string | null;
+  holderAadhaarNo?: string | null;
   holderAge?: number | null;
   holderJoiningDate?: Date | null;
   holderAddOns?: number | null;
@@ -886,8 +905,17 @@ export async function updatePolicySections(input: {
     }
   }
 
+  let policyPatch: PolicySectionPatch = { ...input.policy };
+  let insuredPartyPatch = input.insuredParty;
+  if (insuredPartyPatch) {
+    const routed = routeInsuredPartyPatchToPolicySnapshot(insuredPartyPatch, policyPatch);
+    policyPatch = routed.policyPatch;
+    const slimParty = slimInsuredPartyPatch(routed.partyPatch);
+    insuredPartyPatch = Object.keys(slimParty).length > 0 ? slimParty : undefined;
+  }
+
   const pData = Object.fromEntries(
-    Object.entries(input.policy).filter(([, v]) => v !== undefined),
+    Object.entries(policyPatch).filter(([, v]) => v !== undefined),
   ) as Prisma.PolicyUpdateInput;
   const hasPolicyFields = Object.keys(pData).length > 0;
   const y = input.year;
@@ -928,7 +956,7 @@ export async function updatePolicySections(input: {
       ].some((v) => v !== undefined)
     : false;
   const hasInsuredParty =
-    input.insuredParty != null && Object.keys(slimInsuredPartyPatch(input.insuredParty)).length > 0;
+    insuredPartyPatch != null && Object.keys(slimInsuredPartyPatch(insuredPartyPatch)).length > 0;
   const hasReplaceMembers = Boolean(input.replaceMembers?.members.length);
   const hasReplacePayments = input.replacePayments !== undefined;
   if (
@@ -984,8 +1012,8 @@ export async function updatePolicySections(input: {
     async (tx: Prisma.TransactionClient) => {
       let bumpVersionWithoutPolicyRow = false;
 
-      if (hasInsuredParty && input.insuredParty) {
-        const did = await applyInsuredPartyPatch(tx, existing.insuredPartyId, input.insuredParty);
+      if (hasInsuredParty && insuredPartyPatch) {
+        const did = await applyInsuredPartyPatch(tx, existing.insuredPartyId, insuredPartyPatch);
         if (did) {
           bumpVersionWithoutPolicyRow = true;
         }
@@ -1145,7 +1173,7 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
       policyNo: existing.policyNo,
       referenceNo: existing.referenceNo,
       village: existing.village,
-      holderName: existing.insuredParty.name,
+      holderName: resolvePolicyHolderName(existing, existing.insuredParty),
     } as unknown as Prisma.InputJsonValue,
     afterData: { deleted: true } as unknown as Prisma.InputJsonValue,
   });

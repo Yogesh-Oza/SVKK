@@ -46,6 +46,7 @@ import { AdProductVariant, ChequeStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { resolveIdempotency, storeIdempotencyResult } from "../../services/idempotency.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
+import { overlayInsuredPartyWithPolicySnapshot } from "./policy-holder-snapshot.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
   assertGeoFieldsOnWrite,
@@ -302,6 +303,22 @@ function patchBodyToInput(
   };
 }
 
+function maskPolicyInsuredParty(
+  permissions: Set<string>,
+  policy: {
+    insuredParty: { name: string; dateOfBirth?: Date | null; pan?: string | null; aadhaarNo?: string | null };
+    holderName?: string | null;
+    holderDateOfBirth?: Date | null;
+    holderPan?: string | null;
+    holderAadhaarNo?: string | null;
+  },
+) {
+  return maskInsuredParty(
+    permissions,
+    overlayInsuredPartyWithPolicySnapshot(policy.insuredParty, policy),
+  );
+}
+
 export function createPolicyRouter(env: Env) {
   const r = Router();
   r.use(requireAuth(env));
@@ -430,7 +447,7 @@ export function createPolicyRouter(env: Env) {
         : await queryPolicyList(listArgs);
       const mapItem = (r: (typeof out.items)[number]) => ({
         ...r,
-        insuredParty: maskInsuredParty(req.permissions!, r.insuredParty),
+        insuredParty: maskPolicyInsuredParty(req.permissions!, r),
       });
       if ("nextCursor" in out) {
         res.json({
@@ -584,7 +601,7 @@ export function createPolicyRouter(env: Env) {
       res.json({
         ...row,
         category,
-        insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
+        insuredParty: maskPolicyInsuredParty(req.permissions!, row),
       });
     } catch (e) {
       next(e);
@@ -641,7 +658,7 @@ export function createPolicyRouter(env: Env) {
       });
       res.json({
         ...row,
-        insuredParty: maskInsuredParty(req.permissions!, row.insuredParty),
+        insuredParty: maskPolicyInsuredParty(req.permissions!, row),
       });
     } catch (e) {
       next(e);

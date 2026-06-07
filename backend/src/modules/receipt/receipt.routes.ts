@@ -11,6 +11,11 @@ import type { Prisma } from "@prisma/client";
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
 import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
+import {
+  resolvePolicyHolderAadhaar,
+  resolvePolicyHolderName,
+  resolvePolicyHolderPan,
+} from "../policy/policy-holder-snapshot.js";
 
 export function createReceiptRouter(env: Env) {
   const r = Router();
@@ -91,12 +96,16 @@ export function createReceiptRouter(env: Env) {
           referenceNo: policy.referenceNo ?? "",
           policyNo: policy.policyNo ?? "",
           previousPolicyNo: policy.previousPolicyNo ?? "",
-          policyHolderName: policy.insuredParty?.name ?? "",
+          policyHolderName: policy.insuredParty
+            ? resolvePolicyHolderName(policy, policy.insuredParty)
+            : "",
           svkkId: policy.insuredParty?.svkkPublicId ?? "",
           policyType: policy.adProductVariant?.replaceAll("_", "-") || policy.policyType?.name || "",
           customerId: policy.insuredParty?.customerId ?? "",
-          panNo: policy.insuredParty?.pan ?? "",
-          aadhaarNo: policy.insuredParty?.aadhaarNo ?? "",
+          panNo: policy.insuredParty ? resolvePolicyHolderPan(policy, policy.insuredParty) ?? "" : "",
+          aadhaarNo: policy.insuredParty
+            ? resolvePolicyHolderAadhaar(policy, policy.insuredParty) ?? ""
+            : "",
           phoneNo: policy.insuredParty?.mobile ?? "",
           emailId: policy.insuredParty?.email ?? "",
           area: policy.area ?? "",

@@ -6,6 +6,14 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy holder details — per-year snapshots (carry forward / update isolation)**
+
+Root cause: all fiscal-year `Policy` rows for one SVKK ID shared one `InsuredParty`; PATCH/create updated `insuredParty.name` (and DOB/PAN/Aadhaar) globally.
+
+Fix: `Policy.holderName`, `holderDateOfBirth`, `holderPan`, `holderAadhaarNo` per policy row; migration backfills from `insuredparty`. Create/carry-forward writes snapshots on new policy without mutating existing party holder fields; PATCH routes `insuredParty.partyName` → policy snapshot. API list/GET/export overlay `insuredParty` with policy snapshot for display. Helpers: `policy-holder-snapshot.ts`. Tests: `policy-holder-snapshot.test.ts`.
+
+## Previous task (completed)
+
 **Add AD policy — Calculated Premium Summary ages on fetch/edit**
 
 On fetch or edit (`autoCalcLocked`), the member table in **Calculated Premium Summary** now shows **stored ages** from the database (`holderAge` / `ageAtEntry` via form `age` fields), matching Holder Details. Ages recalculate from DOB + policy end (`customAge`) only after the user edits age-anchor fields (`dob`, `age`, `policyEnd`, `previousEndDate`, `members[].dob|age`). Helpers: `parseStoredAge`, `resolveQuoteRowAge`, `isAgeAnchorPath`, `useStoredSummaryAges` state in `ad-policy-add-form.tsx`. Tests: `ad-policy-auto-calc.test.ts`.

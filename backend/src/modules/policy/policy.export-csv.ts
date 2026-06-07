@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { maskInsuredParty } from "../../domain/pii.js";
+import { overlayInsuredPartyWithPolicySnapshot } from "./policy-holder-snapshot.js";
 import { type CategoryRef } from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import { parsePolicyListOrderBy, POLICY_LIST_EXPORT_MAX_ROWS } from "./policy.list.js";
@@ -72,7 +73,13 @@ export function buildPoliciesExportCsv(
   selectedHeaders?: string[] | null,
 ): string {
   const parties = rows.map((r) =>
-    maskInsuredParty(permissions, r.insuredParty as Record<string, unknown>),
+    maskInsuredParty(
+      permissions,
+      overlayInsuredPartyWithPolicySnapshot(
+        r.insuredParty as Record<string, unknown> & { name: string },
+        r,
+      ),
+    ),
   );
   const years = rows.map((r) => pickExportPolicyYear(r.years, preferredYearLabels));
   return buildLegacyPoliciesCsv(rows, parties, years, categoryByKey, selectedHeaders);
@@ -85,7 +92,13 @@ export function buildPolicyExportCsvRow(
   preferredYearLabels: string[] = [],
   categoryByKey: Map<string, CategoryRef> = new Map(),
 ): string[] {
-  const party = maskInsuredParty(permissions, row.insuredParty as Record<string, unknown>);
+  const party = maskInsuredParty(
+    permissions,
+    overlayInsuredPartyWithPolicySnapshot(
+      row.insuredParty as Record<string, unknown> & { name: string },
+      row,
+    ),
+  );
   const year = pickExportPolicyYear(row.years, preferredYearLabels);
   const layout = buildPolicyCsvExportLayout(
     year?.members?.length ?? 0,
