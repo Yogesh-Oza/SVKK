@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { backendApi } from "@/lib/svkk/api";
-import { fetchPremiumSnapshot, snapshotToState, type PremiumState } from "@/lib/svkk/premium";
+import { fetchPremiumSnapshot, type PremiumState } from "@/lib/svkk/premium";
 import { parseCsvFileText } from "./future-csv-utils";
 import type { CsvRowObject } from "./future-premium-types";
 import { loadUploadedFutureRows, saveUploadedFutureRows } from "./future-premium-storage";
@@ -24,8 +24,8 @@ export function useFuturePremiumData() {
     (async () => {
       setLoadingCharts(true);
       try {
-        const snap = await fetchPremiumSnapshot();
-        if (!cancelled) setPremiumState(snapshotToState(snap));
+        const next = await fetchPremiumSnapshot();
+        if (!cancelled) setPremiumState(next);
       } finally {
         if (!cancelled) setLoadingCharts(false);
       }

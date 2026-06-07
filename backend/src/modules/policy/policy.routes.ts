@@ -315,7 +315,7 @@ function maskPolicyInsuredParty(
 ) {
   return maskInsuredParty(
     permissions,
-    overlayInsuredPartyWithPolicySnapshot(policy.insuredParty, policy),
+    overlayInsuredPartyWithPolicySnapshot(policy.insuredParty, policy) ?? null,
   );
 }
 

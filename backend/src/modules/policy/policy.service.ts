@@ -422,7 +422,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       referenceNo: result.policy.referenceNo,
       svkkPublicId: result.party.svkkPublicId,
       village: result.policy.village,
-      holderName: holderSnapshot.holderName ?? result.party.name,
+      holderName: result.policy.holderName ?? result.party.name,
       yearLabel: result.year.yearLabel,
     } as unknown as Prisma.InputJsonValue,
   });

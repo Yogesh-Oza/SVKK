@@ -78,7 +78,7 @@ export function buildPoliciesExportCsv(
       overlayInsuredPartyWithPolicySnapshot(
         r.insuredParty as Record<string, unknown> & { name: string },
         r,
-      ),
+      ) ?? null,
     ),
   );
   const years = rows.map((r) => pickExportPolicyYear(r.years, preferredYearLabels));
@@ -97,7 +97,7 @@ export function buildPolicyExportCsvRow(
     overlayInsuredPartyWithPolicySnapshot(
       row.insuredParty as Record<string, unknown> & { name: string },
       row,
-    ),
+    ) ?? null,
   );
   const year = pickExportPolicyYear(row.years, preferredYearLabels);
   const layout = buildPolicyCsvExportLayout(

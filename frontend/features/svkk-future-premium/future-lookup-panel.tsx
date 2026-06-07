@@ -347,12 +347,12 @@ export function FutureLookupPanel() {
                       <TableCell>{m.dob || "—"}</TableCell>
                       <TableCell>{m.age ?? "—"}</TableCell>
                       <TableCell>{m.band || "—"}</TableCell>
-                      <TableCell>{m.error ? m.error : `₹${rs(m.basic)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.rider)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.gross)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `${m.pct}%`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.disc)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.net)}`}</TableCell>
+                      <TableCell>{m.error ? m.error : `₹${rs(m.basic ?? 0)}`}</TableCell>
+                      <TableCell>{m.error ? "—" : `₹${rs(m.rider ?? 0)}`}</TableCell>
+                      <TableCell>{m.error ? "—" : `₹${rs(m.gross ?? 0)}`}</TableCell>
+                      <TableCell>{m.error ? "—" : `${m.pct ?? 0}%`}</TableCell>
+                      <TableCell>{m.error ? "—" : `₹${rs(m.disc ?? 0)}`}</TableCell>
+                      <TableCell>{m.error ? "—" : `₹${rs(m.net ?? 0)}`}</TableCell>
                       <TableCell>{m.error || "Ready"}</TableCell>
                     </TableRow>
                   ))}
