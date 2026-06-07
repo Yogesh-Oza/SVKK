@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Premium & Lookup pages (from reference HTML)**
+
+Sidebar group **Future** with **Future Premium** (`/future-premium`) and **Lookup** (`/future-premium/lookup`), gated by `mis:read`. Ported CSV upload, year offset, MIS (overall / policy type / SI), filters, and CSV export from `PUJA GALA MEDICLAIM PREMIUM CHART CALCULATION Future.html`. Uses live premium charts via `fetchPremiumSnapshot` (admin: `/calculator/admin`). CSV accepts Format v2 policy export columns plus compact future-premium sample. Sources: uploaded CSV only, policy export (`GET /policies/export.csv`), or merged. Module: `frontend/features/svkk-future-premium/`. Tests: `future-premium-engine.test.ts` (5).
+
+## Previous task (completed)
+
 **Policy holder details — per-year snapshots (carry forward / update isolation)**
 
 Root cause: all fiscal-year `Policy` rows for one SVKK ID shared one `InsuredParty`; PATCH/create updated `insuredParty.name` (and DOB/PAN/Aadhaar) globally.

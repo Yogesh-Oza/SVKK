@@ -6,6 +6,8 @@ export type SvkkNavId =
   | "calculatorAdmin"
   | "policies"
   | "policyNew"
+  | "futurePremium"
+  | "futureLookup"
   | "claims"
   | "mis"
   | "notifications"
@@ -34,6 +36,18 @@ const NAV: NavEntry[] = [
   },
   { id: "policies", href: "/policies", label: "Policies", permission: "policy:read" },
   { id: "policyNew", href: "/policies/new", label: "Add policy", permission: "policy:create" },
+  {
+    id: "futurePremium",
+    href: "/future-premium",
+    label: "Future Premium",
+    permission: "mis:read",
+  },
+  {
+    id: "futureLookup",
+    href: "/future-premium/lookup",
+    label: "Lookup",
+    permission: "mis:read",
+  },
   { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
   { id: "mis", href: "/mis", label: "MIS", permission: "mis:read" },
   { id: "notifications", href: "/notifications", label: "Notifications", permission: "notifications:read" },

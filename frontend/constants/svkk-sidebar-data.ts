@@ -26,6 +26,10 @@ import {
 
   IconHistory,
 
+  IconSearch,
+
+  IconTimeline,
+
   IconLayoutDashboard,
 
   IconListDetails,
@@ -57,6 +61,10 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   policies: IconFileDescription,
 
   policyNew: IconFilePlus,
+
+  futurePremium: IconTimeline,
+
+  futureLookup: IconSearch,
 
   claims: IconStethoscope,
 
@@ -141,6 +149,32 @@ export function getSvkkNavGroupsForPermissions(permissions: string[]): NavGroup[
           { title: "All policies", url: n.href, icon: IconFileDescription },
 
           { title: "Add policy", url: add.href, icon: IconFilePlus },
+
+        ],
+
+      });
+
+      i += 1;
+
+      continue;
+
+    }
+
+    if (n.id === "futurePremium" && flat[i + 1]?.id === "futureLookup") {
+
+      const lookup = flat[i + 1]!;
+
+      items.push({
+
+        title: "Future",
+
+        icon: IconTimeline,
+
+        items: [
+
+          { title: "Future Premium", url: n.href, icon: IconTimeline },
+
+          { title: "Lookup", url: lookup.href, icon: IconSearch },
 
         ],
 
