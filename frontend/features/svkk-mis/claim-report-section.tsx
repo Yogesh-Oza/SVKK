@@ -30,8 +30,7 @@ import { getSvkkApiBase } from "@/lib/svkk/config";
 import { todayFormDate, toIsoDateParam, formatDateForFormInput } from "@/lib/svkk/form-date";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
-import { PolicyMemberDrillDownSheet } from "@/features/svkk-mis/policy-member-drill-down-sheet";
-import { buildPolicyMemberDrillQueryString } from "@/features/svkk-mis/mis-drill-query";
+import { ClaimMisDrillSheet } from "@/features/svkk-mis/claim-mis-drill-sheet";
 import { Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -195,30 +194,6 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
   ]);
 
   const reportQueryString = useMemo(() => buildQuery().toString(), [buildQuery]);
-
-  const policyDrillQueryString = useMemo(
-    () =>
-      buildPolicyMemberDrillQueryString({
-        dateFrom,
-        dateTo,
-        categoryKeys,
-        villages,
-        sumInsureds,
-        policyGroupings,
-        periodMonthTexts: periodMonths,
-        fiscalLabels: fiscalYears,
-      }),
-    [
-      categoryKeys,
-      dateFrom,
-      dateTo,
-      fiscalYears,
-      periodMonths,
-      policyGroupings,
-      sumInsureds,
-      villages,
-    ],
-  );
 
   const openVillageDrill = useCallback((label: string) => {
     if (!label || label === "—") return;
@@ -595,12 +570,11 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
         </Table>
       </div>
 
-      <PolicyMemberDrillDownSheet
+      <ClaimMisDrillSheet
         open={drillOpen}
         onOpenChange={setDrillOpen}
-        drillType={drillVillage ? "village" : null}
-        drillLabel={drillVillage}
-        reportQueryString={policyDrillQueryString}
+        village={drillVillage}
+        reportQueryString={reportQueryString}
       />
     </div>
   );

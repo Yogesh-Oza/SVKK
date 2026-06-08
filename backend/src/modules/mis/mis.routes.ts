@@ -559,6 +559,34 @@ export function createMisRouter(_env: Env) {
   );
 
   r.get(
+    "/claim-report/detail",
+    requireAnyPermission(["mis:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema
+          .extend({ drillVillage: z.string().optional() })
+          .parse(req.query);
+        const drillVillage = q.drillVillage?.trim() || null;
+        if (!drillVillage) {
+          res.status(400).json({ success: false, message: "drillVillage is required" });
+          return;
+        }
+        const normalized = normalizeClaimReportQuery({ ...q, groupBy: "category" });
+        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
+        const report = await getClaimReport(req.permissions!, scope, {
+          ...normalized,
+          groupBy: "category",
+          villages: [drillVillage],
+        });
+        res.json({ drillVillage, rows: report.rows });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
     "/claim-trend",
     requireAnyPermission(["mis:read", "dashboard:read"]),
     async (req, res, next) => {
