@@ -34,6 +34,11 @@ export const FUTURE_SOURCE_OPTIONS: { value: FutureSourceKey; label: string; loo
   { value: "linked_upload", label: "Linked Uploaded CSV", lookup: true },
 ];
 
+/** Lookup page: policy export and session-linked CSV only. */
+export const FUTURE_LOOKUP_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
+  (o) => o.value === "policy_list_only" || o.value === "linked_upload",
+);
+
 export function sourceLabel(key: FutureSourceKey): string {
   return FUTURE_SOURCE_OPTIONS.find((o) => o.value === key)?.label ?? "Uploaded CSV + Policy List";
 }

@@ -22,6 +22,8 @@ import {
   type ClaimListQuery,
 } from "./claim.list.js";
 import { buildClaimsExportCsv } from "./claim.export-csv.js";
+import { claimDetailSelect } from "./claim-detail.js";
+import { claimUpdateBodySchema } from "./claim-update.schema.js";
 
 function queryToStringArray(v: unknown): string[] | undefined {
   if (v == null) return undefined;
@@ -345,24 +347,59 @@ export function createClaimRouter(env: Env) {
     }
   });
 
+  r.get("/:id", requirePermission("claim:read"), async (req, res, next) => {
+    try {
+      const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
+      const row = await prisma.claim.findUnique({
+        where: { id: String(req.params.id) },
+        select: {
+          ...claimDetailSelect,
+          policy: { select: { policyNo: true, area: true } },
+        },
+      });
+      if (!row) {
+        throw new AppError("NOT_FOUND", "Claim not found", 404);
+      }
+      assertClaimInGeoScope(
+        { village: row.village, policy: { area: row.policy?.area ?? null } },
+        req.permissions!,
+        scope,
+      );
+      const { policy, ...detail } = row;
+      res.json({
+        ...detail,
+        policy: policy ? { policyNo: policy.policyNo } : null,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.patch("/:id", requirePermission("claim:update"), async (req, res, next) => {
     try {
-      const body = z
-        .object({
-          status: z.nativeEnum(ClaimStatus).optional(),
-          approvedAmount: z.number().nonnegative().optional().nullable(),
-        })
-        .parse(req.body);
+      const body = claimUpdateBodySchema.parse(req.body);
 
       const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
       const found = await prisma.claim.findUnique({
         where: { id: String(req.params.id) },
-        select: { id: true, village: true, policy: { select: { area: true } } },
+        select: {
+          id: true,
+          village: true,
+          policy: { select: { area: true } },
+        },
       });
       if (!found) {
         throw new AppError("NOT_FOUND", "Claim not found", 404);
       }
       assertClaimInGeoScope(found, req.permissions!, scope);
+
+      const nextVillage = body.village !== undefined ? body.village : found.village;
+      assertGeoFieldsOnWrite(
+        { village: nextVillage, area: found.policy?.area ?? null },
+        scope,
+        req.permissions!,
+        "claim",
+      );
 
       const update: Record<string, unknown> = { ...body };
       if (body.status === ClaimStatus.APPROVED) {
@@ -372,6 +409,7 @@ export function createClaimRouter(env: Env) {
       const row = await prisma.claim.update({
         where: { id: String(req.params.id) },
         data: update as object,
+        select: claimDetailSelect,
       });
       res.json(row);
     } catch (e) {

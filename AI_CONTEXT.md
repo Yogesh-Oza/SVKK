@@ -6,9 +6,15 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Lookup — autocomplete like Add Policy**
+
+Lookup search field (`/future-premium/lookup`) shows debounced suggestions (≥2 chars) while typing holder name, SVKK ID, policy no., or customer ID. **Policy List Only** / **Uploaded CSV + Policy List** call `GET /policies?search=…&groupBySvkk=false` (same as Add Policy carry-forward). CSV sources also search session-uploaded rows. Keyboard ↑↓ / Enter / Escape; click fills field and runs Generate. Backend policy list search now includes `holderName` (per-year snapshot). Files: `policy-lookup-suggestions.ts`, `policy-lookup-csv-search.ts`, `lookup-suggestions-list.tsx`, `future-lookup-panel.tsx`. Tests: `policy-lookup-suggestions.test.ts` (2), `future-premium-engine.test.ts` (5).
+
+## Previous task (completed)
+
 **Future Premium & Lookup pages (from reference HTML)**
 
-Sidebar group **Future** with **Future Premium** (`/future-premium`) and **Lookup** (`/future-premium/lookup`), gated by `mis:read`. Ported CSV upload, year offset, MIS (overall / policy type / SI), filters, and CSV export from `PUJA GALA MEDICLAIM PREMIUM CHART CALCULATION Future.html`. Uses live premium charts via `fetchPremiumSnapshot` (admin: `/calculator/admin`). CSV accepts Format v2 policy export columns plus compact future-premium sample. Sources: uploaded CSV only, policy export (`GET /policies/export.csv`), or merged. Module: `frontend/features/svkk-future-premium/`. Tests: `future-premium-engine.test.ts` (5).
+Sidebar group **Future** with **Future Premium** (`/future-premium`) and **Lookup** (`/future-premium/lookup`), gated by `mis:read`. Ported CSV upload, year offset, MIS (overall / policy type / SI), filters, and CSV export from `PUJA GALA MEDICLAIM PREMIUM CHART CALCULATION Future.html`. Uses live premium charts via `fetchPremiumSnapshot` (admin: `/calculator/admin`). CSV accepts Format v2 policy export columns plus compact future-premium sample. Sources: uploaded CSV only, policy export (`GET /policies/export.csv`), or merged. Module: `frontend/features/svkk-future-premium/`.
 
 ## Previous task (completed)
 

@@ -152,6 +152,15 @@
     border-radius: 9999px;
   }
 
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .faded-bottom {
     mask-image: linear-gradient(
       to bottom,

@@ -39,6 +39,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClaimCsvImportInline } from "@/features/svkk-claims/claim-csv-import-panel";
+import { ClaimEditDialog } from "@/features/svkk-claims/claim-edit-dialog";
+import type { ClaimDetail } from "@/features/svkk-claims/claim-detail-types";
 import {
   PolicyFilterMulti,
   type PolicyFilterOption,
@@ -75,7 +77,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const CLAIM_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
-type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
 type Claim = {
   id: string;
@@ -131,11 +132,28 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
 
 const claimTableCell = "font-sans text-sm font-bold text-foreground tabular-nums antialiased";
 
-function parseOptionalAmount(raw: string): number | null {
-  const t = raw.trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+function listRowFromDetail(d: ClaimDetail): Claim {
+  const amt = (v: string | number | null | undefined) => (v == null ? null : String(v));
+  return {
+    id: d.id,
+    claimNo: d.claimNo,
+    svkkPublicId: d.svkkPublicId,
+    policyYear: d.policyYear,
+    status: d.status,
+    statusText: d.statusText,
+    claimAmount: amt(d.claimAmount),
+    approvedAmount: amt(d.approvedAmount),
+    deductionAmount: amt(d.deductionAmount),
+    village: d.village ?? null,
+    patientName: d.patientName ?? null,
+    policyHolderName: d.policyHolderName,
+    policyTypeText: d.policyTypeText,
+    claimType: d.claimType,
+    hospitalName: d.hospitalName,
+    matchStatus: d.matchStatus,
+    policyId: d.policyId,
+    policy: d.policy,
+  };
 }
 
 function parseInrAmount(v: unknown): number | null {
@@ -215,10 +233,8 @@ export function ClaimsListView() {
   const [loading, setLoading] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
 
-  const [edit, setEdit] = useState<Claim | null>(null);
-  const [editStatus, setEditStatus] = useState<ClaimStatus>("PENDING");
-  const [editApproved, setEditApproved] = useState("");
-  const [patchBusy, setPatchBusy] = useState(false);
+  const [editClaimId, setEditClaimId] = useState<string | null>(null);
+  const [editClaimNo, setEditClaimNo] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
 
@@ -362,37 +378,6 @@ export function ClaimsListView() {
     }
   }, [exportQueryString]);
 
-  function openEdit(c: Claim) {
-    setEdit(c);
-    setEditStatus(
-      CLAIM_STATUSES.includes(c.status as ClaimStatus) ? (c.status as ClaimStatus) : "PENDING",
-    );
-    setEditApproved(c.approvedAmount != null ? String(c.approvedAmount) : "");
-  }
-
-  async function saveEdit() {
-    if (!edit) return;
-    setPatchBusy(true);
-    try {
-      const approvedParsed = parseOptionalAmount(editApproved);
-      if (editApproved.trim() && approvedParsed === null) {
-        toast.error("Approved amount must be a non‑negative number or empty");
-        return;
-      }
-      const updated = await svkkJson<Claim>(`/claims/${edit.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: editStatus, approvedAmount: approvedParsed }),
-      });
-      setRows((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
-      toast.success("Claim updated");
-      setEdit(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setPatchBusy(false);
-    }
-  }
-
   async function removeClaim() {
     if (!claimToDelete) return;
     const id = claimToDelete.id;
@@ -450,8 +435,8 @@ export function ClaimsListView() {
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">Claims</h1>
           <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            Search and filter imported claims. Use CSV import to add new records; edit status and
-            approved amounts from the register.
+            Search and filter imported claims. Use CSV import to add new records; edit full claim
+            details from the register.
           </p>
         </div>
         {canImport ? (
@@ -662,7 +647,7 @@ export function ClaimsListView() {
                 Claim register
               </CardTitle>
               <CardDescription>
-                All matching claims — edit status and approved amount from the actions column.
+                All matching claims — use Edit to update all claim details from the actions column.
               </CardDescription>
             </div>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
@@ -766,7 +751,15 @@ export function ClaimsListView() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           {canU ? (
-                            <Button type="button" variant="outline" size="sm" onClick={() => openEdit(c)}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditClaimId(c.id);
+                                setEditClaimNo(c.claimNo);
+                              }}
+                            >
                               Edit
                             </Button>
                           ) : null}
@@ -919,54 +912,18 @@ export function ClaimsListView() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update claim</DialogTitle>
-            <DialogDescription>
-              Change status and approved amount. Setting status to Approved records you as the approver
-              on the server.
-            </DialogDescription>
-          </DialogHeader>
-          {edit ? (
-            <div className="space-y-3 py-1">
-              <p className="text-muted-foreground font-mono text-xs">{edit.claimNo}</p>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as ClaimStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CLAIM_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Approved amount (INR)</Label>
-                <Input
-                  value={editApproved}
-                  onChange={(e) => setEditApproved(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="Leave empty to clear"
-                />
-              </div>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setEdit(null)}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={patchBusy} onClick={() => void saveEdit()}>
-              {patchBusy ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClaimEditDialog
+        claimId={editClaimId}
+        claimNo={editClaimNo}
+        onClose={() => {
+          setEditClaimId(null);
+          setEditClaimNo(null);
+        }}
+        onSaved={(detail) => {
+          const row = listRowFromDetail(detail);
+          setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+        }}
+      />
     </motion.div>
   );
 }

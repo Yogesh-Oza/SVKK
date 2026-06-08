@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { Download, Loader2, Search, Settings2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,17 @@ import { rs } from "@/lib/svkk/premium";
 import { getv } from "./future-csv-utils";
 import {
   findLookupResult,
-  FUTURE_SOURCE_OPTIONS,
+  FUTURE_LOOKUP_SOURCE_OPTIONS,
   FUTURE_YEAR_OPTIONS,
   resolveFutureRawRows,
 } from "./future-premium-engine";
 import { downloadCsv } from "./future-premium-export";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
+import { LookupSuggestionsList } from "./lookup-suggestions-list";
+import {
+  loadLookupSuggestions,
+  type LookupSuggestion,
+} from "./policy-lookup-suggestions";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
 function LookupField({ label, value }: { label: string; value: string }) {
@@ -60,17 +65,92 @@ export function FutureLookupPanel() {
   const [result, setResult] = useState<FuturePremiumResult | null>(null);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [suggestions, setSuggestions] = useState<LookupSuggestion[]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [suppressSuggestions, setSuppressSuggestions] = useState(false);
 
-  const handleGenerate = async () => {
-    if (!premiumState) return;
-    setBusy(true);
-    setSearched(true);
-    try {
-      const raw = await resolveFutureRawRows(source, uploadedRows, fetchPolicyExportRows);
-      const found = findLookupResult(lookupNo, raw, source, yearOffset, premiumState);
-      setResult(found);
-    } finally {
-      setBusy(false);
+  const runLookup = useCallback(
+    async (token: string, sourceOverride?: FutureSourceKey) => {
+      if (!premiumState || !token.trim()) return;
+      const lookupSource = sourceOverride ?? source;
+      setBusy(true);
+      setSearched(true);
+      try {
+        const raw = await resolveFutureRawRows(lookupSource, uploadedRows, fetchPolicyExportRows);
+        const found = findLookupResult(token, raw, lookupSource, yearOffset, premiumState);
+        setResult(found);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [premiumState, source, uploadedRows, fetchPolicyExportRows, yearOffset],
+  );
+
+  const handleGenerate = () => void runLookup(lookupNo);
+
+  const selectSuggestion = useCallback(
+    (suggestion: LookupSuggestion) => {
+      setSuppressSuggestions(true);
+      setLookupNo(suggestion.lookupValue);
+      setSuggestions([]);
+      setActiveSuggestionIndex(-1);
+      const lookupSource =
+        source === "linked_upload" && suggestion.key.startsWith("api-")
+          ? "policy_list_only"
+          : undefined;
+      void runLookup(suggestion.lookupValue, lookupSource);
+    },
+    [runLookup, source],
+  );
+
+  useEffect(() => {
+    if (suppressSuggestions) return;
+    const query = lookupNo.trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      setActiveSuggestionIndex(-1);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSuggestBusy(true);
+      void loadLookupSuggestions(query, source, uploadedRows, { includeLivePolicySearch: true })
+        .then((items) => {
+          setSuggestions(items);
+          setActiveSuggestionIndex(-1);
+        })
+        .catch(() => {
+          setSuggestions([]);
+          setActiveSuggestionIndex(-1);
+        })
+        .finally(() => setSuggestBusy(false));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [lookupNo, source, uploadedRows, suppressSuggestions]);
+
+  const handleSuggestionKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!suggestions.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+      return;
+    }
+    if (e.key === "Enter" && suggestions.length) {
+      e.preventDefault();
+      const idx = activeSuggestionIndex >= 0 ? activeSuggestionIndex : 0;
+      const suggestion = suggestions[idx];
+      if (suggestion) selectSuggestion(suggestion);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setSuggestions([]);
+      setActiveSuggestionIndex(-1);
     }
   };
 
@@ -83,7 +163,7 @@ export function FutureLookupPanel() {
         <div>
           <h1 className="text-2xl font-semibold">Lookup</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Search by Policy Number, SVKK ID or Customer ID. Full details are shown below.
+            Search by policy number, SVKK ID, customer ID, or holder name. Suggestions appear as you type.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -101,27 +181,47 @@ export function FutureLookupPanel() {
         <CardHeader>
           <CardTitle className="text-base">Controls</CardTitle>
           <CardDescription>
-            Uses the same uploaded CSV session as Future Premium, or the live policy export when selected.
+            Type at least 2 characters — suggestions search live policies (and your uploaded CSV when linked). Generate uses the selected source.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2 xl:col-span-1">
               <Label>Policy / SVKK / Customer No.</Label>
               <Input
                 value={lookupNo}
-                onChange={(e) => setLookupNo(e.target.value)}
-                placeholder="Enter policy no, SVKK ID or Customer ID"
+                onChange={(e) => {
+                  setSuppressSuggestions(false);
+                  setLookupNo(e.target.value);
+                  setResult(null);
+                  setSearched(false);
+                }}
+                onKeyDown={handleSuggestionKeyDown}
+                placeholder="Type holder name, SVKK ID, policy or customer no."
+                autoComplete="off"
+              />
+              <LookupSuggestionsList
+                suggestions={suggestions}
+                busy={suggestBusy}
+                activeIndex={activeSuggestionIndex}
+                onSelect={selectSuggestion}
+                open={lookupNo.trim().length >= 2}
               />
             </div>
             <div className="space-y-2">
               <Label>Source</Label>
-              <Select value={source} onValueChange={(v) => setSource(v as FutureSourceKey)}>
+              <Select
+                value={source}
+                onValueChange={(v) => {
+                  setSource(v as FutureSourceKey);
+                  setSuppressSuggestions(false);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {FUTURE_SOURCE_OPTIONS.map((o) => (
+                  {FUTURE_LOOKUP_SOURCE_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -146,7 +246,7 @@ export function FutureLookupPanel() {
             </div>
             <div className="space-y-2">
               <Label>Actions</Label>
-              <Button onClick={() => void handleGenerate()} disabled={busy || loadingCharts}>
+              <Button onClick={handleGenerate} disabled={busy || loadingCharts || !lookupNo.trim()}>
                 {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
                 Generate
               </Button>
@@ -176,7 +276,7 @@ export function FutureLookupPanel() {
               ? "Policy found. Full details are shown below."
               : searched && lookupNo
                 ? "Policy not found in uploaded future data or Policy List."
-                : "Enter number and click Generate."}
+                : "Type a name or ID, pick a suggestion, or click Generate."}
           </p>
         </CardContent>
       </Card>
