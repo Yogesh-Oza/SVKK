@@ -28,7 +28,6 @@ import { rs } from "@/lib/svkk/premium";
 import { getv } from "./future-csv-utils";
 import {
   findLookupResult,
-  FUTURE_LOOKUP_SOURCE_OPTIONS,
   FUTURE_YEAR_OPTIONS,
   resolveFutureRawRows,
 } from "./future-premium-engine";
@@ -39,6 +38,7 @@ import {
   loadLookupSuggestions,
   type LookupSuggestion,
 } from "./policy-lookup-suggestions";
+import { FuturePremiumPolicyFilters, useFuturePremiumPolicyFilters } from "./future-premium-policy-filters";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
 function LookupField({ label, value }: { label: string; value: string }) {
@@ -55,12 +55,13 @@ export function FutureLookupPanel() {
     premiumState,
     uploadedRows,
     loadingCharts,
-    ingestCsvFile,
     fetchPolicyExportRows,
   } = useFuturePremiumData();
 
+  const { filters, setFilters, resetFilters, activeCount, filterQuery, filterOptions } =
+    useFuturePremiumPolicyFilters();
+
   const [lookupNo, setLookupNo] = useState("");
-  const [source, setSource] = useState<FutureSourceKey>("linked_upload");
   const [yearOffset, setYearOffset] = useState("0");
   const [result, setResult] = useState<FuturePremiumResult | null>(null);
   const [searched, setSearched] = useState(false);
@@ -71,20 +72,22 @@ export function FutureLookupPanel() {
   const [suppressSuggestions, setSuppressSuggestions] = useState(false);
 
   const runLookup = useCallback(
-    async (token: string, sourceOverride?: FutureSourceKey) => {
+    async (token: string) => {
       if (!premiumState || !token.trim()) return;
-      const lookupSource = sourceOverride ?? source;
+      const lookupSource: FutureSourceKey = "policy_list_only";
       setBusy(true);
       setSearched(true);
       try {
-        const raw = await resolveFutureRawRows(lookupSource, uploadedRows, fetchPolicyExportRows);
+        const raw = await resolveFutureRawRows(lookupSource, uploadedRows, () =>
+          fetchPolicyExportRows(filterQuery),
+        );
         const found = findLookupResult(token, raw, lookupSource, yearOffset, premiumState);
         setResult(found);
       } finally {
         setBusy(false);
       }
     },
-    [premiumState, source, uploadedRows, fetchPolicyExportRows, yearOffset],
+    [premiumState, uploadedRows, fetchPolicyExportRows, filterQuery, yearOffset],
   );
 
   const handleGenerate = () => void runLookup(lookupNo);
@@ -95,13 +98,9 @@ export function FutureLookupPanel() {
       setLookupNo(suggestion.lookupValue);
       setSuggestions([]);
       setActiveSuggestionIndex(-1);
-      const lookupSource =
-        source === "linked_upload" && suggestion.key.startsWith("api-")
-          ? "policy_list_only"
-          : undefined;
-      void runLookup(suggestion.lookupValue, lookupSource);
+      void runLookup(suggestion.lookupValue);
     },
-    [runLookup, source],
+    [runLookup],
   );
 
   useEffect(() => {
@@ -114,7 +113,10 @@ export function FutureLookupPanel() {
     }
     const timer = setTimeout(() => {
       setSuggestBusy(true);
-      void loadLookupSuggestions(query, source, uploadedRows, { includeLivePolicySearch: true })
+      void loadLookupSuggestions(query, "policy_list_only", uploadedRows, {
+        includeLivePolicySearch: true,
+        filterQuery,
+      })
         .then((items) => {
           setSuggestions(items);
           setActiveSuggestionIndex(-1);
@@ -126,7 +128,7 @@ export function FutureLookupPanel() {
         .finally(() => setSuggestBusy(false));
     }, 150);
     return () => clearTimeout(timer);
-  }, [lookupNo, source, uploadedRows, suppressSuggestions]);
+  }, [lookupNo, uploadedRows, suppressSuggestions, filterQuery]);
 
   const handleSuggestionKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!suggestions.length) return;
@@ -181,7 +183,7 @@ export function FutureLookupPanel() {
         <CardHeader>
           <CardTitle className="text-base">Controls</CardTitle>
           <CardDescription>
-            Type at least 2 characters — suggestions search live policies (and your uploaded CSV when linked). Generate uses the selected source.
+            Data is fetched from the policy database only. Type at least 2 characters to see suggestions, then click Generate.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -209,27 +211,6 @@ export function FutureLookupPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Source</Label>
-              <Select
-                value={source}
-                onValueChange={(v) => {
-                  setSource(v as FutureSourceKey);
-                  setSuppressSuggestions(false);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_LOOKUP_SOURCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label>Future Year</Label>
               <Select value={yearOffset} onValueChange={setYearOffset}>
                 <SelectTrigger>
@@ -253,17 +234,13 @@ export function FutureLookupPanel() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Refresh uploaded CSV (optional)</Label>
-            <Input
-              type="file"
-              accept=".csv"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void ingestCsvFile(file);
-              }}
-            />
-          </div>
+          <FuturePremiumPolicyFilters
+            filters={filters}
+            onChange={setFilters}
+            options={filterOptions}
+            activeCount={activeCount}
+            onReset={resetFilters}
+          />
 
           <p
             className={
@@ -275,7 +252,7 @@ export function FutureLookupPanel() {
             {result
               ? "Policy found. Full details are shown below."
               : searched && lookupNo
-                ? "Policy not found in uploaded future data or Policy List."
+                ? "Policy not found in policy database."
                 : "Type a name or ID, pick a suggestion, or click Generate."}
           </p>
         </CardContent>
@@ -354,7 +331,6 @@ export function FutureLookupPanel() {
               <CardTitle className="text-base">Policy Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <LookupField label="Source" value={result.source} />
               <LookupField label="Policy Year" value={detailVal(["year", "policy_year", "policy year"])} />
               <LookupField label="Start Date" value={result.start} />
               <LookupField label="End Date" value={result.end} />

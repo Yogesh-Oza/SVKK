@@ -32,7 +32,10 @@ function pickLookupValue(parts: { policyNo: string; svkkId: string; customerId: 
   return parts.policyNo || parts.svkkId || parts.customerId;
 }
 
-export async function fetchApiLookupSuggestions(query: string): Promise<LookupSuggestion[]> {
+export async function fetchApiLookupSuggestions(
+  query: string,
+  filterQuery?: string,
+): Promise<LookupSuggestion[]> {
   const q = query.trim();
   if (q.length < 2) return [];
 
@@ -43,6 +46,10 @@ export async function fetchApiLookupSuggestions(query: string): Promise<LookupSu
     sort: "createdAt",
     groupBySvkk: "false",
   });
+  if (filterQuery?.trim()) {
+    const extra = new URLSearchParams(filterQuery);
+    extra.forEach((value, key) => search.append(key, value));
+  }
   const res = await svkkJson<{ items: ApiPolicyListItem[] }>(`/policies?${search.toString()}`);
   const items = res.items ?? [];
 
@@ -72,6 +79,8 @@ export async function fetchApiLookupSuggestions(query: string): Promise<LookupSu
 export type LoadLookupSuggestionsOptions = {
   /** Lookup page: always search live policies while typing (like Add Policy). */
   includeLivePolicySearch?: boolean;
+  /** Optional policy list filters (same params as policies list/export). */
+  filterQuery?: string;
 };
 
 export async function loadLookupSuggestions(
@@ -99,7 +108,7 @@ export async function loadLookupSuggestions(
     pushUnique(searchCsvLookupSuggestions(uploadedRows, q));
   }
   if (sourceUsesPolicyApi(source) || options?.includeLivePolicySearch) {
-    pushUnique(await fetchApiLookupSuggestions(q));
+    pushUnique(await fetchApiLookupSuggestions(q, options?.filterQuery));
   }
 
   return merged.slice(0, 25);
