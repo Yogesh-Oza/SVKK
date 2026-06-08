@@ -59,6 +59,29 @@ describe("future-premium-engine", () => {
     expect(normalizeLookupToken("POL-1001")).toBe("pol1001");
   });
 
+  it("finds lookup when PO prefix spacing differs", () => {
+    const row = {
+      "policy no": "PO- 14010061252800000651",
+      svkk_id: "SVKK9999",
+      customer_id: "CUST1",
+      holder_name: "Test Holder",
+      policy_type: "family floater",
+      sum_insured: "200000",
+      start_date: "2025-06-01",
+      end_date: "2026-05-31",
+      member_count: "2",
+    };
+    const found = findLookupResult(
+      "PO-14010061252800000651",
+      [row],
+      "policy_list_only",
+      "0",
+      premiumState,
+    );
+    expect(found?.policyNo).toBe("PO- 14010061252800000651");
+    expect(found?.svkkId).toBe("SVKK9999");
+  });
+
   it("labels year offsets", () => {
     expect(yearOffsetLabel("0")).toBe("Current Year");
     expect(yearOffsetLabel("1")).toBe("Next Year");

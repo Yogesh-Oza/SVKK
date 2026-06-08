@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Lookup — suggestions + Generate alignment**
+
+Lookup is DB-only (no Source/CSV upload). Fixed false **“Policy not found”** flash while Generate/suggestion lookup was still loading (`busy` gate on status message). Fixed **“No matching policies”** during in-flight search and stale debounce races (request-id guards). **Suggestions now use the same `export.csv?search=` path as Generate** (`policy-lookup-db.ts`), including digits-first search for `PO-` policy numbers. Files: `future-lookup-panel.tsx`, `policy-lookup-db.ts`, `lookup-suggestions-list.tsx`, `policy-lookup-search.ts`.
+
+## Previous task (completed)
+
 **Future Premium — two sources + policy list filters**
 
 Removed **Uploaded CSV + Policy List** from Future Premium. Sources: **Uploaded CSV** (session storage) and **Policy list (database)** (`GET /policies/export.csv` with filters). Shared multi-select filters (Year, Category, Policy type, Month, Area, Village, Sum insured, Group) match policies page; DB source passes query to export API; CSV source filters `sessionStorage` rows client-side. Files: `future-policy-filters.ts`, `future-premium-policy-filters.tsx`, `future-premium-panel.tsx`, `FUTURE_PREMIUM_SOURCE_OPTIONS`.

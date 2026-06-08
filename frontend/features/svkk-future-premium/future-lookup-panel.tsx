@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Download, Loader2, Search, Settings2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,15 +29,13 @@ import { getv } from "./future-csv-utils";
 import {
   findLookupResult,
   FUTURE_YEAR_OPTIONS,
-  resolveFutureRawRows,
 } from "./future-premium-engine";
 import { downloadCsv } from "./future-premium-export";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
 import { LookupSuggestionsList } from "./lookup-suggestions-list";
-import {
-  loadLookupSuggestions,
-  type LookupSuggestion,
-} from "./policy-lookup-suggestions";
+import { fetchDbLookupExportRows, loadDbLookupSuggestions } from "./policy-lookup-db";
+import type { LookupSuggestion } from "./policy-lookup-csv-search";
+import { lookupMinQueryLength } from "./policy-lookup-search";
 import { FuturePremiumPolicyFilters, useFuturePremiumPolicyFilters } from "./future-premium-policy-filters";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
@@ -50,10 +48,27 @@ function LookupField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function lookupStatusMessage(opts: {
+  busy: boolean;
+  searched: boolean;
+  lookupNo: string;
+  result: FuturePremiumResult | null;
+}): { text: string; tone: "idle" | "loading" | "success" | "error" } {
+  if (opts.busy) {
+    return { text: "Looking up policy…", tone: "loading" };
+  }
+  if (opts.result) {
+    return { text: "Policy found. Full details are shown below.", tone: "success" };
+  }
+  if (opts.searched && opts.lookupNo.trim()) {
+    return { text: "Policy not found in policy database.", tone: "error" };
+  }
+  return { text: "Type a name or ID, pick a suggestion, or click Generate.", tone: "idle" };
+}
+
 export function FutureLookupPanel() {
   const {
     premiumState,
-    uploadedRows,
     loadingCharts,
     fetchPolicyExportRows,
   } = useFuturePremiumData();
@@ -70,24 +85,26 @@ export function FutureLookupPanel() {
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suppressSuggestions, setSuppressSuggestions] = useState(false);
+  const lookupRequestRef = useRef(0);
+  const suggestRequestRef = useRef(0);
 
   const runLookup = useCallback(
     async (token: string) => {
       if (!premiumState || !token.trim()) return;
+      const requestId = ++lookupRequestRef.current;
       const lookupSource: FutureSourceKey = "policy_list_only";
       setBusy(true);
       setSearched(true);
+      setResult(null);
       try {
-        const raw = await resolveFutureRawRows(lookupSource, uploadedRows, () =>
-          fetchPolicyExportRows(filterQuery),
-        );
-        const found = findLookupResult(token, raw, lookupSource, yearOffset, premiumState);
-        setResult(found);
+        const raw = await fetchDbLookupExportRows(token, filterQuery, fetchPolicyExportRows);
+        if (requestId !== lookupRequestRef.current) return;
+        setResult(findLookupResult(token, raw, lookupSource, yearOffset, premiumState));
       } finally {
-        setBusy(false);
+        if (requestId === lookupRequestRef.current) setBusy(false);
       }
     },
-    [premiumState, uploadedRows, fetchPolicyExportRows, filterQuery, yearOffset],
+    [premiumState, fetchPolicyExportRows, filterQuery, yearOffset],
   );
 
   const handleGenerate = () => void runLookup(lookupNo);
@@ -106,29 +123,31 @@ export function FutureLookupPanel() {
   useEffect(() => {
     if (suppressSuggestions) return;
     const query = lookupNo.trim();
-    if (query.length < 2) {
+    if (query.length < lookupMinQueryLength(query)) {
       setSuggestions([]);
       setActiveSuggestionIndex(-1);
       return;
     }
     const timer = setTimeout(() => {
+      const requestId = ++suggestRequestRef.current;
       setSuggestBusy(true);
-      void loadLookupSuggestions(query, "policy_list_only", uploadedRows, {
-        includeLivePolicySearch: true,
-        filterQuery,
-      })
+      void loadDbLookupSuggestions(query, filterQuery, fetchPolicyExportRows)
         .then((items) => {
+          if (requestId !== suggestRequestRef.current) return;
           setSuggestions(items);
           setActiveSuggestionIndex(-1);
         })
         .catch(() => {
+          if (requestId !== suggestRequestRef.current) return;
           setSuggestions([]);
           setActiveSuggestionIndex(-1);
         })
-        .finally(() => setSuggestBusy(false));
-    }, 150);
+        .finally(() => {
+          if (requestId === suggestRequestRef.current) setSuggestBusy(false);
+        });
+    }, 300);
     return () => clearTimeout(timer);
-  }, [lookupNo, uploadedRows, suppressSuggestions, filterQuery]);
+  }, [lookupNo, suppressSuggestions, filterQuery, fetchPolicyExportRows]);
 
   const handleSuggestionKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!suggestions.length) return;
@@ -158,6 +177,7 @@ export function FutureLookupPanel() {
 
   const details = result?.details ?? {};
   const detailVal = (keys: string[]) => getv(details, keys) || "—";
+  const status = lookupStatusMessage({ busy, searched, lookupNo, result });
 
   return (
     <div className="space-y-6">
@@ -207,7 +227,7 @@ export function FutureLookupPanel() {
                 busy={suggestBusy}
                 activeIndex={activeSuggestionIndex}
                 onSelect={selectSuggestion}
-                open={lookupNo.trim().length >= 2}
+                open={lookupNo.trim().length >= lookupMinQueryLength(lookupNo)}
               />
             </div>
             <div className="space-y-2">
@@ -244,16 +264,14 @@ export function FutureLookupPanel() {
 
           <p
             className={
-              searched && lookupNo && !result
+              status.tone === "error"
                 ? "text-destructive bg-destructive/10 rounded-md border px-3 py-2 text-sm"
-                : "bg-muted/60 text-primary rounded-md border px-3 py-2 text-sm font-medium"
+                : status.tone === "loading"
+                  ? "bg-muted/60 text-muted-foreground rounded-md border px-3 py-2 text-sm"
+                  : "bg-muted/60 text-primary rounded-md border px-3 py-2 text-sm font-medium"
             }
           >
-            {result
-              ? "Policy found. Full details are shown below."
-              : searched && lookupNo
-                ? "Policy not found in policy database."
-                : "Type a name or ID, pick a suggestion, or click Generate."}
+            {status.text}
           </p>
         </CardContent>
       </Card>

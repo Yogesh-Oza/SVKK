@@ -221,6 +221,17 @@ export function normalizeLookupToken(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function lookupResultMatchesToken(r: FuturePremiumResult, norm: string): boolean {
+  const fields = [r.policyNo, r.svkkId, r.customerId, r.holder];
+  for (const field of fields) {
+    const nf = normalizeLookupToken(field);
+    if (!nf) continue;
+    if (nf === norm) return true;
+    if (norm.length >= 6 && (nf.includes(norm) || norm.includes(nf))) return true;
+  }
+  return false;
+}
+
 export function findLookupResult(
   token: string,
   rawRows: CsvRowObject[],
@@ -231,14 +242,17 @@ export function findLookupResult(
   const norm = normalizeLookupToken(token);
   if (!norm) return null;
   const rows = buildFutureResults(rawRows, sourceKey, yearOffset, premiumState);
-  return (
-    rows.find(
-      (r) => normalizeLookupToken(r.policyNo) === norm,
-    ) ??
-    rows.find((r) => normalizeLookupToken(r.svkkId) === norm) ??
-    rows.find((r) => normalizeLookupToken(r.customerId) === norm) ??
-    null
-  );
+
+  const exact = rows.filter((r) => {
+    const policyNorm = normalizeLookupToken(r.policyNo);
+    const svkkNorm = normalizeLookupToken(r.svkkId);
+    const customerNorm = normalizeLookupToken(r.customerId);
+    return policyNorm === norm || svkkNorm === norm || customerNorm === norm;
+  });
+  if (exact.length === 1) return exact[0]!;
+  if (exact.length > 1) return exact[0]!;
+
+  return rows.find((r) => lookupResultMatchesToken(r, norm)) ?? null;
 }
 
 export async function resolveFutureRawRows(

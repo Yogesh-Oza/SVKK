@@ -50,6 +50,8 @@ export function LookupSuggestionsList({
             ))}
           </div>
         </div>
+      ) : busy ? (
+        <p className="text-muted-foreground px-3 py-2 text-sm">Searching...</p>
       ) : (
         <p className="text-muted-foreground px-3 py-2 text-sm">No matching policies.</p>
       )}

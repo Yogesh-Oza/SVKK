@@ -1,6 +1,12 @@
 import { svkkJson } from "@/lib/svkk/api";
 import type { CsvRowObject, FutureSourceKey } from "./future-premium-types";
 import {
+  buildLookupListQuery,
+  buildLookupSearchTerms,
+  lookupMinQueryLength,
+  lookupRowMatchesToken,
+} from "./policy-lookup-search";
+import {
   searchCsvLookupSuggestions,
   type LookupSuggestion,
 } from "./policy-lookup-csv-search";
@@ -32,48 +38,53 @@ function pickLookupValue(parts: { policyNo: string; svkkId: string; customerId: 
   return parts.policyNo || parts.svkkId || parts.customerId;
 }
 
+function mapApiPolicyToSuggestion(row: ApiPolicyListItem): LookupSuggestion | null {
+  const holderName = row.holderName?.trim() || row.insuredParty.name?.trim() || "—";
+  const svkkId = row.insuredParty.svkkPublicId?.trim() || "—";
+  const customerId = row.insuredParty.customerId?.trim() || "—";
+  const policyNo = row.policyNo?.trim() || "—";
+  const yearLabel = row.periodYearText?.trim() || "—";
+  const lookupValue = pickLookupValue({ policyNo, svkkId, customerId });
+  if (!lookupValue || lookupValue === "—") return null;
+
+  return {
+    key: `api-${row.id}`,
+    holderName,
+    svkkId,
+    customerId,
+    policyNo,
+    yearLabel,
+    lookupValue,
+  };
+}
+
 export async function fetchApiLookupSuggestions(
   query: string,
   filterQuery?: string,
 ): Promise<LookupSuggestion[]> {
   const q = query.trim();
-  if (q.length < 2) return [];
+  if (q.length < lookupMinQueryLength(q)) return [];
 
-  const search = new URLSearchParams({
-    search: q,
-    page: "1",
-    pageSize: "25",
-    sort: "createdAt",
-    groupBySvkk: "false",
-  });
-  if (filterQuery?.trim()) {
-    const extra = new URLSearchParams(filterQuery);
-    extra.forEach((value, key) => search.append(key, value));
+  const merged: LookupSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const term of buildLookupSearchTerms(q)) {
+    const res = await svkkJson<{ items: ApiPolicyListItem[] }>(
+      `/policies?${buildLookupListQuery(filterQuery ?? "", term)}`,
+    );
+    for (const row of res.items ?? []) {
+      const suggestion = mapApiPolicyToSuggestion(row);
+      if (!suggestion) continue;
+      if (!lookupRowMatchesToken(suggestion, q)) continue;
+      const dedupeKey = `${suggestion.lookupValue}|${suggestion.yearLabel}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      merged.push(suggestion);
+    }
+    if (merged.length >= 25) break;
   }
-  const res = await svkkJson<{ items: ApiPolicyListItem[] }>(`/policies?${search.toString()}`);
-  const items = res.items ?? [];
 
-  return items
-    .map((row) => {
-      const holderName = row.holderName?.trim() || row.insuredParty.name?.trim() || "—";
-      const svkkId = row.insuredParty.svkkPublicId?.trim() || "—";
-      const customerId = row.insuredParty.customerId?.trim() || "—";
-      const policyNo = row.policyNo?.trim() || "—";
-      const yearLabel = row.periodYearText?.trim() || "—";
-      const lookupValue = pickLookupValue({ policyNo, svkkId, customerId });
-      if (!lookupValue || lookupValue === "—") return null;
-
-      return {
-        key: `api-${row.id}`,
-        holderName,
-        svkkId,
-        customerId,
-        policyNo,
-        yearLabel,
-        lookupValue,
-      };
-    })
-    .filter((s): s is LookupSuggestion => s != null);
+  return merged.slice(0, 25);
 }
 
 export type LoadLookupSuggestionsOptions = {
@@ -90,7 +101,7 @@ export async function loadLookupSuggestions(
   options?: LoadLookupSuggestionsOptions,
 ): Promise<LookupSuggestion[]> {
   const q = query.trim();
-  if (q.length < 2) return [];
+  if (q.length < lookupMinQueryLength(q)) return [];
 
   const merged: LookupSuggestion[] = [];
   const seen = new Set<string>();
