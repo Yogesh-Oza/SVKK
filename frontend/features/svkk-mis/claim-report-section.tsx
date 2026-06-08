@@ -78,16 +78,6 @@ type FiltersMeta = {
   periodMonthTexts: string[];
 };
 
-type ImportStats = {
-  totals: {
-    matchedExact: number;
-    unlinked: number;
-    conflicts: number;
-    created: number;
-    updated: number;
-  };
-};
-
 const DIM_HEADER: Record<ReportResponse["groupBy"], string> = {
   village: "Village",
   category: "Category",
@@ -120,7 +110,6 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
-  const [importStats, setImportStats] = useState<ImportStats["totals"] | null>(null);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillVillage, setDrillVillage] = useState<string | null>(null);
 
@@ -245,14 +234,6 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
         setFilterMeta(f);
       } catch {
         /* non-fatal */
-      }
-    })();
-    void (async () => {
-      try {
-        const stats = await svkkJson<ImportStats>("/claims/import-stats");
-        setImportStats(stats.totals);
-      } catch {
-        /* optional KPI strip */
       }
     })();
   }, []);
@@ -386,22 +367,6 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
 
   return (
     <div className="space-y-4 rounded-lg border border-border/80 bg-card p-4 shadow-sm">
-      {importStats ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["Matched", importStats.matchedExact],
-            ["Unlinked", importStats.unlinked],
-            ["Conflicts", importStats.conflicts],
-            ["Imported rows", importStats.created + importStats.updated],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-muted-foreground text-xs font-medium">{label}</p>
-              <p className="text-lg font-semibold tabular-nums">{value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <div className="rounded-xl border-2 border-slate-200/90 bg-linear-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
           <Label className="text-foreground/90 mb-2 block text-xs font-semibold tracking-wide">

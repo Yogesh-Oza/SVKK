@@ -13,7 +13,6 @@ export function useFuturePremiumData() {
   const [uploadedRows, setUploadedRows] = useState<CsvRowObject[]>([]);
   const [loadingCharts, setLoadingCharts] = useState(true);
   const [loadingPolicies, setLoadingPolicies] = useState(false);
-  const [policyExportRows, setPolicyExportRows] = useState<CsvRowObject[] | null>(null);
 
   useEffect(() => {
     setUploadedRows(loadUploadedFutureRows());
@@ -50,18 +49,18 @@ export function useFuturePremiumData() {
     [persistUploadedRows],
   );
 
-  const fetchPolicyExportRows = useCallback(async (): Promise<CsvRowObject[]> => {
-    if (policyExportRows) return policyExportRows;
+  const fetchPolicyExportRows = useCallback(async (filterQuery = ""): Promise<CsvRowObject[]> => {
     setLoadingPolicies(true);
     try {
-      const res = await backendApi.get("/policies/export.csv", { responseType: "text" });
-      const rows = parseCsvFileText(String(res.data ?? ""));
-      setPolicyExportRows(rows);
-      return rows;
+      const path = filterQuery
+        ? `/policies/export.csv?${filterQuery}`
+        : "/policies/export.csv";
+      const res = await backendApi.get(path, { responseType: "text" });
+      return parseCsvFileText(String(res.data ?? ""));
     } finally {
       setLoadingPolicies(false);
     }
-  }, [policyExportRows]);
+  }, []);
 
   return {
     premiumState,
@@ -70,6 +69,5 @@ export function useFuturePremiumData() {
     loadingPolicies,
     ingestCsvFile,
     fetchPolicyExportRows,
-    clearPolicyExportCache: () => setPolicyExportRows(null),
   };
 }

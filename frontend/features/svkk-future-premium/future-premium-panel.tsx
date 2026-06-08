@@ -30,12 +30,16 @@ import {
   buildFutureResults,
   computeFutureMis,
   filterFutureResults,
-  FUTURE_SOURCE_OPTIONS,
+  FUTURE_PREMIUM_SOURCE_OPTIONS,
   FUTURE_YEAR_OPTIONS,
-  resolveFutureRawRows,
   sourceLabel,
   yearOffsetLabel,
 } from "./future-premium-engine";
+import { filterFutureCsvRows } from "./future-policy-filters";
+import {
+  FuturePremiumPolicyFilters,
+  useFuturePremiumPolicyFilters,
+} from "./future-premium-policy-filters";
 import {
   detailExportRows,
   downloadCsv,
@@ -69,7 +73,8 @@ export function FuturePremiumPanel() {
     fetchPolicyExportRows,
   } = useFuturePremiumData();
 
-  const [source, setSource] = useState<FutureSourceKey>("uploaded_csv_policy_list");
+  const policyFilters = useFuturePremiumPolicyFilters();
+  const [source, setSource] = useState<FutureSourceKey>("uploaded_csv_only");
   const [yearOffset, setYearOffset] = useState("0");
   const [results, setResults] = useState<FuturePremiumResult[]>([]);
   const [generated, setGenerated] = useState(false);
@@ -117,14 +122,23 @@ export function FuturePremiumPanel() {
     }
     setBusy(true);
     try {
-      const raw = await resolveFutureRawRows(source, uploadedRows, fetchPolicyExportRows);
+      let raw =
+        source === "policy_list_only"
+          ? await fetchPolicyExportRows(policyFilters.filterQuery)
+          : filterFutureCsvRows(
+              uploadedRows,
+              policyFilters.filters,
+              policyFilters.csvFilterContext,
+            );
       if (!raw.length) {
         setResults([]);
         setGenerated(false);
         setMessage(
           source === "policy_list_only"
-            ? "No policies found in the system export."
-            : "Please upload CSV first, then click Generate.",
+            ? "No policies matched the selected filters in the database."
+            : uploadedRows.length
+              ? "No rows in the uploaded CSV matched the selected filters."
+              : "Please upload CSV first, then click Generate.",
         );
         return;
       }
@@ -166,7 +180,8 @@ export function FuturePremiumPanel() {
         <CardHeader>
           <CardTitle className="text-base">Controls</CardTitle>
           <CardDescription>
-            Upload uses the same flexible CSV columns as the policy list (Format v2). Charts come from the admin panel.
+            Choose uploaded CSV or policy list from the database. Use filters to narrow by year, category, type, and
+            location. Charts come from the admin panel.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -178,7 +193,7 @@ export function FuturePremiumPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {FUTURE_SOURCE_OPTIONS.filter((o) => !o.lookup).map((o) => (
+                  {FUTURE_PREMIUM_SOURCE_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -201,15 +216,24 @@ export function FuturePremiumPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Upload CSV</Label>
-              <Input
-                ref={fileRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => void handleUpload(e.target.files?.[0])}
-              />
-            </div>
+            {source === "uploaded_csv_only" ? (
+              <div className="space-y-2">
+                <Label>Upload CSV</Label>
+                <Input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => void handleUpload(e.target.files?.[0])}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Data source</Label>
+                <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">
+                  Policies are loaded from the database export using the filters below.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Actions</Label>
               <div className="flex flex-wrap gap-2">
@@ -230,6 +254,13 @@ export function FuturePremiumPanel() {
               </div>
             </div>
           </div>
+          <FuturePremiumPolicyFilters
+            filters={policyFilters.filters}
+            onChange={policyFilters.setFilters}
+            activeCount={policyFilters.activeCount}
+            onReset={policyFilters.resetFilters}
+            options={policyFilters.filterOptions}
+          />
           <p className="bg-muted/60 text-primary rounded-md border px-3 py-2 text-sm font-medium">{message}</p>
         </CardContent>
       </Card>
@@ -390,6 +421,7 @@ export function FuturePremiumPanel() {
                 <TableRow>
                   <TableHead>Source</TableHead>
                   <TableHead>SVKK ID</TableHead>
+                  <TableHead>Policy No</TableHead>
                   <TableHead>Customer ID</TableHead>
                   <TableHead>Holder</TableHead>
                   <TableHead>Policy</TableHead>
@@ -409,6 +441,7 @@ export function FuturePremiumPanel() {
                     <TableRow key={`${r.policyNo}-${r.svkkId}-${r.calcYear}`}>
                       <TableCell className="max-w-[140px] truncate">{r.source}</TableCell>
                       <TableCell>{r.svkkId}</TableCell>
+                      <TableCell className="max-w-[180px] truncate font-mono text-xs">{r.policyNo || "—"}</TableCell>
                       <TableCell>{r.customerId}</TableCell>
                       <TableCell>{r.holder}</TableCell>
                       <TableCell>{r.policy}</TableCell>
@@ -424,7 +457,7 @@ export function FuturePremiumPanel() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-muted-foreground text-center">
+                    <TableCell colSpan={14} className="text-muted-foreground text-center">
                       {generated ? "No rows match the current filters." : "Generate to see results."}
                     </TableCell>
                   </TableRow>

@@ -29,10 +29,15 @@ export const FUTURE_YEAR_OPTIONS = buildFutureYearOptions();
 
 export const FUTURE_SOURCE_OPTIONS: { value: FutureSourceKey; label: string; lookup?: boolean }[] = [
   { value: "uploaded_csv_policy_list", label: "Uploaded CSV + Policy List" },
-  { value: "uploaded_csv_only", label: "Uploaded CSV Only" },
-  { value: "policy_list_only", label: "Policy List Only" },
+  { value: "uploaded_csv_only", label: "Uploaded CSV" },
+  { value: "policy_list_only", label: "Policy list (database)" },
   { value: "linked_upload", label: "Linked Uploaded CSV", lookup: true },
 ];
+
+/** Future Premium page: uploaded CSV or policy list from DB only. */
+export const FUTURE_PREMIUM_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
+  (o) => o.value === "uploaded_csv_only" || o.value === "policy_list_only",
+);
 
 /** Lookup page: policy export and session-linked CSV only. */
 export const FUTURE_LOOKUP_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
@@ -40,7 +45,7 @@ export const FUTURE_LOOKUP_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
 );
 
 export function sourceLabel(key: FutureSourceKey): string {
-  return FUTURE_SOURCE_OPTIONS.find((o) => o.value === key)?.label ?? "Uploaded CSV + Policy List";
+  return FUTURE_SOURCE_OPTIONS.find((o) => o.value === key)?.label ?? "Uploaded CSV";
 }
 
 export function yearOffsetValue(v: string): number {

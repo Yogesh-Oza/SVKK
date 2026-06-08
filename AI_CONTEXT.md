@@ -6,6 +6,18 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Premium — two sources + policy list filters**
+
+Removed **Uploaded CSV + Policy List** from Future Premium. Sources: **Uploaded CSV** (session storage) and **Policy list (database)** (`GET /policies/export.csv` with filters). Shared multi-select filters (Year, Category, Policy type, Month, Area, Village, Sum insured, Group) match policies page; DB source passes query to export API; CSV source filters `sessionStorage` rows client-side. Files: `future-policy-filters.ts`, `future-premium-policy-filters.tsx`, `future-premium-panel.tsx`, `FUTURE_PREMIUM_SOURCE_OPTIONS`.
+
+## Previous task (completed)
+
+**Claims register — full claim detail edit**
+
+Claim register **Edit** opens a scrollable dialog with all CSV-import fields (policy, patient, amounts, hospital, TPA, dates, illness, payment). `GET /claims/:id` loads detail; `PATCH /claims/:id` accepts full body via `claim-update.schema.ts`. Claim number remains read-only. Requires `claim:update`. Files: `claim-edit-dialog.tsx`, `claim-edit-form.ts`, `claim-detail-types.ts`, `claim-detail.ts`.
+
+## Previous task (completed)
+
 **Future Lookup — autocomplete like Add Policy**
 
 Lookup search field (`/future-premium/lookup`) shows debounced suggestions (≥2 chars) while typing holder name, SVKK ID, policy no., or customer ID. **Policy List Only** / **Uploaded CSV + Policy List** call `GET /policies?search=…&groupBySvkk=false` (same as Add Policy carry-forward). CSV sources also search session-uploaded rows. Keyboard ↑↓ / Enter / Escape; click fills field and runs Generate. Backend policy list search now includes `holderName` (per-year snapshot). Files: `policy-lookup-suggestions.ts`, `policy-lookup-csv-search.ts`, `lookup-suggestions-list.tsx`, `future-lookup-panel.tsx`. Tests: `policy-lookup-suggestions.test.ts` (2), `future-premium-engine.test.ts` (5).
