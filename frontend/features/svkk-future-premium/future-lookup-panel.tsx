@@ -227,7 +227,7 @@ export function FutureLookupPanel() {
                 busy={suggestBusy}
                 activeIndex={activeSuggestionIndex}
                 onSelect={selectSuggestion}
-                open={lookupNo.trim().length >= lookupMinQueryLength(lookupNo)}
+                open={!suppressSuggestions && lookupNo.trim().length >= lookupMinQueryLength(lookupNo)}
               />
             </div>
             <div className="space-y-2">
