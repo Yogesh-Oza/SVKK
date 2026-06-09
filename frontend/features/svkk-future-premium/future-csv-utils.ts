@@ -11,7 +11,8 @@ export function normKey(v: unknown): string {
     .replace(/^_+|_+$/g, "");
 }
 
-export function getv(obj: CsvRowObject, keys: string[]): string {
+export function getv(obj: CsvRowObject | undefined, keys: string[]): string {
+  if (!obj) return "";
   const map = Object.fromEntries(Object.entries(obj).map(([k, v]) => [normKey(k), v]));
   for (const key of keys) {
     const value = map[normKey(key)];

@@ -20,6 +20,7 @@ import {
 } from "./future-premium-engine";
 import type { CsvRowObject, FuturePremiumResult } from "./future-premium-types";
 import {
+  buildFuturePremiumListQuery,
   buildLookupListQuery,
   buildLookupSearchTerms,
   lookupRowMatchesToken,
@@ -233,20 +234,6 @@ export type PolicyListPagedResponse = {
   pageSize: number;
   totalPages: number;
 };
-
-/** Paginated policy list query — flat rows (one per fiscal year), same filters as export. */
-export function buildFuturePremiumListQuery(
-  filterQuery: string,
-  page: number,
-  pageSize: number,
-): string {
-  const params = new URLSearchParams(filterQuery);
-  params.set("page", String(page));
-  params.set("pageSize", String(pageSize));
-  params.set("sort", "periodYearText_desc");
-  params.set("groupBySvkk", "false");
-  return params.toString();
-}
 
 /** Load one page of future premium results from live policy records (not export CSV). */
 export async function fetchFuturePremiumPageFromApi(

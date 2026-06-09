@@ -54,6 +54,20 @@ export function buildLookupExportQueries(filterQuery: string, token: string): st
   });
 }
 
+/** Paginated flat policy list for Future Premium (filters only, no search). */
+export function buildFuturePremiumListQuery(
+  filterQuery: string,
+  page: number,
+  pageSize: number,
+): string {
+  const params = new URLSearchParams(filterQuery);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  params.set("sort", "periodYearText_desc");
+  params.set("groupBySvkk", "false");
+  return params.toString();
+}
+
 /** Merge policy list filters with search for /policies list API. */
 export function buildLookupListQuery(filterQuery: string, searchTerm: string): string {
   const params = new URLSearchParams({
