@@ -6,9 +6,15 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
-**Future Lookup — members + latest year for carry-forward policies**
+**Future Lookup — API-backed detail (same as Add Policy)**
 
-Searching `PO- 14010061252800000652` matched only the 2025-26 row (that number is its `policy no`), so Lookup showed one member and wrong premiums. Fixes: (1) after initial export search, re-fetch all rows for each SVKK ID found; (2) `expandLookupMatchesBySvkk` + `pickBestLookupMatch` default to latest fiscal year; (3) suggestions prefer SVKK ID over legacy policy no; (4) `buildMembersFromFutureRow` reads export `Member N Name/DOB/Gender` slots (1–12), `Male`/`Female`/`M`/`F`, and `detectMemberSlotCount`. Files: `future-csv-utils.ts`, `future-premium-engine.ts`, `policy-lookup-db.ts`.
+Lookup no longer uses `export.csv` (one flattened row per policy, easy to pick wrong year/members). It now uses `GET /policies?groupBySvkk=false&sort=periodYearText_desc` to find fiscal-year siblings, picks latest (or suggestion year), then `GET /policies/:id` and `policyDetailToAdFormValues` + `quoteFromStoredFormValues` for stored holder + members + premiums (matches Add Policy fetch). Future year offset still recalculates via charts. Files: `policy-lookup-api.ts`, `future-lookup-panel.tsx`, `policy-lookup-search.ts`, `policy-lookup-suggestions.ts`.
+
+## Previous task (completed)
+
+**Future Lookup — export.csv year/member parsing (superseded by API lookup)**
+
+Earlier export-based fixes: SVKK expansion, `pickBestLookupMatch`, member slot parsing in `future-csv-utils.ts`.
 
 ## Previous task (completed)
 

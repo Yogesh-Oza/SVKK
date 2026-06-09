@@ -14,17 +14,7 @@ import {
 export type { LookupSuggestion } from "./policy-lookup-csv-search";
 export { searchCsvLookupSuggestions } from "./policy-lookup-csv-search";
 
-type ApiPolicyListItem = {
-  id: string;
-  policyNo: string | null;
-  holderName?: string | null;
-  periodYearText?: string | null;
-  insuredParty: {
-    svkkPublicId: string;
-    name: string;
-    customerId: string | null;
-  };
-};
+import type { ApiPolicyListItem } from "./policy-lookup-api";
 
 export function sourceUsesPolicyApi(source: FutureSourceKey): boolean {
   return source === "policy_list_only" || source === "uploaded_csv_policy_list";
@@ -35,7 +25,8 @@ export function sourceUsesUploadedCsv(source: FutureSourceKey): boolean {
 }
 
 function pickLookupValue(parts: { policyNo: string; svkkId: string; customerId: string }): string {
-  return parts.policyNo || parts.svkkId || parts.customerId;
+  if (parts.svkkId && parts.svkkId !== "—") return parts.svkkId;
+  return parts.policyNo || parts.customerId;
 }
 
 function mapApiPolicyToSuggestion(row: ApiPolicyListItem): LookupSuggestion | null {
@@ -75,7 +66,19 @@ export async function fetchApiLookupSuggestions(
     for (const row of res.items ?? []) {
       const suggestion = mapApiPolicyToSuggestion(row);
       if (!suggestion) continue;
-      if (!lookupRowMatchesToken(suggestion, q)) continue;
+      if (
+        !lookupRowMatchesToken(
+          {
+            policyNo: suggestion.policyNo,
+            svkkId: suggestion.svkkId,
+            customerId: suggestion.customerId,
+            holder: suggestion.holderName,
+          },
+          q,
+        )
+      ) {
+        continue;
+      }
       const dedupeKey = `${suggestion.lookupValue}|${suggestion.yearLabel}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);

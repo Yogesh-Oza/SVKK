@@ -26,14 +26,12 @@ import {
 } from "@/components/ui/table";
 import { rs } from "@/lib/svkk/premium";
 import { getv } from "./future-csv-utils";
-import {
-  findLookupResult,
-  FUTURE_YEAR_OPTIONS,
-} from "./future-premium-engine";
+import { FUTURE_YEAR_OPTIONS } from "./future-premium-engine";
 import { downloadCsv } from "./future-premium-export";
-import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
+import type { FuturePremiumResult } from "./future-premium-types";
 import { LookupSuggestionsList } from "./lookup-suggestions-list";
-import { fetchDbLookupExportRows, loadDbLookupSuggestions } from "./policy-lookup-db";
+import { resolveLookupFromPolicyApi } from "./policy-lookup-api";
+import { fetchApiLookupSuggestions } from "./policy-lookup-suggestions";
 import type { LookupSuggestion } from "./policy-lookup-csv-search";
 import { lookupMinQueryLength } from "./policy-lookup-search";
 import { FuturePremiumPolicyFilters, useFuturePremiumPolicyFilters } from "./future-premium-policy-filters";
@@ -67,11 +65,7 @@ function lookupStatusMessage(opts: {
 }
 
 export function FutureLookupPanel() {
-  const {
-    premiumState,
-    loadingCharts,
-    fetchPolicyExportRows,
-  } = useFuturePremiumData();
+  const { premiumState, loadingCharts } = useFuturePremiumData();
 
   const { filters, setFilters, resetFilters, activeCount, filterQuery, filterOptions } =
     useFuturePremiumPolicyFilters();
@@ -92,21 +86,24 @@ export function FutureLookupPanel() {
     async (token: string, preferredYearLabel?: string) => {
       if (!premiumState || !token.trim()) return;
       const requestId = ++lookupRequestRef.current;
-      const lookupSource: FutureSourceKey = "policy_list_only";
       setBusy(true);
       setSearched(true);
       setResult(null);
       try {
-        const raw = await fetchDbLookupExportRows(token, filterQuery, fetchPolicyExportRows);
-        if (requestId !== lookupRequestRef.current) return;
-        setResult(
-          findLookupResult(token, raw, lookupSource, yearOffset, premiumState, preferredYearLabel),
+        const next = await resolveLookupFromPolicyApi(
+          token,
+          filterQuery,
+          yearOffset,
+          premiumState,
+          preferredYearLabel,
         );
+        if (requestId !== lookupRequestRef.current) return;
+        setResult(next);
       } finally {
         if (requestId === lookupRequestRef.current) setBusy(false);
       }
     },
-    [premiumState, fetchPolicyExportRows, filterQuery, yearOffset],
+    [premiumState, filterQuery, yearOffset],
   );
 
   const handleGenerate = () => void runLookup(lookupNo);
@@ -136,7 +133,7 @@ export function FutureLookupPanel() {
     const timer = setTimeout(() => {
       const requestId = ++suggestRequestRef.current;
       setSuggestBusy(true);
-      void loadDbLookupSuggestions(query, filterQuery, fetchPolicyExportRows)
+      void fetchApiLookupSuggestions(query, filterQuery)
         .then((items) => {
           if (requestId !== suggestRequestRef.current) return;
           setSuggestions(items);
@@ -152,7 +149,7 @@ export function FutureLookupPanel() {
         });
     }, 300);
     return () => clearTimeout(timer);
-  }, [lookupNo, suppressSuggestions, filterQuery, fetchPolicyExportRows]);
+  }, [lookupNo, suppressSuggestions, filterQuery]);
 
   const handleSuggestionKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!suggestions.length) return;

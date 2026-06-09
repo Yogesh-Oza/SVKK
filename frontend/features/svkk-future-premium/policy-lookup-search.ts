@@ -59,8 +59,8 @@ export function buildLookupListQuery(filterQuery: string, searchTerm: string): s
   const params = new URLSearchParams({
     search: searchTerm,
     page: "1",
-    pageSize: "25",
-    sort: "createdAt",
+    pageSize: "50",
+    sort: "periodYearText_desc",
     groupBySvkk: "false",
   });
   if (filterQuery.trim()) {
