@@ -68,6 +68,27 @@ const MONEY_KEYS = new Set<PolicyMemberReportMetricCol>([
 
 export type PolicyMemberDrillDownCsvRow = Record<PolicyMemberReportMetricCol, string | number>;
 
+const SUMMABLE_DRILL_COLS = POLICY_MEMBER_REPORT_METRIC_COLS.filter((k) => k !== "label");
+
+/** Sum numeric columns for a drill-down section (SVKK + NVKK + RTY + OTHER). */
+export function sumPolicyMemberDrillRows(
+  rows: PolicyMemberDrillDownCsvRow[],
+): PolicyMemberDrillDownCsvRow {
+  const total = Object.fromEntries(
+    POLICY_MEMBER_REPORT_METRIC_COLS.map((key) => [key, key === "label" ? "TOTAL" : 0]),
+  ) as PolicyMemberDrillDownCsvRow;
+
+  for (const row of rows) {
+    for (const key of SUMMABLE_DRILL_COLS) {
+      const raw = row[key];
+      const n = typeof raw === "number" ? raw : Number(raw);
+      total[key] = (total[key] as number) + (Number.isFinite(n) ? n : 0);
+    }
+  }
+
+  return total;
+}
+
 export type PolicyMemberDrillDownCsvInput = {
   drillType: "village" | "area";
   drillLabel: string;
@@ -131,6 +152,18 @@ export function buildPolicyMemberDrillDownCsv(detail: PolicyMemberDrillDownCsvIn
           return csvCell(String(row.label ?? "").toUpperCase());
         }
         const raw = row[col.key];
+        const n = typeof raw === "number" ? raw : Number(raw);
+        return csvCell(formatDrillDownCell(col.key, Number.isFinite(n) ? n : 0));
+      });
+      lines.push(cells.join(","));
+    }
+    if (section.rows.length > 0) {
+      const total = sumPolicyMemberDrillRows(section.rows);
+      const cells = DRILL_CSV_COLUMNS.map((col) => {
+        if (col.key === "label") {
+          return csvCell("TOTAL");
+        }
+        const raw = total[col.key];
         const n = typeof raw === "number" ? raw : Number(raw);
         return csvCell(formatDrillDownCell(col.key, Number.isFinite(n) ? n : 0));
       });

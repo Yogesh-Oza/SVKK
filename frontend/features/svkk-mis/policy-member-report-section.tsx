@@ -176,26 +176,11 @@ export function formatCell(key: keyof PolicyMemberRow, v: number) {
   return int(v);
 }
 
-function sortableHeader<T>(title: string) {
-  function SortableHeader({ column }: { column: Column<T, unknown> }) {
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-8 px-1.5 -ml-1.5 font-medium"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-      >
-        {title}
-        <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-60" />
-      </Button>
-    );
-  }
-  SortableHeader.displayName = `SortableHeader(${title})`;
-  return SortableHeader;
-}
+const SUMMABLE_ROW_KEYS = ROW_KEYS.filter((k) => k !== "label");
 
-function sumFiltered(rows: Row<PolicyMemberRow>[]) {
-  const z: PolicyMemberRow = {
+/** Sum numeric columns across policy-member report rows (drill-down + main table footer). */
+export function sumPolicyMemberRows(rows: PolicyMemberRow[]): PolicyMemberRow {
+  const total: PolicyMemberRow = {
     label: "TOTAL",
     totalPolicies: 0,
     membersPlusPolicies: 0,
@@ -220,32 +205,34 @@ function sumFiltered(rows: Row<PolicyMemberRow>[]) {
     age61_65: 0,
     age65p: 0,
   };
-  for (const r of rows) {
-    const o = r.original;
-    z.totalPolicies += o.totalPolicies;
-    z.membersPlusPolicies += o.membersPlusPolicies;
-    z.cntAshaKiran += o.cntAshaKiran;
-    z.cntFamilyFloater += o.cntFamilyFloater;
-    z.cntIndividual += o.cntIndividual;
-    z.sumVkk += o.sumVkk;
-    z.sumCo += o.sumCo;
-    z.sumGross += o.sumGross;
-    z.sumComm += o.sumComm;
-    z.sumTwoLac += o.sumTwoLac;
-    z.sumPolHolder += o.sumPolHolder;
-    z.sumGaam += o.sumGaam;
-    z.sumRefund += o.sumRefund;
-    z.sumCd += o.sumCd;
-    z.age0_18 += o.age0_18;
-    z.age19_35 += o.age19_35;
-    z.age36_45 += o.age36_45;
-    z.age46_50 += o.age46_50;
-    z.age51_55 += o.age51_55;
-    z.age56_60 += o.age56_60;
-    z.age61_65 += o.age61_65;
-    z.age65p += o.age65p;
+  for (const row of rows) {
+    for (const key of SUMMABLE_ROW_KEYS) {
+      total[key] += row[key];
+    }
   }
-  return z;
+  return total;
+}
+
+function sortableHeader<T>(title: string) {
+  function SortableHeader({ column }: { column: Column<T, unknown> }) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-1.5 -ml-1.5 font-medium"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        {title}
+        <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+      </Button>
+    );
+  }
+  SortableHeader.displayName = `SortableHeader(${title})`;
+  return SortableHeader;
+}
+
+function sumFiltered(rows: Row<PolicyMemberRow>[]) {
+  return sumPolicyMemberRows(rows.map((r) => r.original));
 }
 
 function makeColumns(

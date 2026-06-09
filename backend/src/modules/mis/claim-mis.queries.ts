@@ -29,14 +29,14 @@ export type ClaimReportFilters = {
 
 const UTF8_COLLATE = "utf8mb4_unicode_ci";
 
-/** Qualified column with explicit collation (avoids MySQL 1267 vs connection default). */
+/** Qualified column normalized to utf8mb4 (handles legacy armscii8/latin1 tables). */
 function sqlAliasCol(alias: string, column: string): Prisma.Sql {
-  return Prisma.raw(`${alias}.\`${column}\` COLLATE ${UTF8_COLLATE}`);
+  return Prisma.raw(`CONVERT(${alias}.\`${column}\` USING utf8mb4) COLLATE ${UTF8_COLLATE}`);
 }
 
-/** Arbitrary SQL fragment with explicit collation. */
+/** Arbitrary SQL fragment normalized to utf8mb4. */
 function sqlExprUtf8Ci(expr: string): Prisma.Sql {
-  return Prisma.raw(`${expr} COLLATE ${UTF8_COLLATE}`);
+  return Prisma.raw(`CONVERT((${expr}) USING utf8mb4) COLLATE ${UTF8_COLLATE}`);
 }
 
 /** Bind parameter with the same collation as utf8mb4_unicode_ci columns. */

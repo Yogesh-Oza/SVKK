@@ -24,7 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   formatCell,
   type PolicyMemberRow,
-  ROW_KEYS,
+  sumPolicyMemberRows,
 } from "./policy-member-report-section";
 
 type DrillSection = {
@@ -199,7 +199,10 @@ export function PolicyMemberDrillDownSheet({
             <p className="text-destructive text-sm">{error}</p>
           ) : detail?.sections.length ? (
             <div className="space-y-8">
-              {detail.sections.map((section) => (
+              {detail.sections.map((section) => {
+                const sectionTotal =
+                  section.rows.length > 0 ? sumPolicyMemberRows(section.rows) : null;
+                return (
                 <section key={section.categoryKey}>
                   <h3 className="mb-2 text-sm font-semibold capitalize">
                     {detail.drillType} {detail.drillLabel.toLowerCase()} — {section.categoryLabel}
@@ -234,11 +237,27 @@ export function PolicyMemberDrillDownSheet({
                             ))}
                           </TableRow>
                         ))}
+                        {sectionTotal ? (
+                          <TableRow className="border-t-2 border-t-foreground/10 bg-muted/30 font-bold text-sm">
+                            {DRILL_HEADERS.map((h) => (
+                              <TableCell key={h.key} className="py-2 min-w-[5.5rem]">
+                                {h.key === "label" ? (
+                                  "TOTAL"
+                                ) : (
+                                  <span className="tabular-nums text-right block">
+                                    {formatCell(h.key, sectionTotal[h.key] as number)}
+                                  </span>
+                                )}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ) : null}
                       </TableBody>
                     </Table>
                   </div>
                 </section>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">No detail data.</p>
