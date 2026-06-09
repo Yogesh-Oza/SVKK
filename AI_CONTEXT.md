@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Premium — API-backed calculations (same as Lookup / Add Policy)**
+
+Policy list (database) on Future Premium no longer builds quotes from paginated `export.json` rows (incomplete member slots → wrong gross/net when `Members: 2`). It now uses `GET /policies?groupBySvkk=false&page=&pageSize=` for the filtered page, then `GET /policies/:id` per row and `policyDetailToLookupResult` (`quoteFromStoredFormValues` for Current Year, chart recalc for future offsets). Member count follows `quote.rows.length`. CSV upload path still uses `buildFutureResults`. Files: `policy-lookup-api.ts` (`fetchFuturePremiumPageFromApi`), `future-premium-panel.tsx`.
+
+## Previous task (completed)
+
 **Future Lookup — API-backed detail (same as Add Policy)**
 
 Lookup no longer uses `export.csv` (one flattened row per policy, easy to pick wrong year/members). It now uses `GET /policies?groupBySvkk=false&sort=periodYearText_desc` to find fiscal-year siblings, picks latest (or suggestion year), then `GET /policies/:id` and `policyDetailToAdFormValues` + `quoteFromStoredFormValues` for stored holder + members + premiums (matches Add Policy fetch). Future year offset still recalculates via charts. Files: `policy-lookup-api.ts`, `future-lookup-panel.tsx`, `policy-lookup-search.ts`, `policy-lookup-suggestions.ts`.

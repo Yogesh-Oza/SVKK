@@ -201,12 +201,7 @@ export function policyDetailToLookupResult(
   const start = addYearsToDateString(formValues.policyStart || "", offset);
   const end = addYearsToDateString(baseEnd, offset);
   const quote = quoteFromPolicyFormForOffset(formValues, yearOffset, premiumState);
-  const validMembers = (formValues.members || []).filter(
-    (m) => Boolean(m.name?.trim()) && Boolean(m.dob),
-  );
-  const memberCount = formValues.person
-    ? Number(formValues.person) || 1 + validMembers.length
-    : 1 + validMembers.length;
+  const memberCount = quote.rows.length;
   const endParsed = dateParse(baseEnd);
   const calcYear = endParsed
     ? endParsed.getFullYear() + offset
@@ -228,6 +223,62 @@ export function policyDetailToLookupResult(
     quote,
     status: quote.rows.some((r) => r.error) ? "Issue" : "Ready",
     details: buildLookupDetailsFromPolicy(detail, yearLabel),
+  };
+}
+
+export type PolicyListPagedResponse = {
+  items: ApiPolicyListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+/** Paginated policy list query — flat rows (one per fiscal year), same filters as export. */
+export function buildFuturePremiumListQuery(
+  filterQuery: string,
+  page: number,
+  pageSize: number,
+): string {
+  const params = new URLSearchParams(filterQuery);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  params.set("sort", "periodYearText_desc");
+  params.set("groupBySvkk", "false");
+  return params.toString();
+}
+
+/** Load one page of future premium results from live policy records (not export CSV). */
+export async function fetchFuturePremiumPageFromApi(
+  filterQuery: string,
+  page: number,
+  pageSize: number,
+  yearOffset: string,
+  premiumState: PremiumState,
+): Promise<PolicyListPagedResponse & { results: FuturePremiumResult[] }> {
+  const res = await svkkJson<PolicyListPagedResponse>(
+    `/policies?${buildFuturePremiumListQuery(filterQuery, page, pageSize)}`,
+  );
+
+  const items = res.items ?? [];
+  const results = (
+    await Promise.all(
+      items.map(async (item) => {
+        const yearLabel = listItemYearLabel(item);
+        if (!yearLabel) return null;
+        const detail = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${item.id}`);
+        return policyDetailToLookupResult(detail, yearLabel, yearOffset, premiumState);
+      }),
+    )
+  ).filter((r): r is FuturePremiumResult => r != null);
+
+  return {
+    items,
+    total: res.total ?? items.length,
+    page: res.page ?? page,
+    pageSize: res.pageSize ?? pageSize,
+    totalPages: res.totalPages ?? Math.max(1, Math.ceil((res.total ?? items.length) / pageSize)),
+    results,
   };
 }
 

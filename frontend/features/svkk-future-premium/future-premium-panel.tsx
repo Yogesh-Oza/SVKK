@@ -50,6 +50,7 @@ import {
 import { FuturePremiumIssueDialog } from "./future-premium-issue-dialog";
 import { FuturePremiumListPagination } from "./future-premium-list-pagination";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
+import { fetchFuturePremiumPageFromApi } from "./policy-lookup-api";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
 function StatCard({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
@@ -74,7 +75,6 @@ export function FuturePremiumPanel() {
     chartsLoadError,
     loadingPolicies,
     ingestCsvFile,
-    fetchPolicyExportPage,
     loadPremiumCharts,
     persistUploadedRows,
   } = useFuturePremiumData();
@@ -181,10 +181,12 @@ export function FuturePremiumPanel() {
     }
     setBusy(true);
     try {
-      const pageData = await fetchPolicyExportPage(
+      const pageData = await fetchFuturePremiumPageFromApi(
         policyFilters.filterQuery,
         targetPage,
         size,
+        yearOffset,
+        premiumState,
       );
       if (!pageData.items.length) {
         setResults([]);
@@ -195,7 +197,7 @@ export function FuturePremiumPanel() {
         showMessage("No policies matched the selected filters in the database.", true);
         return;
       }
-      const next = buildFutureResults(pageData.items, source, yearOffset, premiumState);
+      const next = pageData.results;
       setResults(next);
       setGenerated(true);
       setPage(pageData.page);
@@ -362,7 +364,7 @@ export function FuturePremiumPanel() {
               <div className="space-y-2">
                 <Label>Data source</Label>
                 <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">
-                  Policies are loaded from the database export using the filters below.
+                  Policies are loaded from live policy records (same data as Add Policy) using the filters below.
                 </p>
               </div>
             )}
