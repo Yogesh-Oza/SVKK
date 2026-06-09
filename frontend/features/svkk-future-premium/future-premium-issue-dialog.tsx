@@ -99,7 +99,7 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
               <AlertTitle>
                 {issues.length} issue{issues.length === 1 ? "" : "s"} found
               </AlertTitle>
-              <AlertDescription asChild>
+              <AlertDescription>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                   {issues.map((issue, idx) => (
                     <li key={`${issue.scope}-${issue.memberName ?? "policy"}-${idx}`}>
