@@ -89,7 +89,7 @@ export function FutureLookupPanel() {
   const suggestRequestRef = useRef(0);
 
   const runLookup = useCallback(
-    async (token: string) => {
+    async (token: string, preferredYearLabel?: string) => {
       if (!premiumState || !token.trim()) return;
       const requestId = ++lookupRequestRef.current;
       const lookupSource: FutureSourceKey = "policy_list_only";
@@ -99,7 +99,9 @@ export function FutureLookupPanel() {
       try {
         const raw = await fetchDbLookupExportRows(token, filterQuery, fetchPolicyExportRows);
         if (requestId !== lookupRequestRef.current) return;
-        setResult(findLookupResult(token, raw, lookupSource, yearOffset, premiumState));
+        setResult(
+          findLookupResult(token, raw, lookupSource, yearOffset, premiumState, preferredYearLabel),
+        );
       } finally {
         if (requestId === lookupRequestRef.current) setBusy(false);
       }
@@ -115,7 +117,10 @@ export function FutureLookupPanel() {
       setLookupNo(suggestion.lookupValue);
       setSuggestions([]);
       setActiveSuggestionIndex(-1);
-      void runLookup(suggestion.lookupValue);
+      void runLookup(
+        suggestion.lookupValue,
+        suggestion.yearLabel !== "—" ? suggestion.yearLabel : undefined,
+      );
     },
     [runLookup],
   );

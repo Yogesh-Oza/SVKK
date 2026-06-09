@@ -1,4 +1,4 @@
-import type { FuturePremiumResult } from "./future-premium-types";
+import type { CsvRowObject, FuturePremiumResult } from "./future-premium-types";
 
 function buildCsv(rows: Record<string, unknown>[]): string {
   if (!rows.length) return "";
@@ -78,6 +78,13 @@ export function detailExportRows(results: FuturePremiumResult[]): Record<string,
       net_premium: m.net || 0,
       status: m.error || "Ready",
     })),
+  );
+}
+
+/** Built-in demo rows for Future Premium (also used by “Load sample” in the UI). */
+export function futurePremiumSampleCsvRows(): CsvRowObject[] {
+  return FUTURE_PREMIUM_SAMPLE_ROWS.map((row) =>
+    Object.fromEntries(Object.entries(row).map(([k, v]) => [k, String(v ?? "")])),
   );
 }
 

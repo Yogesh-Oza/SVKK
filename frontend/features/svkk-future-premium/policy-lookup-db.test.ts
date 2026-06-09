@@ -15,6 +15,6 @@ describe("policy-lookup-db", () => {
     ];
     const suggestions = csvRowsToLookupSuggestions(rows, "PO-14010061252800000651");
     expect(suggestions).toHaveLength(1);
-    expect(suggestions[0]?.lookupValue).toBe("PO- 14010061252800000651");
+    expect(suggestions[0]?.lookupValue).toBe("SVKK1234");
   });
 });

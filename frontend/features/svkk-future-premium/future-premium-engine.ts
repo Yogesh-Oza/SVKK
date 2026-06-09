@@ -34,10 +34,11 @@ export const FUTURE_SOURCE_OPTIONS: { value: FutureSourceKey; label: string; loo
   { value: "linked_upload", label: "Linked Uploaded CSV", lookup: true },
 ];
 
-/** Future Premium page: uploaded CSV or policy list from DB only. */
-export const FUTURE_PREMIUM_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
-  (o) => o.value === "uploaded_csv_only" || o.value === "policy_list_only",
-);
+/** Future Premium page: policy list from DB first (default), then uploaded CSV. */
+export const FUTURE_PREMIUM_SOURCE_OPTIONS = [
+  { value: "policy_list_only" as const, label: "Policy list (database)" },
+  { value: "uploaded_csv_only" as const, label: "Uploaded CSV" },
+];
 
 /** Lookup page: policy export and session-linked CSV only. */
 export const FUTURE_LOOKUP_SOURCE_OPTIONS = FUTURE_SOURCE_OPTIONS.filter(
@@ -95,8 +96,8 @@ export function buildFutureResults(
   return (rawRows || []).map((row, idx) => {
     const policy = normPolicy(getv(row, ["policy_type", "type", "product type", "product_type"]));
     const declaredCount = futureMemberCount(row);
-    const members = buildMembersFromFutureRow(row, policy, declaredCount || 10);
-    const memberCount = declaredCount || members.length || 1;
+    const members = buildMembersFromFutureRow(row, policy, declaredCount || 12);
+    const memberCount = Math.max(members.length, declaredCount) || members.length || 1;
     const si = money(getv(row, ["sum_insured", "si", "sum insured"])) || 0;
     const baseStart = getv(row, ["start_date", "policy_start_date", "current_start_date", "policy start"]);
     const baseEnd = getv(row, [
@@ -221,15 +222,73 @@ export function normalizeLookupToken(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+/** Sort key for fiscal labels like 2026-27 (higher = more recent). */
+export function policyYearSortKey(label: string): number {
+  const m = String(label || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2,4})$/);
+  if (!m) return 0;
+  const startYear = parseInt(m[1]!, 10);
+  const endPart = m[2]!;
+  const endYear =
+    endPart.length === 2
+      ? Math.floor(startYear / 100) * 100 + parseInt(endPart, 10)
+      : parseInt(endPart, 10);
+  return endYear * 100 + (startYear % 100);
+}
+
+function resultYearLabel(r: FuturePremiumResult): string {
+  return getv(r.details, ["year", "policy_year", "policy year"]);
+}
+
+function lookupFieldMatchesToken(field: string, norm: string): boolean {
+  const nf = normalizeLookupToken(field);
+  if (!nf) return false;
+  if (nf === norm) return true;
+  return norm.length >= 6 && (nf.includes(norm) || norm.includes(nf));
+}
+
 function lookupResultMatchesToken(r: FuturePremiumResult, norm: string): boolean {
-  const fields = [r.policyNo, r.svkkId, r.customerId, r.holder];
-  for (const field of fields) {
-    const nf = normalizeLookupToken(field);
-    if (!nf) continue;
-    if (nf === norm) return true;
-    if (norm.length >= 6 && (nf.includes(norm) || norm.includes(nf))) return true;
-  }
-  return false;
+  const previousPolicyNo = getv(r.details, ["previous policy no", "previous_policy_no"]);
+  const fields = [r.policyNo, r.svkkId, r.customerId, r.holder, previousPolicyNo];
+  return fields.some((field) => lookupFieldMatchesToken(field, norm));
+}
+
+function lookupResultSortKey(r: FuturePremiumResult): number {
+  const yearKey = policyYearSortKey(resultYearLabel(r));
+  if (yearKey) return yearKey;
+  const end = dateParse(r.end);
+  return end ? end.getTime() : 0;
+}
+
+function expandLookupMatchesBySvkk(
+  allResults: FuturePremiumResult[],
+  matches: FuturePremiumResult[],
+): FuturePremiumResult[] {
+  const svkkIds = new Set(
+    matches
+      .map((m) => normalizeLookupToken(m.svkkId))
+      .filter((id) => id && id !== normalizeLookupToken("—")),
+  );
+  if (!svkkIds.size) return matches;
+  const expanded = allResults.filter((r) => svkkIds.has(normalizeLookupToken(r.svkkId)));
+  return expanded.length ? expanded : matches;
+}
+
+/** Prefer explicit year from suggestion; otherwise latest fiscal year. */
+export function pickBestLookupMatch(
+  matches: FuturePremiumResult[],
+  preferredYearLabel?: string,
+): FuturePremiumResult | null {
+  if (!matches.length) return null;
+  const pool =
+    preferredYearLabel && preferredYearLabel !== "—"
+      ? matches.filter((r) => resultYearLabel(r) === preferredYearLabel)
+      : matches;
+  const ranked = [...(pool.length ? pool : matches)].sort(
+    (a, b) => lookupResultSortKey(b) - lookupResultSortKey(a),
+  );
+  return ranked[0] ?? null;
 }
 
 export function findLookupResult(
@@ -238,6 +297,7 @@ export function findLookupResult(
   sourceKey: FutureSourceKey,
   yearOffset: string,
   premiumState: PremiumState,
+  preferredYearLabel?: string,
 ): FuturePremiumResult | null {
   const norm = normalizeLookupToken(token);
   if (!norm) return null;
@@ -247,12 +307,26 @@ export function findLookupResult(
     const policyNorm = normalizeLookupToken(r.policyNo);
     const svkkNorm = normalizeLookupToken(r.svkkId);
     const customerNorm = normalizeLookupToken(r.customerId);
-    return policyNorm === norm || svkkNorm === norm || customerNorm === norm;
+    const previousNorm = normalizeLookupToken(
+      getv(r.details, ["previous policy no", "previous_policy_no"]),
+    );
+    return (
+      policyNorm === norm ||
+      svkkNorm === norm ||
+      customerNorm === norm ||
+      previousNorm === norm
+    );
   });
-  if (exact.length === 1) return exact[0]!;
-  if (exact.length > 1) return exact[0]!;
+  if (exact.length) {
+    return pickBestLookupMatch(expandLookupMatchesBySvkk(rows, exact), preferredYearLabel);
+  }
 
-  return rows.find((r) => lookupResultMatchesToken(r, norm)) ?? null;
+  const fuzzy = rows.filter((r) => lookupResultMatchesToken(r, norm));
+  if (fuzzy.length) {
+    return pickBestLookupMatch(expandLookupMatchesBySvkk(rows, fuzzy), preferredYearLabel);
+  }
+
+  return null;
 }
 
 export async function resolveFutureRawRows(

@@ -32,6 +32,7 @@ import {
 } from "./policy.list.js";
 import {
   buildPoliciesExportCsv,
+  buildPoliciesExportRowObjects,
   buildPolicyCsvSample,
   queryPolicyListForExport,
 } from "./policy.export-csv.js";
@@ -120,6 +121,11 @@ const policyListFiltersSchema = z.object({
 
 const policyExportQuerySchema = policyListFiltersSchema.extend({
   columns: stringArrayQuery,
+});
+
+const policyExportPagedQuerySchema = policyExportQuerySchema.extend({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 const policyListPagedQuerySchema = policyListFiltersSchema.extend({
@@ -483,6 +489,50 @@ export function createPolicyRouter(env: Env) {
       const includeCommission = hasPermissionInSet(req.permissions!, "policy:commission");
       const groups = buildPolicyCsvExportColumnGroups({ includeCommission });
       res.json({ groups: serializePolicyCsvExportColumnGroups(groups) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/export.json", requirePermission("policy:read"), async (req, res, next) => {
+    try {
+      const q = policyExportPagedQuerySchema.parse(req.query);
+      const listFilter = listFilterFromQuery(q);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+      const [total, rows] = await Promise.all([
+        prisma.policy.count({ where }),
+        queryPolicyListForExport({
+          where,
+          sort: listFilter.sort,
+          page: q.page,
+          pageSize: q.pageSize,
+        }),
+      ]);
+      const categoryByKey = await loadCategoryByKeyMap();
+      const includeCommission = hasPermissionInSet(req.permissions!, "policy:commission");
+      const columnGroups = buildPolicyCsvExportColumnGroups({ includeCommission });
+      const selectedHeaders = q.columns?.length
+        ? sanitizeSelectedExportHeaders(
+            expandExportColumnSelection(columnGroups, q.columns),
+            includeCommission,
+          )
+        : undefined;
+      const items = buildPoliciesExportRowObjects(
+        rows,
+        req.permissions!,
+        preferredYearLabelsFromFilter(listFilter),
+        categoryByKey,
+        selectedHeaders,
+      );
+      const totalPages = total > 0 ? Math.ceil(total / q.pageSize) : 0;
+      res.json({
+        items,
+        total,
+        page: q.page,
+        pageSize: q.pageSize,
+        totalPages,
+      });
     } catch (e) {
       next(e);
     }

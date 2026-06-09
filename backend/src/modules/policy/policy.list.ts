@@ -158,6 +158,7 @@ export function buildPolicyListWhere(
     ? {
         OR: [
           { policyNo: containsInsensitive(s) },
+          { previousPolicyNo: containsInsensitive(s) },
           { referenceNo: containsInsensitive(s) },
           { holderName: containsInsensitive(s) },
           { area: containsInsensitive(s) },

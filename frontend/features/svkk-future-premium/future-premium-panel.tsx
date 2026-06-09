@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Settings2, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -43,9 +43,12 @@ import {
 import {
   detailExportRows,
   downloadCsv,
+  futurePremiumSampleCsvRows,
   FUTURE_PREMIUM_SAMPLE_ROWS,
   summaryExportRows,
 } from "./future-premium-export";
+import { FuturePremiumIssueDialog } from "./future-premium-issue-dialog";
+import { FuturePremiumListPagination } from "./future-premium-list-pagination";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
@@ -68,28 +71,63 @@ export function FuturePremiumPanel() {
     premiumState,
     uploadedRows,
     loadingCharts,
+    chartsLoadError,
     loadingPolicies,
     ingestCsvFile,
-    fetchPolicyExportRows,
+    fetchPolicyExportPage,
+    loadPremiumCharts,
+    persistUploadedRows,
   } = useFuturePremiumData();
 
   const policyFilters = useFuturePremiumPolicyFilters();
-  const [source, setSource] = useState<FutureSourceKey>("uploaded_csv_only");
+  const [source, setSource] = useState<FutureSourceKey>("policy_list_only");
   const [yearOffset, setYearOffset] = useState("0");
   const [results, setResults] = useState<FuturePremiumResult[]>([]);
   const [generated, setGenerated] = useState(false);
-  const [message, setMessage] = useState("Upload CSV to generate future premium records and MIS.");
+  const [message, setMessage] = useState(
+    "Use filters to narrow policies, then click Generate to build future premium records and MIS.",
+  );
+  const [messageIsError, setMessageIsError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [policyFilter, setPolicyFilter] = useState("all");
   const [siFilter, setSiFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedDetail, setSelectedDetail] = useState<FuturePremiumResult | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [listTotal, setListTotal] = useState(0);
+  const [listTotalPages, setListTotalPages] = useState(0);
+
+  const isDbSource = source === "policy_list_only";
 
   const mis = useMemo(() => computeFutureMis(generated ? results : []), [generated, results]);
   const visibleRows = useMemo(
     () => filterFutureResults(results, search, policyFilter, siFilter, statusFilter),
     [results, search, policyFilter, siFilter, statusFilter],
   );
+  const tableRows = useMemo(() => {
+    if (isDbSource) return visibleRows;
+    const start = (page - 1) * pageSize;
+    return visibleRows.slice(start, start + pageSize);
+  }, [isDbSource, visibleRows, page, pageSize]);
+  const displayTotal = isDbSource ? listTotal : visibleRows.length;
+  const displayTotalPages = isDbSource
+    ? Math.max(1, listTotalPages)
+    : Math.max(1, Math.ceil(visibleRows.length / pageSize) || 1);
+
+  useEffect(() => {
+    if (!isDbSource) setPage(1);
+  }, [search, policyFilter, siFilter, statusFilter, isDbSource]);
+
+  useEffect(() => {
+    setPage(1);
+    setListTotal(0);
+    setListTotalPages(0);
+    setResults([]);
+    setGenerated(false);
+  }, [source]);
 
   const policyTypeOptions = useMemo(
     () => [...new Set(results.map((r) => r.policy).filter(Boolean))],
@@ -103,54 +141,143 @@ export function FuturePremiumPanel() {
     [results],
   );
 
+  const showMessage = (text: string, isError = false) => {
+    setMessage(text);
+    setMessageIsError(isError);
+  };
+
   const handleUpload = async (file: File | undefined) => {
     if (!file) return;
     const count = await ingestCsvFile(file);
     setResults([]);
     setGenerated(false);
-    setMessage(
+    showMessage(
       count
         ? `CSV uploaded (${count} row(s)). Click Generate to create Future Premium and MIS.`
         : "CSV had no data rows.",
+      !count,
     );
   };
 
-  const handleGenerate = async () => {
+  const handleLoadSample = () => {
+    const rows = futurePremiumSampleCsvRows();
+    persistUploadedRows(rows);
+    setResults([]);
+    setGenerated(false);
+    if (fileRef.current) fileRef.current.value = "";
+    showMessage(
+      `Sample data loaded (${rows.length} row(s)). Click Generate to preview Future Premium and MIS.`,
+    );
+  };
+
+  const loadPolicyPage = async (targetPage: number, size = pageSize) => {
     if (!premiumState) {
-      setMessage("Premium charts are still loading. Try again shortly.");
+      showMessage(
+        chartsLoadError ??
+          "Premium charts could not be loaded. Check Charts & discounts or retry loading charts.",
+        true,
+      );
       return;
     }
     setBusy(true);
     try {
-      let raw =
-        source === "policy_list_only"
-          ? await fetchPolicyExportRows(policyFilters.filterQuery)
-          : filterFutureCsvRows(
-              uploadedRows,
-              policyFilters.filters,
-              policyFilters.csvFilterContext,
-            );
+      const pageData = await fetchPolicyExportPage(
+        policyFilters.filterQuery,
+        targetPage,
+        size,
+      );
+      if (!pageData.items.length) {
+        setResults([]);
+        setGenerated(false);
+        setPage(1);
+        setListTotal(0);
+        setListTotalPages(0);
+        showMessage("No policies matched the selected filters in the database.", true);
+        return;
+      }
+      const next = buildFutureResults(pageData.items, source, yearOffset, premiumState);
+      setResults(next);
+      setGenerated(true);
+      setPage(pageData.page);
+      setListTotal(pageData.total);
+      setListTotalPages(pageData.totalPages);
+      showMessage(
+        `Page ${pageData.page} of ${Math.max(1, pageData.totalPages)} — ${pageData.total.toLocaleString("en-IN")} policies total (${next.length} on this page) for ${yearOffsetLabel(yearOffset)}.`,
+      );
+    } catch (e) {
+      setResults([]);
+      setGenerated(false);
+      showMessage(e instanceof Error ? e.message : "Failed to load policies. Please try again.", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (loadingCharts) {
+      showMessage("Premium charts are still loading. Please wait a moment and try again.");
+      return;
+    }
+    if (!premiumState) {
+      showMessage(
+        chartsLoadError ??
+          "Premium charts could not be loaded. Check Charts & discounts or retry loading charts.",
+        true,
+      );
+      return;
+    }
+    if (isDbSource) {
+      await loadPolicyPage(1);
+      return;
+    }
+    setBusy(true);
+    try {
+      const raw = filterFutureCsvRows(
+        uploadedRows,
+        policyFilters.filters,
+        policyFilters.csvFilterContext,
+      );
       if (!raw.length) {
         setResults([]);
         setGenerated(false);
-        setMessage(
-          source === "policy_list_only"
-            ? "No policies matched the selected filters in the database."
-            : uploadedRows.length
-              ? "No rows in the uploaded CSV matched the selected filters."
-              : "Please upload CSV first, then click Generate.",
+        setPage(1);
+        setListTotal(0);
+        setListTotalPages(0);
+        showMessage(
+          uploadedRows.length
+            ? "No rows in the uploaded CSV matched the selected filters. Try Reset filters."
+            : "No CSV data loaded. Upload a CSV or click Load sample, then click Generate.",
+          true,
         );
         return;
       }
       const next = buildFutureResults(raw, source, yearOffset, premiumState);
       setResults(next);
       setGenerated(true);
-      setMessage(
+      setPage(1);
+      setListTotal(raw.length);
+      setListTotalPages(Math.max(1, Math.ceil(raw.length / pageSize)));
+      showMessage(
         `Generated ${next.length} record(s) for ${yearOffsetLabel(yearOffset)} using ${sourceLabel(source)}.`,
       );
+    } catch (e) {
+      setResults([]);
+      setGenerated(false);
+      showMessage(e instanceof Error ? e.message : "Generate failed. Please try again.", true);
     } finally {
       setBusy(false);
     }
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (isDbSource) void loadPolicyPage(nextPage);
+    else setPage(nextPage);
+  };
+
+  const handlePageSizeChange = (nextSize: number) => {
+    setPageSize(nextSize);
+    if (isDbSource && generated) void loadPolicyPage(1, nextSize);
+    else setPage(1);
   };
 
   const highestNet = (groups: Record<string, { net: number }>) =>
@@ -225,6 +352,11 @@ export function FuturePremiumPanel() {
                   accept=".csv"
                   onChange={(e) => void handleUpload(e.target.files?.[0])}
                 />
+                {uploadedRows.length > 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    {uploadedRows.length} row(s) loaded — ready to Generate.
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-2">
@@ -238,18 +370,23 @@ export function FuturePremiumPanel() {
               <Label>Actions</Label>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void handleGenerate()} disabled={busy || loadingCharts}>
-                  {busy || loadingPolicies ? (
+                  {busy || loadingPolicies || loadingCharts ? (
                     <Loader2 className="mr-2 size-4 animate-spin" />
                   ) : (
                     <Sparkles className="mr-2 size-4" />
                   )}
                   Generate
                 </Button>
+                {source === "uploaded_csv_only" ? (
+                  <Button type="button" variant="outline" onClick={handleLoadSample}>
+                    Load sample
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   onClick={() => downloadCsv("future-premium-sample.csv", FUTURE_PREMIUM_SAMPLE_ROWS)}
                 >
-                  Sample CSV
+                  Download sample CSV
                 </Button>
               </div>
             </div>
@@ -261,9 +398,34 @@ export function FuturePremiumPanel() {
             onReset={policyFilters.resetFilters}
             options={policyFilters.filterOptions}
           />
-          <p className="bg-muted/60 text-primary rounded-md border px-3 py-2 text-sm font-medium">{message}</p>
+          {chartsLoadError && !loadingCharts ? (
+            <div className="space-y-2">
+              <p className="text-destructive bg-destructive/10 rounded-md border border-destructive/30 px-3 py-2 text-sm">
+                {chartsLoadError}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadPremiumCharts()}>
+                Retry loading charts
+              </Button>
+            </div>
+          ) : null}
+          <p
+            className={
+              messageIsError
+                ? "text-destructive bg-destructive/10 rounded-md border border-destructive/30 px-3 py-2 text-sm font-medium"
+                : "bg-muted/60 text-primary rounded-md border px-3 py-2 text-sm font-medium"
+            }
+          >
+            {message}
+          </p>
         </CardContent>
       </Card>
+
+      {isDbSource && generated && listTotal > results.length ? (
+        <p className="text-muted-foreground text-sm">
+          MIS totals below reflect the current page only ({results.length} of{" "}
+          {listTotal.toLocaleString("en-IN")} policies). Use Export CSV for the full filtered list.
+        </p>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Policies" value={mis.policies} />
@@ -436,9 +598,20 @@ export function FuturePremiumPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleRows.length ? (
-                  visibleRows.map((r) => (
-                    <TableRow key={`${r.policyNo}-${r.svkkId}-${r.calcYear}`}>
+                {tableRows.length ? (
+                  tableRows.map((r) => (
+                    <TableRow
+                      key={`${r.policyNo}-${r.svkkId}-${r.calcYear}`}
+                      className={
+                        r.status === "Issue"
+                          ? "cursor-pointer hover:bg-destructive/5"
+                          : "cursor-pointer hover:bg-muted/50"
+                      }
+                      onClick={() => {
+                        setSelectedDetail(r);
+                        setDetailDialogOpen(true);
+                      }}
+                    >
                       <TableCell className="max-w-[140px] truncate">{r.source}</TableCell>
                       <TableCell>{r.svkkId}</TableCell>
                       <TableCell className="max-w-[180px] truncate font-mono text-xs">{r.policyNo || "—"}</TableCell>
@@ -452,7 +625,13 @@ export function FuturePremiumPanel() {
                       <TableCell>₹{rs(r.quote.gross)}</TableCell>
                       <TableCell>₹{rs(r.quote.disc)}</TableCell>
                       <TableCell>₹{rs(r.quote.net)}</TableCell>
-                      <TableCell>{r.status}</TableCell>
+                      <TableCell>
+                        {r.status === "Issue" ? (
+                          <span className="text-destructive font-semibold">Issue — view details</span>
+                        ) : (
+                          <span className="text-primary font-semibold">Ready — view details</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
@@ -466,6 +645,18 @@ export function FuturePremiumPanel() {
             </Table>
           </div>
 
+          {generated && displayTotal > 0 ? (
+            <FuturePremiumListPagination
+              page={page}
+              pageSize={pageSize}
+              total={displayTotal}
+              totalPages={displayTotalPages}
+              loading={busy || loadingPolicies}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -474,6 +665,7 @@ export function FuturePremiumPanel() {
             >
               <Download className="mr-2 size-4" />
               Export Lump Sum CSV
+              {isDbSource && listTotal > results.length ? " (current page)" : ""}
             </Button>
             <Button
               variant="outline"
@@ -482,10 +674,20 @@ export function FuturePremiumPanel() {
             >
               <Download className="mr-2 size-4" />
               Export Individual CSV
+              {isDbSource && listTotal > results.length ? " (current page)" : ""}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      <FuturePremiumIssueDialog
+        result={selectedDetail}
+        open={detailDialogOpen}
+        onOpenChange={(open) => {
+          setDetailDialogOpen(open);
+          if (!open) setSelectedDetail(null);
+        }}
+      />
     </div>
   );
 }

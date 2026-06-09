@@ -4,7 +4,30 @@ import type { LookupSuggestion } from "./policy-lookup-csv-search";
 import { buildLookupExportQueries, lookupRowMatchesToken } from "./policy-lookup-search";
 
 function pickLookupValue(parts: { policyNo: string; svkkId: string; customerId: string }): string {
-  return parts.policyNo || parts.svkkId || parts.customerId;
+  if (parts.svkkId && parts.svkkId !== "—") return parts.svkkId;
+  return parts.policyNo || parts.customerId;
+}
+
+function mergeExportRows(
+  merged: CsvRowObject[],
+  seen: Set<string>,
+  rows: CsvRowObject[],
+): void {
+  for (const row of rows) {
+    const key = rowDedupeKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+}
+
+function collectSvkkIds(rows: CsvRowObject[]): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const svkkId = getv(row, ["svkk_id", "svkkid", "svkk id"]);
+    if (svkkId && svkkId !== "—") ids.add(svkkId);
+  }
+  return [...ids];
 }
 
 function rowDedupeKey(row: CsvRowObject): string {
@@ -29,9 +52,17 @@ export function csvRowsToLookupSuggestions(rows: CsvRowObject[], query: string):
     const svkkId = getv(row, ["svkk_id", "svkkid", "svkk id"]) || "—";
     const customerId = getv(row, ["customer_id", "customerid", "customer id"]) || "—";
     const policyNo = getv(row, ["policy_number", "policy_no", "policy no"]) || "—";
+    const previousPolicyNo = getv(row, ["previous policy no", "previous_policy_no"]) || "—";
     const yearLabel = getv(row, ["year", "policy_year", "policy year"]) || "—";
 
-    if (!lookupRowMatchesToken({ policyNo, svkkId, customerId, holder: holderName }, q)) continue;
+    if (
+      !lookupRowMatchesToken(
+        { policyNo, svkkId, customerId, holder: holderName, previousPolicyNo },
+        q,
+      )
+    ) {
+      continue;
+    }
 
     const lookupValue = pickLookupValue({ policyNo, svkkId, customerId });
     if (!lookupValue || lookupValue === "—") continue;
@@ -66,11 +97,14 @@ export async function fetchDbLookupExportRows(
 
   for (const exportQuery of buildLookupExportQueries(filterQuery, token)) {
     const rows = await fetchExport(exportQuery);
-    for (const row of rows) {
-      const key = rowDedupeKey(row);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(row);
+    mergeExportRows(merged, seen, rows);
+  }
+
+  for (const svkkId of collectSvkkIds(merged)) {
+    if (svkkId.trim().toLowerCase() === token.trim().toLowerCase()) continue;
+    for (const exportQuery of buildLookupExportQueries(filterQuery, svkkId)) {
+      const rows = await fetchExport(exportQuery);
+      mergeExportRows(merged, seen, rows);
     }
   }
 

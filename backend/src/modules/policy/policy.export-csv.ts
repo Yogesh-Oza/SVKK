@@ -4,7 +4,11 @@ import { overlayInsuredPartyWithPolicySnapshot } from "./policy-holder-snapshot.
 import { type CategoryRef } from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import { parsePolicyListOrderBy, POLICY_LIST_EXPORT_MAX_ROWS } from "./policy.list.js";
-import { buildPolicyCsvExportLayout } from "./policy-csv-export-layout.js";
+import { pickExportHeaders } from "./policy-csv-export-column-groups.js";
+import {
+  buildPolicyCsvExportLayout,
+  resolveExportSlotCounts,
+} from "./policy-csv-export-layout.js";
 import {
   buildLegacyPoliciesCsv,
   buildLegacyPolicyCsvCells,
@@ -118,13 +122,63 @@ export function buildPolicyExportCsvRow(
 export async function queryPolicyListForExport(args: {
   where: Prisma.PolicyWhereInput;
   sort: string | undefined;
+  page?: number;
+  pageSize?: number;
 }): Promise<PolicyExportRow[]> {
   const orderBy = parsePolicyListOrderBy(args.sort);
+  const paged = args.page != null && args.pageSize != null;
+  if (paged) {
+    return prisma.policy.findMany({
+      where: args.where,
+      orderBy,
+      skip: (args.page! - 1) * args.pageSize!,
+      take: args.pageSize,
+      include: exportInclude,
+    });
+  }
   return prisma.policy.findMany({
     where: args.where,
     orderBy,
     take: POLICY_LIST_EXPORT_MAX_ROWS,
     include: exportInclude,
+  });
+}
+
+/** Same shape as CSV export rows, as header-keyed objects (for paginated JSON export). */
+export function buildPoliciesExportRowObjects(
+  rows: PolicyExportRow[],
+  permissions: Set<string>,
+  preferredYearLabels: string[] = [],
+  categoryByKey: Map<string, CategoryRef> = new Map(),
+  selectedHeaders?: string[] | null,
+): Record<string, string>[] {
+  const parties = rows.map((r) =>
+    maskInsuredParty(
+      permissions,
+      overlayInsuredPartyWithPolicySnapshot(
+        r.insuredParty as Record<string, unknown> & { name: string },
+        r,
+      ) ?? null,
+    ),
+  );
+  const years = rows.map((r) => pickExportPolicyYear(r.years, preferredYearLabels));
+  const slotCounts = resolveExportSlotCounts(years);
+  const layout = buildPolicyCsvExportLayout(
+    slotCounts.maxMembers,
+    slotCounts.maxPayments,
+    years,
+  );
+  const headers = pickExportHeaders(layout.headers, selectedHeaders);
+  return rows.map((row, i) => {
+    const cells = buildLegacyPolicyCsvCells(
+      row,
+      parties[i] ?? null,
+      years[i],
+      categoryByKey,
+      headers,
+      layout.paymentPlan,
+    );
+    return Object.fromEntries(headers.map((h, j) => [h, cells[j] ?? ""]));
   });
 }
 

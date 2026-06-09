@@ -68,17 +68,70 @@ function normRel(v: unknown, policy: PolicyKey, index: number): string {
   return options.includes(key) ? key : options[0]!;
 }
 
-function normGender(v: unknown, rel: string, index: number): MemberInput["gender"] {
+/** Map export labels (Male/Female/M/F) to quote gender. */
+export function normExportGender(v: unknown, rel: string, index: number): MemberInput["gender"] {
   const g = String(v || "").trim().toLowerCase();
-  if (g === "male" || g === "female") return g;
+  if (g === "male" || g === "m") return "male";
+  if (g === "female" || g === "f") return "female";
   if (rel === "daughter") return "female";
-  if (index === 0) return "male";
+  if (index === 0) return "";
   return "";
 }
 
 function ymd(d: Date | null): string {
   if (!d) return "";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function memberSlotFieldKeys(slot: number, field: string): string[] {
+  const keys = [
+    `member_${slot}_${field}`,
+    `member${slot}_${field}`,
+    `member ${slot} ${field}`,
+  ];
+  if (slot === 1) {
+    if (field === "name") {
+      keys.push(
+        "holder_name",
+        "holder name",
+        "policy_holder_name",
+        "policy holder name",
+      );
+    }
+    if (field === "dob") {
+      keys.push("holder_dob", "holder dob", "dob");
+    }
+    if (field === "gender") {
+      keys.push("holder_gender", "holder gender", "gender");
+    }
+    if (field === "relationship") {
+      keys.push("holder_relationship", "holder relationship");
+    }
+    if (field === "addon_rider") {
+      keys.push("holder_addon_rider", "addon_rider");
+    }
+  }
+  return keys;
+}
+
+function memberSlotHasData(row: CsvRowObject, slot: number): boolean {
+  const name = getv(row, memberSlotFieldKeys(slot, "name"));
+  const dob = getv(row, memberSlotFieldKeys(slot, "dob"));
+  const rel = getv(row, memberSlotFieldKeys(slot, "relationship"));
+  const gender = getv(row, memberSlotFieldKeys(slot, "gender"));
+  const rider = money(getv(row, memberSlotFieldKeys(slot, "addon_rider"))) || 0;
+  return Boolean(
+    String(name).trim() || String(dob).trim() || String(rel).trim() || String(gender).trim() || rider,
+  );
+}
+
+/** Highest member slot with export data (slots 1–12). */
+export function detectMemberSlotCount(row: CsvRowObject): number {
+  let maxSlot = 0;
+  for (let slot = 1; slot <= 12; slot += 1) {
+    if (memberSlotHasData(row, slot)) maxSlot = slot;
+  }
+  return maxSlot;
 }
 
 export function futureMemberCount(row: CsvRowObject): number {
@@ -105,46 +158,29 @@ export function buildMembersFromFutureRow(
   policy: PolicyKey,
   targetCount: number,
 ): MemberInput[] {
-  const holderName =
-    getv(row, ["holder_name", "holder name", "policy_holder_name", "policy holder name"]) ||
-    getv(row, ["member_1_name", "member1_name", "member 1 name"]) ||
-    "Policy Holder";
-  const holderDob = ymd(
-    dateParse(
-      getv(row, ["holder_dob", "holder dob", "member_1_dob", "member1_dob", "member 1 dob", "dob"]),
-    ),
-  );
-  const out: MemberInput[] = [
-    {
-      name: holderName,
-      dob: holderDob,
-      relationship: "self",
-      gender: normGender(
-        getv(row, ["holder_gender", "holder gender", "member_1_gender", "member1_gender", "gender"]),
-        "self",
-        0,
-      ),
-      addOnRider: money(getv(row, ["holder_addon_rider", "member_1_addon_rider", "addon_rider"])) || 0,
-    },
-  ];
+  const declared = futureMemberCount(row);
+  const detected = detectMemberSlotCount(row);
+  const slotCount = Math.min(Math.max(targetCount || declared || detected || 1, 1), 12);
+  const out: MemberInput[] = [];
 
-  const maxMembers = Math.min(Math.max(targetCount || 1, 1), 10);
-  for (let i = 2; i <= maxMembers; i += 1) {
-    const name = getv(row, [`member_${i}_name`, `member${i}_name`, `member ${i} name`]);
-    const dob = ymd(dateParse(getv(row, [`member_${i}_dob`, `member${i}_dob`, `member ${i} dob`])));
-    const relRaw = getv(row, [`member_${i}_relationship`, `member${i}_relationship`, `member ${i} relationship`]);
-    const genderRaw = getv(row, [`member_${i}_gender`, `member${i}_gender`, `member ${i} gender`]);
-    const rider = money(getv(row, [`member_${i}_addon_rider`, `member${i}_addon_rider`])) || 0;
-    const hasAny = Boolean(
-      String(name).trim() || String(dob).trim() || String(relRaw).trim() || String(genderRaw).trim() || rider,
-    );
-    if (!hasAny) continue;
-    const rel = normRel(relRaw, policy, i - 1);
+  for (let slot = 1; slot <= slotCount; slot += 1) {
+    if (slot > 1 && !memberSlotHasData(row, slot)) continue;
+
+    const name =
+      getv(row, memberSlotFieldKeys(slot, "name")) ||
+      (slot === 1 ? "Policy Holder" : `Member ${slot - 1}`);
+    const dob = ymd(dateParse(getv(row, memberSlotFieldKeys(slot, "dob"))));
+    const relRaw = getv(row, memberSlotFieldKeys(slot, "relationship"));
+    const genderRaw = getv(row, memberSlotFieldKeys(slot, "gender"));
+    const rider = money(getv(row, memberSlotFieldKeys(slot, "addon_rider"))) || 0;
+    const rel =
+      slot === 1 ? "self" : normRel(relRaw, policy, slot - 1);
+
     out.push({
-      name: name || `Member ${i - 1}`,
+      name,
       dob,
       relationship: rel,
-      gender: normGender(genderRaw, rel, i - 1),
+      gender: normExportGender(genderRaw, rel, slot - 1),
       addOnRider: rider,
     });
   }

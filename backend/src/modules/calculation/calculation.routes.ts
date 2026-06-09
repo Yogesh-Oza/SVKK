@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ChartMode, PolicyChartKind } from "@prisma/client";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveChartsForType } from "../policy/policy.service.js";
 import { getCachedMatrix, invalidateChartCache } from "../premium/chart-cache.js";
@@ -177,7 +177,10 @@ export function createCalculationRouter(env: Env) {
    * page open replaces a per-policy/charts fanout, and the admin PUT below
    * persists every change in one round trip.
    */
-  r.get("/admin/snapshot", requirePermission("calculation:live"), async (_req, res, next) => {
+  r.get(
+    "/admin/snapshot",
+    requireAnyPermission(["calculation:live", "mis:read"]),
+    async (_req, res, next) => {
     try {
       const types = await prisma.policyType.findMany({
         orderBy: { name: "asc" },

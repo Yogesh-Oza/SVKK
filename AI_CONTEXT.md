@@ -6,6 +6,24 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Future Lookup — members + latest year for carry-forward policies**
+
+Searching `PO- 14010061252800000652` matched only the 2025-26 row (that number is its `policy no`), so Lookup showed one member and wrong premiums. Fixes: (1) after initial export search, re-fetch all rows for each SVKK ID found; (2) `expandLookupMatchesBySvkk` + `pickBestLookupMatch` default to latest fiscal year; (3) suggestions prefer SVKK ID over legacy policy no; (4) `buildMembersFromFutureRow` reads export `Member N Name/DOB/Gender` slots (1–12), `Male`/`Female`/`M`/`F`, and `detectMemberSlotCount`. Files: `future-csv-utils.ts`, `future-premium-engine.ts`, `policy-lookup-db.ts`.
+
+## Previous task (completed)
+
+**Future Lookup — correct policy year when SVKK has multiple years**
+
+Lookup returned the first matching export row (e.g. 2025-26) when Add Policy showed 2026-27 for the same SVKK ID. Earlier fix: `pickBestLookupMatch`, suggestion `yearLabel`, `previousPolicyNo` search. Files: `future-lookup-panel.tsx`, `policy-lookup-search.ts`, `policy.list.ts`.
+
+## Previous task (completed)
+
+**Future Premium — paginated policy list (database source)**
+
+Policy list (database) no longer downloads the full `export.csv` on Generate. New `GET /policies/export.json?page=&pageSize=` returns `{ items, total, page, pageSize, totalPages }` with the same filters as CSV export. Future Premium loads one page at a time (default 25), recalculates premiums per page, and shows pagination controls. Uploaded CSV still paginates client-side over filtered results. MIS cards on DB source reflect **current page only**; export buttons label “(current page)” when more pages exist. Files: `policy.export-csv.ts`, `policy.routes.ts`, `use-future-premium-data.ts`, `future-premium-list-pagination.tsx`, `future-premium-panel.tsx`.
+
+## Previous task (completed)
+
 **Policy payment — Not over field for Online (NEFT)**
 
 Root cause: payment-mode sanitizers intentionally cleared `notOver` for Online/NEFT on save (`PAYMENT_TRANSACTION_CLEAR_BY_MODE.ONLINE` and `PAYMENT_ROW_CLEAR_BY_METHOD[NEFT]`), while the form and detail UI show the field for Online/Cheque. Fix: stop clearing `notOver` for Online/NEFT; show **Not over** on policy detail for non-cheque payments. Files: `ad-policy-payment-mode-fields.ts`, `policy-payment-sanitize.ts`, `policy-bank-display.ts`. Tests: `policy-payment-sanitize.test.ts`, `ad-policy-payments.test.ts`, `policy-bank-display.test.ts`.

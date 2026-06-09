@@ -77,13 +77,25 @@ export function lookupMinQueryLength(query: string): number {
 }
 
 export function lookupRowMatchesToken(
-  parts: { policyNo: string; svkkId: string; customerId: string; holder?: string },
+  parts: {
+    policyNo: string;
+    svkkId: string;
+    customerId: string;
+    holder?: string;
+    previousPolicyNo?: string;
+  },
   token: string,
 ): boolean {
   const norm = normalizeLookupToken(token);
   if (!norm) return true;
 
-  const fields = [parts.policyNo, parts.svkkId, parts.customerId, parts.holder ?? ""];
+  const fields = [
+    parts.policyNo,
+    parts.svkkId,
+    parts.customerId,
+    parts.holder ?? "",
+    parts.previousPolicyNo ?? "",
+  ];
   for (const field of fields) {
     const nf = normalizeLookupToken(field);
     if (!nf) continue;
