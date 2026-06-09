@@ -26,7 +26,7 @@ export const PAYMENT_TRANSACTION_CLEAR_BY_MODE: Record<
     "dishonourReason",
   ],
   UPI: ["bankName", "branch", "accountNumber", "nameAsPerCheque", "ifscCode", "notOver"],
-  ONLINE: ["mobileNumber", "nameAsPerCheque", "notOver"],
+  ONLINE: ["mobileNumber", "nameAsPerCheque"],
   CHEQUE: ["mobileNumber"],
 };
 

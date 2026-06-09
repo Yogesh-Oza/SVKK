@@ -200,6 +200,7 @@ function resolveOnePayment(
       field("Account no", mode === "UPI" ? null : pay.accountNumber ?? ch?.accountNo),
       field("Name as per cheque", pay.nameAsPerCheque ?? ch?.nameAsPerCheque),
       field("IFSC code", pay.ifscCode ?? ch?.ifsc),
+      field("Not over", pay.notOver ?? ch?.notOver),
       ...sharedTransactionMetaFields(pay, txnDate, status, reason, amount),
     ]),
   };

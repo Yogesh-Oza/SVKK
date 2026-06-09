@@ -20,7 +20,7 @@ export const PAYMENT_ROW_CLEAR_BY_METHOD: Record<
     "dishonourReason",
   ],
   [PayMethod.UPI]: ["bankName", "branchName", "nameAsPerCheque", "ifscCode", "notOver"],
-  [PayMethod.NEFT]: ["nameAsPerCheque", "notOver"],
+  [PayMethod.NEFT]: ["nameAsPerCheque"],
   [PayMethod.CHQ]: [],
   [PayMethod.OTHER]: [],
 };

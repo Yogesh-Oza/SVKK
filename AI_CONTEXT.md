@@ -6,6 +6,12 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy payment — Not over field for Online (NEFT)**
+
+Root cause: payment-mode sanitizers intentionally cleared `notOver` for Online/NEFT on save (`PAYMENT_TRANSACTION_CLEAR_BY_MODE.ONLINE` and `PAYMENT_ROW_CLEAR_BY_METHOD[NEFT]`), while the form and detail UI show the field for Online/Cheque. Fix: stop clearing `notOver` for Online/NEFT; show **Not over** on policy detail for non-cheque payments. Files: `ad-policy-payment-mode-fields.ts`, `policy-payment-sanitize.ts`, `policy-bank-display.ts`. Tests: `policy-payment-sanitize.test.ts`, `ad-policy-payments.test.ts`, `policy-bank-display.test.ts`.
+
+## Previous task (completed)
+
 **Future Lookup — suggestions + Generate alignment**
 
 Lookup is DB-only (no Source/CSV upload). Fixed false **“Policy not found”** flash while Generate/suggestion lookup was still loading (`busy` gate on status message). Fixed **“No matching policies”** during in-flight search and stale debounce races (request-id guards). **Suggestions now use the same `export.csv?search=` path as Generate** (`policy-lookup-db.ts`), including digits-first search for `PO-` policy numbers. Files: `future-lookup-panel.tsx`, `policy-lookup-db.ts`, `lookup-suggestions-list.tsx`, `policy-lookup-search.ts`.

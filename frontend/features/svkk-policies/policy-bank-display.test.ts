@@ -122,6 +122,21 @@ describe("resolvePolicyPaymentDisplays", () => {
     expect(rows[2].fields.find((f) => f.label === "Amount Received")?.value).toBe("1000");
   });
 
+  it("shows not over for Online payments", () => {
+    const rows = resolvePolicyPaymentDisplays({
+      payments: [
+        {
+          method: "NEFT",
+          amount: 6000,
+          transactionNumber: "NEFT-002709242629",
+          bankName: "TJSB bank",
+          notOver: "8000",
+        },
+      ],
+    });
+    expect(rows[0].fields.find((f) => f.label === "Not over")?.value).toBe("8000");
+  });
+
   it("does not map return charges from not-over field", () => {
     const rows = resolvePolicyPaymentDisplays({
       payments: [

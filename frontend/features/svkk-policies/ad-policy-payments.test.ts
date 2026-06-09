@@ -169,6 +169,35 @@ describe("sanitizePaymentTransactionForMode", () => {
   });
 });
 
+describe("mapPaymentTransactionsToApi ONLINE notOver", () => {
+  it("persists notOver for Online (NEFT) payments", () => {
+    const values = getAdPolicyInitialValues();
+    values.paymentTransactions = [
+      {
+        ...values.paymentTransactions[0],
+        mode: "ONLINE",
+        transactionNumber: "NEFT-002709242629",
+        bankName: "TJSB bank",
+        branch: "Thane-400601",
+        accountNumber: "AC-002110100055478",
+        ifscCode: "TJSB0000002",
+        notOver: "8000",
+        transactionDate: "08-06-2026",
+        transactionStatus: "CLEARED",
+        amountReceived: "6000",
+      },
+    ];
+
+    const api = mapPaymentTransactionsToApi(values);
+    expect(api).toHaveLength(1);
+    expect(api[0]).toMatchObject({
+      method: "NEFT",
+      notOver: "8000",
+      bankName: "TJSB bank",
+    });
+  });
+});
+
 describe("mapPaymentTransactionsToApi payment-mode leakage", () => {
   it("does not persist bank fields after CHEQUE carry-forward row is switched to CASH", () => {
     const values = getAdPolicyInitialValues();

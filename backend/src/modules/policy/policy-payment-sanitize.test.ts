@@ -38,6 +38,20 @@ describe("sanitizePaymentReplaceRow", () => {
     expect(out.transactionNumber).toBe("CHQ-1");
   });
 
+  it("keeps notOver for NEFT (Online)", () => {
+    const out = sanitizePaymentReplaceRow({
+      amount: 6000,
+      method: PayMethod.NEFT,
+      transactionNumber: "NEFT-002709242629",
+      bankName: "TJSB bank",
+      notOver: "8000",
+      nameAsPerCheque: "Holder",
+    });
+    expect(out.notOver).toBe("8000");
+    expect(out.bankName).toBe("TJSB bank");
+    expect(out.nameAsPerCheque).toBeNull();
+  });
+
   it("clears bank fields for UPI but keeps accountNumber", () => {
     const out = sanitizePaymentReplaceRow({
       amount: 100,
