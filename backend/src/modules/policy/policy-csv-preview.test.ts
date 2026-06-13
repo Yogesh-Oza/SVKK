@@ -127,6 +127,31 @@ describe("policy-csv-preview", () => {
     expect(result.errorMessage).toBe("Invalid Product Type");
   });
 
+  it("evaluatePolicyPreviewRow marks READY for FULL update", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
+      match: { id: "p1" } as never,
+    });
+    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
+
+    const updateHeader = ["ref no", "policy no", "Holder name", "Courier Status"];
+    const updateRow = ["REF-1", "PN-1", "New Holder", "YES"];
+
+    const result = await evaluatePolicyPreviewRow(updateHeader, updateRow, 2, {
+      ...previewCtx,
+      importMode: "UPDATE_ONLY",
+      updateMode: "FULL",
+    });
+    expect(result.status).toBe("READY");
+    expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
+    expect(processLegacyPolicyCsvRow).toHaveBeenCalled();
+    expect(result.detailMessage).toMatch(/policy no = PN-1/);
+    expect(result.updateFields).toEqual([
+      { field: "policy no", value: "PN-1" },
+      { field: "Holder name", value: "New Holder" },
+      { field: "Courier Status", value: "YES" },
+    ]);
+  });
+
   it("evaluatePolicyPreviewRow marks READY for POLICY_COURIER update", async () => {
     vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
       match: { id: "p1" } as never,

@@ -88,7 +88,8 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   const prior = await findPriorCompletedImport(checksum, opts.updateMode);
 
   const skipDuplicateBlock =
-    opts.importMode === CsvImportMode.UPDATE_ONLY && opts.updateMode === CsvUpdateMode.POLICY_COURIER;
+    opts.importMode === CsvImportMode.UPDATE_ONLY &&
+    (opts.updateMode === CsvUpdateMode.POLICY_COURIER || opts.updateMode === CsvUpdateMode.FULL);
 
   if (prior && env.CSV_DUPLICATE_MODE === "block" && !opts.force && !opts.dryRun && !skipDuplicateBlock) {
     throw new AppError("DUPLICATE_CSV_IMPORT", "This file was already imported successfully", 409);

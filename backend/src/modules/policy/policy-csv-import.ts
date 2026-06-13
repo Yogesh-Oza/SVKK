@@ -21,6 +21,13 @@ import {
 import { collectPaymentsFromCsvMap } from "./policy-csv-payment-columns.js";
 import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
+import {
+  isPolicyCourierUpdateMode,
+  isPolicyFullUpdateMode,
+  isPolicyRefNoUpdateMode,
+  validatePolicyCourierUpdateRow,
+  validatePolicyFullUpdateRow,
+} from "./policy-csv-update-scope.js";
 import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
 import {
   policyTypeKeyToAdVariant,
@@ -30,11 +37,6 @@ import {
   resolvePolicyTypeFromCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
-import {
-  hasPolicyCourierUpdateFields,
-  isPolicyCourierUpdateMode,
-  validatePolicyCourierUpdateRow,
-} from "./policy-csv-update-scope.js";
 import { prisma } from "../../lib/prisma.js";
 import { createPolicyFromCsvRow, validateCreateRequiredFields } from "./policy-csv-create.js";
 
@@ -268,16 +270,17 @@ async function updatePolicyCsvRow(
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
 
-  const { match: policy, conflict } = await resolvePolicyForCsvImport(tx, {
-    svkkId,
-    policyNo,
-    refNo,
-  });
+  const { match: policy, conflict } =
+    ctx.importMode === "UPDATE_ONLY"
+      ? await resolvePolicyForCsvUpdate(tx, { refNo, svkkId, policyNo })
+      : await resolvePolicyForCsvImport(tx, { svkkId, policyNo, refNo });
 
   if (conflict) throw new Error(conflict);
   if (!policy) {
     throw new Error(
-      `Policy not found (SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"})`,
+      ctx.importMode === "UPDATE_ONLY"
+        ? `Policy not found (UPDATE_ONLY mode; ref no=${refNo || "—"})`
+        : `Policy not found (SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"})`,
     );
   }
 
@@ -391,7 +394,12 @@ async function updatePolicyCsvRow(
   if (courierCo) policyUpdate.courierCompany = courierCo;
   const genRemark = getCsvField(map, "gen remark");
   const policyChangeRemark = getCsvField(map, "policy remarK", "policy remar");
-  const combinedRemarks = buildCombinedRemarksFromParts(genRemark, policyChangeRemark);
+  const categoryChangeRemark = getCsvField(map, "category change remark");
+  const combinedRemarks = buildCombinedRemarksFromParts(
+    genRemark,
+    policyChangeRemark,
+    categoryChangeRemark,
+  );
   if (combinedRemarks) policyUpdate.remarks = combinedRemarks;
   const refFromCsv = getCsvField(map, "ref no");
   if (refFromCsv) policyUpdate.referenceNo = refFromCsv;
@@ -500,10 +508,15 @@ export async function processLegacyPolicyCsvRow(
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
 
-  if (isPolicyCourierUpdateMode(ctx.updateMode)) {
-    validatePolicyCourierUpdateRow(map);
+  if (isPolicyRefNoUpdateMode(ctx.importMode, ctx.updateMode)) {
     if (!ctx.permissions.has("policy:update")) {
       throw new Error("policy:update permission required for CSV update");
+    }
+
+    if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+      validatePolicyCourierUpdateRow(map);
+    } else {
+      validatePolicyFullUpdateRow(map);
     }
 
     const { match: policy, conflict } = await resolvePolicyForCsvUpdate(prisma, {
@@ -518,7 +531,13 @@ export async function processLegacyPolicyCsvRow(
     }
 
     if (ctx.dryRun) return "updated";
-    await prisma.$transaction(async (tx) => updatePolicyCourierCsvRow(tx, header, row, ctx));
+    await prisma.$transaction(async (tx) => {
+      if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+        await updatePolicyCourierCsvRow(tx, header, row, ctx);
+      } else {
+        await updatePolicyCsvRow(tx, header, row, ctx);
+      }
+    });
     return "updated";
   }
 
@@ -578,6 +597,13 @@ export function validateLegacyPolicyCsvRow(
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
+
+  if (importMode === "UPDATE_ONLY") {
+    if (!refNo.trim()) {
+      throw new Error("ref no is required for policy update");
+    }
+    return;
+  }
 
   if (importMode !== "CREATE_ONLY" && !refNo && !svkkId && !policyNo) {
     throw new Error("ref no, SVKK ID, or policy no required");

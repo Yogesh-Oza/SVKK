@@ -24,6 +24,7 @@ describe("policy-csv-format v2", () => {
     expect(POLICY_CSV_FLAT_HEADERS).toContain("Member 1 Name");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("MEMBER 1 DATE OF JOINING");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("policy remarK");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("category change remark");
   });
 
   it("export header line includes extended member and payment slots in grouped order", () => {
@@ -84,15 +85,17 @@ describe("formatPolicyUrlForCsvExport", () => {
 });
 
 describe("policy remark CSV columns", () => {
-  it("splits combined Policy.remarks into gen remark and policy remarK", () => {
-    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+  it("splits combined Policy.remarks into gen remark, policy remarK, and category change remark", () => {
+    const combined = buildCombinedRemarksFromParts("test 1", "policy note", "category note");
     expect(parseRemarks(combined)).toEqual({
       generalRemark: "test 1",
-      policyChangeRemark: "test 1",
+      policyChangeRemark: "policy note",
+      categoryChangeRemark: "category note",
     });
     expect(resolvePolicyRemarkCsvCells(combined, "Sample import row")).toEqual({
       genRemark: "test 1",
-      policyRemark: "test 1",
+      policyRemark: "policy note",
+      categoryChangeRemark: "category note",
     });
   });
 
@@ -100,16 +103,17 @@ describe("policy remark CSV columns", () => {
     expect(resolvePolicyRemarkCsvCells("Legacy general note", "Sample import row")).toEqual({
       genRemark: "Legacy general note",
       policyRemark: "Sample import row",
+      categoryChangeRemark: "",
     });
   });
 
   it("exports split remark columns without label prefixes", () => {
-    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+    const combined = buildCombinedRemarksFromParts("test 1", "policy note", "category note");
     const row = {
       remarks: combined,
       years: [{ yearRemarks: "Sample import row", members: [], payments: [] }],
     } as Parameters<typeof buildLegacyPolicyCsvCells>[0];
-    const headers = ["gen remark", "policy remarK"];
+    const headers = ["gen remark", "policy remarK", "category change remark"];
     const paymentPlan = buildPaymentExportPlan([], 1);
     const cells = buildLegacyPolicyCsvCells(
       row,
@@ -120,6 +124,7 @@ describe("policy remark CSV columns", () => {
       paymentPlan,
     );
     expect(cells[headers.indexOf("gen remark")]).toBe("test 1");
-    expect(cells[headers.indexOf("policy remarK")]).toBe("test 1");
+    expect(cells[headers.indexOf("policy remarK")]).toBe("policy note");
+    expect(cells[headers.indexOf("category change remark")]).toBe("category note");
   });
 });

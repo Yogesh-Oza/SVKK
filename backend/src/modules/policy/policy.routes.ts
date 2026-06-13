@@ -34,7 +34,6 @@ import {
   buildPoliciesExportCsv,
   buildPoliciesExportRowObjects,
   buildPolicyCsvSample,
-  buildPolicyCourierUpdateSample,
   queryPolicyListForExport,
 } from "./policy.export-csv.js";
 import {
@@ -490,9 +489,9 @@ export function createPolicyRouter(env: Env) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
-        'attachment; filename="policies-update-policy-courier-sample.csv"',
+        'attachment; filename="policies-update-sample.csv"',
       );
-      res.send(buildPolicyCourierUpdateSample());
+      res.send(buildPolicyCsvSample());
     } catch (e) {
       next(e);
     }

@@ -63,6 +63,7 @@ const COURIER_HEADERS = [
 const REMARKS_META_HEADERS = [
   "gen remark",
   "policy remarK",
+  "category change remark",
   "ref no",
   "Created at",
   "Updated at",

@@ -107,6 +107,7 @@ function minimalFormValues(overrides: Partial<AdPolicyFormValues>): AdPolicyForm
     courierAddress: "",
     generalRemark: "",
     policyChangeRemark: "",
+    categoryChangeRemark: "",
     refNo: "",
     year: "",
     month: "",

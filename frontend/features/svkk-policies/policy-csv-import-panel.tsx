@@ -76,7 +76,7 @@ type ImportResult = {
   errorReportUrl?: string;
 };
 
-type PolicyCsvImportMode = "CREATE_ONLY" | "UPDATE_POLICY_COURIER";
+type PolicyCsvImportMode = "CREATE_ONLY" | "UPDATE_POLICY";
 
 const IMPORT_MODE_CONFIG: Record<
   PolicyCsvImportMode,
@@ -88,12 +88,12 @@ const IMPORT_MODE_CONFIG: Record<
     badge: "Create only",
     subtitle: "Format v2 — create new policies",
   },
-  UPDATE_POLICY_COURIER: {
+  UPDATE_POLICY: {
     importMode: "UPDATE_ONLY",
-    updateMode: "POLICY_COURIER",
-    label: "Update policy + courier",
+    updateMode: "FULL",
+    label: "Update policy",
     badge: "Update",
-    subtitle: "Match by ref no — policy no, dates, courier",
+    subtitle: "Match by ref no — same columns as create sample",
   },
 };
 
@@ -142,23 +142,19 @@ export function PolicyCsvImportInline({
   const [importMsg, setImportMsg] = useState("");
 
   const modeConfig = IMPORT_MODE_CONFIG[importMode];
-  const isUpdateMode = importMode === "UPDATE_POLICY_COURIER";
+  const isUpdateMode = importMode === "UPDATE_POLICY";
 
   const downloadSample = useCallback(async () => {
-    if (importMode === "CREATE_ONLY" && onDownloadSample) {
+    if (onDownloadSample) {
       await onDownloadSample();
       return;
     }
     try {
-      const path =
-        importMode === "UPDATE_POLICY_COURIER"
-          ? "/policies/export-sample-policy-update.csv"
-          : "/policies/export-sample.csv";
+      const res = await backendApi.get("/policies/export-sample.csv", { responseType: "blob" });
       const filename =
-        importMode === "UPDATE_POLICY_COURIER"
-          ? "policies-update-policy-courier-sample.csv"
+        importMode === "UPDATE_POLICY"
+          ? "policies-update-sample.csv"
           : "policies-import-sample.csv";
-      const res = await backendApi.get(path, { responseType: "blob" });
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
       a.href = url;
@@ -281,7 +277,7 @@ export function PolicyCsvImportInline({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="CREATE_ONLY">Create only</SelectItem>
-                <SelectItem value="UPDATE_POLICY_COURIER">Update policy + courier</SelectItem>
+                <SelectItem value="UPDATE_POLICY">Update policy</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -364,7 +360,7 @@ export function PolicyCsvImportInline({
             <DialogTitle>Policy import preview</DialogTitle>
             <DialogDescription>
               First {previewRows.length} row(s) shown. Review status before confirming{" "}
-              {isUpdateMode ? "policy + courier update" : "create-only import"}.
+              {isUpdateMode ? "full policy update" : "create-only import"}.
             </DialogDescription>
           </DialogHeader>
 

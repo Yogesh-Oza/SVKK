@@ -135,43 +135,53 @@ export function formatDigitsForCsvExport(raw: string | null | undefined): string
 
 const GENERAL_REMARK_MARKER = "General Remark:";
 const POLICY_CHANGE_REMARK_MARKER = "Policy Change Remark:";
+const CATEGORY_CHANGE_REMARK_MARKER = "Category Change Remark:";
 
-/** Mirrors frontend parseRemarks — splits combined Policy.remarks storage. */
-export function parseRemarks(raw: string | null | undefined): {
+const REMARK_MARKERS = [
+  { key: "generalRemark" as const, marker: GENERAL_REMARK_MARKER },
+  { key: "policyChangeRemark" as const, marker: POLICY_CHANGE_REMARK_MARKER },
+  { key: "categoryChangeRemark" as const, marker: CATEGORY_CHANGE_REMARK_MARKER },
+];
+
+export type ParsedRemarks = {
   generalRemark: string;
   policyChangeRemark: string;
-} {
+  categoryChangeRemark: string;
+};
+
+const EMPTY_PARSED_REMARKS: ParsedRemarks = {
+  generalRemark: "",
+  policyChangeRemark: "",
+  categoryChangeRemark: "",
+};
+
+/** Mirrors frontend parseRemarks — splits combined Policy.remarks storage. */
+export function parseRemarks(raw: string | null | undefined): ParsedRemarks {
   const text = raw?.trim() ?? "";
-  if (!text) {
-    return { generalRemark: "", policyChangeRemark: "" };
+  if (!text) return { ...EMPTY_PARSED_REMARKS };
+
+  const found = REMARK_MARKERS.map((s) => ({ ...s, idx: text.indexOf(s.marker) }))
+    .filter((s) => s.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
+
+  if (found.length === 0) {
+    return { generalRemark: text, policyChangeRemark: "", categoryChangeRemark: "" };
   }
 
-  const gIdx = text.indexOf(GENERAL_REMARK_MARKER);
-  const pIdx = text.indexOf(POLICY_CHANGE_REMARK_MARKER);
-
-  if (gIdx !== -1 || pIdx !== -1) {
-    let generalRemark = "";
-    let policyChangeRemark = "";
-
-    if (gIdx !== -1) {
-      const gStart = gIdx + GENERAL_REMARK_MARKER.length;
-      const gEnd = pIdx !== -1 && pIdx > gStart ? pIdx : text.length;
-      generalRemark = text.slice(gStart, gEnd).trim();
-    }
-    if (pIdx !== -1) {
-      const pStart = pIdx + POLICY_CHANGE_REMARK_MARKER.length;
-      policyChangeRemark = text.slice(pStart).trim();
-    }
-    return { generalRemark, policyChangeRemark };
+  const result = { ...EMPTY_PARSED_REMARKS };
+  for (let i = 0; i < found.length; i++) {
+    const start = found[i].idx + found[i].marker.length;
+    const end = i + 1 < found.length ? found[i + 1].idx : text.length;
+    result[found[i].key] = text.slice(start, end).trim();
   }
-
-  return { generalRemark: text, policyChangeRemark: "" };
+  return result;
 }
 
-/** Builds combined Policy.remarks from separate CSV columns (round-trip with UI). */
+/** Builds combined Policy.remarks from separate remark parts (round-trip with UI/CSV). */
 export function buildCombinedRemarksFromParts(
   generalRemark: string | null | undefined,
   policyChangeRemark: string | null | undefined,
+  categoryChangeRemark?: string | null | undefined,
 ): string | null {
   const parts: string[] = [];
   if (generalRemark?.trim()) {
@@ -180,6 +190,9 @@ export function buildCombinedRemarksFromParts(
   if (policyChangeRemark?.trim()) {
     parts.push(`${POLICY_CHANGE_REMARK_MARKER}\n${policyChangeRemark.trim()}`);
   }
+  if (categoryChangeRemark?.trim()) {
+    parts.push(`${CATEGORY_CHANGE_REMARK_MARKER}\n${categoryChangeRemark.trim()}`);
+  }
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
@@ -187,12 +200,16 @@ export function buildCombinedRemarksFromParts(
 export function resolvePolicyRemarkCsvCells(
   remarks: string | null | undefined,
   yearRemarks: string | null | undefined,
-): { genRemark: string; policyRemark: string } {
-  const { generalRemark, policyChangeRemark } = parseRemarks(remarks);
+): { genRemark: string; policyRemark: string; categoryChangeRemark: string } {
+  const parsed = parseRemarks(remarks);
   const policyRemark =
-    policyChangeRemark ||
+    parsed.policyChangeRemark ||
     (remarks?.includes(POLICY_CHANGE_REMARK_MARKER)
       ? ""
       : (yearRemarks?.trim() ?? ""));
-  return { genRemark: generalRemark, policyRemark };
+  return {
+    genRemark: parsed.generalRemark,
+    policyRemark,
+    categoryChangeRemark: parsed.categoryChangeRemark,
+  };
 }

@@ -4,6 +4,8 @@ import {
   describePolicyCourierUpdateFields,
   listPolicyCourierUpdateFieldValues,
   validatePolicyCourierUpdateRow,
+  validatePolicyFullUpdateRow,
+  listCsvRowUpdateFieldValues,
 } from "./policy-csv-update-scope.js";
 import { rowToHeaderMap } from "./policy-csv-parse.js";
 import {
@@ -38,15 +40,21 @@ describe("policy-csv-update-scope", () => {
     );
   });
 
-  it("lists field values for preview", () => {
-    const map = rowToHeaderMap(
-      ["ref no", "policy no", "pod"],
-      ["REF-1", "PN-NEW", "POD-99"],
-    );
-    expect(listPolicyCourierUpdateFieldValues(map)).toEqual([
+  it("lists all non-empty columns for full update preview", () => {
+    const header = ["ref no", "policy no", "Holder name", "Village"];
+    const map = rowToHeaderMap(header, ["REF-1", "PN-NEW", "Alice", ""]);
+    expect(listCsvRowUpdateFieldValues(header, map)).toEqual([
       { field: "policy no", value: "PN-NEW" },
-      { field: "pod", value: "POD-99" },
+      { field: "Holder name", value: "Alice" },
     ]);
+  });
+
+  it("validatePolicyFullUpdateRow requires ref no only", () => {
+    const map = rowToHeaderMap(["ref no", "policy no"], ["", "PN-1"]);
+    expect(() => validatePolicyFullUpdateRow(map)).toThrow(/ref no is required/);
+
+    const validMap = rowToHeaderMap(["ref no"], ["REF-1"]);
+    expect(() => validatePolicyFullUpdateRow(validMap)).not.toThrow();
   });
 });
 

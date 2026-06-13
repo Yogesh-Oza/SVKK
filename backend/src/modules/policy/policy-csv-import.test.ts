@@ -131,16 +131,53 @@ describe("policy-csv-import IMPORT_MODE", () => {
     expect(result).toBe("updated");
   });
 
-  it("validateLegacyPolicyCsvRow requires identifier for UPDATE_ONLY", () => {
+  it("validateLegacyPolicyCsvRow requires ref no for UPDATE_ONLY", () => {
     const header = ["year", "month"];
     const row = ["2026-27", "May"];
     expect(() => validateLegacyPolicyCsvRow(header, row, "UPDATE_ONLY")).toThrow(
-      /ref no, SVKK ID, or policy no required/,
+      /ref no is required for policy update/,
     );
   });
 
   const updateHeader = ["ref no", "policy no", "Policy start", "Courier Status"];
   const updateRow = ["REF-UPD-1", "PN-NEW", "01-04-2026", "YES"];
+
+  it("FULL dry-run returns updated when policy found by ref no", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
+      match: { id: "p1" } as never,
+    });
+    const result = await processLegacyPolicyCsvRow(updateHeader, updateRow, {
+      ...baseCtx,
+      importMode: "UPDATE_ONLY",
+      updateMode: "FULL",
+      dryRun: true,
+    });
+    expect(result).toBe("updated");
+    expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
+  });
+
+  it("FULL throws when policy not found for ref no", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({ match: null });
+    await expect(
+      processLegacyPolicyCsvRow(updateHeader, updateRow, {
+        ...baseCtx,
+        importMode: "UPDATE_ONLY",
+        updateMode: "FULL",
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/ref no=REF-UPD-1/);
+  });
+
+  it("FULL requires ref no", async () => {
+    await expect(
+      processLegacyPolicyCsvRow(["policy no"], ["PN-1"], {
+        ...baseCtx,
+        importMode: "UPDATE_ONLY",
+        updateMode: "FULL",
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/ref no is required/);
+  });
 
   it("POLICY_COURIER dry-run returns updated when policy found by ref no", async () => {
     vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({

@@ -265,6 +265,7 @@ export function buildPolicyCsvSampleDemoRow(): Record<string, string> {
     email: "demo@example.com",
     "ref no": "DEMO-REF-001",
     "policy remarK": "Sample import row",
+    "category change remark": "Sample category change",
   };
 
   cells[memberSlotHeader(1, "Name")] = "Demo Member One";

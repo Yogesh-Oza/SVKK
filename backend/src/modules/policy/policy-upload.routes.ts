@@ -36,7 +36,7 @@ function parsePolicyUpdateMode(raw: unknown, importMode: CsvImportMode): CsvUpda
   const t = String(raw ?? "").trim().toUpperCase();
   if (importMode === CsvImportMode.UPDATE_ONLY) {
     if (t === "POLICY_COURIER") return CsvUpdateMode.POLICY_COURIER;
-    return CsvUpdateMode.POLICY_COURIER;
+    return CsvUpdateMode.FULL;
   }
   return CsvUpdateMode.FULL;
 }
@@ -47,8 +47,11 @@ function isSupportedPolicyCsvFormat(
   updateMode: CsvUpdateMode,
 ): boolean {
   if (isLegacyPolicyCsvFormat(header)) return true;
-  return importMode === CsvImportMode.UPDATE_ONLY && updateMode === CsvUpdateMode.POLICY_COURIER
-    && isPolicyCourierUpdateCsvFormat(header);
+  return (
+    importMode === CsvImportMode.UPDATE_ONLY &&
+    updateMode === CsvUpdateMode.POLICY_COURIER &&
+    isPolicyCourierUpdateCsvFormat(header)
+  );
 }
 
 async function findPriorCompletedPolicyImport(checksum: string) {
@@ -68,7 +71,10 @@ function duplicateImportPayload(
   importMode: CsvImportMode,
   updateMode: CsvUpdateMode,
 ) {
-  if (importMode === CsvImportMode.UPDATE_ONLY && updateMode === CsvUpdateMode.POLICY_COURIER) {
+  if (
+    importMode === CsvImportMode.UPDATE_ONLY &&
+    (updateMode === CsvUpdateMode.POLICY_COURIER || updateMode === CsvUpdateMode.FULL)
+  ) {
     return null;
   }
   if (!prior || env.CSV_DUPLICATE_MODE !== "block") return null;

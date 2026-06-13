@@ -9,7 +9,15 @@ import {
   type LegacyCsvRowContext,
 } from "./policy-csv-import.js";
 import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
-import { isPolicyCourierUpdateMode, describePolicyCourierUpdateFields, listPolicyCourierUpdateFieldValues } from "./policy-csv-update-scope.js";
+import {
+  isPolicyCourierUpdateMode,
+  isPolicyFullUpdateMode,
+  isPolicyRefNoUpdateMode,
+  describePolicyCourierUpdateFields,
+  describeCsvRowUpdateFields,
+  listPolicyCourierUpdateFieldValues,
+  listCsvRowUpdateFieldValues,
+} from "./policy-csv-update-scope.js";
 import type { PolicyTypeCache } from "./policy-csv-resolve.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 
@@ -148,7 +156,7 @@ export async function evaluatePolicyPreviewRow(
   };
 
   try {
-    if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+    if (isPolicyRefNoUpdateMode(ctx.importMode, ctx.updateMode)) {
       const { match, conflict } = await resolvePolicyForCsvUpdate(prisma, {
         refNo,
         svkkId,
@@ -164,10 +172,17 @@ export async function evaluatePolicyPreviewRow(
         dryRun: true,
       });
 
+      const updateFields = isPolicyCourierUpdateMode(ctx.updateMode)
+        ? listPolicyCourierUpdateFieldValues(map)
+        : listCsvRowUpdateFieldValues(header, map);
+      const detailMessage = isPolicyCourierUpdateMode(ctx.updateMode)
+        ? describePolicyCourierUpdateFields(map)
+        : describeCsvRowUpdateFields(header, map);
+
       return {
         ...base,
-        detailMessage: describePolicyCourierUpdateFields(map),
-        updateFields: listPolicyCourierUpdateFieldValues(map),
+        detailMessage: detailMessage || undefined,
+        updateFields,
       };
     }
 

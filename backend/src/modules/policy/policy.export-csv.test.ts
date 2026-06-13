@@ -257,6 +257,7 @@ describe("buildPoliciesExportCsv", () => {
     expect(header?.indexOf("Member 3 Name")).toBeLessThan(header?.indexOf("nominee_name") ?? -1);
     expect(header).toContain("Address Line 1: House/Flat No, Building Name");
     expect(header).toContain("policy remarK");
+    expect(header).toContain("category change remark");
     expect(header).toContain("PRE. END DATE");
     expect(header).toContain("Refund Cheque Date");
   });
@@ -273,6 +274,7 @@ describe("buildPoliciesExportCsv", () => {
     expect(headerLine).not.toContain(paymentCsvHeader(2, "method"));
     expect(headerLine).toContain("PRE. END DATE");
     expect(headerLine).toContain("policy remarK");
+    expect(headerLine).toContain("category change remark");
     expect(headerLine).toContain("ref no");
     expect(headerLine.indexOf("Member 2 Name")).toBeLessThan(headerLine.indexOf("nominee_name"));
     expect(dataLine).toContain("Member One");

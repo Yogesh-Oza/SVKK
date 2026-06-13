@@ -170,6 +170,7 @@ export async function createPolicyFromCsvRow(
       buildCombinedRemarksFromParts(
         getCsvField(map, "gen remark"),
         getCsvField(map, "policy remarK", "policy remar"),
+        getCsvField(map, "category change remark"),
       ) || undefined,
     policyUrl: getCsvField(map, "policy url") || undefined,
     policyUrl2: getCsvField(map, "url") || undefined,

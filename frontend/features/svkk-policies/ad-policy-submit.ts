@@ -49,6 +49,9 @@ function buildCombinedRemarks(values: AdPolicyFormValues): string | null {
   if (values.policyChangeRemark.trim()) {
     parts.push(`Policy Change Remark:\n${values.policyChangeRemark.trim()}`);
   }
+  if (values.categoryChangeRemark.trim()) {
+    parts.push(`Category Change Remark:\n${values.categoryChangeRemark.trim()}`);
+  }
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 

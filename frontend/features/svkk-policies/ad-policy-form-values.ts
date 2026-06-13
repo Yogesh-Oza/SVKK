@@ -130,6 +130,7 @@ export type AdPolicyFormValues = {
   courierAddress: string;
   generalRemark: string;
   policyChangeRemark: string;
+  categoryChangeRemark: string;
   refNo: string;
   year: string;
   month: string;
@@ -226,6 +227,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     courierAddress: "",
     generalRemark: "",
     policyChangeRemark: "",
+    categoryChangeRemark: "",
     refNo: "",
     year: "",
     month: POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER[new Date().getMonth()],

@@ -332,7 +332,7 @@ export function PolicyProfileView({
   const fmtDate = (iso: string | null | undefined) => displayVal(iso ? formatDateIso(iso) : "");
   const fmtDob = (iso: string | null | undefined) => displayVal(iso ? formatDateDmy(iso) : "");
   const categoryLabel = resolveCategoryDisplayLabel(row.category, row.categoryText, categoryByKey);
-  const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
+  const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(row.remarks);
   const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
   const status = policyStatus(y);
 
@@ -597,6 +597,7 @@ export function PolicyProfileView({
                 <div className="grid gap-4 sm:grid-cols-2">
                   <DetailField icon={<FileText className="size-4" />} label="General Remark" value={displayVal(generalRemark)} />
                   <DetailField icon={<FileText className="size-4" />} label="Policy Change Remark" value={displayVal(policyChangeRemark)} />
+                  <DetailField icon={<FileText className="size-4" />} label="Category Change Remark" value={displayVal(categoryChangeRemark)} />
                 </div>
               </ProfileSection>
             </TabsContent>

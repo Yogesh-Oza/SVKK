@@ -6,19 +6,38 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
-**Policy CSV update — policy + courier (ref no match)**
+**Policy CSV update — full fields (ref no match)**
 
-Policies page CSV import now supports **Create only** and **Update policy + courier**. Update mode matches policies by `ref no` only and applies scoped fields: `policy no`, `Policy start`, `Policy end`, plus courier columns (`Courier Status`, `courier_date`, `courier_address`, `pod`, `Courier Company`). Export-aligned sample: `GET /policies/export-sample-policy-update.csv`. Preview/confirm via `/upload/policy-csv/preview` with `mode=UPDATE_ONLY` + `updateMode=POLICY_COURIER`.
+Policies page CSV import supports **Create only** and **Update policy**. Update mode matches policies by `ref no` only and applies every non-empty column from the same Format v2 header set as create (`buildPolicyCsvSample`). Sample CSV uses `GET /policies/export-sample.csv` (same as create). Preview/confirm via `/upload/policy-csv/preview` with `mode=UPDATE_ONLY` + `updateMode=FULL` (default). Legacy `updateMode=POLICY_COURIER` remains API-supported for scoped courier-only updates.
 
 | Layer | Role |
 |-------|------|
-| `policy-csv-update-scope.ts` | Writable field allowlist + row validation |
+| `policy-csv-update-scope.ts` | Full vs courier preview helpers + row validation |
 | `policy-csv-resolve.ts` | `resolvePolicyForCsvUpdate` (ref-no-only) |
-| `policy-csv-import.ts` | `updatePolicyCourierCsvRow` scoped writes |
-| `policy-upload.routes.ts` | Parses `updateMode`, accepts minimal update CSV headers |
-| `policy-csv-import-panel.tsx` | 2-way mode selector + update preview UX |
+| `policy-csv-import.ts` | `updatePolicyCsvRow` for FULL; `updatePolicyCourierCsvRow` for legacy |
+| `policy-upload.routes.ts` | Default `updateMode=FULL` for UPDATE_ONLY |
+| `policy-csv-import-panel.tsx` | 2-way mode selector; update uses create-aligned sample |
 
-**Tests:** `policy-csv-update-scope.test.ts`, extended import/preview tests.
+**Tests:** `policy-csv-update-scope.test.ts`, extended import/preview tests for FULL mode.
+
+## Previous task (completed)
+
+**Category Change Remark — policy forms, list snapshot, CSV import/export**
+
+Third remark field alongside General Remark and Policy Change Remark. Stored in combined `Policy.remarks` with marker `Category Change Remark:`. CSV column: `category change remark`. UI: add/edit form Remarks section, policy list snapshot, detail/profile views.
+
+| Layer | Role |
+|-------|------|
+| `ad-policy-form-values.ts` / `ad-policy-submit.ts` | Form field + combined remarks on create/patch |
+| `ad-policy-detail-to-form.ts` / `policy-csv-utils.ts` | `parseRemarks` / `buildCombinedRemarksFromParts` (3 sections) |
+| `policy-csv-flat-headers.ts` | Export/import column `category change remark` |
+| `policy-list-snapshot.tsx` | Three remark fields in expanded list row |
+
+## Previous task (completed)
+
+**Policy CSV update — policy + courier (ref no match, superseded by FULL)**
+
+Earlier scoped update: `updateMode=POLICY_COURIER` limited writable columns to policy no, dates, and courier fields. Replaced in UI by full update; API path retained for backward compatibility.
 
 ## Previous task (completed)
 

@@ -241,6 +241,7 @@ export function buildLegacyPolicyCsvCells(
     "Courier Company": r.courierCompany ?? "",
     "gen remark": remarkCells.genRemark,
     "policy remarK": remarkCells.policyRemark,
+    "category change remark": remarkCells.categoryChangeRemark,
     "ref no": r.referenceNo ?? "",
     "Created at": fmtCsvDateTime(r.createdAt),
     "Updated at": fmtCsvDateTime(r.updatedAt),

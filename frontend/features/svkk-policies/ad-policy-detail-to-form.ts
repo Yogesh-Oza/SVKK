@@ -203,35 +203,38 @@ function groupingFromApi(g: string | null | undefined): string {
   return g?.trim() ?? "";
 }
 
-export function parseRemarks(raw: string | null | undefined): { generalRemark: string; policyChangeRemark: string } {
+export function parseRemarks(raw: string | null | undefined): {
+  generalRemark: string;
+  policyChangeRemark: string;
+  categoryChangeRemark: string;
+} {
   const text = raw?.trim() ?? "";
   if (!text) {
-    return { generalRemark: "", policyChangeRemark: "" };
+    return { generalRemark: "", policyChangeRemark: "", categoryChangeRemark: "" };
   }
 
-  const generalMarker = "General Remark:";
-  const policyMarker = "Policy Change Remark:";
-  const gIdx = text.indexOf(generalMarker);
-  const pIdx = text.indexOf(policyMarker);
+  const markers = [
+    { key: "generalRemark" as const, marker: "General Remark:" },
+    { key: "policyChangeRemark" as const, marker: "Policy Change Remark:" },
+    { key: "categoryChangeRemark" as const, marker: "Category Change Remark:" },
+  ];
 
-  if (gIdx !== -1 || pIdx !== -1) {
-    let generalRemark = "";
-    let policyChangeRemark = "";
+  const found = markers
+    .map((s) => ({ ...s, idx: text.indexOf(s.marker) }))
+    .filter((s) => s.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
 
-    if (gIdx !== -1) {
-      const gStart = gIdx + generalMarker.length;
-      const gEnd = pIdx !== -1 && pIdx > gStart ? pIdx : text.length;
-      generalRemark = text.slice(gStart, gEnd).trim();
-    }
-    if (pIdx !== -1) {
-      const pStart = pIdx + policyMarker.length;
-      policyChangeRemark = text.slice(pStart).trim();
-    }
-    return { generalRemark, policyChangeRemark };
+  if (found.length === 0) {
+    return { generalRemark: text, policyChangeRemark: "", categoryChangeRemark: "" };
   }
 
-  // Backward-compatible: old single remark becomes general remark.
-  return { generalRemark: text, policyChangeRemark: "" };
+  const result = { generalRemark: "", policyChangeRemark: "", categoryChangeRemark: "" };
+  for (let i = 0; i < found.length; i++) {
+    const start = found[i].idx + found[i].marker.length;
+    const end = i + 1 < found.length ? found[i + 1].idx : text.length;
+    result[found[i].key] = text.slice(start, end).trim();
+  }
+  return result;
 }
 
 export type PolicyDetailToFormOptions = {
@@ -413,7 +416,7 @@ export function policyDetailToAdFormValues(
 ): AdPolicyFormValues {
   const base = getAdPolicyInitialValues();
   const y = pickPolicyYear(row.years, options?.yearLabel);
-  const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
+  const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(row.remarks);
   if (!y) {
     return base;
   }
@@ -612,6 +615,7 @@ export function policyDetailToAdFormValues(
       paymentTransactions.length > 0 ? paymentTransactions : base.paymentTransactions,
     generalRemark,
     policyChangeRemark,
+    categoryChangeRemark,
     refNo: row.referenceNo ?? "",
     year: row.periodYearText ?? "",
     month: resolveMonthFormValue(row, y),

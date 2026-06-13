@@ -264,7 +264,7 @@ export function PolicyDetailViewBody({
     row.categoryText,
     categoryByKey,
   );
-  const { generalRemark, policyChangeRemark } = parseRemarks(row.remarks);
+  const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(row.remarks);
   const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
 
   const refundDateRaw = row.refundChequeDate ? formatDateIso(row.refundChequeDate) : "";
@@ -579,6 +579,7 @@ export function PolicyDetailViewBody({
             fields={[
               { label: "General Remark", value: displayVal(generalRemark) },
               { label: "Policy Change Remark", value: displayVal(policyChangeRemark) },
+              { label: "Category Change Remark", value: displayVal(categoryChangeRemark) },
             ]}
           />
         </ViewSubsection>

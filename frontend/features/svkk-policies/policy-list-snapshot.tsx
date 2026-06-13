@@ -31,15 +31,30 @@ function display(v: string | null | undefined): string {
   return s || "—";
 }
 
-/** Prefer policy-change remark, then general, then full text. */
+/** Prefer policy-change remark, then category-change, then general, then full text. */
 export function latestRemarkForSnapshot(remarks: string | null | undefined): string {
   if (!remarks?.trim()) return "—";
-  const { generalRemark, policyChangeRemark } = parseRemarks(remarks);
+  const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(remarks);
   const change = policyChangeRemark.trim();
   if (change) return change;
+  const category = categoryChangeRemark.trim();
+  if (category) return category;
   const general = generalRemark.trim();
   if (general) return general;
   return remarks.trim();
+}
+
+export function remarkSnapshotValues(remarks: string | null | undefined): {
+  generalRemark: string;
+  policyChangeRemark: string;
+  categoryChangeRemark: string;
+} {
+  const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(remarks);
+  return {
+    generalRemark: display(generalRemark),
+    policyChangeRemark: display(policyChangeRemark),
+    categoryChangeRemark: display(categoryChangeRemark),
+  };
 }
 
 /** Resolve label from admin policy types (dynamic) when provided. */
@@ -66,6 +81,7 @@ export function buildPolicySnapshotFields(
   policyTypeOptions?: ReadonlyArray<{ value: string; label: string }>,
 ): PolicySnapshotField[] {
   const latestYear = row.years[0];
+  const remarkValues = remarkSnapshotValues(row.remarks);
   return [
     { label: "Policy no.", value: display(latestYear?.policyNo ?? row.policyNo), mono: true },
     { label: "Month", value: display(row.periodMonthText) },
@@ -76,7 +92,9 @@ export function buildPolicySnapshotFields(
     { label: "Area", value: display(row.area) },
     { label: "Village", value: display(row.village) },
     { label: "Customer ID", value: display(row.insuredParty.customerId), mono: true },
-    { label: "Latest remark", value: latestRemarkForSnapshot(row.remarks) },
+    { label: "General Remark", value: remarkValues.generalRemark },
+    { label: "Policy Change Remark", value: remarkValues.policyChangeRemark },
+    { label: "Category Change Remark", value: remarkValues.categoryChangeRemark },
     { label: "Grouping", value: display(row.policyGrouping) },
     { label: "Policy type", value: display(policyTypeLabelForSnapshot(row, policyTypeOptions)) },
     { label: "Category", value: display(categoryLabelForSnapshot(row, categoryByKey)) },
@@ -93,6 +111,7 @@ export function PolicyListSnapshotPanel({
   policyTypeOptions?: ReadonlyArray<{ value: string; label: string }>;
 }) {
   const fields = buildPolicySnapshotFields(row, categoryByKey, policyTypeOptions);
+  const remarkLabels = new Set(["General Remark", "Policy Change Remark", "Category Change Remark"]);
   return (
     <div className="ring-primary/15 max-w-full rounded-xl border border-blue-200/80 bg-blue-50/90 py-3 pl-4 pr-3 shadow-sm ring-1 dark:border-blue-500/25 dark:bg-blue-950/35 dark:ring-blue-500/20">
       <p className="text-blue-900/80 dark:text-blue-200/90 mb-3 text-[11px] font-bold uppercase tracking-wider">
@@ -109,7 +128,7 @@ export function PolicyListSnapshotPanel({
               className={
                 f.mono
                   ? "text-blue-950 dark:text-blue-50 font-mono text-xs font-semibold break-all"
-                  : f.label === "Latest remark"
+                  : remarkLabels.has(f.label)
                     ? "text-blue-950/90 dark:text-blue-100/90 line-clamp-3 text-xs wrap-break-word"
                     : "text-blue-950 dark:text-blue-50 wrap-break-word font-medium"
               }
