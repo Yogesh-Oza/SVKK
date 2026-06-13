@@ -24,7 +24,6 @@ export type PolicyListYearEntry = {
   policyNo: string | null;
   vkkPremium: Prisma.Decimal | null;
   sumInsured: Prisma.Decimal | null;
-  yearRemarks: string | null;
 };
 
 export type PolicyListGroupedItem = {
@@ -44,7 +43,6 @@ export type PolicyListGroupedItem = {
   village: string | null;
   area: string | null;
   remarks: string | null;
-  yearRemarks: string | null;
   periodMonthText: string | null;
   periodYearText: string | null;
   whatsappNo: string | null;
@@ -69,7 +67,6 @@ const policyInclude = {
       yearLabel: true,
       sumInsured: true,
       vkkPremium: true,
-      yearRemarks: true,
     },
   },
 } satisfies Prisma.PolicyInclude;
@@ -105,7 +102,6 @@ function toYearEntry(p: PolicyRow): PolicyListYearEntry | null {
     policyNo: p.policyNo,
     vkkPremium: y0?.vkkPremium ?? p.listVkkPremium,
     sumInsured: y0?.sumInsured ?? null,
-    yearRemarks: y0?.yearRemarks ?? null,
   };
 }
 
@@ -142,7 +138,6 @@ function buildGroupedItem(
     village: primary.village,
     area: primary.area,
     remarks: primary.remarks,
-    yearRemarks: primary.years[0]?.yearRemarks ?? null,
     periodMonthText: primary.periodMonthText,
     periodYearText: primary.periodYearText ?? years[0]?.yearLabel ?? null,
     whatsappNo: primary.whatsappNo,

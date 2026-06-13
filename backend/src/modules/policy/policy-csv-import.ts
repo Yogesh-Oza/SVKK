@@ -390,8 +390,8 @@ async function updatePolicyCsvRow(
   const courierCo = getCsvField(map, "Courier Company", "courier co");
   if (courierCo) policyUpdate.courierCompany = courierCo;
   const genRemark = getCsvField(map, "gen remark");
-  const policyRemark = getCsvField(map, "policy remarK", "policy remar");
-  const combinedRemarks = buildCombinedRemarksFromParts(genRemark, undefined);
+  const policyChangeRemark = getCsvField(map, "policy remarK", "policy remar");
+  const combinedRemarks = buildCombinedRemarksFromParts(genRemark, policyChangeRemark);
   if (combinedRemarks) policyUpdate.remarks = combinedRemarks;
   const refFromCsv = getCsvField(map, "ref no");
   if (refFromCsv) policyUpdate.referenceNo = refFromCsv;
@@ -458,7 +458,6 @@ async function updatePolicyCsvRow(
     if (excess) yearUpdate.excessShortAmount = parseOptionalDecimal(excess);
     const diff = getCsvField(map, "Diff paid by holder");
     if (diff) yearUpdate.diffPaidByHolder = parseOptionalDecimal(diff);
-    if (policyRemark) yearUpdate.yearRemarks = policyRemark;
 
     if (productTypeRaw) {
       const resolved = resolvePolicyTypeFromCache(productTypeRaw, ctx.typeCache);

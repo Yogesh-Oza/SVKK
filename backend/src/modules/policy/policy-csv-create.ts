@@ -167,8 +167,10 @@ export async function createPolicyFromCsvRow(
     pincode: getCsvField(map, "pincode") || undefined,
     mobileSecondary: getCsvField(map, "Secondary Mobile Number") || undefined,
     remarks:
-      buildCombinedRemarksFromParts(getCsvField(map, "gen remark"), undefined) || undefined,
-    yearRemarks: getCsvField(map, "policy remarK", "policy remar") || undefined,
+      buildCombinedRemarksFromParts(
+        getCsvField(map, "gen remark"),
+        getCsvField(map, "policy remarK", "policy remar"),
+      ) || undefined,
     policyUrl: getCsvField(map, "policy url") || undefined,
     policyUrl2: getCsvField(map, "url") || undefined,
     adProductVariant: policyTypeKeyToAdVariant(resolvedType.key) ?? undefined,

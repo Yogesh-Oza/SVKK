@@ -183,14 +183,16 @@ export function buildCombinedRemarksFromParts(
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
-/** Maps stored remarks + per-year policy remark to flat CSV remark columns. */
+/** Maps stored remarks + legacy yearRemarks to flat CSV remark columns. */
 export function resolvePolicyRemarkCsvCells(
   remarks: string | null | undefined,
   yearRemarks: string | null | undefined,
 ): { genRemark: string; policyRemark: string } {
-  const { generalRemark } = parseRemarks(remarks);
-  return {
-    genRemark: generalRemark,
-    policyRemark: yearRemarks?.trim() ?? "",
-  };
+  const { generalRemark, policyChangeRemark } = parseRemarks(remarks);
+  const policyRemark =
+    policyChangeRemark ||
+    (remarks?.includes(POLICY_CHANGE_REMARK_MARKER)
+      ? ""
+      : (yearRemarks?.trim() ?? ""));
+  return { genRemark: generalRemark, policyRemark };
 }

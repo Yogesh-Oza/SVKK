@@ -109,27 +109,6 @@ describe("policy-list-snapshot", () => {
     expect(fields.find((f) => f.label === "Policy type")?.value).toBe("Asha Kiran");
   });
 
-  it("shows all three remark fields on snapshot", () => {
-    const fields = buildPolicySnapshotFields({
-      policyNo: "PO-1",
-      periodMonthText: "March",
-      periodYearText: "2026",
-      village: "Bharudia",
-      area: "Byculla",
-      remarks: "General Remark:\nhello\n\nPolicy Change Remark:\nupdated",
-      yearRemarks: "year note",
-      policyGrouping: "G1",
-      whatsappNo: "9999999999",
-      insuredParty: { name: "Test Holder", email: "a@b.com", customerId: "C1" },
-      policyType: { name: "AD" },
-      category: { key: "CAT", name: "Category A" },
-      years: [{ yearLabel: "2026", policyNo: "PO-NEW" }],
-    });
-    expect(fields.find((f) => f.label === "General Remark")?.value).toBe("hello");
-    expect(fields.find((f) => f.label === "Policy Change Remark")?.value).toBe("updated");
-    expect(fields.find((f) => f.label === "Policy Remark")?.value).toBe("year note");
-  });
-
   it("prefers policy change remark over general", () => {
     const text = latestRemarkForSnapshot(
       "General Remark: hello\nPolicy Change Remark: updated note",

@@ -104,7 +104,6 @@ export type PolicyDetailViewYear = {
   holderBasicPremium?: unknown;
   holderCumulativeBonus: unknown;
   holderJoiningYear: string | null;
-  yearRemarks?: string | null;
   taxPercent?: unknown;
   taxAmount?: unknown;
   svkkPremium?: unknown;
@@ -580,7 +579,6 @@ export function PolicyDetailViewBody({
             fields={[
               { label: "General Remark", value: displayVal(generalRemark) },
               { label: "Policy Change Remark", value: displayVal(policyChangeRemark) },
-              { label: "Policy Remark", value: displayVal(y?.yearRemarks) },
             ]}
           />
         </ViewSubsection>

@@ -597,7 +597,6 @@ export function PolicyProfileView({
                 <div className="grid gap-4 sm:grid-cols-2">
                   <DetailField icon={<FileText className="size-4" />} label="General Remark" value={displayVal(generalRemark)} />
                   <DetailField icon={<FileText className="size-4" />} label="Policy Change Remark" value={displayVal(policyChangeRemark)} />
-                  <DetailField icon={<FileText className="size-4" />} label="Policy Remark" value={displayVal(y?.yearRemarks)} />
                 </div>
               </ProfileSection>
             </TabsContent>

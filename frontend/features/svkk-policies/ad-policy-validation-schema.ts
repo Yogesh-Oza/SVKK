@@ -94,7 +94,6 @@ export const adPolicyValidationSchema = yup.object({
   policyGrouping: yup.string().trim().optional(),
   generalRemark: yup.string().trim().optional(),
   policyChangeRemark: yup.string().trim().optional(),
-  policyRemark: yup.string().trim().optional(),
 
   members: yup
     .array()

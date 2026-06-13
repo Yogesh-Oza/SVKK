@@ -1209,7 +1209,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               courierAddress: "",
               generalRemark: "",
               policyChangeRemark: "",
-              policyRemark: "",
             });
 
             await syncPolicyTypeFromKey(carriedValues.adProduct);
@@ -1407,11 +1406,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (path.startsWith("courier") || path.startsWith("podNumber") || path.startsWith("notCourier")) {
       return "courier";
     }
-    if (
-      path.startsWith("generalRemark") ||
-      path.startsWith("policyChangeRemark") ||
-      path.startsWith("policyRemark")
-    ) {
+    if (path.startsWith("generalRemark") || path.startsWith("policyChangeRemark")) {
       return "remark";
     }
     return "policy_details";
@@ -1458,14 +1453,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         ? Math.floor(personsFromInput)
         : Math.max(values.members.length + 1, 1);
     const firstTxn = values.paymentTransactions[0];
-    const remarkParts: string[] = [];
-    if (values.generalRemark.trim()) {
-      remarkParts.push(`General Remark:\n${values.generalRemark.trim()}`);
-    }
-    if (values.policyChangeRemark.trim()) {
-      remarkParts.push(`Policy Change Remark:\n${values.policyChangeRemark.trim()}`);
-    }
-    const combinedPolicyRemarks = remarkParts.length > 0 ? remarkParts.join("\n\n") : null;
+    const remarksCombined = [values.policyChangeRemark]
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join("\n\n");
     const payload: PolicyDetailForReceipt = {
       id: policyId,
       policyNo: values.policyNo.trim() || null,
@@ -1475,7 +1466,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       area: values.area.trim() || null,
       village: values.village.trim() || null,
       personsInsuredCount: personCount,
-      remarks: combinedPolicyRemarks,
+      remarks: remarksCombined || null,
       generalRemark: values.generalRemark.trim() || null,
       periodYearText: values.year.trim() || null,
       periodMonthText: values.month.trim() || null,
@@ -1498,7 +1489,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           amountReceived: parseInr(firstTxn?.amountReceived ?? ""),
           bankName: firstTxn?.bankName?.trim() || values.bank.trim() || null,
           utrRef: values.onlineTransactionRef.trim() || null,
-          yearRemarks: values.policyRemark.trim() || null,
+          yearRemarks: remarksCombined || null,
           members: values.members.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim() })),
           receipts: [],
           payments:
@@ -3521,7 +3512,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <CardHeader>
               <CardTitle>Remarks</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>General Remark</Label>
                 <Input
@@ -3536,15 +3527,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <Input
                   name="policyChangeRemark"
                   value={values.policyChangeRemark}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Policy Remark</Label>
-                <Input
-                  name="policyRemark"
-                  value={values.policyRemark}
                   onChange={handleChange}
                   onBlur={handleBlur}
                 />
