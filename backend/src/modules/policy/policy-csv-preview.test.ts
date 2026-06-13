@@ -21,11 +21,12 @@ vi.mock("./policy-csv-resolve.js", async (importOriginal) => {
   return {
     ...actual,
     resolvePolicyForCsvImport: vi.fn(),
+    resolvePolicyForCsvUpdate: vi.fn(),
   };
 });
 
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
-import { resolvePolicyForCsvImport } from "./policy-csv-resolve.js";
+import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
 
 function mockTypeCache(): PolicyTypeCache {
   const types = [{ id: "pt-1", key: "family_floater", name: "Family Floater" }];
@@ -124,6 +125,30 @@ describe("policy-csv-preview", () => {
     const result = await evaluatePolicyPreviewRow(header, row, 2, previewCtx);
     expect(result.status).toBe("ERROR");
     expect(result.errorMessage).toBe("Invalid Product Type");
+  });
+
+  it("evaluatePolicyPreviewRow marks READY for POLICY_COURIER update", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
+      match: { id: "p1" } as never,
+    });
+    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
+
+    const updateHeader = ["ref no", "policy no", "Courier Status"];
+    const updateRow = ["REF-1", "PN-1", "YES"];
+
+    const result = await evaluatePolicyPreviewRow(updateHeader, updateRow, 2, {
+      ...previewCtx,
+      importMode: "UPDATE_ONLY",
+      updateMode: "POLICY_COURIER",
+    });
+    expect(result.status).toBe("READY");
+    expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
+    expect(processLegacyPolicyCsvRow).toHaveBeenCalled();
+    expect(result.detailMessage).toMatch(/policy no = PN-1/);
+    expect(result.updateFields).toEqual([
+      { field: "policy no", value: "PN-1" },
+      { field: "Courier Status", value: "YES" },
+    ]);
   });
 
   it("buildPolicyImportPreview caps previewRows at POLICY_PREVIEW_ROW_LIMIT", async () => {

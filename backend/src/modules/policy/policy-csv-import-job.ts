@@ -10,6 +10,7 @@ import { writeActivityLog } from "../../services/activity-log.service.js";
 import { loadMisScope } from "../../services/mis-scope.service.js";
 import {
   isLegacyPolicyCsvFormat,
+  isPolicyCourierUpdateCsvFormat,
   parseCsvWithOptionalVersion,
 } from "./policy-csv-format.js";
 import { buildErrorReportCsv, type CsvRowError } from "./policy-csv-errors.js";
@@ -86,7 +87,10 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   const checksum = createHash("sha256").update(opts.fileBuffer).digest("hex");
   const prior = await findPriorCompletedImport(checksum, opts.updateMode);
 
-  if (prior && env.CSV_DUPLICATE_MODE === "block" && !opts.force && !opts.dryRun) {
+  const skipDuplicateBlock =
+    opts.importMode === CsvImportMode.UPDATE_ONLY && opts.updateMode === CsvUpdateMode.POLICY_COURIER;
+
+  if (prior && env.CSV_DUPLICATE_MODE === "block" && !opts.force && !opts.dryRun && !skipDuplicateBlock) {
     throw new AppError("DUPLICATE_CSV_IMPORT", "This file was already imported successfully", 409);
   }
 
@@ -129,7 +133,14 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
 
   const policyScope = await loadMisScope(opts.userId, opts.permissions, "policy");
   const legacyFormat = isLegacyPolicyCsvFormat(header);
-  const typeCache = legacyFormat ? await buildPolicyTypeCache(prisma) : null;
+  const policyCourierUpdateFormat =
+    opts.updateMode === CsvUpdateMode.POLICY_COURIER && isPolicyCourierUpdateCsvFormat(header);
+  const supportedFormat = legacyFormat || policyCourierUpdateFormat;
+  const typeCache = supportedFormat ? await buildPolicyTypeCache(prisma) : null;
+
+  if (!supportedFormat) {
+    throw new AppError("CSV_FORMAT", "Unsupported CSV format for policy import", 400);
+  }
 
   const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
 
@@ -147,12 +158,13 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
 
       try {
         if (opts.dryRun) {
-          if (legacyFormat && typeCache) {
+          if (supportedFormat && typeCache) {
             const outcome = await processLegacyPolicyCsvRow(header, row, {
               userId: opts.userId,
               permissions: opts.permissions,
               scope: policyScope,
               importMode: opts.importMode,
+              updateMode: opts.updateMode,
               typeCache,
               dryRun: true,
             });
@@ -165,12 +177,13 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
           continue;
         }
 
-        if (legacyFormat && typeCache) {
+        if (supportedFormat && typeCache) {
           const outcome = await processLegacyPolicyCsvRow(header, row, {
             userId: opts.userId,
             permissions: opts.permissions,
             scope: policyScope,
             importMode: opts.importMode,
+            updateMode: opts.updateMode,
             typeCache,
           });
           if (outcome === "created") created++;

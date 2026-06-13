@@ -1,4 +1,4 @@
-import type { CsvImportMode, Prisma } from "@prisma/client";
+import type { CsvImportMode, CsvUpdateMode, Prisma } from "@prisma/client";
 import {
   ChequeStatus,
   PayMethod,
@@ -26,9 +26,15 @@ import {
   policyTypeKeyToAdVariant,
   resolveImportPolicyChart,
   resolvePolicyForCsvImport,
+  resolvePolicyForCsvUpdate,
   resolvePolicyTypeFromCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
+import {
+  hasPolicyCourierUpdateFields,
+  isPolicyCourierUpdateMode,
+  validatePolicyCourierUpdateRow,
+} from "./policy-csv-update-scope.js";
 import { prisma } from "../../lib/prisma.js";
 import { createPolicyFromCsvRow, validateCreateRequiredFields } from "./policy-csv-create.js";
 
@@ -39,6 +45,7 @@ export type LegacyCsvRowContext = {
   permissions: Set<string>;
   scope: GeoScope;
   importMode: CsvImportMode;
+  updateMode?: CsvUpdateMode;
   typeCache: PolicyTypeCache;
   dryRun?: boolean;
 };
@@ -178,12 +185,84 @@ async function replaceYearPaymentsFromCsv(
   }
 }
 
+async function updatePolicyCourierCsvRow(
+  tx: Prisma.TransactionClient,
+  header: string[],
+  row: string[],
+  ctx: LegacyCsvRowContext,
+): Promise<void> {
+  const map = rowToHeaderMap(header, row);
+  const refNo = getCsvField(map, "ref no");
+  const svkkId = getCsvField(map, "SVKK ID");
+  const policyNo = getCsvField(map, "policy no");
+
+  validatePolicyCourierUpdateRow(map);
+
+  if (!ctx.permissions.has("policy:update")) {
+    throw new Error("policy:update permission required for CSV update");
+  }
+
+  const { match: policy, conflict } = await resolvePolicyForCsvUpdate(tx, {
+    refNo,
+    svkkId,
+    policyNo,
+  });
+
+  if (conflict) throw new Error(conflict);
+  if (!policy) {
+    throw new Error(`Policy not found for ref no=${refNo || "—"}`);
+  }
+
+  assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
+
+  const yearLabel = getCsvField(map, "year") || policy.years[0]?.yearLabel;
+  const year = yearLabel
+    ? policy.years.find((y) => y.yearLabel === yearLabel) ?? policy.years[0]
+    : policy.years[0];
+
+  const policyUpdate: Prisma.PolicyUpdateInput = {};
+  const newPolicyNo = getCsvField(map, "policy no");
+  if (newPolicyNo) policyUpdate.policyNo = newPolicyNo;
+
+  const notCourier = getCsvField(map, "Courier Status", "not_courier");
+  if (notCourier) policyUpdate.courierStatus = notCourier;
+  const courierDate = getCsvField(map, "courier_date");
+  if (courierDate) policyUpdate.courierDate = parseOptionalDate(courierDate);
+  const courierAddr = getCsvField(map, "courier_address");
+  if (courierAddr) policyUpdate.courierAddress = courierAddr;
+  const pod = getCsvField(map, "pod");
+  if (pod) policyUpdate.podNumber = pod;
+  const courierCo = getCsvField(map, "Courier Company", "courier co");
+  if (courierCo) policyUpdate.courierCompany = courierCo;
+
+  if (Object.keys(policyUpdate).length) {
+    await tx.policy.update({ where: { id: policy.id }, data: policyUpdate });
+  }
+
+  if (year) {
+    const yearUpdate: Prisma.PolicyYearUpdateInput = {};
+    const start = getCsvField(map, "Policy start");
+    if (start) yearUpdate.policyStart = parseOptionalDate(start);
+    const end = getCsvField(map, "Policy end");
+    if (end) yearUpdate.policyEnd = parseOptionalDate(end);
+
+    if (Object.keys(yearUpdate).length) {
+      await tx.policyYear.update({ where: { id: year.id }, data: yearUpdate });
+    }
+  }
+}
+
 async function updatePolicyCsvRow(
   tx: Prisma.TransactionClient,
   header: string[],
   row: string[],
   ctx: LegacyCsvRowContext,
 ): Promise<void> {
+  if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+    await updatePolicyCourierCsvRow(tx, header, row, ctx);
+    return;
+  }
+
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
@@ -421,6 +500,28 @@ export async function processLegacyPolicyCsvRow(
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
 
+  if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+    validatePolicyCourierUpdateRow(map);
+    if (!ctx.permissions.has("policy:update")) {
+      throw new Error("policy:update permission required for CSV update");
+    }
+
+    const { match: policy, conflict } = await resolvePolicyForCsvUpdate(prisma, {
+      refNo,
+      svkkId,
+      policyNo,
+    });
+
+    if (conflict) throw new Error(conflict);
+    if (!policy) {
+      throw new Error(`Policy not found (UPDATE_ONLY mode; ref no=${refNo || "—"})`);
+    }
+
+    if (ctx.dryRun) return "updated";
+    await prisma.$transaction(async (tx) => updatePolicyCourierCsvRow(tx, header, row, ctx));
+    return "updated";
+  }
+
   const { match: policy, conflict } = await resolvePolicyForCsvImport(prisma, {
     svkkId,
     policyNo,
@@ -440,7 +541,7 @@ export async function processLegacyPolicyCsvRow(
 
   if (ctx.importMode === "UPDATE_ONLY") {
     throw new Error(
-      `Policy not found (UPDATE_ONLY mode; SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"})`,
+      `Policy not found (UPDATE_ONLY mode; SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"})`,
     );
   }
 

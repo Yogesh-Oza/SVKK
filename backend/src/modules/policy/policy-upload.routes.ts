@@ -11,7 +11,7 @@ import { prisma } from "../../lib/prisma.js";
 import { CsvImportMode, CsvJobStatus, CsvUpdateMode } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
 import { loadMisScope } from "../../services/mis-scope.service.js";
-import { isLegacyPolicyCsvFormat, parseCsvWithOptionalVersion } from "./policy-csv-format.js";
+import { isLegacyPolicyCsvFormat, isPolicyCourierUpdateCsvFormat, parseCsvWithOptionalVersion } from "./policy-csv-format.js";
 import { runPolicyCsvImportFromPath } from "./policy-csv-import-job.js";
 import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
@@ -32,6 +32,25 @@ function parsePolicyImportMode(raw: unknown): CsvImportMode {
   return CsvImportMode.CREATE_ONLY;
 }
 
+function parsePolicyUpdateMode(raw: unknown, importMode: CsvImportMode): CsvUpdateMode {
+  const t = String(raw ?? "").trim().toUpperCase();
+  if (importMode === CsvImportMode.UPDATE_ONLY) {
+    if (t === "POLICY_COURIER") return CsvUpdateMode.POLICY_COURIER;
+    return CsvUpdateMode.POLICY_COURIER;
+  }
+  return CsvUpdateMode.FULL;
+}
+
+function isSupportedPolicyCsvFormat(
+  header: string[],
+  importMode: CsvImportMode,
+  updateMode: CsvUpdateMode,
+): boolean {
+  if (isLegacyPolicyCsvFormat(header)) return true;
+  return importMode === CsvImportMode.UPDATE_ONLY && updateMode === CsvUpdateMode.POLICY_COURIER
+    && isPolicyCourierUpdateCsvFormat(header);
+}
+
 async function findPriorCompletedPolicyImport(checksum: string) {
   return prisma.csvImportJob.findFirst({
     where: {
@@ -46,7 +65,12 @@ async function findPriorCompletedPolicyImport(checksum: string) {
 function duplicateImportPayload(
   env: Env,
   prior: Awaited<ReturnType<typeof findPriorCompletedPolicyImport>>,
+  importMode: CsvImportMode,
+  updateMode: CsvUpdateMode,
 ) {
+  if (importMode === CsvImportMode.UPDATE_ONLY && updateMode === CsvUpdateMode.POLICY_COURIER) {
+    return null;
+  }
   if (!prior || env.CSV_DUPLICATE_MODE !== "block") return null;
   return {
     jobId: prior.id,
@@ -83,6 +107,7 @@ export function createPolicyUploadRouter(env: Env) {
         }
 
         const importMode = parsePolicyImportMode(req.body.mode ?? req.query.mode);
+        const updateMode = parsePolicyUpdateMode(req.body.updateMode ?? req.query.updateMode, importMode);
         const checksum = createHash("sha256").update(req.file.buffer).digest("hex");
         const fileName = req.file.originalname ?? "upload.csv";
 
@@ -92,7 +117,7 @@ export function createPolicyUploadRouter(env: Env) {
         if (!header.length) {
           throw new AppError("CSV_EMPTY", "CSV has no header row", 400);
         }
-        if (!isLegacyPolicyCsvFormat(header)) {
+        if (!isSupportedPolicyCsvFormat(header, importMode, updateMode)) {
           throw new AppError("CSV_FORMAT", "Policy import requires CSV format v2 headers", 400);
         }
 
@@ -120,6 +145,7 @@ export function createPolicyUploadRouter(env: Env) {
             permissions: req.permissions!,
             scope: policyScope,
             importMode,
+            updateMode,
             typeCache,
           },
         );
@@ -132,7 +158,7 @@ export function createPolicyUploadRouter(env: Env) {
           checksum,
           filePath,
           importMode,
-          updateMode: CsvUpdateMode.FULL,
+          updateMode,
           fileName,
         });
 
@@ -142,7 +168,7 @@ export function createPolicyUploadRouter(env: Env) {
           summary,
           warnings,
           csvVersion: "v2",
-          duplicateImport: duplicateImportPayload(env, prior),
+          duplicateImport: duplicateImportPayload(env, prior, importMode, updateMode),
         });
       } catch (e) {
         next(e);

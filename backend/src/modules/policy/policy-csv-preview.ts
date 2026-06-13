@@ -8,7 +8,8 @@ import {
   processLegacyPolicyCsvRow,
   type LegacyCsvRowContext,
 } from "./policy-csv-import.js";
-import { resolvePolicyForCsvImport } from "./policy-csv-resolve.js";
+import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
+import { isPolicyCourierUpdateMode, describePolicyCourierUpdateFields, listPolicyCourierUpdateFieldValues } from "./policy-csv-update-scope.js";
 import type { PolicyTypeCache } from "./policy-csv-resolve.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 
@@ -47,6 +48,10 @@ export type PolicyPreviewRow = {
   village: string;
   status: PolicyPreviewRowStatus;
   errorMessage?: string;
+  /** Non-error detail (e.g. fields to update in POLICY_COURIER mode). */
+  detailMessage?: string;
+  /** Field/value pairs to apply in POLICY_COURIER update mode. */
+  updateFields?: Array<{ field: string; value: string }>;
 };
 
 function previewSecret(env: Env): string {
@@ -125,7 +130,7 @@ export async function evaluatePolicyPreviewRow(
   header: string[],
   row: string[],
   rowNumber: number,
-  ctx: Pick<LegacyCsvRowContext, "importMode" | "typeCache" | "permissions" | "scope" | "userId">,
+  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
 ): Promise<PolicyPreviewRow> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
@@ -143,6 +148,29 @@ export async function evaluatePolicyPreviewRow(
   };
 
   try {
+    if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+      const { match, conflict } = await resolvePolicyForCsvUpdate(prisma, {
+        refNo,
+        svkkId,
+        policyNo,
+      });
+
+      if (conflict) {
+        return { ...base, status: "CONFLICT", errorMessage: conflict };
+      }
+
+      await processLegacyPolicyCsvRow(header, row, {
+        ...ctx,
+        dryRun: true,
+      });
+
+      return {
+        ...base,
+        detailMessage: describePolicyCourierUpdateFields(map),
+        updateFields: listPolicyCourierUpdateFieldValues(map),
+      };
+    }
+
     const { match, conflict } = await resolvePolicyForCsvImport(prisma, {
       svkkId,
       policyNo,
@@ -178,7 +206,7 @@ export async function buildPolicyImportPreview(
   header: string[],
   dataRows: string[][],
   headerOffset: number,
-  ctx: Pick<LegacyCsvRowContext, "importMode" | "typeCache" | "permissions" | "scope" | "userId">,
+  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
 ): Promise<{ previewRows: PolicyPreviewRow[]; summary: PolicyPreviewSummary }> {
   const summary = emptyPolicyPreviewSummary();
   summary.totalRows = dataRows.length;

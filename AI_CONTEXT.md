@@ -6,6 +6,22 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy CSV update — policy + courier (ref no match)**
+
+Policies page CSV import now supports **Create only** and **Update policy + courier**. Update mode matches policies by `ref no` only and applies scoped fields: `policy no`, `Policy start`, `Policy end`, plus courier columns (`Courier Status`, `courier_date`, `courier_address`, `pod`, `Courier Company`). Export-aligned sample: `GET /policies/export-sample-policy-update.csv`. Preview/confirm via `/upload/policy-csv/preview` with `mode=UPDATE_ONLY` + `updateMode=POLICY_COURIER`.
+
+| Layer | Role |
+|-------|------|
+| `policy-csv-update-scope.ts` | Writable field allowlist + row validation |
+| `policy-csv-resolve.ts` | `resolvePolicyForCsvUpdate` (ref-no-only) |
+| `policy-csv-import.ts` | `updatePolicyCourierCsvRow` scoped writes |
+| `policy-upload.routes.ts` | Parses `updateMode`, accepts minimal update CSV headers |
+| `policy-csv-import-panel.tsx` | 2-way mode selector + update preview UX |
+
+**Tests:** `policy-csv-update-scope.test.ts`, extended import/preview tests.
+
+## Previous task (completed)
+
 **Future Premium — API-backed calculations (same as Lookup / Add Policy)**
 
 Policy list (database) on Future Premium no longer builds quotes from paginated `export.json` rows (incomplete member slots → wrong gross/net when `Members: 2`). It now uses `GET /policies?groupBySvkk=false&page=&pageSize=` for the filtered page, then `GET /policies/:id` per row and `policyDetailToLookupResult` (`quoteFromStoredFormValues` for Current Year, chart recalc for future offsets). Member count follows `quote.rows.length`. CSV upload path still uses `buildFutureResults`. Files: `policy-lookup-api.ts` (`fetchFuturePremiumPageFromApi`), `future-premium-panel.tsx`.

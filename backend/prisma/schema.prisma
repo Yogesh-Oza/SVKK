@@ -40,6 +40,7 @@ enum CsvUpdateMode {
   POD_ONLY
   POLICY_ONLY
   FULL
+  POLICY_COURIER
 }
 
 enum CsvImportMode {

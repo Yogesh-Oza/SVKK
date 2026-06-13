@@ -13,6 +13,7 @@ import {
   buildLegacyPoliciesCsv,
   buildLegacyPolicyCsvCells,
   buildPolicyCsvSample,
+  buildPolicyCourierUpdateSample,
   csvCell,
 } from "./policy-csv-format.js";
 
@@ -51,7 +52,7 @@ const exportInclude = {
 
 export type PolicyExportRow = Prisma.PolicyGetPayload<{ include: typeof exportInclude }>;
 
-export { buildPolicyCsvSample };
+export { buildPolicyCsvSample, buildPolicyCourierUpdateSample };
 
 export function pickExportPolicyYear(
   years: PolicyExportRow["years"],

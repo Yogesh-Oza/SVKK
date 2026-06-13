@@ -22,10 +22,11 @@ vi.mock("./policy-csv-resolve.js", async (importOriginal) => {
   return {
     ...actual,
     resolvePolicyForCsvImport: vi.fn(),
+    resolvePolicyForCsvUpdate: vi.fn(),
   };
 });
 
-import { resolvePolicyForCsvImport } from "./policy-csv-resolve.js";
+import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
 import { validateCreateRequiredFields } from "./policy-csv-create.js";
 
 function mockTypeCache(): PolicyTypeCache {
@@ -136,5 +137,45 @@ describe("policy-csv-import IMPORT_MODE", () => {
     expect(() => validateLegacyPolicyCsvRow(header, row, "UPDATE_ONLY")).toThrow(
       /ref no, SVKK ID, or policy no required/,
     );
+  });
+
+  const updateHeader = ["ref no", "policy no", "Policy start", "Courier Status"];
+  const updateRow = ["REF-UPD-1", "PN-NEW", "01-04-2026", "YES"];
+
+  it("POLICY_COURIER dry-run returns updated when policy found by ref no", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
+      match: { id: "p1" } as never,
+    });
+    const result = await processLegacyPolicyCsvRow(updateHeader, updateRow, {
+      ...baseCtx,
+      importMode: "UPDATE_ONLY",
+      updateMode: "POLICY_COURIER",
+      dryRun: true,
+    });
+    expect(result).toBe("updated");
+    expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
+  });
+
+  it("POLICY_COURIER throws when policy not found for ref no", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({ match: null });
+    await expect(
+      processLegacyPolicyCsvRow(updateHeader, updateRow, {
+        ...baseCtx,
+        importMode: "UPDATE_ONLY",
+        updateMode: "POLICY_COURIER",
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/ref no=REF-UPD-1/);
+  });
+
+  it("POLICY_COURIER requires ref no", async () => {
+    await expect(
+      processLegacyPolicyCsvRow(["policy no"], ["PN-1"], {
+        ...baseCtx,
+        importMode: "UPDATE_ONLY",
+        updateMode: "POLICY_COURIER",
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/ref no is required/);
   });
 });

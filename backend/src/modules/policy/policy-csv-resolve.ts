@@ -236,6 +236,48 @@ export async function resolvePolicyForCsvImport(
   return { match: null, matchedBy: null };
 }
 
+type CsvUpdateMatchInput = { refNo: string; svkkId?: string; policyNo?: string };
+
+/**
+ * Ref-no-only lookup for POLICY_COURIER CSV updates.
+ * Flags SVKK ID mismatch and policy-no collisions with other policies.
+ */
+export async function resolvePolicyForCsvUpdate(
+  tx: Prisma.TransactionClient,
+  input: CsvUpdateMatchInput,
+): Promise<{ match: PolicyWithRelations | null; conflict?: string }> {
+  const refNo = input.refNo.trim();
+  if (!refNo) {
+    return { match: null };
+  }
+
+  const policy = await findByRefNo(tx, refNo);
+  if (!policy) {
+    return { match: null };
+  }
+
+  const svkkId = (input.svkkId ?? "").trim();
+  if (svkkId && policy.insuredParty.svkkPublicId !== svkkId) {
+    return {
+      match: null,
+      conflict: "SVKK ID does not match policy for ref no",
+    };
+  }
+
+  const policyNo = (input.policyNo ?? "").trim();
+  if (policyNo && policy.policyNo !== policyNo) {
+    const other = await findByPolicyNo(tx, policyNo);
+    if (other && other.id !== policy.id) {
+      return {
+        match: null,
+        conflict: "policy no already belongs to another policy",
+      };
+    }
+  }
+
+  return { match: policy };
+}
+
 /** Pick latest chart for policy type (prefers COMBINED, then HOLDER). */
 export async function resolveImportPolicyChart(
   tx: Prisma.TransactionClient,

@@ -56,6 +56,7 @@ export {
 
 import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import { pickExportHeaders } from "./policy-csv-export-column-groups.js";
+import { POLICY_COURIER_WRITABLE_HEADERS } from "./policy-csv-update-scope.js";
 
 /** @deprecated Use POLICY_CSV_FLAT_HEADERS */
 export const POLICY_CSV_LEGACY_HEADERS = POLICY_CSV_FLAT_HEADERS;
@@ -80,6 +81,12 @@ export function normalizeCsvHeader(h: string): string {
 export function isLegacyPolicyCsvFormat(header: string[]): boolean {
   const h = header.map(normalizeCsvHeader);
   return h.includes("ref no") && h.includes("svkk id") && h.includes("policy no");
+}
+
+/** Minimal header set for POLICY_COURIER scoped CSV updates. */
+export function isPolicyCourierUpdateCsvFormat(header: string[]): boolean {
+  const h = header.map(normalizeCsvHeader);
+  return h.includes("ref no");
 }
 
 /** Detect v2 vs legacy from header row. */
@@ -275,6 +282,30 @@ export function buildPolicyCsvSample(): string {
   const demo = buildPolicyCsvSampleDemoRow();
   const headerLine = sampleHeaders.map(csvCell).join(",");
   const cells = sampleHeaders.map((h) => demo[h] ?? "");
+  return `\uFEFF${headerLine}\r\n${cells.map(csvCell).join(",")}\r\n`;
+}
+
+/** Headers for POLICY_COURIER update sample/template CSV. */
+export function buildPolicyCourierUpdateSampleHeaders(): string[] {
+  return ["ref no", ...POLICY_COURIER_WRITABLE_HEADERS];
+}
+
+/** Sample CSV for policy+courier scoped updates (export-aligned column names). */
+export function buildPolicyCourierUpdateSample(): string {
+  const headers = buildPolicyCourierUpdateSampleHeaders();
+  const demo: Record<string, string> = {
+    "ref no": "REF-DEMO-001",
+    "policy no": "PN-DEMO-001",
+    "Policy start": "01-04-2026",
+    "Policy end": "31-03-2027",
+    "Courier Status": "YES",
+    courier_date: "10-06-2026",
+    courier_address: "Demo address line",
+    pod: "POD-DEMO-001",
+    "Courier Company": "Demo Courier Co",
+  };
+  const headerLine = headers.map(csvCell).join(",");
+  const cells = headers.map((h) => demo[h] ?? "");
   return `\uFEFF${headerLine}\r\n${cells.map(csvCell).join(",")}\r\n`;
 }
 

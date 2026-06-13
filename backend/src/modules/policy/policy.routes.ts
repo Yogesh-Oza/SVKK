@@ -34,6 +34,7 @@ import {
   buildPoliciesExportCsv,
   buildPoliciesExportRowObjects,
   buildPolicyCsvSample,
+  buildPolicyCourierUpdateSample,
   queryPolicyListForExport,
 } from "./policy.export-csv.js";
 import {
@@ -479,6 +480,19 @@ export function createPolicyRouter(env: Env) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-import-sample.csv"');
       res.send(buildPolicyCsvSample());
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.get("/export-sample-policy-update.csv", requirePermission("policy:read"), async (_req, res, next) => {
+    try {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="policies-update-policy-courier-sample.csv"',
+      );
+      res.send(buildPolicyCourierUpdateSample());
     } catch (e) {
       next(e);
     }
