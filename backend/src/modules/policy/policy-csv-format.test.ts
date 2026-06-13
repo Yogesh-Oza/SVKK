@@ -84,19 +84,19 @@ describe("formatPolicyUrlForCsvExport", () => {
 });
 
 describe("policy remark CSV columns", () => {
-  it("splits combined Policy.remarks into gen remark and policy remarK", () => {
-    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+  it("splits combined Policy.remarks into gen remark and policy remarK from yearRemarks", () => {
+    const combined = buildCombinedRemarksFromParts("test 1", "change note");
     expect(parseRemarks(combined)).toEqual({
       generalRemark: "test 1",
-      policyChangeRemark: "test 1",
+      policyChangeRemark: "change note",
     });
-    expect(resolvePolicyRemarkCsvCells(combined, "Sample import row")).toEqual({
+    expect(resolvePolicyRemarkCsvCells(combined, "year policy note")).toEqual({
       genRemark: "test 1",
-      policyRemark: "test 1",
+      policyRemark: "year policy note",
     });
   });
 
-  it("falls back to yearRemarks for policy remarK when no policy change remark stored", () => {
+  it("exports policy remarK from yearRemarks", () => {
     expect(resolvePolicyRemarkCsvCells("Legacy general note", "Sample import row")).toEqual({
       genRemark: "Legacy general note",
       policyRemark: "Sample import row",
@@ -104,10 +104,10 @@ describe("policy remark CSV columns", () => {
   });
 
   it("exports split remark columns without label prefixes", () => {
-    const combined = buildCombinedRemarksFromParts("test 1", "test 1");
+    const combined = buildCombinedRemarksFromParts("test 1", "change note");
     const row = {
       remarks: combined,
-      years: [{ yearRemarks: "Sample import row", members: [], payments: [] }],
+      years: [{ yearRemarks: "year policy note", members: [], payments: [] }],
     } as Parameters<typeof buildLegacyPolicyCsvCells>[0];
     const headers = ["gen remark", "policy remarK"];
     const paymentPlan = buildPaymentExportPlan([], 1);
@@ -120,6 +120,6 @@ describe("policy remark CSV columns", () => {
       paymentPlan,
     );
     expect(cells[headers.indexOf("gen remark")]).toBe("test 1");
-    expect(cells[headers.indexOf("policy remarK")]).toBe("test 1");
+    expect(cells[headers.indexOf("policy remarK")]).toBe("year policy note");
   });
 });

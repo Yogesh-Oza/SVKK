@@ -147,6 +147,7 @@ export type SvkkPolicyDetailForForm = {
     bankName?: string | null;
     bankAccountLast4?: string | null;
     paymentMode?: string | null;
+    yearRemarks?: string | null;
     payments?: Array<{
       id?: string | null;
       createdAt?: string | null;
@@ -612,6 +613,7 @@ export function policyDetailToAdFormValues(
       paymentTransactions.length > 0 ? paymentTransactions : base.paymentTransactions,
     generalRemark,
     policyChangeRemark,
+    policyRemark: y.yearRemarks?.trim() ?? "",
     refNo: row.referenceNo ?? "",
     year: row.periodYearText ?? "",
     month: resolveMonthFormValue(row, y),

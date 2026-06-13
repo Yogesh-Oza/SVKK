@@ -137,6 +137,7 @@ type ListPolicy = {
   personsInsuredCount: number | null;
   area: string | null;
   remarks: string | null;
+  yearRemarks?: string | null;
   adProductVariant?: string | null;
   periodMonthText?: string | null;
   periodYearText?: string | null;
