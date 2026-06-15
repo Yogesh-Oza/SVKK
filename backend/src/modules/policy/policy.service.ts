@@ -11,6 +11,7 @@ import {
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeMobile } from "../../domain/phone.js";
+import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
@@ -31,7 +32,6 @@ import {
   generateReferenceNo,
 } from "./policy-business.js";
 import {
-  assertUniqueTransactionNumbersInBatch,
   normalizeTxnNumber,
   prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
@@ -116,8 +116,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     let party: InsuredParty | null = null;
     if (customerId) {
       party = await tx.insuredParty.findUnique({ where: { customerId } });
-      if (party && normalizeMobile(party.mobile) !== mobile) {
-        throw new AppError("CONFLICT", "Customer ID is linked to a different mobile number", 409);
+      if (party) {
+        party = await reconcileInsuredPartyMobile(tx, party, mobile);
       }
     }
     if (!party) {
@@ -653,19 +653,19 @@ async function applyInsuredPartyPatch(
   if (slim.mobile !== undefined) {
     data.mobile = normalizeMobile(slim.mobile);
   }
-  if (Object.keys(data).length === 0) {
+
+  const hasMobilePatch = slim.mobile !== undefined;
+  if (Object.keys(data).length === 0 && !hasMobilePatch) {
     return false;
   }
 
   const current = await tx.insuredParty.findUniqueOrThrow({ where: { id: partyId } });
-  if (slim.mobile !== undefined) {
-    const m = normalizeMobile(slim.mobile);
-    if (m !== current.mobile) {
-      const clash = await tx.insuredParty.findFirst({ where: { mobile: m, NOT: { id: partyId } } });
-      if (clash) {
-        throw new AppError("CONFLICT", "Mobile number already in use", 409);
-      }
-    }
+  if (hasMobilePatch) {
+    await reconcileInsuredPartyMobile(tx, current, slim.mobile!);
+    delete data.mobile;
+  }
+  if (Object.keys(data).length === 0) {
+    return true;
   }
   if (
     slim.svkkPublicId !== undefined &&
@@ -697,7 +697,6 @@ async function insertPaymentsForYear(
   policyYearId: string,
   payments: PaymentReplaceRow[],
 ) {
-  assertUniqueTransactionNumbersInBatch(payments);
   for (const rawRow of payments) {
     const paymentRow = sanitizePaymentReplaceRow(rawRow);
     const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);
@@ -733,41 +732,26 @@ async function insertPaymentsForYear(
       });
       chequeId = ch.id;
     }
-    try {
-      await tx.payment.create({
-        data: {
-          policyYearId,
-          amount: paymentRow.amount,
-          method: paymentRow.method,
-          status: mappedStatus,
-          chequeId: chequeId ?? null,
-          transactionNumber: txnNumber,
-          transactionDate: paymentRow.transactionDate ?? undefined,
-          bankName: paymentRow.bankName ?? undefined,
-          branchName: paymentRow.branchName ?? undefined,
-          accountNumber: paymentRow.accountNumber ?? undefined,
-          nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
-          ifscCode: paymentRow.ifscCode ?? undefined,
-          notOver: paymentRow.notOver ?? undefined,
-          dishonourReason: paymentRow.dishonourReason ?? undefined,
-          returnCharges: paymentRow.returnCharges ?? undefined,
-          otherCharges: paymentRow.otherCharges ?? undefined,
-        },
-      });
-    } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2002" &&
-        txnNumber
-      ) {
-        throw new AppError(
-          "VALIDATION",
-          `Transaction/cheque number "${txnNumber}" is already used on another policy. Use a unique number.`,
-          400,
-        );
-      }
-      throw err;
-    }
+    await tx.payment.create({
+      data: {
+        policyYearId,
+        amount: paymentRow.amount,
+        method: paymentRow.method,
+        status: mappedStatus,
+        chequeId: chequeId ?? null,
+        transactionNumber: txnNumber,
+        transactionDate: paymentRow.transactionDate ?? undefined,
+        bankName: paymentRow.bankName ?? undefined,
+        branchName: paymentRow.branchName ?? undefined,
+        accountNumber: paymentRow.accountNumber ?? undefined,
+        nameAsPerCheque: paymentRow.nameAsPerCheque ?? undefined,
+        ifscCode: paymentRow.ifscCode ?? undefined,
+        notOver: paymentRow.notOver ?? undefined,
+        dishonourReason: paymentRow.dishonourReason ?? undefined,
+        returnCharges: paymentRow.returnCharges ?? undefined,
+        otherCharges: paymentRow.otherCharges ?? undefined,
+      },
+    });
   }
 }
 

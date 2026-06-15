@@ -6,6 +6,38 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Add Policy — remarks summary below header cards**
+
+On Add AD Policy (non-edit), a **Remarks** card appears below SVKK ID / Customer ID / Policy No / Policy Type / VKK Premium and above Calculated Premium Summary. Shows General Remark, Policy Change Remark, and Category Change Remark from loaded form state.
+
+## Previous task (completed)
+
+**Carry-forward / policy create — allow mobile number change for existing Customer ID**
+
+Carry-forward submits `POST /policies` with the same `customerId` and `svkkPublicId` but users may correct the primary mobile. `createPolicyWithYear` no longer rejects with `Customer ID is linked to a different mobile number`; it reconciles mobile on the matched `InsuredParty` when the new number is unique. `applyInsuredPartyPatch` reuses the same helper. New module: `insured-party-mobile.ts`.
+
+| Layer | Role |
+|-------|------|
+| `insured-party-mobile.ts` | `reconcileInsuredPartyMobile` — normalize, clash check, update |
+| `policy.service.ts` | Create + PATCH paths call reconcile instead of hard conflict |
+| `insured-party-mobile.test.ts` | Unit tests for unchanged / update / clash / invalid |
+
+## Previous task (completed)
+
+**Payment transaction/cheque number — allow duplicates across policies**
+
+Removed global uniqueness on `Payment.transactionNumber`. The same cheque or UTR (e.g. `CH-000003`) may appear on multiple policies. Dropped DB unique index `Payment_transactionNumber_key`, added non-unique `Payment_transactionNumber_idx`. Removed app-level batch duplicate check and P2002 conflict handler in `policy.service.ts`. Simplified `prepareYearPaymentReplace` (soft-delete only, no longer clears txn numbers).
+
+| Layer | Role |
+|-------|------|
+| `schema.prisma` | `@@index([transactionNumber])` replaces `@@unique` |
+| `policy-payment.helpers.ts` | Removed `assertUniqueTransactionNumbersInBatch` |
+| `policy.service.ts` / `policy-csv-import.ts` | No cross-policy txn uniqueness validation |
+
+**Migration:** `20260615120000_payment_transaction_number_non_unique`
+
+## Previous task (completed)
+
 **Policy CSV update — full fields (ref no match)**
 
 Policies page CSV import supports **Create only** and **Update policy**. Update mode matches policies by `ref no` only and applies every non-empty column from the same Format v2 header set as create (`buildPolicyCsvSample`). Sample CSV uses `GET /policies/export-sample.csv` (same as create). Preview/confirm via `/upload/policy-csv/preview` with `mode=UPDATE_ONLY` + `updateMode=FULL` (default). Legacy `updateMode=POLICY_COURIER` remains API-supported for scoped courier-only updates.

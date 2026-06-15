@@ -2202,6 +2202,35 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
 
             <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Remarks</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-3">
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-xs">General Remark</p>
+                  <p className="text-sm font-medium wrap-break-word" title={values.generalRemark.trim() || undefined}>
+                    {values.generalRemark.trim() || "—"}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-xs">Policy Change Remark</p>
+                  <p className="text-sm font-medium wrap-break-word" title={values.policyChangeRemark.trim() || undefined}>
+                    {values.policyChangeRemark.trim() || "—"}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-xs">Category Change Remark</p>
+                  <p
+                    className="text-sm font-medium wrap-break-word"
+                    title={values.categoryChangeRemark.trim() || undefined}
+                  >
+                    {values.categoryChangeRemark.trim() || "—"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
               <CardHeader>
                 <CardTitle>Calculated Premium Summary</CardTitle>
                 <CardDescription>

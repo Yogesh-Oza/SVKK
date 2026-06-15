@@ -9,7 +9,6 @@ import type { GeoScope } from "../../services/mis-scope.service.js";
 import { assertPolicyReadable } from "../../services/mis-scope.service.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import {
-  assertUniqueTransactionNumbersInBatch,
   normalizeTxnNumber,
   prepareYearPaymentReplace,
 } from "./policy-payment.helpers.js";
@@ -117,7 +116,6 @@ async function insertPaymentsForYearCsv(
   policyYearId: string,
   payments: PaymentReplaceRow[],
 ): Promise<void> {
-  assertUniqueTransactionNumbersInBatch(payments);
   for (const rawRow of payments) {
     const paymentRow = sanitizePaymentReplaceRow(rawRow);
     const txnNumber = normalizeTxnNumber(paymentRow.transactionNumber ?? null);

@@ -89,33 +89,36 @@ export async function applyPaymentAndChequeForPolicy(
         ? PaymentStatus.FAILED
         : PaymentStatus.PENDING;
 
-  await tx.payment.upsert({
-    where: { transactionNumber: txnKey },
-    create: {
-      policyYearId,
-      amount: payAmount,
-      transactionNumber: txnKey,
-      transactionDate: parseLegacyDate(row.cheque_date),
-      bankName: row.bank?.trim()?.slice(0, 200) || null,
-      branchName: row.branch?.trim()?.slice(0, 200) || null,
-      accountNumber: row.account_no?.trim()?.slice(0, 64) || null,
-      nameAsPerCheque: row.name_as_per_cheque?.trim()?.slice(0, 200) || null,
-      ifscCode: row.ifsc?.trim()?.slice(0, 20) || null,
-      notOver: row.not_over?.trim()?.slice(0, 50) || null,
-      dishonourReason: row.reason_dishonoured?.trim() || null,
-      status: paymentStatus,
-      method: payMethod,
-      chequeId: chequeId ?? null,
-      migratedRunId: migrationRunId,
-    },
-    update: {
-      amount: payAmount,
-      status: paymentStatus,
-      method: payMethod,
-      chequeId: chequeId ?? null,
-      migratedRunId: migrationRunId,
-    },
+  const paymentData = {
+    amount: payAmount,
+    transactionNumber: txnKey,
+    transactionDate: parseLegacyDate(row.cheque_date),
+    bankName: row.bank?.trim()?.slice(0, 200) || null,
+    branchName: row.branch?.trim()?.slice(0, 200) || null,
+    accountNumber: row.account_no?.trim()?.slice(0, 64) || null,
+    nameAsPerCheque: row.name_as_per_cheque?.trim()?.slice(0, 200) || null,
+    ifscCode: row.ifsc?.trim()?.slice(0, 20) || null,
+    notOver: row.not_over?.trim()?.slice(0, 50) || null,
+    dishonourReason: row.reason_dishonoured?.trim() || null,
+    status: paymentStatus,
+    method: payMethod,
+    chequeId: chequeId ?? null,
+    migratedRunId: migrationRunId,
+  };
+
+  const existingPayment = await tx.payment.findFirst({
+    where: { policyYearId, transactionNumber: txnKey, deletedAt: null },
   });
+  if (existingPayment) {
+    await tx.payment.update({
+      where: { id: existingPayment.id },
+      data: paymentData,
+    });
+  } else {
+    await tx.payment.create({
+      data: { policyYearId, ...paymentData },
+    });
+  }
 
   await tx.policyYear.update({
     where: { id: policyYearId },

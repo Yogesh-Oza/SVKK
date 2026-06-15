@@ -556,7 +556,7 @@ model Payment {
   updatedAt         DateTime      @updatedAt
   deletedAt         DateTime?
 
-  @@unique([transactionNumber])
+  @@index([transactionNumber])
   @@index([policyYearId, deletedAt, status])
   @@index([chequeId])
   @@index([migratedRunId])
