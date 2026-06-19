@@ -257,6 +257,14 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           policyUrl2: input.policyUrl2 ?? undefined,
           loanStatus: input.loanStatus ?? undefined,
           loanAmount: input.loanAmount != null ? input.loanAmount : undefined,
+          loanRepaymentAmount: input.loanRepaymentAmount != null ? input.loanRepaymentAmount : undefined,
+          loanPendingAmount: input.loanPendingAmount != null ? input.loanPendingAmount : undefined,
+          nomineeDateOfBirth: input.nomineeDateOfBirth ?? undefined,
+          policyBankHolderName: input.policyBankHolderName ?? undefined,
+          policyBankAccountNo: input.policyBankAccountNo ?? undefined,
+          policyBankIfsc: input.policyBankIfsc ?? undefined,
+          policyBankBranch: input.policyBankBranch ?? undefined,
+          policyBankName: input.policyBankName ?? undefined,
           previousPolicyNo: input.previousPolicyNo ?? undefined,
           previousEndDate: input.previousEndDate ?? undefined,
           policyGroup: input.policyGroup ?? undefined,
@@ -548,6 +556,7 @@ export type PolicySectionPatch = {
   whatsappNo?: string | null;
   nomineeName?: string | null;
   nomineeRelation?: string | null;
+  nomineeDateOfBirth?: Date | null;
   loanRef?: string | null;
   courierTracking?: string | null;
   remarks?: string | null;
@@ -573,6 +582,13 @@ export type PolicySectionPatch = {
   policyUrl2?: string | null;
   loanStatus?: string | null;
   loanAmount?: number | null;
+  loanRepaymentAmount?: number | null;
+  loanPendingAmount?: number | null;
+  policyBankHolderName?: string | null;
+  policyBankAccountNo?: string | null;
+  policyBankIfsc?: string | null;
+  policyBankBranch?: string | null;
+  policyBankName?: string | null;
   refundChequeAmount?: number | null;
   refundChequeNo?: string | null;
   refundChequeDate?: Date | null;

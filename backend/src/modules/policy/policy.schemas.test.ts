@@ -123,3 +123,32 @@ describe("policy schemas - member row schema", () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe("policy schemas - loan bank nominee fields", () => {
+  it("accepts optional loan repayment, bank, and nominee DOB on create", () => {
+    const result = createPolicyBodySchema.safeParse({
+      ...minimalCreateBody,
+      loanStatus: "YES",
+      loanAmount: 10000,
+      loanRepaymentAmount: 2000,
+      loanPendingAmount: 8000,
+      nomineeDateOfBirth: "1990-01-15",
+      policyBankHolderName: "Jane Doe",
+      policyBankAccountNo: "1234567890",
+      policyBankIfsc: "SBIN0001234",
+      policyBankBranch: "Main Branch",
+      policyBankName: "State Bank",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts the same fields on patch", () => {
+    const result = patchPolicyBodySchema.safeParse({
+      yearLabel: "2025-26",
+      loanRepaymentAmount: 1500,
+      nomineeDateOfBirth: "1985-06-20",
+      policyBankName: "HDFC Bank",
+    });
+    expect(result.success).toBe(true);
+  });
+});

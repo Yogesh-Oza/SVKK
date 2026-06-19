@@ -25,6 +25,10 @@ describe("policy-csv-format v2", () => {
     expect(POLICY_CSV_FLAT_HEADERS).toContain("MEMBER 1 DATE OF JOINING");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("policy remarK");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("category change remark");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("loan_repayment");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("loan_pending_amt");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("nominee_dob");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("bank_ac_holder_name");
   });
 
   it("export header line includes extended member and payment slots in grouped order", () => {

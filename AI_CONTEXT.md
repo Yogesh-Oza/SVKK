@@ -6,6 +6,33 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Policy Loan, Bank Ac Info, and Nominee DOB**
+
+Extended AD policy create/update/delete with:
+
+| Feature | Details |
+|---------|---------|
+| Loan / CD / Refund | When `Loan Taken = YES`, form shows **Repayment** and **Pending Amount** (`Policy.loanRepaymentAmount`, `Policy.loanPendingAmount`) |
+| Bank Ac Info | New form section + profile tab: policy-level `policyBankHolderName`, `policyBankAccountNo`, `policyBankIfsc`, `policyBankBranch`, `policyBankName` |
+| Nominee DOB | `Policy.nomineeDateOfBirth` on nominee section |
+
+**Branch:** `main`
+
+**Migration:** `20260619120000_policy_loan_bank_nominee`
+
+**CSV columns added:** `loan_repayment`, `loan_pending_amt`, `nominee_dob`, `bank_ac_holder_name`, `bank_ac_no`, `bank_ifsc`, `bank_branch`, `bank_name`
+
+| Layer | Role |
+|-------|------|
+| `schema.prisma` | New nullable `Policy` columns |
+| `policy.schemas.ts` / `policy.service.ts` / `policy.routes.ts` | API create/patch persistence |
+| `ad-policy-add-form.tsx` | Sections: Bank Ac Info; conditional loan fields; nominee DOB |
+| `ad-policy-submit.ts` / `ad-policy-detail-to-form.ts` | Form ↔ API mapping |
+| `policy-profile-view.tsx` | Bank Ac Info tab; loan/nominee display |
+| `policy-csv-*` | Import/export roundtrip |
+
+## Previous task (completed)
+
 **Add Policy — remarks summary below header cards**
 
 On Add AD Policy (non-edit), a **Remarks** card appears below SVKK ID / Customer ID / Policy No / Policy Type / VKK Premium and above Calculated Premium Summary. Shows General Remark, Policy Change Remark, and Category Change Remark from loaded form state.

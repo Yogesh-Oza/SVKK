@@ -526,6 +526,7 @@ export function PolicyProfileView({
                   ["members", "Members"],
                   ["premium", "Premium"],
                   ["payment", "Payment"],
+                  ["bank_ac", "Bank Ac Info"],
                   ["loan", "Loan / CD / Refund"],
                   ["documents", "Documents"],
                   ["claims", "Claims"],
@@ -582,6 +583,7 @@ export function PolicyProfileView({
                   <DetailField icon={<User className="size-4" />} label="Nominee Name" value={displayVal(row.nomineeName)} />
                   <DetailField icon={<User className="size-4" />} label="Nominee Relation" value={displayVal(row.nomineeRelation)} />
                   <DetailField icon={<User className="size-4" />} label="Nominee Phone number ( one number )" value={displayVal(row.contactPhone)} />
+                  <DetailField icon={<Calendar className="size-4" />} label="Date of Birth of Nominee" value={fmtDob(row.nomineeDateOfBirth)} />
                 </div>
               </ProfileSection>
               <ProfileSection title="Courier Details">
@@ -701,6 +703,8 @@ export function PolicyProfileView({
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <DetailField icon={<FileText className="size-4" />} label="Loan Taken (Yes/No)" value={yesNoLabel(row.loanStatus)} />
                     <DetailField icon={<IndianRupee className="size-4" />} label="Loan Amount" value={fmt(row.loanAmount)} monetary />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="Repayment" value={fmt(row.loanRepaymentAmount)} monetary />
+                    <DetailField icon={<IndianRupee className="size-4" />} label="Pending Amount" value={fmt(row.loanPendingAmount)} monetary />
                   </div>
                 </div>
                 <div className="border-t border-[#E5E7EB] pt-6">
@@ -756,6 +760,16 @@ export function PolicyProfileView({
                   ))}
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="bank_ac" className="mt-6">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <DetailField icon={<User className="size-4" />} label="Account Holder Name" value={displayVal(row.policyBankHolderName)} />
+                <DetailField icon={<FileText className="size-4" />} label="Account No" value={displayVal(row.policyBankAccountNo)} />
+                <DetailField icon={<FileText className="size-4" />} label="IFSC" value={displayVal(row.policyBankIfsc)} />
+                <DetailField icon={<Building2 className="size-4" />} label="Branch" value={displayVal(row.policyBankBranch)} />
+                <DetailField icon={<Building2 className="size-4" />} label="Bank Name" value={displayVal(row.policyBankName)} />
+              </div>
             </TabsContent>
 
             <TabsContent value="documents" className="mt-6">

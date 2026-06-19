@@ -221,6 +221,7 @@ function patchBodyToInput(
   if (rest.whatsappNo !== undefined) policy.whatsappNo = rest.whatsappNo;
   if (rest.nomineeName !== undefined) policy.nomineeName = rest.nomineeName;
   if (rest.nomineeRelation !== undefined) policy.nomineeRelation = rest.nomineeRelation;
+  if (rest.nomineeDateOfBirth !== undefined) policy.nomineeDateOfBirth = rest.nomineeDateOfBirth;
   if (rest.loanRef !== undefined) policy.loanRef = rest.loanRef;
   if (rest.courierTracking !== undefined) policy.courierTracking = rest.courierTracking;
   if (rest.remarks !== undefined) policy.remarks = rest.remarks;
@@ -242,6 +243,13 @@ function patchBodyToInput(
   if (rest.policyUrl2 !== undefined) policy.policyUrl2 = rest.policyUrl2;
   if (rest.loanStatus !== undefined) policy.loanStatus = rest.loanStatus;
   if (rest.loanAmount !== undefined) policy.loanAmount = rest.loanAmount;
+  if (rest.loanRepaymentAmount !== undefined) policy.loanRepaymentAmount = rest.loanRepaymentAmount;
+  if (rest.loanPendingAmount !== undefined) policy.loanPendingAmount = rest.loanPendingAmount;
+  if (rest.policyBankHolderName !== undefined) policy.policyBankHolderName = rest.policyBankHolderName;
+  if (rest.policyBankAccountNo !== undefined) policy.policyBankAccountNo = rest.policyBankAccountNo;
+  if (rest.policyBankIfsc !== undefined) policy.policyBankIfsc = rest.policyBankIfsc;
+  if (rest.policyBankBranch !== undefined) policy.policyBankBranch = rest.policyBankBranch;
+  if (rest.policyBankName !== undefined) policy.policyBankName = rest.policyBankName;
   if (rest.refundChequeAmount !== undefined) policy.refundChequeAmount = rest.refundChequeAmount;
   if (rest.refundChequeNo !== undefined) policy.refundChequeNo = rest.refundChequeNo;
   if (rest.refundChequeDate !== undefined) policy.refundChequeDate = rest.refundChequeDate;

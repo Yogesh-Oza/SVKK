@@ -2,6 +2,25 @@ import * as yup from "yup";
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
+const optionalDecimalString = yup
+  .string()
+  .trim()
+  .optional()
+  .test("decimal", "Enter a valid amount", (v) => !v || !Number.isNaN(Number(v.replace(/,/g, ""))));
+
+const optionalPastDateString = yup
+  .string()
+  .trim()
+  .optional()
+  .test("past-date", "Date cannot be in the future", (v) => {
+    if (!v) return true;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return d.getTime() <= today.getTime();
+  });
+
 const memberRowSchema = yup.object({
   name: yup.string().default(""),
   relationship: yup.string().default(""),
@@ -63,6 +82,13 @@ export const adPolicyValidationSchema = yup.object({
   nomineeName: yup.string().trim().optional(),
   nomineeRelation: yup.string().trim().optional(),
   nomineePhoneNumber: yup.string().trim().optional(),
+  nomineeDateOfBirth: optionalPastDateString,
+
+  policyBankHolderName: yup.string().trim().max(200).optional(),
+  policyBankAccountNo: yup.string().trim().max(34).optional(),
+  policyBankIfsc: yup.string().trim().max(20).optional(),
+  policyBankBranch: yup.string().trim().max(200).optional(),
+  policyBankName: yup.string().trim().max(200).optional(),
 
   address: yup.string().trim().optional(),
   addressTwo: yup.string().trim().optional(),
@@ -123,6 +149,16 @@ export const adPolicyValidationSchema = yup.object({
   loanStatus: yup.string().optional(),
   loanNo: yup.string().optional(),
   loanAmt: yup.string().optional(),
+  loanRepayment: optionalDecimalString.when("loanStatus", {
+    is: "YES",
+    then: (s) => s.required("Repayment is required when loan is taken"),
+    otherwise: (s) => s.optional(),
+  }),
+  loanPendingAmount: optionalDecimalString.when("loanStatus", {
+    is: "YES",
+    then: (s) => s.required("Pending amount is required when loan is taken"),
+    otherwise: (s) => s.optional(),
+  }),
   previousPolicyNo: yup.string().optional(),
   previousEndDate: yup.string().optional(),
   holderJoiningDate: yup.string().optional(),

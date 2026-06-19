@@ -98,6 +98,7 @@ type AddSectionId =
   | "address_contacts"
   | "premium_details"
   | "payment_bank_details"
+  | "bank_ac_info"
   | "nominee_details"
   | "loan_details"
   | "courier"
@@ -147,6 +148,7 @@ const ADD_SECTIONS: ReadonlyArray<{ id: AddSectionId; label: string; ref: string
   { id: "address_contacts", label: "Contact Details", ref: "section-address-contacts" },
   { id: "premium_details", label: "Premium Details", ref: "section-premium-details" },
   { id: "payment_bank_details", label: "Payment & Bank Details", ref: "section-payment-bank-details" },
+  { id: "bank_ac_info", label: "Bank Ac Info", ref: "section-bank-ac-info" },
   { id: "nominee_details", label: "Nominee Details", ref: "section-nominee-details" },
   { id: "loan_details", label: "Loan / CD / Refund", ref: "section-loan-details" },
   { id: "courier", label: "Courier Details", ref: "section-courier" },
@@ -1392,10 +1394,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (path.startsWith("nominee")) {
       return "nominee_details";
     }
+    if (path.startsWith("policyBank")) {
+      return "bank_ac_info";
+    }
     if (
       path.startsWith("loanStatus") ||
       path.startsWith("loanNo") ||
       path.startsWith("loanAmt") ||
+      path.startsWith("loanRepayment") ||
+      path.startsWith("loanPendingAmount") ||
       path.startsWith("cdAccountStatus") ||
       path.startsWith("cdAmount") ||
       path.startsWith("refundChequeAmt") ||
@@ -3277,7 +3284,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Label>Loan Taken (Yes/No)</Label>
               <DropdownCombobox
                 value={values.loanStatus}
-                onChange={(v) => void setFieldValue("loanStatus", v)}
+                onChange={(v) => {
+                  void setFieldValue("loanStatus", v);
+                  if (v !== "YES") {
+                    void setFieldValue("loanRepayment", "");
+                    void setFieldValue("loanPendingAmount", "");
+                  }
+                }}
                 options={yesNoOptions}
                 placeholder="—"
                 searchPlaceholder="Search"
@@ -3287,6 +3300,34 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Label>Loan Amount</Label>
               <Input name="loanAmt" value={values.loanAmt} onChange={handleChange} onBlur={handleBlur} />
             </div>
+            {values.loanStatus === "YES" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Repayment</Label>
+                  <Input
+                    name="loanRepayment"
+                    value={values.loanRepayment}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                  {touched.loanRepayment && errors.loanRepayment ? (
+                    <p className="text-destructive text-xs">{String(errors.loanRepayment)}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label>Pending Amount</Label>
+                  <Input
+                    name="loanPendingAmount"
+                    value={values.loanPendingAmount}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                  {touched.loanPendingAmount && errors.loanPendingAmount ? (
+                    <p className="text-destructive text-xs">{String(errors.loanPendingAmount)}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
 
             <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
               CD
@@ -3340,6 +3381,62 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         </Card>
         ) : null}
 
+        {activeSection === "bank_ac_info" ? (
+        <Card id="section-bank-ac-info">
+          <CardHeader>
+            <CardTitle>Bank Ac Info</CardTitle>
+            <CardDescription>Policy-level bank account details (separate from payment transactions).</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Account Holder Name</Label>
+              <Input
+                name="policyBankHolderName"
+                value={values.policyBankHolderName}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Account No</Label>
+              <Input
+                name="policyBankAccountNo"
+                value={values.policyBankAccountNo}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>IFSC</Label>
+              <Input
+                name="policyBankIfsc"
+                value={values.policyBankIfsc}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Branch</Label>
+              <Input
+                name="policyBankBranch"
+                value={values.policyBankBranch}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Bank Name</Label>
+              <Input
+                name="policyBankName"
+                value={values.policyBankName}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        ) : null}
+
         {activeSection === "nominee_details" ? (
         <Card id="section-nominee-details">
           <CardHeader>
@@ -3373,6 +3470,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 onChange={handleChange}
                 onBlur={handleBlur}
               />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Date of Birth of Nominee</Label>
+              <PolicyDateInput
+                name="nomineeDateOfBirth"
+                value={values.nomineeDateOfBirth}
+                onValueChange={(v) => void setFieldValue("nomineeDateOfBirth", v)}
+                onBlur={handleBlur}
+              />
+              {touched.nomineeDateOfBirth && errors.nomineeDateOfBirth ? (
+                <p className="text-destructive text-xs">{String(errors.nomineeDateOfBirth)}</p>
+              ) : null}
             </div>
           </CardContent>
         </Card>

@@ -36,7 +36,15 @@ const PAYMENT_FIELD_ORDER: PaymentCsvFieldKey[] = [
   "amountReceived",
 ];
 
-const NOMINEE_HEADERS = ["nominee_name", "nominee_relation", "nominee mobile"] as const;
+const NOMINEE_HEADERS = ["nominee_name", "nominee_relation", "nominee mobile", "nominee_dob"] as const;
+
+const BANK_AC_HEADERS = [
+  "bank_ac_holder_name",
+  "bank_ac_no",
+  "bank_ifsc",
+  "bank_branch",
+  "bank_name",
+] as const;
 
 const ADDRESS_CONTACT_HEADERS = [
   "Address Line 1: House/Flat No, Building Name",
@@ -160,6 +168,7 @@ export function buildPolicyCsvExportColumnGroups(options?: {
   const premium = filterCommission(POLICY_CSV_FLAT_PREMIUM_HEADERS, includeCommission);
   const tailSet = new Set<string>([
     ...NOMINEE_HEADERS,
+    ...BANK_AC_HEADERS,
     ...ADDRESS_CONTACT_HEADERS,
     ...COURIER_HEADERS,
     ...REMARKS_META_HEADERS,
@@ -190,6 +199,11 @@ export function buildPolicyCsvExportColumnGroups(options?: {
       id: "nominee",
       label: "Nominee",
       columns: toColumns(NOMINEE_HEADERS),
+    },
+    {
+      id: "bank_ac",
+      label: "Bank account",
+      columns: toColumns(BANK_AC_HEADERS),
     },
     {
       id: "address_contact",

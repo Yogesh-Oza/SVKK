@@ -50,6 +50,12 @@ export type PolicyDetailViewRow = {
   mobileSecondary?: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
+  nomineeDateOfBirth?: string | null;
+  policyBankHolderName?: string | null;
+  policyBankAccountNo?: string | null;
+  policyBankIfsc?: string | null;
+  policyBankBranch?: string | null;
+  policyBankName?: string | null;
   holderRelationship?: string | null;
   holderGender?: string | null;
   holderJoiningDate?: string | null;
@@ -60,6 +66,8 @@ export type PolicyDetailViewRow = {
   categoryText?: string | null;
   loanStatus?: string | null;
   loanAmount?: unknown;
+  loanRepaymentAmount?: unknown;
+  loanPendingAmount?: unknown;
   refundChequeAmount?: unknown;
   refundChequeNo?: string | null;
   refundChequeDate?: string | null;
@@ -519,6 +527,23 @@ export function PolicyDetailViewBody({
               { label: "Nominee Name", value: displayVal(row.nomineeName) },
               { label: "Nominee Relation", value: displayVal(row.nomineeRelation) },
               { label: "Nominee Phone number ( one number )", value: displayVal(row.contactPhone) },
+              { label: "Date of Birth of Nominee", value: fmtDate(row.nomineeDateOfBirth) },
+            ]}
+          />
+        </ViewSubsection>
+      </ViewSectionBlock>
+
+      <ViewSectionBlock title="Bank Ac Info">
+        <ViewSubsection>
+          <ViewFieldTable
+            cols={3}
+            minWidth="480px"
+            fields={[
+              { label: "Account Holder Name", value: displayVal(row.policyBankHolderName) },
+              { label: "Account No", value: displayVal(row.policyBankAccountNo) },
+              { label: "IFSC", value: displayVal(row.policyBankIfsc) },
+              { label: "Branch", value: displayVal(row.policyBankBranch) },
+              { label: "Bank Name", value: displayVal(row.policyBankName) },
             ]}
           />
         </ViewSubsection>
@@ -531,6 +556,8 @@ export function PolicyDetailViewBody({
             fields={[
               { label: "Loan Taken (Yes/No)", value: yesNoLabel(row.loanStatus) },
               { label: "Loan Amount", value: fmt(row.loanAmount) },
+              { label: "Repayment", value: fmt(row.loanRepaymentAmount) },
+              { label: "Pending Amount", value: fmt(row.loanPendingAmount) },
             ]}
           />
         </ViewSubsection>

@@ -159,6 +159,12 @@ export async function createPolicyFromCsvRow(
     nomineeName: getCsvField(map, "nominee_name") || undefined,
     nomineeRelation: getCsvField(map, "nominee_relation") || undefined,
     contactPhone: getCsvField(map, "nominee mobile") || undefined,
+    nomineeDateOfBirth: parseOptionalDate(getCsvField(map, "nominee_dob")) ?? null,
+    policyBankHolderName: getCsvField(map, "bank_ac_holder_name") || undefined,
+    policyBankAccountNo: getCsvField(map, "bank_ac_no") || undefined,
+    policyBankIfsc: getCsvField(map, "bank_ifsc") || undefined,
+    policyBankBranch: getCsvField(map, "bank_branch") || undefined,
+    policyBankName: getCsvField(map, "bank_name") || undefined,
     addressLine1: getCsvField(map, "Address Line 1: House/Flat No, Building Name") || undefined,
     addressLine2: getCsvField(map, "Address Line 2: Street/Road Name") || undefined,
     addressLine3: getCsvField(map, "Address Line 3: Landmark / Locality") || undefined,
@@ -188,6 +194,10 @@ export async function createPolicyFromCsvRow(
     vkkCommission: parseOptionalDecimal(getCsvField(map, "VKK commission")),
     commissionAmount: parseOptionalDecimal(getCsvField(map, "Commission amount")),
     yearPolicyHolderPremium: parseOptionalDecimal(getCsvField(map, "Policy Holder Premium")),
+    loanStatus: getCsvField(map, "loan_status") || undefined,
+    loanAmount: parseOptionalDecimal(getCsvField(map, "loan_amt")) ?? null,
+    loanRepaymentAmount: parseOptionalDecimal(getCsvField(map, "loan_repayment")) ?? null,
+    loanPendingAmount: parseOptionalDecimal(getCsvField(map, "loan_pending_amt")) ?? null,
   });
 }
 

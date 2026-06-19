@@ -72,6 +72,7 @@ export type SvkkPolicyDetailForForm = {
   pincode: string | null;
   nomineeName: string | null;
   nomineeRelation: string | null;
+  nomineeDateOfBirth?: string | null;
   contactPhone: string | null;
   whatsappNo?: string | null;
   remarks: string | null;
@@ -91,6 +92,13 @@ export type SvkkPolicyDetailForForm = {
   mobileSecondary: string | null;
   loanStatus: string | null;
   loanAmount: Decimalish;
+  loanRepaymentAmount?: Decimalish;
+  loanPendingAmount?: Decimalish;
+  policyBankHolderName?: string | null;
+  policyBankAccountNo?: string | null;
+  policyBankIfsc?: string | null;
+  policyBankBranch?: string | null;
+  policyBankName?: string | null;
   previousPolicyNo: string | null;
   previousEndDate: string | null;
   policyGroup: string | null;
@@ -583,12 +591,20 @@ export function policyDetailToAdFormValues(
     loanStatus: row.loanStatus ?? "",
     loanNo: "",
     loanAmt: decStr(row.loanAmount),
+    loanRepayment: decStr(row.loanRepaymentAmount),
+    loanPendingAmount: decStr(row.loanPendingAmount),
     previousPolicyNo: row.previousPolicyNo ?? "",
     previousEndDate: isoToDateInput(row.previousEndDate ?? ""),
     policyGroup: row.policyGroup?.trim() || row.policyGrouping?.trim() || "",
     nomineeName: row.nomineeName ?? "",
     nomineeRelation: row.nomineeRelation ?? "",
     nomineePhoneNumber: row.contactPhone ?? "",
+    nomineeDateOfBirth: isoToDateInput(row.nomineeDateOfBirth ?? ""),
+    policyBankHolderName: row.policyBankHolderName ?? "",
+    policyBankAccountNo: row.policyBankAccountNo ?? "",
+    policyBankIfsc: row.policyBankIfsc ?? "",
+    policyBankBranch: row.policyBankBranch ?? "",
+    policyBankName: row.policyBankName ?? "",
     address: row.addressLine1 ?? "",
     addressTwo: row.addressLine2 ?? "",
     addressThree: row.addressLine3 ?? "",

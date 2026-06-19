@@ -56,4 +56,33 @@ describe("adPolicyValidationSchema", () => {
       }),
     ).resolves.toBeDefined();
   });
+
+  it("requires loan repayment and pending amount when loan is YES", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        loanStatus: "YES",
+        loanRepayment: "",
+        loanPendingAmount: "",
+      }),
+    ).rejects.toThrow(/Repayment is required/);
+
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        loanStatus: "YES",
+        loanRepayment: "1000",
+        loanPendingAmount: "500",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("accepts optional nominee date of birth in the past", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        nomineeDateOfBirth: "1990-05-01",
+      }),
+    ).resolves.toBeDefined();
+  });
 });

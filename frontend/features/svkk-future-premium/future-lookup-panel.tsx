@@ -374,6 +374,7 @@ export function FutureLookupPanel() {
               <LookupField label="Payment Mode" value={detailVal(["payment_mode", "mode_of_payment"])} />
               <LookupField label="Nominee Name" value={detailVal(["nominee_name"])} />
               <LookupField label="Nominee Relation" value={detailVal(["nominee_relation"])} />
+              <LookupField label="Nominee DOB" value={detailVal(["nominee_dob"])} />
               <LookupField label="Courier" value={detailVal(["courier_status", "Courier Status"])} />
             </CardContent>
           </Card>

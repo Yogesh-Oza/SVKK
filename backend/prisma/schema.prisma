@@ -318,6 +318,7 @@ model Policy {
   whatsappNo          String?           @db.VarChar(20)
   nomineeName         String?           @db.VarChar(200)
   nomineeRelation     String?           @db.VarChar(100)
+  nomineeDateOfBirth  DateTime?
   loanRef             String?           @db.VarChar(120)
   courierTracking     String?           @db.VarChar(120)
   remarks             String?           @db.Text
@@ -345,6 +346,13 @@ model Policy {
   policyUrl2          String?           @db.VarChar(500)
   loanStatus          String?           @db.VarChar(10)
   loanAmount          Decimal?          @db.Decimal(14, 2)
+  loanRepaymentAmount Decimal?          @db.Decimal(14, 2)
+  loanPendingAmount   Decimal?          @db.Decimal(14, 2)
+  policyBankHolderName String?          @db.VarChar(200)
+  policyBankAccountNo String?          @db.VarChar(34)
+  policyBankIfsc      String?           @db.VarChar(20)
+  policyBankBranch    String?           @db.VarChar(200)
+  policyBankName      String?           @db.VarChar(200)
   refundChequeAmount  Decimal?          @db.Decimal(14, 2)
   refundChequeNo      String?           @db.VarChar(64)
   refundChequeDate    DateTime?

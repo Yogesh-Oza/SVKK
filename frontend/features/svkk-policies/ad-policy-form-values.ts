@@ -104,9 +104,17 @@ export type AdPolicyFormValues = {
   loanStatus: string;
   loanNo: string;
   loanAmt: string;
+  loanRepayment: string;
+  loanPendingAmount: string;
   nomineeName: string;
   nomineeRelation: string;
   nomineePhoneNumber: string;
+  nomineeDateOfBirth: string;
+  policyBankHolderName: string;
+  policyBankAccountNo: string;
+  policyBankIfsc: string;
+  policyBankBranch: string;
+  policyBankName: string;
   address: string;
   addressTwo: string;
   addressThree: string;
@@ -201,9 +209,17 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     loanStatus: "",
     loanNo: "",
     loanAmt: "",
+    loanRepayment: "",
+    loanPendingAmount: "",
     nomineeName: "",
     nomineeRelation: "",
     nomineePhoneNumber: "",
+    nomineeDateOfBirth: "",
+    policyBankHolderName: "",
+    policyBankAccountNo: "",
+    policyBankIfsc: "",
+    policyBankBranch: "",
+    policyBankName: "",
     address: "",
     addressTwo: "",
     addressThree: "",

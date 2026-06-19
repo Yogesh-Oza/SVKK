@@ -41,6 +41,26 @@ function resolvePolicyGrouping(values: AdPolicyFormValues): string | null {
   return g || null;
 }
 
+function mapLoanRepaymentFields(values: AdPolicyFormValues) {
+  if (values.loanStatus !== "YES") {
+    return { loanRepaymentAmount: null, loanPendingAmount: null };
+  }
+  return {
+    loanRepaymentAmount: parseNum(values.loanRepayment) ?? null,
+    loanPendingAmount: parseNum(values.loanPendingAmount) ?? null,
+  };
+}
+
+function mapPolicyBankFields(values: AdPolicyFormValues) {
+  return {
+    policyBankHolderName: values.policyBankHolderName.trim() || null,
+    policyBankAccountNo: values.policyBankAccountNo.trim() || null,
+    policyBankIfsc: values.policyBankIfsc.trim() || null,
+    policyBankBranch: values.policyBankBranch.trim() || null,
+    policyBankName: values.policyBankName.trim() || null,
+  };
+}
+
 function buildCombinedRemarks(values: AdPolicyFormValues): string | null {
   const parts: string[] = [];
   if (values.generalRemark.trim()) {
@@ -132,6 +152,8 @@ export async function submitAdPolicyRequest({
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
+    ...mapLoanRepaymentFields(values),
+    ...mapPolicyBankFields(values),
     previousPolicyNo: values.previousPolicyNo.trim() || null,
     previousEndDate: toApiDateIso(values.previousEndDate),
     policyGroup: resolvePolicyGrouping(values),
@@ -155,6 +177,7 @@ export async function submitAdPolicyRequest({
     pincode: values.pincode.trim() || null,
     nomineeName: values.nomineeName.trim() || null,
     nomineeRelation: values.nomineeRelation.trim() || null,
+    nomineeDateOfBirth: toApiDateIso(values.nomineeDateOfBirth),
     contactPhone: values.nomineePhoneNumber.trim() || values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     whatsappNo: values.whatsappNo.replace(/\D/g, "").slice(0, 12) || null,
     remarks: combinedRemarks,
@@ -314,6 +337,8 @@ export async function submitAdPolicyPatchRequest({
     policyUrl2: values.url2.trim() || null,
     loanStatus: values.loanStatus || null,
     loanAmount: parseNum(values.loanAmt) ?? null,
+    ...mapLoanRepaymentFields(values),
+    ...mapPolicyBankFields(values),
     previousPolicyNo: values.previousPolicyNo.trim() || null,
     previousEndDate: toApiDateIso(values.previousEndDate),
     policyGroup: resolvePolicyGrouping(values),
@@ -337,6 +362,7 @@ export async function submitAdPolicyPatchRequest({
     pincode: values.pincode.trim() || null,
     nomineeName: values.nomineeName.trim() || null,
     nomineeRelation: values.nomineeRelation.trim() || null,
+    nomineeDateOfBirth: toApiDateIso(values.nomineeDateOfBirth),
     contactPhone: values.nomineePhoneNumber.trim() || values.mobileFirst.replace(/\D/g, "").slice(0, 12) || null,
     whatsappNo: values.whatsappNo.replace(/\D/g, "").slice(0, 12) || null,
     remarks: combinedRemarks,
