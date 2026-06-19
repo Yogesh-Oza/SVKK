@@ -36,6 +36,8 @@ import {
 
   IconMail,
 
+  IconForms,
+
   IconSettings,
 
   IconShieldLock,
@@ -74,6 +76,8 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
 
   emailTemplates: IconMail,
 
+  categoryForm: IconForms,
+
   admin: IconListDetails,
 
   roles: IconShieldLock,
@@ -88,7 +92,7 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
 
 
 
-const ADMIN_NAV_IDS: SvkkNavId[] = ["admin", "roles", "users", "settings", "emailTemplates"];
+const ADMIN_NAV_IDS: SvkkNavId[] = ["admin", "roles", "users", "settings", "emailTemplates", "categoryForm"];
 
 
 

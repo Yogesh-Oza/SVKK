@@ -16,7 +16,8 @@ export type SvkkNavId =
   | "logs"
   | "users"
   | "settings"
-  | "emailTemplates";
+  | "emailTemplates"
+  | "categoryForm";
 
 type NavEntry = {
   id: SvkkNavId;
@@ -56,6 +57,7 @@ const NAV: NavEntry[] = [
   { id: "users", href: "/users", label: "Users", permission: "users:manage" },
   { id: "settings", href: "/receipt-settings", label: "Receipt Settings", permission: "admin:settings" },
   { id: "emailTemplates", href: "/email-templates", label: "Email templates", permission: "admin:settings" },
+  { id: "categoryForm", href: "/category-form", label: "Category form", permission: "admin:settings" },
   { id: "logs", href: "/logs", label: "Activity logs", permission: "logs:read" },
 ];
 

@@ -12,6 +12,7 @@ import { assertCatalogMatchesDatabase } from "./lib/permission-catalog-integrity
 import { upsertPermissionCatalog } from "./lib/permission-seed.js";
 import { prisma } from "./lib/prisma.js";
 import { seedDefaultEmailTemplatesIfMissing } from "./services/email/email-template.service.js";
+import { seedDefaultCategoryFormIfMissing } from "./services/email/category-form.service.js";
 import { startRenewalReminderScheduler } from "./services/notification/renewal-reminder.job.js";
 
 const env = loadEnv();
@@ -49,6 +50,7 @@ async function start() {
 
   try {
     await seedDefaultEmailTemplatesIfMissing();
+    await seedDefaultCategoryFormIfMissing();
   } catch (e) {
     if (isMissingTableError(e)) {
       log.fatal({ err: e }, "Database not initialized");

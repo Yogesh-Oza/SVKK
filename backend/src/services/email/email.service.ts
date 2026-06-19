@@ -32,10 +32,22 @@ export function isEmailConfigured(env: Env): boolean {
   return Boolean(env.SMTP_HOST?.trim() && env.SMTP_FROM?.trim());
 }
 
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
 export async function sendEmail(
   env: Env,
   log: AppLogger,
-  input: { to: string; subject: string; html: string; activity?: EmailActivityContext },
+  input: {
+    to: string;
+    subject: string;
+    html: string;
+    attachments?: EmailAttachment[];
+    activity?: EmailActivityContext;
+  },
 ): Promise<boolean> {
   const to = input.to.trim();
   const activity = input.activity;
@@ -73,6 +85,11 @@ export async function sendEmail(
       to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType ?? "application/octet-stream",
+      })),
     });
     if (activity) {
       await writeEmailActivityLog({
