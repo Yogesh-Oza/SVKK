@@ -1,3 +1,4 @@
+import { dateParse } from "@/lib/svkk/form-date";
 import * as yup from "yup";
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -12,10 +13,14 @@ const optionalPastDateString = yup
   .string()
   .trim()
   .optional()
+  .test("valid-date", "Enter a valid date (DD-MM-YYYY)", (v) => {
+    if (!v) return true;
+    return dateParse(v) !== null;
+  })
   .test("past-date", "Date cannot be in the future", (v) => {
     if (!v) return true;
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) return false;
+    const d = dateParse(v);
+    if (!d) return true;
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     return d.getTime() <= today.getTime();

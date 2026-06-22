@@ -4,6 +4,7 @@ import {
   assertRoleGeoRequired,
   buildGeoPolicyWhere,
   buildPolicyReadWhere,
+  resolvePolicyReadScopeModule,
 } from "./mis-scope.service.js";
 import { resolvePermissionClosure } from "../domain/permissions/dependencies.js";
 import { DEFAULT_ROLE_PERMISSIONS } from "../lib/permission-seed.js";
@@ -12,6 +13,13 @@ import { AppError } from "../errors/app-error.js";
 function perms(legacy: keyof typeof DEFAULT_ROLE_PERMISSIONS): Set<string> {
   return resolvePermissionClosure(DEFAULT_ROLE_PERMISSIONS[legacy].allow);
 }
+
+describe("resolvePolicyReadScopeModule", () => {
+  it("prefers policy module when policy:read is granted", () => {
+    expect(resolvePolicyReadScopeModule(new Set(["policy:read", "future:read"]))).toBe("policy");
+    expect(resolvePolicyReadScopeModule(new Set(["future:read"]))).toBe("future");
+  });
+});
 
 describe("buildPolicyReadWhere", () => {
   it("USER scope_own restricts to createdById", () => {

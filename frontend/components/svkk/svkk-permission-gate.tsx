@@ -1,7 +1,7 @@
 "use client";
 
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
-import { getRequiredPermissionForPath } from "@/lib/svkk/route-permissions";
+import { getRequiredPermissionsForPath } from "@/lib/svkk/route-permissions";
 import { getSvkkNavForPermissions, hasPermission } from "@/lib/svkk/permissions";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -14,10 +14,10 @@ export function SvkkPermissionGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const required = getRequiredPermissionForPath(pathname);
+  const required = getRequiredPermissionsForPath(pathname);
   const allowed =
-    !required ||
-    (user?.permissions && hasPermission(user.permissions, required));
+    !required?.length ||
+    (user?.permissions && required.some((key) => hasPermission(user.permissions!, key)));
 
   const redirectHref = (() => {
     const perms = user?.permissions;

@@ -27,9 +27,14 @@ import {
   getClaimTrend,
 } from "./mis.service.js";
 
-function resolveClaimScopeModule(permissions: Set<string>): "claim" | "mis" | "dashboard" {
+function resolvePolicyMisScopeModule(permissions: Set<string>): "mis_policy" | "dashboard" {
+  if (hasPermissionInSet(permissions, "mis:policy:read")) return "mis_policy";
+  return "dashboard";
+}
+
+function resolveClaimMisScopeModule(permissions: Set<string>): "mis_claim" | "claim" | "dashboard" {
+  if (hasPermissionInSet(permissions, "mis:claim:read")) return "mis_claim";
   if (hasPermissionInSet(permissions, "claim:read")) return "claim";
-  if (hasPermissionInSet(permissions, "mis:read")) return "mis";
   return "dashboard";
 }
 
@@ -145,7 +150,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/summary",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = z
@@ -158,7 +163,7 @@ export function createMisRouter(_env: Env) {
           })
           .parse(req.query);
 
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const villageWheres = buildMisVillageWhere(scope, q.village);
         const { policy: pWhere, claim: cWhere } = mergeDateRange(villageWheres, q.from, q.to);
 
@@ -187,7 +192,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/dashboard",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:policy:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -196,7 +201,7 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolvePolicyMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const m = await getDashboardMetrics(
@@ -215,7 +220,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/dashboard-charts",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:policy:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -224,7 +229,7 @@ export function createMisRouter(_env: Env) {
             asOfDate: z.string().optional(),
           })
           .parse(req.query);
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolvePolicyMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const [charts, renewal] = await Promise.all([
@@ -240,7 +245,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/dashboard-claims",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -255,7 +260,7 @@ export function createMisRouter(_env: Env) {
         const scope = await loadMisScope(
           req.userId!,
           req.permissions!,
-          resolveClaimScopeModule(req.permissions!),
+          resolveClaimMisScopeModule(req.permissions!),
         );
         const metrics = await getDashboardClaimMetrics(req.permissions!, scope, {
           dateFrom,
@@ -270,13 +275,13 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/village-report",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = z
           .object({ village: z.string().optional(), asOfDate: z.string().optional() })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getVillageReport(
           req.userId!,
@@ -294,11 +299,11 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/policy-member-report",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:policy:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema.parse(req.query);
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolvePolicyMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const rep = await getPolicyMemberReport(
           req.userId!,
@@ -315,7 +320,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/policy-member-report/detail",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema
@@ -325,7 +330,7 @@ export function createMisRouter(_env: Env) {
           })
           .parse(req.query);
         const normalized = normalizePolicyMemberReportQuery(q);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const rep = await getPolicyMemberReportDetail(
           req.userId!,
           req.permissions!,
@@ -353,7 +358,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/export/policy-member-report-detail.csv",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema
@@ -363,7 +368,7 @@ export function createMisRouter(_env: Env) {
           })
           .parse(req.query);
         const normalized = normalizePolicyMemberReportQuery(q);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const rep = await getPolicyMemberReportDetail(
           req.userId!,
           req.permissions!,
@@ -396,11 +401,11 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/export/policy-member-report.csv",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = policyMemberReportQuerySchema.parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const rep = await getPolicyMemberReport(
           req.userId!,
           req.permissions!,
@@ -430,13 +435,13 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/export/villages.csv",
-    requirePermission("mis:read"),
+    requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
         const q = z
           .object({ village: z.string().optional(), asOfDate: z.string().optional() })
           .parse(req.query);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const asOf = parseAsOf({ asOfDate: q.asOfDate });
         const rep = await getVillageReport(
           req.userId!,
@@ -465,7 +470,7 @@ export function createMisRouter(_env: Env) {
     },
   );
 
-  r.get("/policies", requirePermission("mis:read"), async (req, res, next) => {
+  r.get("/policies", requirePermission("mis:policy:read"), async (req, res, next) => {
     try {
       const q = z
         .object({
@@ -475,7 +480,7 @@ export function createMisRouter(_env: Env) {
         })
         .parse(req.query);
 
-      const scope = await loadMisScope(req.userId!, req.permissions!);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
       const { policy: villageWhere } = buildMisVillageWhere(scope, q.village);
 
       const rows = await prisma.policy.findMany({
@@ -543,12 +548,12 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/claim-report",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = claimReportQuerySchema.parse(req.query);
         const normalized = normalizeClaimReportQuery(q);
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolveClaimMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const report = await getClaimReport(req.permissions!, scope, normalized);
         res.json(report);
@@ -560,7 +565,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/claim-report/detail",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = claimReportQuerySchema
@@ -572,7 +577,7 @@ export function createMisRouter(_env: Env) {
           return;
         }
         const normalized = normalizeClaimReportQuery({ ...q, groupBy: "category" });
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolveClaimMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const report = await getClaimReport(req.permissions!, scope, {
           ...normalized,
@@ -588,7 +593,7 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/claim-trend",
-    requireAnyPermission(["mis:read", "dashboard:read"]),
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
     async (req, res, next) => {
       try {
         const q = z
@@ -611,7 +616,7 @@ export function createMisRouter(_env: Env) {
           ...q,
           groupBy: "village",
         });
-        const module = hasPermissionInSet(req.permissions!, "mis:read") ? "mis" : "dashboard";
+        const module = resolveClaimMisScopeModule(req.permissions!);
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const report = await getClaimTrend(req.permissions!, scope, {
           ...normalized,
@@ -626,12 +631,12 @@ export function createMisRouter(_env: Env) {
 
   r.get(
     "/export/claim-report.csv",
-    requirePermission("mis:read"),
+    requirePermission("mis:claim:read"),
     async (req, res, next) => {
       try {
         const q = claimReportQuerySchema.parse(req.query);
         const normalized = normalizeClaimReportQuery(q);
-        const scope = await loadMisScope(req.userId!, req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
         const report = await getClaimReport(req.permissions!, scope, normalized);
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="claim-mis-report.csv"');

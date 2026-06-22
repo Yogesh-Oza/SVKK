@@ -1,23 +1,31 @@
 /**
  * Path → required permission. `undefined` means any authenticated user.
+ * For paths with multiple valid permissions, use getRequiredPermissionsForPath.
  */
 export function getRequiredPermissionForPath(pathname: string): string | undefined {
+  const keys = getRequiredPermissionsForPath(pathname);
+  return keys?.[0];
+}
+
+export function getRequiredPermissionsForPath(pathname: string): string[] | undefined {
   if (pathname === "/login" || pathname.startsWith("/login")) {
     return undefined;
   }
-  if (pathname.startsWith("/roles")) return "roles:manage";
-  if (pathname.startsWith("/admin")) return "admin:policyTypes";
-  if (pathname.startsWith("/logs")) return "logs:read";
-  if (pathname.startsWith("/users")) return "users:manage";
-  if (pathname.startsWith("/receipt-settings")) return "admin:settings";
-  if (pathname.startsWith("/email-templates")) return "admin:settings";
-  if (pathname.startsWith("/notifications")) return "notifications:read";
-  if (pathname.startsWith("/claims")) return "claim:read";
-  if (pathname.startsWith("/mis")) return "mis:read";
-  if (pathname.startsWith("/calculator/admin")) return "admin:charts";
-  if (pathname.startsWith("/calculator")) return "calculation:live";
-  if (pathname.startsWith("/policies/new")) return "policy:create";
-  if (pathname.startsWith("/policies")) return "policy:read";
-  if (pathname === "/dashboard" || pathname.startsWith("/dashboard")) return "dashboard:read";
+  if (pathname.startsWith("/roles")) return ["roles:manage"];
+  if (pathname.startsWith("/admin")) return ["admin:policyTypes"];
+  if (pathname.startsWith("/logs")) return ["logs:read"];
+  if (pathname.startsWith("/users")) return ["users:manage"];
+  if (pathname.startsWith("/receipt-settings")) return ["admin:settings"];
+  if (pathname.startsWith("/email-templates")) return ["admin:settings"];
+  if (pathname.startsWith("/notifications")) return ["notifications:read"];
+  if (pathname.startsWith("/claims")) return ["claim:read"];
+  if (pathname.startsWith("/mis")) return ["mis:policy:read", "mis:claim:read"];
+  if (pathname.startsWith("/future-premium/lookup")) return ["future:lookup"];
+  if (pathname.startsWith("/future-premium")) return ["future:read"];
+  if (pathname.startsWith("/calculator/admin")) return ["admin:charts"];
+  if (pathname.startsWith("/calculator")) return ["calculation:live"];
+  if (pathname.startsWith("/policies/new")) return ["policy:create"];
+  if (pathname.startsWith("/policies")) return ["policy:read"];
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard")) return ["dashboard:read"];
   return undefined;
 }

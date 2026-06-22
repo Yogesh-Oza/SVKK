@@ -10,6 +10,7 @@ import {
 } from "./lib/database-ready.js";
 import { assertCatalogMatchesDatabase } from "./lib/permission-catalog-integrity.js";
 import { upsertPermissionCatalog } from "./lib/permission-seed.js";
+import { migrateRbacV2Permissions } from "./lib/migrate-rbac-v2-permissions.js";
 import { prisma } from "./lib/prisma.js";
 import { seedDefaultEmailTemplatesIfMissing } from "./services/email/email-template.service.js";
 import { startRenewalReminderScheduler } from "./services/notification/renewal-reminder.job.js";
@@ -39,6 +40,7 @@ async function start() {
     }
     log.warn({ err: e }, "Permission catalog drift — syncing catalog (non-production)");
     await upsertPermissionCatalog(prisma);
+    await migrateRbacV2Permissions(prisma);
     try {
       await assertCatalogMatchesDatabase();
       log.info("Permission catalog synced");

@@ -208,7 +208,8 @@ export default function SvkkDashboardPage() {
           Charts and totals follow your role&apos;s{" "}
           <strong className="text-foreground">MIS village/area scope</strong> (same as the Policy
           &amp; Member report). To open the full MIS screen and exports, add{" "}
-          <code className="text-xs">mis:read</code> to this role.
+          <code className="text-xs">mis:policy:read</code> or{" "}
+          <code className="text-xs">mis:claim:read</code> to this role.
         </p>
       ) : null}
     </div>

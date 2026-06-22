@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { loadCategoryByKeyMap, resolveCategoryRef } from "../../lib/category-display.js";
 import { prisma } from "../../lib/prisma.js";
 import {
@@ -54,7 +54,15 @@ import {
   assertPolicyReadable,
   buildPolicyReadWhere,
   loadMisScope,
+  resolvePolicyReadScopeModule,
 } from "../../services/mis-scope.service.js";
+
+const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
+
+async function loadPolicyReadScope(userId: string, permissions: Set<string>) {
+  const module = resolvePolicyReadScopeModule(permissions);
+  return loadMisScope(userId, permissions, module);
+}
 
 /** Express may provide string | string[] for repeated query keys. */
 function queryToStringArray(v: unknown): string[] | undefined {
@@ -361,7 +369,7 @@ export function createPolicyRouter(env: Env) {
       ) {
         throw new AppError("FORBIDDEN", "Insufficient permissions to set commission fields", 403);
       }
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       assertGeoFieldsOnWrite(
         { village: body.village, area: body.area },
         scope,
@@ -384,10 +392,10 @@ export function createPolicyRouter(env: Env) {
 
   r.get(
     "/filters",
-    requirePermission("policy:read"),
+    requireAnyPermission([...POLICY_READ_PERMISSIONS]),
     async (req, res, next) => {
       try {
-        const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
         const fq = z
           .object({
             village: z.string().optional(),
@@ -417,7 +425,7 @@ export function createPolicyRouter(env: Env) {
         const body = z
           .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
           .parse(req.body);
-        const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
         for (const id of body.ids) {
           const existing = await prisma.policy.findUnique({
             where: { id, deletedAt: null },
@@ -438,14 +446,14 @@ export function createPolicyRouter(env: Env) {
     },
   );
 
-  r.get("/", requirePermission("policy:read"), async (req, res, next) => {
+  r.get("/", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {
       const q = policyListPagedQuerySchema.parse(req.query);
 
       const usePage = q.page != null;
       const listFilter = listFilterFromQuery(q);
 
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const listArgs = {
         where,
@@ -515,11 +523,11 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export.json", requirePermission("policy:read"), async (req, res, next) => {
+  r.get("/export.json", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {
       const q = policyExportPagedQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const [total, rows] = await Promise.all([
         prisma.policy.count({ where }),
@@ -559,11 +567,11 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export.csv", requirePermission("policy:read"), async (req, res, next) => {
+  r.get("/export.csv", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {
       const q = policyExportQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const rows = await queryPolicyListForExport({ where, sort: listFilter.sort });
       if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
@@ -634,9 +642,9 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/:id", requirePermission("policy:read"), async (req, res, next) => {
+  r.get("/:id", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const row = await prisma.policy.findFirst({
         where: { id: String(req.params.id), deletedAt: null },
         include: {
@@ -681,7 +689,7 @@ export function createPolicyRouter(env: Env) {
 
   r.patch("/:id", requirePermission("policy:update"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true, area: true, createdById: true },
@@ -738,7 +746,7 @@ export function createPolicyRouter(env: Env) {
 
   r.delete("/:id", requirePermission("policy:delete"), async (req, res, next) => {
     try {
-      const scope = await loadMisScope(req.userId!, req.permissions!, "policy");
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const existing = await prisma.policy.findUnique({
         where: { id: String(req.params.id) },
         select: { id: true, village: true, createdById: true },

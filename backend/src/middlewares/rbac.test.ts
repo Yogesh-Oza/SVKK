@@ -28,14 +28,21 @@ describe("rbac effective permissions", () => {
     expect(isRoleAllowed("upload:csv", p)).toBe(true);
   });
 
-  it("USER cannot mis:read", () => {
+  it("USER cannot mis:policy:read", () => {
     const p = permsForLegacyRole("USER");
-    expect(isRoleAllowed("mis:read", p)).toBe(false);
+    expect(isRoleAllowed("mis:policy:read", p)).toBe(false);
   });
 
-  it("SUPERVISOR can mis:read", () => {
+  it("SUPERVISOR can mis:policy:read and mis:claim:read", () => {
     const p = permsForLegacyRole("SUPERVISOR");
-    expect(isRoleAllowed("mis:read", p)).toBe(true);
+    expect(isRoleAllowed("mis:policy:read", p)).toBe(true);
+    expect(isRoleAllowed("mis:claim:read", p)).toBe(true);
+  });
+
+  it("ADMIN can future:read and future:lookup", () => {
+    const p = permsForLegacyRole("ADMIN");
+    expect(isRoleAllowed("future:read", p)).toBe(true);
+    expect(isRoleAllowed("future:lookup", p)).toBe(true);
   });
 
   it("USER cannot policy:update", () => {

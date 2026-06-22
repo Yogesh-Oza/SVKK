@@ -73,13 +73,13 @@ describe("MIS commission gating", () => {
   };
 
   it("zeros sumComm without policy:commission", async () => {
-    const permissions = new Set<string>(["mis:read", "mis:scope_all"]);
+    const permissions = new Set<string>(["mis:policy:read", "mis:policy:scope_all"]);
     const out = await getPolicyMemberReport("u1", permissions, { kind: "full" }, baseInput);
     expect(out.rows[0]?.sumComm).toBe(0);
   });
 
   it("keeps sumComm with policy:commission", async () => {
-    const permissions = new Set<string>(["mis:read", "mis:scope_all", "policy:commission"]);
+    const permissions = new Set<string>(["mis:policy:read", "mis:policy:scope_all", "policy:commission"]);
     const out = await getPolicyMemberReport("u1", permissions, { kind: "full" }, baseInput);
     expect(out.rows[0]?.sumComm).toBe(123);
   });

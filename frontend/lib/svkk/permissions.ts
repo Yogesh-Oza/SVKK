@@ -40,16 +40,16 @@ const NAV: NavEntry[] = [
     id: "futurePremium",
     href: "/future-premium",
     label: "Future Premium",
-    permission: "mis:read",
+    permission: "future:read",
   },
   {
     id: "futureLookup",
     href: "/future-premium/lookup",
     label: "Lookup",
-    permission: "mis:read",
+    permission: "future:lookup",
   },
   { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
-  { id: "mis", href: "/mis", label: "MIS", permission: "mis:read" },
+  { id: "mis", href: "/mis", label: "MIS", permission: "mis:policy:read" },
   { id: "notifications", href: "/notifications", label: "Notifications", permission: "notifications:read" },
   { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:policyTypes" },
   { id: "roles", href: "/roles", label: "Roles & permissions", permission: "roles:manage" },
@@ -68,16 +68,43 @@ export function hasPermission(permissions: string[] | undefined, key: string): b
 }
 
 export function getSvkkNavForPermissions(permissions: string[]) {
-  return NAV.filter((n) => hasPermission(permissions, n.permission));
+  const base = NAV.filter((n) => {
+    if (n.id === "mis") {
+      return canAccessPolicyMis(permissions) || canAccessClaimMis(permissions);
+    }
+    return hasPermission(permissions, n.permission);
+  });
+  return base;
 }
 
+export function canAccessPolicyMis(permissions: string[]) {
+  return hasPermission(permissions, "mis:policy:read");
+}
+
+export function canAccessClaimMis(permissions: string[]) {
+  return hasPermission(permissions, "mis:claim:read");
+}
+
+/** @deprecated Use canAccessPolicyMis / canAccessClaimMis */
 export function canAccessMis(permissions: string[]) {
-  return hasPermission(permissions, "mis:read");
+  return canAccessPolicyMis(permissions) || canAccessClaimMis(permissions);
 }
 
-/** Load dashboard MIS widgets (same APIs as MIS report) with `mis:read` or `dashboard:read`. */
+export function canAccessFuturePremium(permissions: string[]) {
+  return hasPermission(permissions, "future:read");
+}
+
+export function canAccessFutureLookup(permissions: string[]) {
+  return hasPermission(permissions, "future:lookup");
+}
+
+/** Load dashboard MIS widgets (same APIs as MIS report) with MIS or dashboard read. */
 export function canAccessDashboardMis(permissions: string[]) {
-  return hasPermission(permissions, "mis:read") || hasPermission(permissions, "dashboard:read");
+  return (
+    canAccessPolicyMis(permissions) ||
+    canAccessClaimMis(permissions) ||
+    hasPermission(permissions, "dashboard:read")
+  );
 }
 
 export function canUpdatePolicy(permissions: string[]) {

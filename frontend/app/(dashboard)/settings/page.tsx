@@ -17,7 +17,7 @@ import { apiGet, apiPatch } from "@/lib/svkk/api";
 import { setSessionUser } from "@/lib/store/slices/auth-slice";
 import { useAppDispatch } from "@/lib/store/hooks";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -70,38 +70,38 @@ export default function SettingsProfilePage() {
     mode: "onChange",
   });
 
-  const crmHint = useMemo(
-    () =>
-      crmUser
-        ? {
-            name: crmUser.name,
-            email: crmUser.email,
-          }
-        : null,
-    [crmUser],
-  );
-
-  const fetchMe = useCallback(async () => {
-    setLoading(true);
-    try {
-      const me = await apiGet<SvkkUser>("/auth/me");
-      form.reset(mapMeToForm(me));
-      dispatch(setSessionUser(me));
-    } catch {
-      if (crmHint) {
-        form.reset(mapMeToForm(crmHint));
-      } else {
-        form.reset();
-      }
-      toast.error("Could not load profile from the server.");
-    } finally {
-      setLoading(false);
-    }
-  }, [form, crmHint, dispatch]);
+  const { reset } = form;
 
   useEffect(() => {
-    void fetchMe();
-  }, [fetchMe]);
+    let cancelled = false;
+
+    async function loadProfile() {
+      setLoading(true);
+      try {
+        const me = await apiGet<SvkkUser>("/auth/me");
+        if (cancelled) return;
+        reset(mapMeToForm(me));
+        dispatch(setSessionUser(me));
+      } catch {
+        if (cancelled) return;
+        if (crmUser) {
+          reset(mapMeToForm({ name: crmUser.name, email: crmUser.email }));
+        } else {
+          reset();
+        }
+        toast.error("Could not load profile from the server.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
+    // Load profile once when the page mounts — avoid unstable `form` / auth deps (infinite /auth/me loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(values: ProfileFormValues) {
     setSubmitting(true);

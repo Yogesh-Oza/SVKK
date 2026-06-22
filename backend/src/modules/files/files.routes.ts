@@ -3,7 +3,7 @@ import path from "node:path";
 import { Router } from "express";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { AppError } from "../../errors/app-error.js";
 
 const MEDCLAIM = "medclaim";
@@ -17,7 +17,7 @@ export function createFilesRouter(env: Env) {
 
   r.get(
     `/${MEDCLAIM}.pdf`,
-    requirePermission("mis:read"),
+    requireAnyPermission(["mis:policy:read", "mis:claim:read"]),
     async (req, res, next) => {
       try {
         const fromEnv = env.MEDCLAIM_PDF_PATH

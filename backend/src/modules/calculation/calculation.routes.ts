@@ -179,7 +179,7 @@ export function createCalculationRouter(env: Env) {
    */
   r.get(
     "/admin/snapshot",
-    requireAnyPermission(["calculation:live", "mis:read"]),
+    requireAnyPermission(["calculation:live", "future:read", "mis:policy:read"]),
     async (_req, res, next) => {
     try {
       const types = await prisma.policyType.findMany({

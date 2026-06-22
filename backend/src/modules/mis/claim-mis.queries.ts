@@ -78,7 +78,7 @@ export function buildClaimScopeSqlC(
 ): Prisma.Sql {
   if (
     hasPermissionInSet(permissions, "claim:scope_all") ||
-    hasPermissionInSet(permissions, "mis:scope_all")
+    hasPermissionInSet(permissions, "mis:claim:scope_all")
   ) {
     if (filterVillages.length === 1) {
       return villageEquals(filterVillages[0]!);

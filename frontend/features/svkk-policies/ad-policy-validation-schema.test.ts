@@ -77,12 +77,30 @@ describe("adPolicyValidationSchema", () => {
     ).resolves.toBeDefined();
   });
 
-  it("accepts optional nominee date of birth in the past", async () => {
+  it("accepts optional nominee date of birth in the past (DD-MM-YYYY)", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        nomineeDateOfBirth: "29-09-1996",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("accepts optional nominee date of birth in the past (YYYY-MM-DD)", async () => {
     await expect(
       adPolicyValidationSchema.validate({
         ...validBase(),
         nomineeDateOfBirth: "1990-05-01",
       }),
     ).resolves.toBeDefined();
+  });
+
+  it("rejects nominee date of birth in the future", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        nomineeDateOfBirth: "01-01-2099",
+      }),
+    ).rejects.toThrow(/Date cannot be in the future/);
   });
 });

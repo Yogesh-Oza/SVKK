@@ -20,7 +20,8 @@ export function buildPolicyScopeSqlP(
 ): Prisma.Sql {
   if (
     hasPermissionInSet(permissions, "policy:scope_all") ||
-    hasPermissionInSet(permissions, "mis:scope_all")
+    hasPermissionInSet(permissions, "mis:policy:scope_all") ||
+    hasPermissionInSet(permissions, "future:scope_all")
   ) {
     if (filterVillage) {
       return Prisma.sql`p.deletedAt IS NULL AND p.village = ${filterVillage}`;

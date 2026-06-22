@@ -11,6 +11,7 @@ import {
   upsertSystemRoles,
   LEGACY_ROLE_SLUGS,
 } from "../src/lib/permission-seed.js";
+import { migrateRbacV2Permissions } from "../src/lib/migrate-rbac-v2-permissions.js";
 
 const prisma = new PrismaClient();
 
@@ -84,6 +85,7 @@ async function upsertPolicyChart(
 
 async function main() {
   const keyToId = await upsertPermissionCatalog(prisma);
+  await migrateRbacV2Permissions(prisma);
   const slugToId = await upsertSystemRoles(prisma, keyToId);
   const superAdminRoleId = slugToId.get(LEGACY_ROLE_SLUGS.SUPER_ADMIN)!;
   const supervisorRoleId = slugToId.get(LEGACY_ROLE_SLUGS.SUPERVISOR)!;

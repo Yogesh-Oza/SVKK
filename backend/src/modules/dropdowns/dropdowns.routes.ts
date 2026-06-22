@@ -33,8 +33,11 @@ export function createDropdownsRouter(env: Env) {
         !hasPermissionInSet(perms, "*:*") &&
         !hasPermissionInSet(perms, "policy:scope_all") &&
         (hasPermissionInSet(perms, "policy:scope_village") ||
-          hasPermissionInSet(perms, "mis:scope_village") ||
-          hasPermissionInSet(perms, "claim:scope_village"));
+          hasPermissionInSet(perms, "future:scope_village") ||
+          hasPermissionInSet(perms, "mis:policy:scope_village") ||
+          hasPermissionInSet(perms, "mis:claim:scope_village") ||
+          hasPermissionInSet(perms, "claim:scope_village") ||
+          hasPermissionInSet(perms, "dashboard:scope_village"));
 
       if (geoScoped && req.userId) {
         const user = await prisma.user.findUnique({

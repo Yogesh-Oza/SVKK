@@ -16,20 +16,24 @@ export type GeoScope =
 /** @deprecated Use GeoScope — kept for existing imports */
 export type MisScope = GeoScope;
 
-export type ScopeModule = "policy" | "claim" | "mis" | "dashboard";
+export type ScopeModule = "policy" | "claim" | "dashboard" | "future" | "mis_policy" | "mis_claim";
 
 const VILLAGE_SCOPE_KEYS: Record<ScopeModule, string> = {
   policy: "policy:scope_village",
   claim: "claim:scope_village",
-  mis: "mis:scope_village",
   dashboard: "dashboard:scope_village",
+  future: "future:scope_village",
+  mis_policy: "mis:policy:scope_village",
+  mis_claim: "mis:claim:scope_village",
 };
 
 const ALL_SCOPE_KEYS: Record<ScopeModule, string> = {
   policy: "policy:scope_all",
   claim: "claim:scope_all",
-  mis: "mis:scope_all",
   dashboard: "dashboard:scope_all",
+  future: "future:scope_all",
+  mis_policy: "mis:policy:scope_all",
+  mis_claim: "mis:claim:scope_all",
 };
 
 async function roleGeoScope(roleId: string): Promise<GeoScope> {
@@ -71,13 +75,21 @@ export async function loadDataScope(
   return { kind: "geo", villageValues: [], areaValues: [] };
 }
 
-/** @deprecated Prefer loadDataScope(userId, permissions, "mis") */
+/** @deprecated Prefer loadDataScope(userId, permissions, "mis_policy") */
 export async function loadMisScope(
   userId: string,
   permissions: Set<string>,
-  module: ScopeModule = "mis",
+  module: ScopeModule = "mis_policy",
 ): Promise<GeoScope> {
   return loadDataScope(userId, permissions, module);
+}
+
+/** Policy list/detail scope: policy module when user has policy:read, else future module. */
+export function resolvePolicyReadScopeModule(permissions: Set<string>): "policy" | "future" {
+  if (hasPermissionInSet(permissions, "policy:read")) {
+    return "policy";
+  }
+  return "future";
 }
 
 const activePolicy: Prisma.PolicyWhereInput = { deletedAt: null };
@@ -204,6 +216,18 @@ export function buildPolicyReadWhere(
     return buildMisVillageWhere(scope, vs).policy;
   }
 
+  if (hasPermissionInSet(permissions, "future:scope_all")) {
+    return buildMisVillageWhere(scope, vs).policy;
+  }
+
+  if (
+    hasPermissionInSet(permissions, "future:scope_village") ||
+    hasPermissionInSet(permissions, "future:read") ||
+    hasPermissionInSet(permissions, "future:lookup")
+  ) {
+    return buildMisVillageWhere(scope, vs).policy;
+  }
+
   if (hasPermissionInSet(permissions, "policy:scope_own")) {
     const own: Prisma.PolicyWhereInput = { deletedAt: null, createdById: userId };
     if (hasPermissionInSet(permissions, "policy:scope_village") && scope.kind === "geo") {
@@ -281,7 +305,10 @@ export function assertPolicyReadable(
   permissions: Set<string>,
   scope: GeoScope,
 ): void {
-  if (hasPermissionInSet(permissions, "policy:scope_all")) {
+  if (
+    hasPermissionInSet(permissions, "policy:scope_all") ||
+    hasPermissionInSet(permissions, "future:scope_all")
+  ) {
     return;
   }
   if (hasPermissionInSet(permissions, "policy:scope_own")) {
@@ -292,11 +319,12 @@ export function assertPolicyReadable(
       return;
     }
   }
+  const module = resolvePolicyReadScopeModule(permissions);
   assertRecordInGeoScope(
     { village: policy.village, area: policy.area ?? null },
     scope,
     permissions,
-    "policy",
+    module,
   );
 }
 
@@ -346,7 +374,10 @@ export function mergeDateRange(
 export const VILLAGE_SCOPE_PERMISSION_KEYS = [
   "policy:scope_village",
   "claim:scope_village",
-  "mis:scope_village",
+  "dashboard:scope_village",
+  "future:scope_village",
+  "mis:policy:scope_village",
+  "mis:claim:scope_village",
 ] as const;
 
 export function roleRequiresGeo(keys: Iterable<string>): boolean {

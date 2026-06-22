@@ -124,8 +124,36 @@ export async function hasPermission(roleId: string, key: string): Promise<boolea
 
 const POLICY_SCOPE_KEYS = ["policy:scope_all", "policy:scope_village", "policy:scope_own"] as const;
 const DASHBOARD_SCOPE_KEYS = ["dashboard:scope_all", "dashboard:scope_village"] as const;
-const MIS_SCOPE_KEYS = ["mis:scope_all", "mis:scope_village"] as const;
+const MIS_POLICY_SCOPE_KEYS = ["mis:policy:scope_all", "mis:policy:scope_village"] as const;
+const MIS_CLAIM_SCOPE_KEYS = ["mis:claim:scope_all", "mis:claim:scope_village"] as const;
+const FUTURE_SCOPE_KEYS = ["future:scope_all", "future:scope_village"] as const;
 const CLAIM_SCOPE_KEYS = ["claim:scope_all", "claim:scope_village"] as const;
+
+const FUTURE_ACCESS_KEYS = ["future:read", "future:lookup"] as const;
+const MIS_POLICY_ACCESS_KEYS = ["mis:policy:read"] as const;
+const MIS_CLAIM_ACCESS_KEYS = ["mis:claim:read"] as const;
+
+function hasAnyScope(set: Set<string>, keys: readonly string[]): boolean {
+  return keys.some((k) => set.has(k));
+}
+
+function assertScopeRequiredWhenAccess(
+  set: Set<string>,
+  hasWildcard: boolean,
+  accessKeys: readonly string[],
+  scopeKeys: readonly string[],
+  label: string,
+): void {
+  const hasAccess = accessKeys.some((k) => set.has(k));
+  const hasScope = hasAnyScope(set, scopeKeys);
+  if (!hasWildcard && hasAccess && !hasScope) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `${label} access requires a scope: select one under ${label} scope.`,
+      400,
+    );
+  }
+}
 
 function assertAtMostOne(selected: string[], allowed: readonly string[], label: string): void {
   const hits = selected.filter((k) => (allowed as readonly string[]).includes(k));
@@ -141,7 +169,9 @@ export function assertValidScopeSet(keys: Iterable<string>): void {
   const list = [...keys];
   assertAtMostOne(list, POLICY_SCOPE_KEYS, "policy");
   assertAtMostOne(list, DASHBOARD_SCOPE_KEYS, "dashboard");
-  assertAtMostOne(list, MIS_SCOPE_KEYS, "MIS");
+  assertAtMostOne(list, MIS_POLICY_SCOPE_KEYS, "Policy MIS");
+  assertAtMostOne(list, MIS_CLAIM_SCOPE_KEYS, "Claim MIS");
+  assertAtMostOne(list, FUTURE_SCOPE_KEYS, "Future");
   assertAtMostOne(list, CLAIM_SCOPE_KEYS, "claim");
 
   const set = new Set(list);
@@ -157,6 +187,22 @@ export function assertValidScopeSet(keys: Iterable<string>): void {
       400,
     );
   }
+
+  assertScopeRequiredWhenAccess(set, hasWildcard, FUTURE_ACCESS_KEYS, FUTURE_SCOPE_KEYS, "Future");
+  assertScopeRequiredWhenAccess(
+    set,
+    hasWildcard,
+    MIS_POLICY_ACCESS_KEYS,
+    MIS_POLICY_SCOPE_KEYS,
+    "Policy MIS",
+  );
+  assertScopeRequiredWhenAccess(
+    set,
+    hasWildcard,
+    MIS_CLAIM_ACCESS_KEYS,
+    MIS_CLAIM_SCOPE_KEYS,
+    "Claim MIS",
+  );
 }
 
 export async function bumpRtvForUsersWithRole(
