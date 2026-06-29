@@ -6,6 +6,19 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**Category Form admin — email template + PDF + category bulk send**
+
+New Admin nav item **Category form** (`/category-form`, `admin:settings`). Mediclaim-style email editor (reuse `EmailTemplateEditor`), one shared PDF on OneDrive, multi-select categories, recipient preview, test send, and bulk send (one email per policy with PDF attachment). Backend: `category-form.service.ts`, `category-form.routes.ts`, `AppSetting` keys, `sendEmail` attachments support.
+
+| Layer | Role |
+|-------|------|
+| `category-form.service.ts` | Template CRUD, PDF meta, preview counts, send/test |
+| `category-form.routes.ts` | `GET/PUT /category-form`, `POST/DELETE /pdf`, `POST /preview`, `/send-test`, `/send` |
+| `policy-template-vars.ts` | Shared `templateVarsFromPolicy` for notifications + category form |
+| `category-form/page.tsx` | Admin UI: PDF upload, category multi-select, editor, send |
+
+## Previous task (completed)
+
 **Policy Loan, Bank Ac Info, and Nominee DOB**
 
 Extended AD policy create/update/delete with:

@@ -54,6 +54,7 @@ export function usesMediclaimBranding(templateId: string): boolean {
   return (
     templateId.startsWith("mediclaim_") ||
     templateId === "policy_number_updated" ||
+    templateId === "category_form" ||
     templateId.startsWith("renewal_")
   );
 }

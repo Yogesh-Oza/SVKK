@@ -17,6 +17,7 @@ export function getRequiredPermissionsForPath(pathname: string): string[] | unde
   if (pathname.startsWith("/users")) return ["users:manage"];
   if (pathname.startsWith("/receipt-settings")) return ["admin:settings"];
   if (pathname.startsWith("/email-templates")) return ["admin:settings"];
+  if (pathname.startsWith("/category-form")) return ["admin:settings"];
   if (pathname.startsWith("/notifications")) return ["notifications:read"];
   if (pathname.startsWith("/claims")) return ["claim:read"];
   if (pathname.startsWith("/mis")) return ["mis:policy:read", "mis:claim:read"];

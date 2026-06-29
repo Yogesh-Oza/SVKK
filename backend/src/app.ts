@@ -21,6 +21,7 @@ import { createSettingsRouter } from "./modules/settings/settings.routes.js";
 import { createRbacRouter } from "./modules/rbac/rbac.routes.js";
 import { createNotificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { createEmailTemplatesRouter } from "./modules/email-templates/email-templates.routes.js";
+import { createCategoryFormRouter } from "./modules/category-form/category-form.routes.js";
 import { globalApiRateLimit } from "./middlewares/rate-limit.js";
 
 export function createApp(env: Env, rootLog: AppLogger) {
@@ -66,6 +67,7 @@ export function createApp(env: Env, rootLog: AppLogger) {
   v1.use("/settings", createSettingsRouter(env));
   v1.use("/notifications", createNotificationsRouter(env));
   v1.use("/email-templates", createEmailTemplatesRouter(env));
+  v1.use("/category-form", createCategoryFormRouter(env));
 
   v1.use(errorHandler);
 
