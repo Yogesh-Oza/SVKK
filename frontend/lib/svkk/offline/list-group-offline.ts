@@ -43,6 +43,12 @@ export type OfflineGroupedPolicy = {
   _createdAt: string;
 };
 
+export type OfflineGroupedPolicyItem = Omit<OfflineGroupedPolicy, "_createdAt">;
+
+function stripGroupedSortKey({ _createdAt: _, ...rest }: OfflineGroupedPolicy): OfflineGroupedPolicyItem {
+  return rest;
+}
+
 export type OfflineListFilters = {
   villages?: string[];
   periodYears?: string[];
@@ -279,7 +285,7 @@ export function buildOfflinePolicyListPage(input: {
   page?: number;
   pageSize?: number;
 }): {
-  items: OfflineGroupedPolicy[];
+  items: OfflineGroupedPolicyItem[];
   total: number;
   page: number;
   pageSize: number;
@@ -292,7 +298,7 @@ export function buildOfflinePolicyListPage(input: {
   const pageSize = input.pageSize ?? 50;
   const paged = paginateGroupedList(sorted, page, pageSize);
   return {
-    items: paged.items.map(({ _createdAt: _, ...rest }) => rest),
+    items: paged.items.map(stripGroupedSortKey),
     total: paged.total,
     page: paged.page,
     pageSize: paged.pageSize,

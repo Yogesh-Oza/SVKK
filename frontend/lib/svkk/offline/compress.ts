@@ -136,11 +136,11 @@ export function compressListRowFromDetail(detail: SvkkPolicyDetailForForm): Offl
     categoryText: detail.categoryText,
     years: sortedYears.map((y) => ({
       yearLabel: y.yearLabel,
-      vkkPremium: y.vkkPremium,
-      sumInsured: y.sumInsured,
+      vkkPremium: decimalStr(y.vkkPremium),
+      sumInsured: decimalStr(y.sumInsured),
     })),
-    vkkPremium: y0?.vkkPremium,
-    sumInsured: y0?.sumInsured,
+    vkkPremium: decimalStr(y0?.vkkPremium),
+    sumInsured: decimalStr(y0?.sumInsured),
   });
 }
 

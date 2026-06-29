@@ -200,6 +200,29 @@ function emptyDetailShell(id: string): SvkkPolicyDetailForForm {
   };
 }
 
+function emptyYearShell(yearLabel: string): SvkkPolicyDetailForForm["years"][number] {
+  return {
+    yearLabel,
+    policyStart: null,
+    policyEnd: null,
+    sumInsured: null,
+    expectedNetPremium: null,
+    vkkPremium: null,
+    grossPremium: null,
+    commissionAmount: null,
+    twoLacFloater: null,
+    yearPolicyHolderPremium: null,
+    gaamMahajanVkk: null,
+    excessShortAmount: null,
+    diffPaidByHolder: null,
+    holderCumulativeBonus: null,
+    holderJoiningYear: null,
+    holderBasicPremium: null,
+    members: [],
+    payments: [],
+  };
+}
+
 /** Insert offline-created policy into IDB so list/detail work before server sync. */
 export async function applyOfflineCreateToLocalCache(
   clientTempId: string,
@@ -248,12 +271,19 @@ export async function applyOfflineCreateToLocalCache(
     policyType: await resolvePolicyTypeFromPatch(payload, shell),
     years: [
       {
-        yearLabel,
+        ...emptyYearShell(yearLabel),
         policyStart: str(payload.policyStart),
         policyEnd: str(payload.policyEnd),
-        sumInsured: payload.sumInsured ?? null,
-        vkkPremium: payload.vkkPremium ?? null,
-        expectedNetPremium: payload.expectedNetPremium ?? null,
+        sumInsured: (payload.sumInsured as SvkkPolicyDetailForForm["years"][number]["sumInsured"]) ?? null,
+        vkkPremium: (payload.vkkPremium as SvkkPolicyDetailForForm["years"][number]["vkkPremium"]) ?? null,
+        expectedNetPremium:
+          (payload.expectedNetPremium as SvkkPolicyDetailForForm["years"][number]["expectedNetPremium"]) ??
+          null,
+        grossPremium:
+          (payload.grossPremium as SvkkPolicyDetailForForm["years"][number]["grossPremium"]) ?? null,
+        commissionAmount:
+          (payload.commissionAmount as SvkkPolicyDetailForForm["years"][number]["commissionAmount"]) ??
+          null,
         members: Array.isArray(payload.members)
           ? (payload.members as SvkkPolicyDetailForForm["years"][number]["members"])
           : [],
