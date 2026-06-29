@@ -1,5 +1,7 @@
 import AppSidebar from "@/components/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
+import { OfflineProvider } from "@/components/svkk/offline-provider";
+import { OfflineRouteGuard } from "@/components/svkk/offline-route-guard";
 import { SvkkAuthGate } from "@/components/svkk/svkk-auth-gate";
 import { SvkkPermissionGate } from "@/components/svkk/svkk-permission-gate";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -13,7 +15,9 @@ import { Suspense, type ReactNode } from "react";
 export default function SvkkMainLayout({ children }: { children: ReactNode }) {
   return (
     <SvkkAuthGate>
-      <SvkkPermissionGate>
+      <OfflineProvider>
+        <OfflineRouteGuard>
+        <SvkkPermissionGate>
         <SidebarConfigProvider>
           <SidebarProvider>
             <AppSidebar />
@@ -25,7 +29,9 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
             </SidebarInset>
           </SidebarProvider>
         </SidebarConfigProvider>
-      </SvkkPermissionGate>
+        </SvkkPermissionGate>
+        </OfflineRouteGuard>
+      </OfflineProvider>
     </SvkkAuthGate>
   );
 }

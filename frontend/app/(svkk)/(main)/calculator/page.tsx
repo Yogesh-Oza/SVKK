@@ -27,7 +27,7 @@ import {
 import {
   STORAGE_KEY_FORM,
   ensureMembers,
-  fetchPremiumSnapshot,
+import { fetchPremiumSnapshotWithOffline } from "@/lib/svkk/offline/offline-reference";
   quoteFromInput,
   relationshipOptions,
   rs,
@@ -95,8 +95,8 @@ export default function SvkkCalculatorPage() {
     let cancelled = false;
     (async () => {
       try {
-        const next = await fetchPremiumSnapshot();
-        if (cancelled) return;
+        const next = await fetchPremiumSnapshotWithOffline();
+        if (cancelled || !next) return;
         setState(next);
         // If the persisted policy isn't on the server snapshot (e.g. renamed),
         // fall back to whatever the server returned first.

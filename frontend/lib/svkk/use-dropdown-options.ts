@@ -28,6 +28,17 @@ function emptyState(): DropdownOptionsState {
 }
 
 async function fetchAll(): Promise<DropdownOptionsState> {
+  const offline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (offline) {
+    const { getCachedReferenceBundle, referenceBundleToDropdownState } = await import(
+      "@/lib/svkk/offline/offline-reference"
+    );
+    const ref = await getCachedReferenceBundle();
+    if (ref) {
+      return referenceBundleToDropdownState(ref);
+    }
+  }
+
   const [generic, categoriesRes, policyTypesRes, groupingsRes] = await Promise.all([
     svkkJson<{ items: Partial<Record<DropdownType, DropdownOption[]>> }>("/dropdowns"),
     svkkJson<{ items: Array<{ id: string; key: string; name: string }> }>("/categories").catch(() => ({

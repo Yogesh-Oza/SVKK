@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DropdownCombobox } from "@/components/svkk/dropdown-combobox";
+import { OfflineStatusBanner } from "@/components/svkk/offline-status-banner";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { canSeeCommission } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
@@ -21,7 +22,11 @@ import { dateParse } from "@/lib/svkk/form-date";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import {
-  fetchPremiumSnapshot,
+  fetchPremiumSnapshotWithOffline,
+  isPremiumAutoCalcBlocked,
+} from "@/lib/svkk/offline/offline-reference";
+import { takePooledReferenceNo, prefetchReferenceNoPool } from "@/lib/svkk/offline/prepare-offline";
+import {
   normPolicyKey,
   quoteFromInput,
   rs,
@@ -29,6 +34,7 @@ import {
   type PremiumState,
 } from "@/lib/svkk/premium";
 import { svkkJson } from "@/lib/svkk/api";
+import { fetchPolicyDetail, fetchPolicyListRowsForForm } from "@/lib/svkk/offline/policy-data";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
@@ -489,6 +495,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [memberAgeAlertOpen, setMemberAgeAlertOpen] = useState(false);
   const [memberAgeAlertMessage, setMemberAgeAlertMessage] = useState("");
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
+  const openReceiptPreviewRef = useRef<(() => void) | null>(null);
 
   /** Carry Forward only: male member was 24 and turns 25 on the new policy year. */
   const showCarryForwardTurning25Alert = useCallback(
@@ -524,14 +531,29 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     let cancelled = false;
     (async () => {
       try {
-        const next = await fetchPremiumSnapshot();
-        if (!cancelled) setPremiumStateValue(next);
+        const next = await fetchPremiumSnapshotWithOffline();
+        if (!cancelled && next) {
+          setPremiumStateValue(next);
+          setPremiumCalcBlocked(false);
+        }
       } catch {
         /* leave defs/charts empty; per-row rendering will show 'No age band found' */
       }
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  const [premiumCalcBlocked, setPremiumCalcBlocked] = useState(false);
+  useEffect(() => {
+    const refreshBlock = () => void isPremiumAutoCalcBlocked().then(setPremiumCalcBlocked);
+    refreshBlock();
+    window.addEventListener("svkk-cache-synced", refreshBlock);
+    window.addEventListener("svkk-premium-synced", refreshBlock);
+    return () => {
+      window.removeEventListener("svkk-cache-synced", refreshBlock);
+      window.removeEventListener("svkk-premium-synced", refreshBlock);
     };
   }, []);
 
@@ -557,6 +579,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     validateOnChange: true,
     onSubmit: async (values, helpers) => {
       setApiErr(null);
+      try {
       const applyBackendFieldErrors = (fieldErrors: unknown) => {
         if (!fieldErrors || typeof fieldErrors !== "object") {
           return false;
@@ -631,7 +654,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             });
             return;
           }
-          await submitAdPolicyPatchRequest({
+          const result = await submitAdPolicyPatchRequest({
             policyId: editCtx.policyId,
             values: submitValues,
             expectedUpdatedAt: editCtx.detail.updatedAt,
@@ -640,8 +663,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             policyTypeId,
             policyChartId,
           });
-          toast.success("Policy updated");
-          void router.push(`/policies/${editCtx.policyId}`);
+          if (result.offline) {
+            toast.success("Saved offline", {
+              description: "Changes are queued and will sync when you're back online.",
+            });
+          } else {
+            toast.success("Policy updated");
+          }
+          void router.push("/policies");
         } catch (e) {
           if (tryApplyBackendValidationErrors(e)) {
             setApiErr("Please fix the highlighted fields and try again.");
@@ -663,26 +692,42 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           idemKey: idemKeyRef.current,
           categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
         });
-        toast.success("Policy saved");
-        // Auto Receipt: fetch the freshly saved policy and open the receipt
-        // preview. The user can Print → "Save as PDF" from there. When the
-        // modal closes, navigate to the policy detail page.
-        void (async () => {
-          try {
-            const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
-            const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
-            setReceiptPreviewHtml(buildReceiptDocumentHtml(saved, { embedded: true, ...resolved }));
-            setNavigateAfterReceiptClose(`/policies/${id}`);
-          } catch {
-            void router.push(`/policies/${id}`);
+        const offlineSave = typeof navigator !== "undefined" && !navigator.onLine;
+        if (offlineSave) {
+          toast.success("Saved offline", {
+            description: "Policy is queued and will sync when you're back online.",
+          });
+          setNavigateAfterReceiptClose("/policies");
+          openReceiptPreviewRef.current?.();
+          if (!openReceiptPreviewRef.current) {
+            void router.push("/policies");
           }
-        })();
+        } else {
+          toast.success("Policy saved");
+          void (async () => {
+            try {
+              const saved = await svkkJson<PolicyDetailForReceipt>(`/policies/${id}`);
+              const resolved = await resolveReceiptImagesForPrint(receiptImageUrls);
+              setReceiptPreviewHtml(buildReceiptDocumentHtml(saved, { embedded: true, ...resolved }));
+              setNavigateAfterReceiptClose("/policies");
+            } catch {
+              setNavigateAfterReceiptClose("/policies");
+              openReceiptPreviewRef.current?.();
+              if (!openReceiptPreviewRef.current) {
+                void router.push("/policies");
+              }
+            }
+          })();
+        }
       } catch (e) {
         if (tryApplyBackendValidationErrors(e)) {
           setApiErr("Please fix the highlighted fields and try again.");
           return;
         }
         setApiErr(e instanceof Error ? e.message : "Create failed");
+      }
+      } finally {
+        helpers.setSubmitting(false);
       }
     },
   });
@@ -845,7 +890,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   );
 
   useEffect(() => {
-    if (autoCalcLocked) return;
+    if (autoCalcLocked || premiumCalcBlocked) return;
     if (!liveQuote.rows.length) return;
     const holderRow = liveQuote.rows[0];
     const holderManual = Boolean(premiumManual.basicPremiumPs);
@@ -878,7 +923,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
       void setFieldValue(`members[${index}].basicPremium`, String(row.basic));
     });
-  }, [autoCalcLocked, liveQuote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
+  }, [autoCalcLocked, premiumCalcBlocked, liveQuote, premiumManual, setFieldValue, values.basicPremiumPs, values.members]);
 
   const selectedFetch = useMemo(
     () => fetchRows.find((row) => row.id === selectedFetchId) ?? null,
@@ -913,11 +958,27 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [fetchRows, fetchSvkkId]);
 
   const loadChartsForPolicyTypeId = useCallback(async (typeId: string) => {
-    const charts = await svkkJson<ChartRow[]>(
-      `/calculation/reference/charts?policyTypeId=${encodeURIComponent(typeId)}`,
-    );
-    const h = charts.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
-    setPolicyChartId(h?.id ?? charts[0]?.id ?? "");
+    try {
+      const charts = await svkkJson<ChartRow[]>(
+        `/calculation/reference/charts?policyTypeId=${encodeURIComponent(typeId)}`,
+      );
+      const h = charts.find((c) => c.chartKind === "COMBINED" || c.chartKind === "HOLDER");
+      setPolicyChartId(h?.id ?? charts[0]?.id ?? "");
+    } catch (e) {
+      const { fetchChartsForPolicyType, pickDefaultPolicyChartId } = await import(
+        "@/lib/svkk/offline/offline-chart-resolve"
+      );
+      const { isLikelyOfflineError } = await import("@/lib/svkk/offline/policy-data");
+      if (isLikelyOfflineError(e)) {
+        const charts = await fetchChartsForPolicyType(typeId);
+        const chartId = pickDefaultPolicyChartId(charts);
+        if (chartId) {
+          setPolicyChartId(chartId);
+          return;
+        }
+      }
+      throw e;
+    }
   }, []);
 
   const syncPolicyTypeFromKey = useCallback(
@@ -938,7 +999,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     async (id: string, modeNotice: string) => {
       isHydratingRef.current = true;
       try {
-        const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${id}`);
+        const row = await fetchPolicyDetail(id);
         const nextValues = policyDetailToAdFormValues(row);
         setFetchedPolicyForUpdate(row);
         setCarriedForwardNotice(null);
@@ -966,16 +1027,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     }
     setSuggestBusy(true);
     try {
-      const search = new URLSearchParams({
-        search: query.trim(),
-        page: "1",
-        pageSize: "25",
-        sort: "createdAt",
-        groupBySvkk: "false",
-      });
-      const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${search.toString()}`);
+      const res = await fetchPolicyListRowsForForm(query.trim());
       const dedup = new Map<string, FetchSuggestion>();
-      for (const row of res.items ?? []) {
+      for (const row of res) {
         const svkkId = row.insuredParty.svkkPublicId;
         if (!svkkId || dedup.has(svkkId)) {
           continue;
@@ -998,15 +1052,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, []);
 
   const loadYearRowsBySvkkId = useCallback(async (svkkId: string) => {
-    const query = new URLSearchParams({
-      search: svkkId,
-      page: "1",
-      pageSize: "50",
-      sort: "createdAt",
-      groupBySvkk: "false",
-    });
-    const res = await svkkJson<{ items: PolicyListRow[] }>(`/policies?${query.toString()}`);
-    const exactRows = (res.items ?? []).filter((item) => item.insuredParty.svkkPublicId === svkkId);
+    const items = await fetchPolicyListRowsForForm(svkkId);
+    const exactRows = items.filter((item) => item.insuredParty.svkkPublicId === svkkId) as PolicyListRow[];
     setFetchRows(exactRows);
     return exactRows;
   }, []);
@@ -1066,6 +1113,40 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       if (!trimmedGrouping || !trimmedMonth) {
         return { svkkPublicId: "", referenceNo: "" };
       }
+      const offline = typeof navigator !== "undefined" && !navigator.onLine;
+      if (offline) {
+        const pooled = await takePooledReferenceNo();
+        if (pooled) {
+          void prefetchReferenceNoPool(5);
+          const refSeq = pooled.slice(-4).padStart(4, "0");
+          const composed = composeIdsFromSeq(
+            trimmedGrouping,
+            trimmedMonth,
+            trimmedYear,
+            "0000",
+            refSeq,
+          );
+          return {
+            svkkPublicId: composed.svkkPublicId,
+            referenceNo: pooled.toUpperCase(),
+            svkkSeq: "0000",
+            refSeq,
+          };
+        }
+        const composed = composeIdsFromSeq(
+          trimmedGrouping,
+          trimmedMonth,
+          trimmedYear,
+          "0000",
+          "0001",
+        );
+        return {
+          svkkPublicId: composed.svkkPublicId,
+          referenceNo: composed.referenceNo,
+          svkkSeq: "0000",
+          refSeq: "0001",
+        };
+      }
       const svkkPromise = svkkJson<{ svkkPublicId: string }>(
         `/policies/next-svkk-id?policyGrouping=${encodeURIComponent(trimmedGrouping)}&month=${encodeURIComponent(trimmedMonth)}`,
       );
@@ -1100,7 +1181,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       setSelectedFetchId(policyIdToUse);
       setCarryForwardBusy(true);
       try {
-        const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${policyIdToUse}`);
+        const row = await fetchPolicyDetail(policyIdToUse);
         const fetchMeta = fetchRows.find((item) => item.id === policyIdToUse);
         const yearForPick =
           override?.yearLabel?.trim() ||
@@ -1547,6 +1628,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [policyId, values, receiptImageUrls]);
 
   useEffect(() => {
+    openReceiptPreviewRef.current = openReceiptPreviewFromForm;
+  }, [openReceiptPreviewFromForm]);
+
+  useEffect(() => {
     if (missingUrl) {
       return;
     }
@@ -1596,7 +1681,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     void (async () => {
       setDetailErr(null);
       try {
-        const row = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${policyId}`);
+        const row = await fetchPolicyDetail(policyId);
         setDetail(row);
       } catch (e) {
         setDetailErr(e instanceof Error ? e.message : "Failed to load policy");
@@ -1844,7 +1929,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   }, [autoCalcLocked, values.person, setFieldValue]);
 
   useEffect(() => {
-    if (autoCalcLocked) return;
+    if (autoCalcLocked || premiumCalcBlocked) return;
     const setAutoField = (
       field: keyof AdPolicyFormValues,
       value: number,
@@ -1957,7 +2042,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("excessShort", excessShort, false, true);
     setAutoField("differenceAmountPaidByHolder", differenceAmountPaidByHolder);
     setAutoField("diffAmt", differenceAmountPaidByHolder);
-  }, [autoCalcLocked, premiumManual, liveQuote, setFieldValue, values]);
+  }, [autoCalcLocked, premiumCalcBlocked, premiumManual, liveQuote, setFieldValue, values]);
 
   const adProductSelectValue = useMemo(() => {
     const raw = (values.adProduct || editMappedValues?.adProduct || "").trim();
@@ -2000,6 +2085,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-10 select-text">
+      <OfflineStatusBanner />
+      {premiumCalcBlocked && !navigator.onLine && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Premium auto-calculation needs fresh rates offline. Connect briefly so rates can sync,
+          then work offline again.
+        </p>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
@@ -3767,7 +3859,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <DialogTitle>Receipt Preview</DialogTitle>
             <DialogDescription>
               {navigateAfterReceiptClose
-                ? "Policy saved. Click Print to save the receipt as PDF, then Close to open the policy."
+                ? "Policy saved. Click Print to save the receipt as PDF, then Close to return to the policy list."
                 : "Preview works with saved or unsaved policy data."}
             </DialogDescription>
           </DialogHeader>
@@ -3787,7 +3879,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 }
               }}
             >
-              {navigateAfterReceiptClose ? "Close & Open Policy" : "Close"}
+              {navigateAfterReceiptClose ? "Close & Go to Policies" : "Close"}
             </Button>
             <Button
               type="button"

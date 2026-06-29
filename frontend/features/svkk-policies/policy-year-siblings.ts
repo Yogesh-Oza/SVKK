@@ -1,4 +1,5 @@
 import { svkkJson } from "@/lib/svkk/api";
+import { isLikelyOfflineError, isOfflineMode, searchCachedPolicies } from "@/lib/svkk/offline/policy-data";
 import { applyDisplayYearLabels } from "./policy-year-display";
 
 /** One fiscal-year policy row linked by insured party SVKK public id. */
@@ -66,11 +67,37 @@ export function singleRowYearSibling(row: PolicyListRowMinimal): PolicyListYearS
   ];
 }
 
+async function fetchPolicyYearSiblingsFromCache(
+  svkkPublicId: string,
+): Promise<PolicyListYearSibling[]> {
+  const rows = await searchCachedPolicies(svkkPublicId);
+  const items: PolicyListRowMinimal[] = rows.map((r) => ({
+    id: r.id,
+    policyNo: r.policyNo,
+    referenceNo: r.referenceNo,
+    periodYearText: r.periodYearText ?? r.yearLabel,
+    insuredParty: { svkkPublicId: r.svkkId },
+    years: [
+      {
+        yearLabel: r.yearLabel,
+        vkkPremium: r.vkkPremium,
+        sumInsured: r.sumInsured,
+      },
+    ],
+  }));
+  return toYearSiblingsFromListItems(items, svkkPublicId);
+}
+
 export async function fetchPolicyYearSiblings(
   svkkPublicId: string,
 ): Promise<PolicyListYearSibling[]> {
   const id = svkkPublicId.trim();
   if (!id) return [];
+
+  if (isOfflineMode()) {
+    return fetchPolicyYearSiblingsFromCache(id);
+  }
+
   const query = new URLSearchParams({
     search: id,
     page: "1",
@@ -78,6 +105,13 @@ export async function fetchPolicyYearSiblings(
     sort: "periodYearText_desc",
     groupBySvkk: "false",
   });
-  const res = await svkkJson<{ items: PolicyListRowMinimal[] }>(`/policies?${query}`);
-  return toYearSiblingsFromListItems(res.items ?? [], id);
+  try {
+    const res = await svkkJson<{ items: PolicyListRowMinimal[] }>(`/policies?${query}`);
+    return toYearSiblingsFromListItems(res.items ?? [], id);
+  } catch (e) {
+    if (isLikelyOfflineError(e)) {
+      return fetchPolicyYearSiblingsFromCache(id);
+    }
+    throw e;
+  }
 }

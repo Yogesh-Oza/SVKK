@@ -17,10 +17,30 @@ const initialState: {
 };
 
 export const initializeAuth = createAsyncThunk("auth/initialize", async (_, { rejectWithValue }) => {
+  const offline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (offline) {
+    const { loadAuthSnapshot } = await import("@/lib/svkk/offline/auth-snapshot");
+    const snapshotUser = await loadAuthSnapshot();
+    if (snapshotUser) {
+      return snapshotUser;
+    }
+    return rejectWithValue("unauthenticated");
+  }
   try {
     const { data } = await backendApi.get<Record<string, unknown>>("/auth/me");
-    return normalizeSvkkUser(data);
-  } catch {
+    const user = normalizeSvkkUser(data);
+    const { saveAuthSnapshot } = await import("@/lib/svkk/offline/auth-snapshot");
+    await saveAuthSnapshot(user);
+    return user;
+  } catch (e) {
+    const { loadAuthSnapshot } = await import("@/lib/svkk/offline/auth-snapshot");
+    const { isLikelyOfflineError } = await import("@/lib/svkk/offline/policy-data");
+    if (isLikelyOfflineError(e)) {
+      const snapshotUser = await loadAuthSnapshot();
+      if (snapshotUser) {
+        return snapshotUser;
+      }
+    }
     const at = await refreshSvkkAccessToken();
     if (at === null) {
       clearStoredTokens();
@@ -28,7 +48,10 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async (_, { re
     }
     try {
       const { data } = await backendApi.get<Record<string, unknown>>("/auth/me");
-      return normalizeSvkkUser(data);
+      const user = normalizeSvkkUser(data);
+      const { saveAuthSnapshot } = await import("@/lib/svkk/offline/auth-snapshot");
+      await saveAuthSnapshot(user);
+      return user;
     } catch {
       clearStoredTokens();
       return rejectWithValue("unauthenticated");
@@ -51,7 +74,10 @@ export const loginWithPassword = createAsyncThunk(
       if (body.accessToken && body.refreshToken) {
         setStoredTokens(body.accessToken, body.refreshToken);
       }
-      return normalizeSvkkUser(body.user as Record<string, unknown>);
+      const user = normalizeSvkkUser(body.user as Record<string, unknown>);
+      const { saveAuthSnapshot } = await import("@/lib/svkk/offline/auth-snapshot");
+      await saveAuthSnapshot(user);
+      return user;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Login failed";
       return rejectWithValue(message);

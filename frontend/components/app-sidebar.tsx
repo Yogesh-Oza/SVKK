@@ -12,6 +12,8 @@ import { sidebarData } from "@/constants/sidebar-data";
 import { useAuth } from "@/contexts/auth-context";
 import { useSidebarConfig } from "@/contexts/sidebar-context";
 import type { NavGroup as NavGroupType, NavItem } from "@/lib/types";
+import { filterNavGroupsForOffline } from "@/lib/svkk/offline/offline-nav";
+import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
 import { useAppSelector } from "@/lib/store/hooks";
 import React, { useMemo } from "react";
 import { NavGroup } from "./nav-group";
@@ -46,17 +48,22 @@ export default function AppSidebar({
   const { user } = useAuth();
   const sessionUser = useAppSelector((s) => s.auth.user);
   const { config } = useSidebarConfig();
+  const { online } = useOfflineStatus();
   const isAdmin = user?.role === "admin";
 
   /** One sidebar: MediClaim (SVKK API) links first, then CRM (notifications, settings, …). */
   const navGroups = useMemo((): NavGroupType[] => {
     const crm = filterNavGroupsByRole(sidebarData.navGroups, isAdmin);
     if (!sessionUser) {
-      return crm;
+      return online ? crm : [];
     }
     const svkk = getSvkkNavGroupsForPermissions(sessionUser.permissions ?? []);
-    return [...svkk, ...crm];
-  }, [sessionUser, isAdmin]);
+    const merged = [...svkk, ...crm];
+    if (!online) {
+      return filterNavGroupsForOffline(merged);
+    }
+    return merged;
+  }, [sessionUser, isAdmin, online]);
 
   const navUserRole = useMemo(() => {
     if (sessionUser?.roleName) {

@@ -71,7 +71,9 @@ import {
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
-import { canDeletePolicy, canUpdatePolicy, hasPermission } from "@/lib/svkk/permissions";
+import { OfflineDashboard } from "@/components/svkk/offline-dashboard";
+import { OfflineStatusBanner } from "@/components/svkk/offline-status-banner";
+import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
@@ -82,6 +84,11 @@ import {
   printReceiptPreview,
 } from "@/lib/svkk/receipt-pdf";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
+import {
+  canDeletePolicy,
+  canUpdatePolicy,
+  hasPermission,
+} from "@/lib/svkk/permissions";
 import {
   flexRender,
   getCoreRowModel,
@@ -231,8 +238,9 @@ export default function SvkkPoliciesPage() {
   const searchParams = useSearchParams();
   const urlHydrated = useRef(false);
   const { user } = useSvkkAuth();
+  const { online } = useOfflineStatus();
   const perms = user?.permissions ?? [];
-  const canDel = canDeletePolicy(perms);
+  const canDel = canDeletePolicy(perms) && online;
   const canEdit = canUpdatePolicy(perms);
   const canCsvUpload = hasPermission(perms, "upload:csv");
   const receiptImageUrls = useReceiptSettings();
@@ -500,8 +508,41 @@ export default function SvkkPoliciesPage() {
   const load = useCallback(async () => {
     const generation = ++listFetchGenerationRef.current;
     setLoading(true);
+    const loadFromCache = async () => {
+      const { loadOfflinePolicyListPage } = await import("@/lib/svkk/offline/policy-data");
+      const dateFromParam = toIsoDateParam(dateFrom);
+      const dateToParam = toIsoDateParam(dateTo);
+      return loadOfflinePolicyListPage({
+        search: searchApplied,
+        sort,
+        page,
+        pageSize,
+        filters: {
+          villages,
+          periodYears,
+          periodMonths,
+          categoryIds,
+          categoryKeys: categoryKeysForQuery,
+          policyTypeIds,
+          areas,
+          sumInsureds,
+          policyGroupings,
+          ...(dateFromParam ? { dateFrom: dateFromParam } : {}),
+          ...(dateToParam ? { dateTo: dateToParam } : {}),
+        },
+      });
+    };
     try {
       setErr(null);
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const res = await loadFromCache();
+        if (generation !== listFetchGenerationRef.current) return;
+        setRows(res.items as ListPolicy[]);
+        setTotalPages(res.totalPages);
+        setTotal(res.total);
+        setRowSelection({});
+        return;
+      }
       const res = await svkkJson<PageListRes>(`/policies?${queryString}`);
       if (generation !== listFetchGenerationRef.current) return;
       setRows(res.items);
@@ -510,13 +551,45 @@ export default function SvkkPoliciesPage() {
       setRowSelection({});
     } catch (e) {
       if (generation !== listFetchGenerationRef.current) return;
+      const { isLikelyOfflineError } = await import("@/lib/svkk/offline/policy-data");
+      if (isLikelyOfflineError(e)) {
+        try {
+          const res = await loadFromCache();
+          if (generation !== listFetchGenerationRef.current) return;
+          setRows(res.items as ListPolicy[]);
+          setTotalPages(res.totalPages);
+          setTotal(res.total);
+          setRowSelection({});
+          setErr(null);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
       setErr(e instanceof Error ? e.message : "Failed to load policies");
     } finally {
       if (generation === listFetchGenerationRef.current) {
         setLoading(false);
       }
     }
-  }, [queryString]);
+  }, [
+    queryString,
+    searchApplied,
+    sort,
+    page,
+    pageSize,
+    dateFrom,
+    dateTo,
+    villages,
+    periodYears,
+    periodMonths,
+    categoryIds,
+    categoryKeysForQuery,
+    policyTypeIds,
+    areas,
+    sumInsureds,
+    policyGroupings,
+  ]);
 
   const downloadCsvErrorReport = useCallback(async (jobId: string) => {
     try {
@@ -543,8 +616,24 @@ export default function SvkkPoliciesPage() {
 
   useEffect(() => {
     if (missingUrl) return;
+    const onCacheSynced = () => void load();
+    window.addEventListener("svkk-cache-synced", onCacheSynced);
+    return () => window.removeEventListener("svkk-cache-synced", onCacheSynced);
+  }, [missingUrl, load]);
+
+  useEffect(() => {
+    if (missingUrl) return;
     void (async () => {
       try {
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const { getOfflineFiltersMeta, getOfflineCategories } = await import(
+            "@/lib/svkk/offline/policy-data"
+          );
+          const [f, cat] = await Promise.all([getOfflineFiltersMeta(), getOfflineCategories()]);
+          setMeta(f);
+          setCategories(cat);
+          return;
+        }
         const f = await svkkJson<FiltersMeta>("/policies/filters");
         setMeta(f);
         const cat = await svkkJson<{ items: CategoryItem[] }>("/categories");
@@ -1025,6 +1114,8 @@ export default function SvkkPoliciesPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
     >
+      <OfflineStatusBanner />
+      <OfflineDashboard />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">Policies</h1>

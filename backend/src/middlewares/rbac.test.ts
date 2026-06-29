@@ -45,6 +45,15 @@ describe("rbac effective permissions", () => {
     expect(isRoleAllowed("future:lookup", p)).toBe(true);
   });
 
+  it("ADMIN and SUPERVISOR can policy:commission", () => {
+    expect(isRoleAllowed("policy:commission", permsForLegacyRole("ADMIN"))).toBe(true);
+    expect(isRoleAllowed("policy:commission", permsForLegacyRole("SUPERVISOR"))).toBe(true);
+  });
+
+  it("USER cannot policy:commission", () => {
+    expect(isRoleAllowed("policy:commission", permsForLegacyRole("USER"))).toBe(false);
+  });
+
   it("USER cannot policy:update", () => {
     const p = permsForLegacyRole("USER");
     expect(isRoleAllowed("policy:update", p)).toBe(false);

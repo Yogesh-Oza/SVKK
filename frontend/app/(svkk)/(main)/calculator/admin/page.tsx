@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
+import { fetchPremiumSnapshotWithOffline } from "@/lib/svkk/offline/offline-reference";
+
 import {
   fetchPremiumSnapshot,
   fileToChartRows,
@@ -149,8 +151,8 @@ export default function CalculatorAdminPage() {
         setPolicyTypeIdByKey(
           Object.fromEntries(types.map((t) => [t.key, t.id])),
         );
-        const next = await fetchPremiumSnapshot();
-        if (cancelled) return;
+        const next = await fetchPremiumSnapshotWithOffline();
+        if (cancelled || !next) return;
         setState(next);
         setServerState(structuredClone(next));
         const first = Object.keys(next.defs)[0];
@@ -193,6 +195,8 @@ export default function CalculatorAdminPage() {
       const types = await svkkJson<PolicyTypeRefRow[]>("/calculation/reference/policy-types");
       setPolicyTypeIdByKey(Object.fromEntries(types.map((t) => [t.key, t.id])));
       const fresh = await fetchPremiumSnapshot();
+      const { persistPremiumSnapshotToCache } = await import("@/lib/svkk/offline/offline-reference");
+      await persistPremiumSnapshotToCache(fresh);
       setState(fresh);
       setServerState(structuredClone(fresh));
       setMsg({ tone: "ok", text: "Saved." });

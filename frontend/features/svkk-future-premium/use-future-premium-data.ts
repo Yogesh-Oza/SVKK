@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { backendApi } from "@/lib/svkk/api";
+import { fetchPremiumSnapshotWithOffline } from "@/lib/svkk/offline/offline-reference";
 import { fetchPremiumSnapshot, type PremiumState } from "@/lib/svkk/premium";
 import { parseCsvFileText } from "./future-csv-utils";
 import type { CsvRowObject } from "./future-premium-types";
@@ -27,8 +28,8 @@ export function useFuturePremiumData() {
     setLoadingCharts(true);
     setChartsLoadError(null);
     try {
-      const next = await fetchPremiumSnapshot();
-      if (!Object.keys(next.defs).length) {
+      const next = await fetchPremiumSnapshotWithOffline();
+      if (!next || !Object.keys(next.defs).length) {
         throw new Error("No premium charts are configured. Open Charts & discounts to set them up.");
       }
       setPremiumState(next);

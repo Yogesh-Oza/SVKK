@@ -56,6 +56,10 @@ import {
   loadMisScope,
   resolvePolicyReadScopeModule,
 } from "../../services/mis-scope.service.js";
+import {
+  allocateOfflineReferenceNoBatch,
+  buildPolicyOfflineBundle,
+} from "./policy-offline-bundle.js";
 
 const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
 
@@ -125,6 +129,7 @@ const policyListFiltersSchema = z.object({
     .enum(["expired", "due_2", "due_8", "due_30", "due_60", "active", "no_end_date", "pending_all"])
     .optional(),
   sort: z.string().optional(),
+  updatedAfter: z.string().optional(),
 });
 
 const policyExportQuerySchema = policyListFiltersSchema.extend({
@@ -181,6 +186,7 @@ function listFilterFromQuery(q: z.infer<typeof policyListFiltersSchema>): Policy
     renewalAsOf: q.renewalAsOf?.trim() || undefined,
     renewalBucket: q.renewalBucket,
     sort: q.sort,
+    updatedAfter: q.updatedAfter?.trim() || undefined,
   };
 }
 
@@ -641,6 +647,62 @@ export function createPolicyRouter(env: Env) {
       next(e);
     }
   });
+
+  r.get(
+    "/offline-bundle",
+    requireAnyPermission([...POLICY_READ_PERMISSIONS]),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            yearFrom: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(500).optional(),
+            offset: z.coerce.number().int().min(0).optional(),
+            updatedAfter: z.string().optional(),
+            allYears: z
+              .enum(["true", "false"])
+              .optional()
+              .transform((v) => v === "true"),
+            includeDetails: z
+              .enum(["true", "false"])
+              .optional()
+              .transform((v) => v !== "false"),
+          })
+          .parse(req.query);
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+        const bundle = await buildPolicyOfflineBundle({
+          userId: req.userId!,
+          permissions: req.permissions!,
+          scope,
+          query: q,
+        });
+        res.json(bundle);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.post(
+    "/offline-id-batch",
+    requirePermission("policy:create"),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            count: z.coerce.number().int().min(1).max(50).default(20),
+            policyGrouping: z.string().optional(),
+            month: z.string().optional(),
+            year: z.string().optional(),
+          })
+          .parse({ ...req.query, ...req.body });
+        const referenceNos = await allocateOfflineReferenceNoBatch(q);
+        res.json({ referenceNos });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
 
   r.get("/:id", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {

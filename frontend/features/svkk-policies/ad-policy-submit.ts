@@ -223,6 +223,12 @@ export async function submitAdPolicyRequest({
     body.expectedNetPremium = co;
   }
 
+  const { isOfflineMode, submitPolicyCreateOffline } = await import("@/lib/svkk/offline/policy-data");
+  if (isOfflineMode()) {
+    const { id } = await submitPolicyCreateOffline(body, idemKey);
+    return id;
+  }
+
   let res: Record<string, unknown>;
   try {
     res = await apiPost<Record<string, unknown>>("/policies", body, {
@@ -265,7 +271,7 @@ export async function submitAdPolicyPatchRequest({
   categoryId,
   policyTypeId,
   policyChartId,
-}: SubmitAdPolicyPatchParams): Promise<void> {
+}: SubmitAdPolicyPatchParams): Promise<{ offline: boolean }> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
     throw new Error("Invalid policy type");
@@ -410,15 +416,32 @@ export async function submitAdPolicyPatchRequest({
 
   applyPrimaryPaymentModeToBody(body, values);
 
+  const { isOfflineMode, isLikelyOfflineError, submitPolicyUpdateOffline } = await import(
+    "@/lib/svkk/offline/policy-data"
+  );
+
+  const queueOffline = async () => {
+    await submitPolicyUpdateOffline(policyId, body, expectedUpdatedAt);
+    return { offline: true as const };
+  };
+
+  if (isOfflineMode()) {
+    return queueOffline();
+  }
+
   try {
     await apiPatch(`/policies/${policyId}`, body);
     debugPolicyUpdate("PATCH /policies/:id success", { policyId });
+    return { offline: false };
   } catch (e) {
     debugPolicyUpdate("PATCH /policies/:id failed", {
       policyId,
       message: e instanceof Error ? e.message : String(e),
       status: e instanceof AxiosError ? e.response?.status : undefined,
     });
+    if (isLikelyOfflineError(e)) {
+      return queueOffline();
+    }
     if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
       const msg = (e.response.data as { message?: unknown }).message;
       if (typeof msg === "string" && msg.trim()) {

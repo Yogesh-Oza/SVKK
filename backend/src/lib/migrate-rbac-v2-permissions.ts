@@ -9,8 +9,20 @@ const KEY_MAP: Record<string, readonly string[]> = {
   "mis:scope_village": ["mis:policy:scope_village", "mis:claim:scope_village"],
 };
 
+async function bumpRoles(client: PrismaClient, roleIds: Iterable<string>): Promise<void> {
+  for (const roleId of roleIds) {
+    await client.$transaction(async (tx) => {
+      await tx.rbacRole.update({
+        where: { id: roleId },
+        data: { permVersion: { increment: 1 } },
+      });
+      await bumpRtvForUsersWithRole(tx, roleId);
+    });
+  }
+}
+
 /** Idempotent migration from legacy mis:* keys to split MIS + Future permissions. */
-export async function migrateRbacV2Permissions(client: PrismaClient): Promise<void> {
+async function migrateLegacyMisPermissions(client: PrismaClient): Promise<void> {
   const deprecated = await client.permission.findMany({
     where: { key: { in: [...DEPRECATED_KEYS] } },
     select: { id: true, key: true },
@@ -56,13 +68,50 @@ export async function migrateRbacV2Permissions(client: PrismaClient): Promise<vo
 
   await client.permission.deleteMany({ where: { key: { in: [...DEPRECATED_KEYS] } } });
 
-  for (const roleId of roleIdsTouched) {
-    await client.$transaction(async (tx) => {
-      await tx.rbacRole.update({
-        where: { id: roleId },
-        data: { permVersion: { increment: 1 } },
-      });
-      await bumpRtvForUsersWithRole(tx, roleId);
-    });
+  await bumpRoles(client, roleIdsTouched);
+}
+
+/**
+ * Grant policy:commission to roles that can update policies (backward compatible).
+ * Idempotent — safe to run after upsertPermissionCatalog.
+ */
+export async function backfillPolicyCommissionPermission(client: PrismaClient): Promise<void> {
+  const [updatePerm, commissionPerm] = await Promise.all([
+    client.permission.findUnique({ where: { key: "policy:update" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "policy:commission" }, select: { id: true } }),
+  ]);
+  if (!updatePerm || !commissionPerm) {
+    return;
   }
+
+  const rolesWithUpdate = await client.rolePermission.findMany({
+    where: { permissionId: updatePerm.id, effect: "ALLOW" },
+    select: { roleId: true },
+  });
+
+  const roleIdsTouched = new Set<string>();
+  for (const { roleId } of rolesWithUpdate) {
+    const existing = await client.rolePermission.findUnique({
+      where: { roleId_permissionId: { roleId, permissionId: commissionPerm.id } },
+      select: { effect: true },
+    });
+    if (existing?.effect === "ALLOW") {
+      continue;
+    }
+
+    await client.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId, permissionId: commissionPerm.id } },
+      update: { effect: "ALLOW" },
+      create: { roleId, permissionId: commissionPerm.id, effect: "ALLOW" },
+    });
+    roleIdsTouched.add(roleId);
+  }
+
+  await bumpRoles(client, roleIdsTouched);
+}
+
+/** Run all idempotent RBAC data migrations (MIS split + commission backfill). */
+export async function migrateRbacV2Permissions(client: PrismaClient): Promise<void> {
+  await migrateLegacyMisPermissions(client);
+  await backfillPolicyCommissionPermission(client);
 }

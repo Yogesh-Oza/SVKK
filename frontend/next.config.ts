@@ -1,8 +1,15 @@
+import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  disable: process.env.NODE_ENV === "development",
+});
+
 const nextConfig: NextConfig = {
-  // Reduces "Invalid source map" warnings from dependencies
   productionBrowserSourceMaps: false,
+  turbopack: {},
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/favicon.png" }];
   },
@@ -32,4 +39,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

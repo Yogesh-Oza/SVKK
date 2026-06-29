@@ -50,6 +50,8 @@ export type PolicyListQuery = {
   pageSize?: number;
   /** e.g. createdAt, -createdAt, name, -name, village, policyNo, referenceNo */
   sort?: string;
+  /** Delta sync: policies updated after this ISO timestamp */
+  updatedAfter?: string;
 };
 
 const SORTS: Record<string, Prisma.PolicyOrderByWithRelationInput | Prisma.PolicyOrderByWithRelationInput[]> = {
@@ -364,6 +366,18 @@ export function buildPolicyListWhere(
   } else if (q.renewalPending) {
     const pendingWhere = renewalPendingPolicyWhere(renewalAsOf);
     if (pendingWhere) extraParts.push(pendingWhere);
+  }
+
+  if (q.updatedAfter?.trim()) {
+    const since = new Date(q.updatedAfter.trim());
+    if (!Number.isNaN(since.getTime())) {
+      extraParts.push({
+        OR: [
+          { updatedAt: { gt: since } },
+          { years: { some: { deletedAt: null, updatedAt: { gt: since } } } },
+        ],
+      });
+    }
   }
 
   const and: Prisma.PolicyWhereInput[] = [scopeWhere];

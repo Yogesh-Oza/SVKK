@@ -19,6 +19,7 @@ import {
 } from "@/features/svkk-policies/policy-year-siblings";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
+import { fetchPolicyDetail } from "@/lib/svkk/offline/policy-data";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
@@ -34,6 +35,7 @@ import {
   printReceiptPreview,
 } from "@/lib/svkk/receipt-pdf";
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
+import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -60,7 +62,8 @@ function prioritizeYear(
 }
 
 async function loadPolicyById(policyId: string): Promise<PolicyDetail> {
-  return svkkJson<PolicyDetail>(`/policies/${policyId}`);
+  const cached = await fetchPolicyDetail(policyId);
+  return cached as unknown as PolicyDetail;
 }
 
 export default function SvkkPolicyDetailPage() {
@@ -86,8 +89,9 @@ export default function SvkkPolicyDetailPage() {
   const [receiptBusy, setReceiptBusy] = useState(false);
   const missingUrl = !getSvkkApiBase();
 
+  const { online } = useOfflineStatus();
   const perms = user?.permissions ?? [];
-  const canDel = canDeletePolicy(perms);
+  const canDel = canDeletePolicy(perms) && online;
   const canEdit = canUpdatePolicy(perms);
 
   const applyYearToDetail = useCallback((detail: PolicyDetail, yearLabel: string) => {
@@ -155,7 +159,12 @@ export default function SvkkPolicyDetailPage() {
         }
       } catch (e) {
         if (!cancelled) {
-          setErr(e instanceof Error ? e.message : "Not found");
+          const msg = e instanceof Error ? e.message : "Not found";
+          setErr(
+            /network/i.test(msg)
+              ? "Could not reach the server. If this policy was downloaded for offline use, try again — otherwise go online and sync."
+              : msg,
+          );
           setRow(null);
           setYearTabs([]);
         }
