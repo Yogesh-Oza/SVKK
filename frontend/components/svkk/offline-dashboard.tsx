@@ -13,6 +13,7 @@ import { estimateStorageQuota, type DownloadProgress } from "@/lib/svkk/offline/
 import { getOrCreateMeta } from "@/lib/svkk/offline/db";
 import { getPendingMutationCounts } from "@/lib/svkk/offline/policy-data";
 import { clearOfflineData, countPendingMutations } from "@/lib/svkk/offline/clear-offline-data";
+import { forceRefreshAppShell } from "@/lib/svkk/offline/force-refresh-app-shell";
 import {
   getConflictMutations,
   getFailedMutations,
@@ -154,6 +155,15 @@ export function OfflineDashboard() {
 
   const conflictList = conflicts > 0;
 
+  const handleForceRefreshShell = async () => {
+    if (!online) {
+      toast.error("Connect to the internet, then refresh the offline shell.");
+      return;
+    }
+    toast.info("Refreshing offline shell…");
+    await forceRefreshAppShell();
+  };
+
   return (
     <>
       <Card className="border-dashed">
@@ -230,6 +240,15 @@ export function OfflineDashboard() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => setClearOpen(true)}>
               Clear offline data
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleForceRefreshShell()}
+              disabled={!online}
+              title="Fixes a stuck/outdated offline page shell by clearing the cached app shell and reloading"
+            >
+              Force refresh offline shell
             </Button>
           </div>
           {conflictList && <ConflictList onRetry={refresh} />}

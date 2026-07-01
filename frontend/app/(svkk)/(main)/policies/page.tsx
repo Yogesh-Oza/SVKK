@@ -126,7 +126,22 @@ import {
   navigatePolicyRoute,
   onOfflineAwareLinkClick,
 } from "@/lib/svkk/offline/navigate";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { renderOfflinePolicySubRoute } from "@/components/svkk/offline-policy-route";
+import { isOfflinePolicySubRoute } from "@/lib/svkk/offline/policy-route-paths";
+import {
+  getBrowserPathnameSnapshot,
+  subscribeBrowserPathname,
+} from "@/lib/svkk/offline/subscribe-browser-pathname";
+import { debugOfflineRoute } from "@/lib/svkk/offline/offline-route-debug";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { toast } from "sonner";
 
 type ListPolicyYear = {
@@ -1110,6 +1125,28 @@ export default function SvkkPoliciesPage() {
   });
 
   const colCount = table.getVisibleLeafColumns().length;
+
+  // Self-check for a stale/fallback SW response: if this list page ever mounts while the
+  // *real* browser URL is a policies sub-route (detail/edit/new), usePathname() can't be
+  // trusted to catch it — it's synced from window.location, not from the embedded RSC
+  // tree, so it reports the correct URL even though this (wrong) component is mounted.
+  // Recover directly here since we're the one actually on screen.
+  const browserPathname = useSyncExternalStore(
+    subscribeBrowserPathname,
+    getBrowserPathnameSnapshot,
+    () => "",
+  );
+  const isMismatchedSubRoute = isOfflinePolicySubRoute(browserPathname);
+
+  useEffect(() => {
+    if (!isMismatchedSubRoute) return;
+    debugOfflineRoute("list page mounted under mismatched URL", { browserPathname });
+  }, [browserPathname, isMismatchedSubRoute]);
+
+  if (isMismatchedSubRoute) {
+    const recovered = renderOfflinePolicySubRoute(browserPathname);
+    if (recovered) return recovered;
+  }
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;

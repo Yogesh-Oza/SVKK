@@ -2,7 +2,8 @@
   "name": "svkk",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:offline": "concurrently -n backend,frontend -c blue,green \"npm run dev --prefix backend\" \"npm run build --prefix frontend && npm run start --prefix frontend\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

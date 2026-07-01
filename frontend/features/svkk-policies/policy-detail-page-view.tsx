@@ -20,6 +20,7 @@ import {
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi } from "@/lib/svkk/api";
 import { fetchPolicyDetail } from "@/lib/svkk/offline/policy-data";
+import { debugOfflineRoute } from "@/lib/svkk/offline/offline-route-debug";
 import { replacePolicyRoute } from "@/lib/svkk/offline/navigate";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -101,6 +102,10 @@ export function PolicyDetailPageView({
       (detail.periodYearText?.trim() === yearLabel ? detail.years[0] : undefined);
     setYearId(matched?.id ?? detail.years[0]?.id ?? "");
   }, []);
+
+  useEffect(() => {
+    debugOfflineRoute("PolicyDetailPageView mount", { policyId: id, selectedYearLabel });
+  }, [id, selectedYearLabel]);
 
   useEffect(() => {
     if (missingUrl) return;

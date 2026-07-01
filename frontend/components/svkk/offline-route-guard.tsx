@@ -5,20 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
 import { isOfflineAllowedPath } from "@/lib/svkk/offline/offline-nav";
 import { replacePolicyRoute } from "@/lib/svkk/offline/navigate";
+import {
+  getBrowserPathnameSnapshot,
+  subscribeBrowserPathname,
+} from "@/lib/svkk/offline/subscribe-browser-pathname";
 import { toast } from "sonner";
-
-function subscribeToConnectivity(onStoreChange: () => void): () => void {
-  window.addEventListener("online", onStoreChange);
-  window.addEventListener("offline", onStoreChange);
-  return () => {
-    window.removeEventListener("online", onStoreChange);
-    window.removeEventListener("offline", onStoreChange);
-  };
-}
-
-function getBrowserPathnameSnapshot(): string {
-  return window.location.pathname;
-}
 
 /** Redirect away from online-only pages when the browser is offline. */
 export function OfflineRouteGuard({ children }: { children: React.ReactNode }) {
@@ -27,7 +18,7 @@ export function OfflineRouteGuard({ children }: { children: React.ReactNode }) {
   const { online } = useOfflineStatus();
   const lastToastRef = useRef<string | null>(null);
   const browserPathname = useSyncExternalStore(
-    subscribeToConnectivity,
+    subscribeBrowserPathname,
     getBrowserPathnameSnapshot,
     () => "",
   );

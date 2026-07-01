@@ -1,5 +1,6 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { CacheFirst, NetworkFirst, NetworkOnly, Serwist } from "serwist";
+import { APP_SHELL_CACHE, OFFLINE_SHELL_PATHS } from "@/lib/svkk/offline/sw-cache-names";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -9,9 +10,7 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
-const APP_SHELL_CACHE = "svkk-app-shell";
 const POLICY_RSC_CACHE = "svkk-policies-rsc";
-const OFFLINE_SHELL_PATHS = ["/policies", "/policies/new", "/login", "/offline"];
 
 /** Set after Serwist is constructed — used for precache lookups with revision keys. */
 const serwistRef: { current: Serwist | null } = { current: null };
@@ -35,15 +34,24 @@ function isPolicyRscRequest(request: Request, url: URL): boolean {
   return request.headers.get("RSC") === "1";
 }
 
-function isAppShellPath(pathname: string): boolean {
+function isStaticAppShellPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
     pathname === "/offline" ||
     pathname === "/policies" ||
-    pathname === "/policies/new" ||
+    pathname === "/policies/new"
+  );
+}
+
+function isDynamicPolicyShellPath(pathname: string): boolean {
+  return (
     /^\/policies\/[^/]+$/.test(pathname) ||
     /^\/policies\/[^/]+\/edit$/.test(pathname)
   );
+}
+
+function isAppShellPath(pathname: string): boolean {
+  return isStaticAppShellPath(pathname) || isDynamicPolicyShellPath(pathname);
 }
 
 async function matchOfflineAppShell(origin: string): Promise<Response | undefined> {
@@ -66,9 +74,17 @@ async function matchOfflineAppShell(origin: string): Promise<Response | undefine
   return undefined;
 }
 
-/** Document navigations — cache after online visit; offline falls back to precached /policies. */
-const appShellCache = new CacheFirst({
+/**
+ * Document navigations for the policy app shell (list, new, detail, edit, login, offline).
+ * NetworkFirst — NOT CacheFirst — is required here: CacheFirst never re-checks the network
+ * once a URL is cached, so a stale build (e.g. one predating an offline-routing fix) would
+ * be served forever regardless of how many times the app is rebuilt/redeployed. NetworkFirst
+ * refreshes the cache on every successful online visit and only falls back to cache/precache
+ * when the network is genuinely unavailable.
+ */
+const appShellCache = new NetworkFirst({
   cacheName: APP_SHELL_CACHE,
+  networkTimeoutSeconds: 3,
   plugins: [
     {
       cacheWillUpdate: async ({ response }) => (response?.status === 200 ? response : null),
@@ -92,10 +108,15 @@ const serwist = new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: false,
-  precacheOptions: {
-    navigateFallback: "/policies",
-    navigateFallbackAllowlist: [/^\/policies/, /^\/login$/, /^\/offline$/],
-  },
+  // IMPORTANT: no `precacheOptions.navigateFallback` here. That option is an
+  // unconditional SPA-shell interceptor — it hijacks EVERY navigation matching the
+  // allowlist that isn't itself precached by exact URL and always serves the fallback
+  // document, even when the network is available and the real page could be fetched.
+  // For a Next.js app with real per-URL server-rendered/dynamic routes (e.g.
+  // /policies/[id]), that meant any dynamic policy URL not individually precached
+  // (i.e. almost all of them) rendered the /policies list shell's actual RSC tree —
+  // regardless of connectivity. Per-URL caching (below) plus `fallbacks`/setCatchHandler
+  // (genuine network-failure-only fallback) is the correct approach here.
   runtimeCaching: [
     {
       matcher: ({ request, url }) =>
@@ -153,6 +174,16 @@ serwist.setCatchHandler(async ({ request }) => {
 });
 
 serwist.addEventListeners();
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+    return;
+  }
+  if (event.data?.type === "SVKK_CLEAR_APP_SHELL_CACHE") {
+    event.waitUntil(caches.delete(APP_SHELL_CACHE));
+  }
+});
 
 self.addEventListener("sync", (event) => {
   if (event.tag === "policy-sync") {

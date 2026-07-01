@@ -1,16 +1,20 @@
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 
+// Changes on every build so the SW byte-diffs and auto-updates — no manual
+// revision bump needed (a forgotten bump was the source of stale-shell bugs).
+const BUILD_REVISION = String(Date.now());
+
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
   disable: process.env.NODE_ENV === "development",
   register: false,
   additionalPrecacheEntries: [
-    { url: "/policies", revision: "5" },
-    { url: "/policies/new", revision: "1" },
-    { url: "/login", revision: "1" },
-    { url: "/offline", revision: "1" },
+    { url: "/policies", revision: BUILD_REVISION },
+    { url: "/policies/new", revision: BUILD_REVISION },
+    { url: "/login", revision: BUILD_REVISION },
+    { url: "/offline", revision: BUILD_REVISION },
   ],
 });
 

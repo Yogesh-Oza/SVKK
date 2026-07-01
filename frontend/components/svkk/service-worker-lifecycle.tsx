@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { isServiceWorkerEnabled } from "@/lib/svkk/offline/service-worker-enabled";
 
 /**
  * Ensures a waiting service worker takes control (required for offline caching).
@@ -10,7 +11,7 @@ export function ServiceWorkerLifecycle() {
   const reloadedRef = useRef(false);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === "development") return;
+    if (!isServiceWorkerEnabled()) return;
     if (!("serviceWorker" in navigator)) return;
 
     const onControllerChange = () => {

@@ -2,12 +2,13 @@
 
 import { SerwistProvider } from "@serwist/next/react";
 import { useEffect } from "react";
+import { isServiceWorkerEnabled } from "@/lib/svkk/offline/service-worker-enabled";
 
 const SW_URL = "/sw.js";
 
-/** Registers /sw.js in production for offline page caching. */
+/** Registers /sw.js for offline page caching (production, or dev with NEXT_PUBLIC_ENABLE_SW=true). */
 export function SerwistProviderWrapper({ children }: { children: React.ReactNode }) {
-  const disabled = process.env.NODE_ENV === "development";
+  const disabled = !isServiceWorkerEnabled();
 
   useEffect(() => {
     if (disabled) return;
@@ -16,7 +17,13 @@ export function SerwistProviderWrapper({ children }: { children: React.ReactNode
     void (async () => {
       try {
         const reg = await navigator.serviceWorker.getRegistration("/");
-        if (reg?.installing || reg?.waiting || reg?.active) return;
+        if (reg) {
+          // Force a byte-check against /sw.js now instead of waiting for the
+          // browser's own periodic check — stale precache (e.g. old /policies
+          // shell) otherwise lingers until the browser decides to look again.
+          if (navigator.onLine) void reg.update();
+          return;
+        }
 
         await navigator.serviceWorker.register(SW_URL, { scope: "/" });
       } catch (error) {
