@@ -3,6 +3,12 @@ import { isOfflineMode } from "./policy-data";
 
 function isPolicyHardNavPath(pathname: string): boolean {
   return (
+    // Plain "/policies" is included too: Next's client-side <Link> navigation still
+    // needs a network round-trip to fetch the RSC payload for the destination route.
+    // While offline, that fetch fails silently — the URL/history updates (so it *looks*
+    // like navigation happened) but the old page's component tree stays mounted. A full
+    // document navigation is the only way to reliably land on the right page offline.
+    pathname === "/policies" ||
     pathname === "/policies/new" ||
     /^\/policies\/[^/]+$/.test(pathname) ||
     /^\/policies\/[^/]+\/edit$/.test(pathname)
