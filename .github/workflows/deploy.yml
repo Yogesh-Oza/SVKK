@@ -131,6 +131,17 @@ jobs:
               pm2 start npm --name svkk-frontend --update-env -- start
             fi
             pm2 save
+            if [ ! -f public/sw.js ]; then
+              echo "ERROR: public/sw.js missing after deploy — offline will not work"
+              exit 1
+            fi
+            sleep 3
+            SW_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/sw.js" || echo "000")
+            if [ "$SW_CODE" != "200" ]; then
+              echo "ERROR: /sw.js returned HTTP $SW_CODE on localhost:${PORT}"
+              exit 1
+            fi
+            echo "OK: sw.js served at http://127.0.0.1:${PORT}/sw.js"
 
   deploy-backend:
     name: Deploy Node.js backend
