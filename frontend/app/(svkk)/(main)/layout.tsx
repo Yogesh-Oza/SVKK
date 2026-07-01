@@ -1,5 +1,6 @@
 import AppSidebar from "@/components/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
+import { OfflinePolicyRoute } from "@/components/svkk/offline-policy-route";
 import { OfflineProvider } from "@/components/svkk/offline-provider";
 import { OfflineRouteGuard } from "@/components/svkk/offline-route-guard";
 import { SvkkAuthGate } from "@/components/svkk/svkk-auth-gate";
@@ -25,7 +26,9 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
               <Suspense>
                 <DashboardHeader />
               </Suspense>
-              <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+              <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
+                <OfflinePolicyRoute>{children}</OfflinePolicyRoute>
+              </div>
             </SidebarInset>
           </SidebarProvider>
         </SidebarConfigProvider>
