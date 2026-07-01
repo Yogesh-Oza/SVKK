@@ -7,7 +7,8 @@ const withSerwist = withSerwistInit({
   disable: process.env.NODE_ENV === "development",
   register: false,
   additionalPrecacheEntries: [
-    { url: "/policies", revision: "1" },
+    { url: "/policies", revision: "2" },
+    { url: "/policies/new", revision: "1" },
     { url: "/login", revision: "1" },
     { url: "/offline", revision: "1" },
     { url: "/favicon.png", revision: "1" },

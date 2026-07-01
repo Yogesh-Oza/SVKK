@@ -42,6 +42,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { onOfflineAwareLinkClick } from "@/lib/svkk/offline/navigate";
 import { useMemo, useState, type ReactNode } from "react";
 import type { PolicyListYearSibling } from "@/features/svkk-policies/policy-year-siblings";
 import { PolicyProfileClaimsTab } from "@/features/svkk-policies/policy-profile-claims-tab";
@@ -369,14 +370,14 @@ export function PolicyProfileView({
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {canEdit ? (
             <Button asChild variant="outline" size="sm" className={cn("gap-1.5", profileTheme.btnOutline)}>
-              <Link href={editHref}>
+              <Link href={editHref} onClick={(e) => onOfflineAwareLinkClick(e, editHref)}>
                 <Pencil className="size-3.5" />
                 Edit Policy
               </Link>
             </Button>
           ) : null}
           <Button asChild variant="outline" size="sm" className={cn("gap-1.5", profileTheme.btnRenew)}>
-            <Link href={renewHref}>
+            <Link href={renewHref} onClick={(e) => onOfflineAwareLinkClick(e, renewHref)}>
               <RefreshCw className="size-3.5" />
               Renew
             </Link>

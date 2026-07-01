@@ -122,6 +122,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  navigatePolicyRoute,
+  onOfflineAwareLinkClick,
+} from "@/lib/svkk/offline/navigate";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -849,15 +853,19 @@ export default function SvkkPoliciesPage() {
             onSortChange={applySort}
           />
         ),
-        cell: ({ row }) => (
+        cell: ({ row }) => {
+          const detailHref = `/policies/${row.original.primaryPolicyId}`;
+          return (
           <Link
-            href={`/policies/${row.original.primaryPolicyId}`}
+            href={detailHref}
+            onClick={(e) => onOfflineAwareLinkClick(e, detailHref)}
             className="font-sans text-sm font-bold text-foreground hover:text-primary inline-flex max-w-[min(100%,220px)] items-center rounded-sm px-0.5 py-0.5 transition-colors hover:underline"
             title={row.original.policyNo ?? undefined}
           >
             <span className="truncate tabular-nums">{row.original.policyNo ?? "—"}</span>
           </Link>
-        ),
+          );
+        },
       },
       {
         id: "customerId",
@@ -1522,8 +1530,9 @@ export default function SvkkPoliciesPage() {
                                       rowYearAction?.svkkPublicId === original.svkkPublicId &&
                                       rowYearAction.kind === "edit"
                                     ) {
-                                      router.push(
+                                      navigatePolicyRoute(
                                         `/policies/${y.policyId}/edit?year=${encodeURIComponent(y.yearLabel)}`,
+                                        router,
                                       );
                                       setRowYearAction(null);
                                       return;
@@ -1537,7 +1546,10 @@ export default function SvkkPoliciesPage() {
                                       });
                                       return;
                                     }
-                                    router.push(`/policies/${y.policyId}?year=${encodeURIComponent(y.yearLabel)}`);
+                                    navigatePolicyRoute(
+                                      `/policies/${y.policyId}?year=${encodeURIComponent(y.yearLabel)}`,
+                                      router,
+                                    );
                                   }}
                                 >
                                   {yearChipLabel(y)} · {formatInrRupee(y.vkkPremium) ?? "—"}
