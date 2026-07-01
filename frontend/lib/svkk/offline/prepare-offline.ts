@@ -2,6 +2,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { getOfflineDb, updateMeta } from "./db";
 import { compressDetail, compressListRow } from "./compress";
 import { logOfflineEvent } from "./analytics-log";
+import { warmPolicyAppShellCache } from "./warm-offline-shell";
 import type { OfflineBundleResponse } from "./types";
 import {
   OFFLINE_BATCH_SIZE,
@@ -183,6 +184,8 @@ export async function downloadPoliciesForOffline(
       message: "Download complete",
     });
 
+    void warmPolicyAppShellCache();
+
     return bundle;
   } catch (e) {
     throw e;
@@ -263,6 +266,7 @@ export async function downloadAllPoliciesForOffline(opts?: {
 
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("svkk-cache-synced"));
+      void warmPolicyAppShellCache();
     }
 
     return { totalCached: actualCount, totalAvailable: totalAvailable || actualCount };

@@ -10,6 +10,7 @@ declare global {
 declare const self: ServiceWorkerGlobalScope;
 
 const APP_SHELL_CACHE = "svkk-app-shell";
+const POLICY_RSC_CACHE = "svkk-policies-rsc";
 const OFFLINE_SHELL_PATHS = ["/policies", "/policies/new", "/login", "/offline"];
 
 const staticAssetCache = new CacheFirst({
@@ -23,6 +24,12 @@ const staticAssetCache = new CacheFirst({
 
 function isRscPayload(url: URL): boolean {
   return url.searchParams.has("_rsc");
+}
+
+function isPolicyRscRequest(request: Request, url: URL): boolean {
+  if (!url.pathname.startsWith("/policies")) return false;
+  if (isRscPayload(url)) return true;
+  return request.headers.get("RSC") === "1";
 }
 
 function isAppShellPath(pathname: string): boolean {
@@ -41,27 +48,39 @@ async function matchOfflineAppShell(origin: string): Promise<Response | undefine
   for (const name of cacheNames) {
     const cache = await caches.open(name);
     for (const path of OFFLINE_SHELL_PATHS) {
-      const hit = await cache.match(`${origin}${path}`);
+      const hit = await cache.match(`${origin}${path}`, { ignoreSearch: true });
       if (hit) return hit;
     }
   }
   return undefined;
 }
 
-/** App shell — cache policy pages after first online visit for offline reload. */
-const appShellCache = new NetworkFirst({
+const appShellFallbackPlugin = {
+  handlerDidError: async ({ request }: { request: Request }) => {
+    const url = new URL(request.url);
+    if (!isAppShellPath(url.pathname)) return undefined;
+    return (await matchOfflineAppShell(url.origin)) ?? undefined;
+  },
+};
+
+/** Document navigations — cache after online visit; offline falls back to /policies shell. */
+const appShellCache = new CacheFirst({
   cacheName: APP_SHELL_CACHE,
-  networkTimeoutSeconds: 3,
   plugins: [
     {
       cacheWillUpdate: async ({ response }) => (response?.status === 200 ? response : null),
     },
+    appShellFallbackPlugin,
+  ],
+});
+
+/** Next.js RSC payloads for policy routes (client-side navigation while offline). */
+const policyRscCache = new NetworkFirst({
+  cacheName: POLICY_RSC_CACHE,
+  networkTimeoutSeconds: 2,
+  plugins: [
     {
-      handlerDidError: async ({ request }) => {
-        const url = new URL(request.url);
-        if (!isAppShellPath(url.pathname)) return undefined;
-        return (await matchOfflineAppShell(url.origin)) ?? undefined;
-      },
+      cacheWillUpdate: async ({ response }) => (response?.status === 200 ? response : null),
     },
   ],
 });
@@ -84,6 +103,10 @@ const serwist = new Serwist({
         !isRscPayload(url) &&
         isAppShellPath(url.pathname),
       handler: appShellCache,
+    },
+    {
+      matcher: ({ request, url }) => isPolicyRscRequest(request, url),
+      handler: policyRscCache,
     },
     {
       matcher: ({ request, url }) =>

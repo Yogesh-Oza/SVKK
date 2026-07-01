@@ -20,6 +20,7 @@ import {
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { fetchPolicyDetail } from "@/lib/svkk/offline/policy-data";
+import { replacePolicyRoute } from "@/lib/svkk/offline/navigate";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
@@ -152,9 +153,9 @@ export default function SvkkPolicyDetailPage() {
 
         const urlYear = selectedYearLabel || targetTab.yearLabel;
         if (targetTab.policyId !== id || urlYear !== selectedYearLabel) {
-          router.replace(
+          replacePolicyRoute(
             `/policies/${targetTab.policyId}?year=${encodeURIComponent(urlYear)}`,
-            { scroll: false },
+            router,
           );
         }
       } catch (e) {
@@ -182,9 +183,10 @@ export default function SvkkPolicyDetailPage() {
 
   const selectYear = useCallback(
     (tab: PolicyListYearSibling) => {
-      router.replace(`/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`, {
-        scroll: false,
-      });
+      replacePolicyRoute(
+        `/policies/${tab.policyId}?year=${encodeURIComponent(tab.yearLabel)}`,
+        router,
+      );
     },
     [router],
   );
