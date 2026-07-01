@@ -144,22 +144,11 @@ export async function downloadPoliciesForOffline(
     throw new Error("Storage almost full. Clear offline data or download fewer policies.");
   }
 
-  const started = Date.now();
   opts.onProgress?.({
     phase: "list",
     current: 0,
     total: 1,
     message: "Fetching offline bundle…",
-  });
-
-  await logOfflineEvent("offline_download_started", {
-    policyCountTarget: opts.limit ?? OFFLINE_DEFAULT_LIMIT,
-    scope: opts.updatedAfter
-      ? "delta"
-      : opts.allYears
-        ? "all-years"
-        : opts.yearFrom ?? defaultYearFromLabel(),
-    offset: opts.offset ?? 0,
   });
 
   try {
@@ -194,16 +183,8 @@ export async function downloadPoliciesForOffline(
       message: "Download complete",
     });
 
-    await logOfflineEvent("offline_download_completed", {
-      policyCount: saved,
-      durationMs: Date.now() - started,
-      scope: opts.allYears ? "all-years" : undefined,
-    });
-
     return bundle;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Download failed";
-    await logOfflineEvent("offline_download_failed", { error: msg });
     throw e;
   }
 }
@@ -221,11 +202,6 @@ export async function downloadAllPoliciesForOffline(opts?: {
   if (await isDownloadBlockedByQuota()) {
     throw new Error("Storage almost full. Clear offline data before downloading all policies.");
   }
-
-  await logOfflineEvent("offline_download_started", {
-    policyCountTarget: 0,
-    scope: "download-all",
-  });
 
   await clearPolicyCachesOnly();
 
@@ -285,20 +261,12 @@ export async function downloadAllPoliciesForOffline(opts?: {
       message: `All ${actualCount.toLocaleString()} policies saved for offline use.`,
     });
 
-    await logOfflineEvent("offline_download_completed", {
-      policyCount: actualCount,
-      scope: "download-all",
-      totalAvailable,
-    });
-
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("svkk-cache-synced"));
     }
 
     return { totalCached: actualCount, totalAvailable: totalAvailable || actualCount };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Download all failed";
-    await logOfflineEvent("offline_download_failed", { error: msg, scope: "download-all" });
     throw e;
   }
 }

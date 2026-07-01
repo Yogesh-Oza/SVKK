@@ -1,5 +1,4 @@
 import { getOrCreateMeta } from "./db";
-import { logOfflineEvent } from "./analytics-log";
 import {
   downloadPoliciesForOffline,
   downloadAllPoliciesForOffline,
@@ -12,7 +11,6 @@ import { refreshPremiumSnapshotFromServer } from "./offline-reference";
 import {
   BACKGROUND_CACHE_MIN_GAP_MS,
   BACKGROUND_CACHE_SYNC_INTERVAL_MS,
-  OFFLINE_DEFAULT_LIMIT,
 } from "./types";
 
 export type CacheSyncTrigger = "mount" | "online" | "periodic" | "manual";
@@ -55,7 +53,6 @@ export async function syncPoliciesCacheInBackground(
   }
 
   if (cacheSyncInProgress) {
-    await logOfflineEvent("sync_skipped", { reason: "cache_sync_running", trigger });
     return { skipped: true, reason: "already_running" };
   }
 
@@ -74,7 +71,6 @@ export async function syncPoliciesCacheInBackground(
 
   try {
     if (await isDownloadBlockedByQuota()) {
-      await logOfflineEvent("quota_warning", { usageRatio: 1, blocked: true });
       return { skipped: true, reason: "quota_full" };
     }
 
@@ -82,18 +78,8 @@ export async function syncPoliciesCacheInBackground(
     const useDelta = !opts?.forceFull && Boolean(meta.lastSyncAt);
 
     if (useDelta) {
-      await logOfflineEvent("offline_download_started", {
-        policyCountTarget: 0,
-        scope: "auto-delta",
-        trigger,
-      });
       const bundle = await downloadPoliciesForOffline({
         updatedAfter: meta.lastSyncAt!,
-      });
-      await logOfflineEvent("offline_download_completed", {
-        policyCount: bundle.policies.length,
-        scope: "auto-delta",
-        trigger,
       });
       lastBackgroundRunAt = Date.now();
       await refreshPremiumSnapshotFromServer();
@@ -102,28 +88,16 @@ export async function syncPoliciesCacheInBackground(
       return { mode: "delta", policyCount: bundle.policies.length };
     }
 
-    await logOfflineEvent("offline_download_started", {
-      policyCountTarget: OFFLINE_DEFAULT_LIMIT,
-      scope: opts?.forceFull ? "manual-full" : "auto-full",
-      trigger,
-    });
     const bundle = await downloadPoliciesForOffline({
       onProgress: opts?.onProgress,
     });
     await prefetchReferenceNoPool(20);
-    await logOfflineEvent("offline_download_completed", {
-      policyCount: bundle.policies.length,
-      scope: opts?.forceFull ? "manual-full" : "auto-full",
-      trigger,
-    });
     lastBackgroundRunAt = Date.now();
     await refreshPremiumSnapshotFromServer();
     await syncPendingMutations(trigger === "online" ? "online" : "periodic");
     dispatchCacheSynced();
     return { mode: "full", policyCount: bundle.policies.length };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Background cache sync failed";
-    await logOfflineEvent("offline_download_failed", { error: msg, trigger });
+  } catch {
     return { skipped: true, reason: "error" };
   } finally {
     cacheSyncInProgress = false;
@@ -140,7 +114,6 @@ export async function syncAllPoliciesForOffline(opts?: {
     return { skipped: true, reason: "offline" };
   }
   if (cacheSyncInProgress) {
-    await logOfflineEvent("sync_skipped", { reason: "cache_sync_running", trigger: "manual-all" });
     return { skipped: true, reason: "already_running" };
   }
 

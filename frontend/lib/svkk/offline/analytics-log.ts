@@ -27,13 +27,3 @@ export async function logOfflineEvent(
     /* ignore quota / private mode */
   }
 }
-
-export async function getRecentAnalytics(limit = 10): Promise<OfflineAnalyticsLogEntry[]> {
-  if (typeof indexedDB === "undefined") return [];
-  try {
-    const db = getOfflineDb();
-    return db.analytics_log.orderBy("at").reverse().limit(limit).toArray();
-  } catch {
-    return [];
-  }
-}

@@ -12,7 +12,6 @@ import {
 import { estimateStorageQuota, type DownloadProgress } from "@/lib/svkk/offline/prepare-offline";
 import { getOrCreateMeta } from "@/lib/svkk/offline/db";
 import { getPendingMutationCounts } from "@/lib/svkk/offline/policy-data";
-import { getRecentAnalytics } from "@/lib/svkk/offline/analytics-log";
 import { clearOfflineData, countPendingMutations } from "@/lib/svkk/offline/clear-offline-data";
 import {
   getConflictMutations,
@@ -49,7 +48,6 @@ export function OfflineDashboard() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [cacheSyncing, setCacheSyncing] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
-  const [recentEvents, setRecentEvents] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -69,21 +67,6 @@ export function OfflineDashboard() {
           : formatBytes(est.usage),
       );
       setQuotaWarn(est.ratio >= QUOTA_WARN_RATIO);
-      const events = await getRecentAnalytics(5);
-      setRecentEvents(
-        events.map((e) => {
-          const at = new Date(e.at).toLocaleString();
-          if (e.event === "sync_failed" && typeof e.payload.error === "string") {
-            const status =
-              typeof e.payload.httpStatus === "number" ? ` (${e.payload.httpStatus})` : "";
-            return `sync_failed${status}: ${e.payload.error} — ${at}`;
-          }
-          if (e.event === "offline_download_failed" && typeof e.payload.error === "string") {
-            return `offline_download_failed: ${e.payload.error} — ${at}`;
-          }
-          return `${e.event} — ${at}`;
-        }),
-      );
     } catch {
       /* idb unavailable */
     }
@@ -218,13 +201,6 @@ export function OfflineDashboard() {
             <p className="text-muted-foreground text-xs">
               You are offline. Changes save locally and sync when connected.
             </p>
-          )}
-          {recentEvents.length > 0 && (
-            <ul className="text-muted-foreground text-xs">
-              {recentEvents.map((e) => (
-                <li key={e}>{e}</li>
-              ))}
-            </ul>
           )}
           {(downloading || downloadingAll) && progress && (
             <div className="space-y-1">
