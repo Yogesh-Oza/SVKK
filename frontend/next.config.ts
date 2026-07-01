@@ -10,6 +10,7 @@ const withSerwist = withSerwistInit({
     { url: "/policies", revision: "1" },
     { url: "/login", revision: "1" },
     { url: "/offline", revision: "1" },
+    { url: "/favicon.png", revision: "1" },
   ],
 });
 

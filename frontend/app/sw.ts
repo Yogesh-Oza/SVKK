@@ -1,6 +1,5 @@
-import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { CacheFirst, NetworkFirst, NetworkOnly, Serwist, StaleWhileRevalidate } from "serwist";
+import { CacheFirst, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -19,15 +18,6 @@ const staticAssetCache = new CacheFirst({
   ],
 });
 
-const referenceCache = new StaleWhileRevalidate({
-  cacheName: "svkk-reference-data",
-});
-
-const policyDetailCache = new NetworkFirst({
-  cacheName: "svkk-policy-detail",
-  networkTimeoutSeconds: 5,
-});
-
 /** App shell — cache policy pages after first online visit for offline reload. */
 const appShellCache = new NetworkFirst({
   cacheName: "svkk-app-shell",
@@ -38,6 +28,10 @@ const appShellCache = new NetworkFirst({
     },
   ],
 });
+
+function isRscPayload(url: URL): boolean {
+  return url.searchParams.has("_rsc");
+}
 
 function isAppShellPath(pathname: string): boolean {
   return (
@@ -60,6 +54,7 @@ const serwist = new Serwist({
       matcher: ({ request, url }) =>
         request.mode === "navigate" &&
         request.method === "GET" &&
+        !isRscPayload(url) &&
         isAppShellPath(url.pathname),
       handler: appShellCache,
     },
@@ -68,35 +63,17 @@ const serwist = new Serwist({
         request.destination === "script" ||
         request.destination === "style" ||
         request.destination === "font" ||
-        /\.(?:js|css|woff2)$/.test(url.pathname),
+        request.destination === "image" ||
+        /\.(?:js|css|woff2|png|ico)$/.test(url.pathname),
       handler: staticAssetCache,
     },
     {
-      matcher: ({ url }) => url.pathname.includes("/dropdowns") || url.pathname.includes("/categories"),
-      handler: referenceCache,
-    },
-    {
-      matcher: ({ url }) =>
-        url.pathname.includes("/calculation/admin/snapshot") ||
-        url.pathname.includes("/calculation/reference/charts"),
-      handler: referenceCache,
-    },
-    {
-      matcher: ({ url, request }) =>
-        request.method === "GET" &&
-        /\/policies\/[^/]+$/.test(url.pathname) &&
-        !url.pathname.includes("offline-bundle"),
-      handler: policyDetailCache,
-    },
-    {
-      matcher: ({ url, request }) =>
+      matcher: ({ request }) =>
         request.method === "POST" ||
         request.method === "PATCH" ||
-        request.method === "DELETE" ||
-        url.pathname.includes("/auth/"),
+        request.method === "DELETE",
       handler: new NetworkOnly(),
     },
-    ...defaultCache,
   ],
   fallbacks: {
     entries: [
