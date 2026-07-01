@@ -13,6 +13,9 @@ const APP_SHELL_CACHE = "svkk-app-shell";
 const POLICY_RSC_CACHE = "svkk-policies-rsc";
 const OFFLINE_SHELL_PATHS = ["/policies", "/policies/new", "/login", "/offline"];
 
+/** Set after Serwist is constructed — used for precache lookups with revision keys. */
+const serwistRef: { current: Serwist | null } = { current: null };
+
 const staticAssetCache = new CacheFirst({
   cacheName: "svkk-next-static",
   plugins: [
@@ -44,6 +47,14 @@ function isAppShellPath(pathname: string): boolean {
 }
 
 async function matchOfflineAppShell(origin: string): Promise<Response | undefined> {
+  const serwist = serwistRef.current;
+  if (serwist) {
+    for (const path of OFFLINE_SHELL_PATHS) {
+      const precached = await serwist.matchPrecache(path);
+      if (precached) return precached;
+    }
+  }
+
   const cacheNames = await caches.keys();
   for (const name of cacheNames) {
     const cache = await caches.open(name);
@@ -55,22 +66,13 @@ async function matchOfflineAppShell(origin: string): Promise<Response | undefine
   return undefined;
 }
 
-const appShellFallbackPlugin = {
-  handlerDidError: async ({ request }: { request: Request }) => {
-    const url = new URL(request.url);
-    if (!isAppShellPath(url.pathname)) return undefined;
-    return (await matchOfflineAppShell(url.origin)) ?? undefined;
-  },
-};
-
-/** Document navigations — cache after online visit; offline falls back to /policies shell. */
+/** Document navigations — cache after online visit; offline falls back to precached /policies. */
 const appShellCache = new CacheFirst({
   cacheName: APP_SHELL_CACHE,
   plugins: [
     {
       cacheWillUpdate: async ({ response }) => (response?.status === 200 ? response : null),
     },
-    appShellFallbackPlugin,
   ],
 });
 
@@ -89,7 +91,6 @@ const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
-  // navigationPreload rejects offline and blocks cache fallback (serwist#194).
   navigationPreload: false,
   precacheOptions: {
     navigateFallback: "/policies",
@@ -136,6 +137,8 @@ const serwist = new Serwist({
     ],
   },
 });
+
+serwistRef.current = serwist;
 
 serwist.setCatchHandler(async ({ request }) => {
   const url = new URL(request.url);

@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/auth-context";
 import { FontProvider } from "@/contexts/font-context";
 import { SerwistProviderWrapper } from "@/components/svkk/serwist-provider-wrapper";
+import { ServiceWorkerLifecycle } from "@/components/svkk/service-worker-lifecycle";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Manrope } from "next/font/google";
 import NextToploader from "nextjs-toploader";
@@ -74,6 +75,7 @@ export default function RootLayout({
             <NextToploader color="var(--primary)" showSpinner={false} />
             <AuthProvider>
               <SerwistProviderWrapper>
+                <ServiceWorkerLifecycle />
                 {children}
                 <Toaster />
               </SerwistProviderWrapper>
