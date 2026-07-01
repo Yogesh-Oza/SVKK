@@ -60,3 +60,4 @@ server {
     server_name 159.89.161.19;
     return 301 https://$host$request_uri;
 }
+
