@@ -28,12 +28,41 @@ const policyDetailCache = new NetworkFirst({
   networkTimeoutSeconds: 5,
 });
 
+/** App shell — cache policy pages after first online visit for offline reload. */
+const appShellCache = new NetworkFirst({
+  cacheName: "svkk-app-shell",
+  networkTimeoutSeconds: 4,
+  plugins: [
+    {
+      cacheWillUpdate: async ({ response }) => (response?.status === 200 ? response : null),
+    },
+  ],
+});
+
+function isAppShellPath(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname === "/offline" ||
+    pathname === "/policies" ||
+    pathname === "/policies/new" ||
+    /^\/policies\/[^/]+$/.test(pathname) ||
+    /^\/policies\/[^/]+\/edit$/.test(pathname)
+  );
+}
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
+    {
+      matcher: ({ request, url }) =>
+        request.mode === "navigate" &&
+        request.method === "GET" &&
+        isAppShellPath(url.pathname),
+      handler: appShellCache,
+    },
     {
       matcher: ({ request, url }) =>
         request.destination === "script" ||
@@ -72,7 +101,7 @@ const serwist = new Serwist({
   fallbacks: {
     entries: [
       {
-        url: "/offline",
+        url: "/policies",
         matcher({ request }) {
           return request.destination === "document";
         },
