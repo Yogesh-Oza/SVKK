@@ -1,0 +1,214 @@
+# Deploy SVKK monorepo to EC2: build on GitHub Actions, ship tarballs, prod deps + PM2 on server.
+#
+# --- Port plan (same server as CRM — avoid conflicts) ---
+#   nextjs-app (CRM)     → 3000   (already running)
+#   crm-ws               → 3001   (already running)
+#   svkk-frontend        → 3002   (set PORT in /var/www/svkk-frontend/.env)
+#   svkk-api             → 4000   (set PORT in /var/www/svkk-backend/.env)
+#
+# --- GitHub repository secrets ---
+#   EC2_HOST, EC2_USER, EC2_PASSWORD
+#   NEXT_PUBLIC_API_URL  → must match backend port, e.g. http://YOUR_SERVER_IP:4000/api/v1
+#                          (or https://api.yourdomain.com/api/v1 behind nginx)
+#
+# --- Server .env files (create before first deploy) ---
+#   /var/www/svkk-frontend/.env
+#     PORT=3002
+#
+#   /var/www/svkk-backend/.env
+#     PORT=4000
+#     DATABASE_URL=mysql://user:pass@127.0.0.1:3306/svkk
+#     ACCESS_TOKEN_SECRET=...
+#     REFRESH_TOKEN_SECRET=...
+#     CORS_ORIGIN=http://YOUR_SERVER_IP:3002
+#     FRONTEND_APP_URL=http://YOUR_SERVER_IP:3002
+#     COOKIE_SAME_SITE=lax
+#     UPLOAD_DIR=./uploads
+#
+# Check free ports:  ss -tlnp | grep -E '3000|3001|3002|4000'
+#
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend:
+    name: Deploy Next.js frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: npm run build
+
+      - name: Create release archive
+        working-directory: frontend
+        run: |
+          tar -czf ../frontend-release.tar.gz \
+            .next \
+            public \
+            package.json \
+            package-lock.json \
+            next.config.ts
+
+      - name: Upload archive to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          password: ${{ secrets.EC2_PASSWORD }}
+          port: 22
+          source: frontend-release.tar.gz
+          target: /tmp/
+
+      - name: Extract, install prod deps, restart PM2
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          password: ${{ secrets.EC2_PASSWORD }}
+          port: 22
+          script: |
+            set -e
+            export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.npm-global/bin:$PATH"
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              . "$HOME/.nvm/nvm.sh"
+            fi
+            if [ -f "$HOME/.bashrc" ]; then
+              . "$HOME/.bashrc"
+            fi
+            if ! command -v node >/dev/null 2>&1; then
+              echo "Node.js not found. Install Node 20 LTS on the server."
+              exit 1
+            fi
+            APP_DIR=/var/www/svkk-frontend
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            rm -rf .next public
+            tar -xzf /tmp/frontend-release.tar.gz
+            rm -f /tmp/frontend-release.tar.gz
+            npm ci --omit=dev
+            if [ -f .env ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+            export NODE_ENV=production
+            export PORT="${PORT:-3002}"
+            if pm2 describe svkk-frontend >/dev/null 2>&1; then
+              pm2 restart svkk-frontend --update-env
+            else
+              pm2 start npm --name svkk-frontend --update-env -- start
+            fi
+            pm2 save
+
+  deploy-backend:
+    name: Deploy Node.js backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build
+        working-directory: backend
+        env:
+          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci_build
+        run: npm run build
+
+      - name: Create release archive
+        working-directory: backend
+        run: |
+          tar -czf ../backend-release.tar.gz \
+            dist \
+            prisma \
+            package.json \
+            package-lock.json
+
+      - name: Upload archive to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          password: ${{ secrets.EC2_PASSWORD }}
+          port: 22
+          source: backend-release.tar.gz
+          target: /tmp/
+
+      - name: Extract, migrate, restart PM2
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          password: ${{ secrets.EC2_PASSWORD }}
+          port: 22
+          script: |
+            set -e
+            export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.npm-global/bin:$PATH"
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              . "$HOME/.nvm/nvm.sh"
+            fi
+            if [ -f "$HOME/.bashrc" ]; then
+              . "$HOME/.bashrc"
+            fi
+            if ! command -v node >/dev/null 2>&1; then
+              echo "Node.js not found. Install Node 20 LTS on the server."
+              exit 1
+            fi
+            APP_DIR=/var/www/svkk-backend
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            rm -rf dist
+            tar -xzf /tmp/backend-release.tar.gz
+            rm -f /tmp/backend-release.tar.gz
+            npm ci --omit=dev
+            export NODE_ENV=production
+            if [ -f .env ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+            export NODE_ENV=production
+            export PORT="${PORT:-4000}"
+            npx prisma migrate deploy
+            if pm2 describe svkk-api >/dev/null 2>&1; then
+              pm2 restart svkk-api --update-env
+            else
+              pm2 start dist/server.js --name svkk-api --update-env
+            fi
+            pm2 save
