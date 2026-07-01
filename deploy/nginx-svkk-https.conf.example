@@ -1,35 +1,25 @@
-# SVKK — HTTPS reverse proxy (required for offline page caching / service worker)
+# SVKK — nginx for https://svkk.techui.co.in
 #
-# Browsers only register service workers on secure origins:
-#   https://your-domain  OR  https://159.89.161.19  OR  http://localhost
-# Plain http://159.89.161.19:3002 cannot cache pages for offline reload.
+# DNS: svkk.techui.co.in → A record → 159.89.161.19
 #
-# Setup (Ubuntu + nginx):
-#   sudo apt install nginx
-#   sudo mkdir -p /etc/nginx/ssl
-#   sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-#     -keyout /etc/nginx/ssl/svkk.key \
-#     -out /etc/nginx/ssl/svkk.crt \
-#     -subj "/CN=159.89.161.19"
+# Setup:
+#   sudo apt install -y nginx certbot python3-certbot-nginx
 #   sudo cp deploy/nginx-svkk-https.conf.example /etc/nginx/sites-available/svkk
 #   sudo ln -sf /etc/nginx/sites-available/svkk /etc/nginx/sites-enabled/svkk
 #   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d svkk.techui.co.in
 #
 # Then update:
-#   GitHub secret NEXT_PUBLIC_API_URL=https://159.89.161.19/api/v1
-#   /var/www/svkk-backend/.env  CORS_ORIGIN=https://159.89.161.19
-#   /var/www/svkk-backend/.env  FRONTEND_APP_URL=https://159.89.161.19
-# Redeploy frontend + restart backend.
+#   GitHub secret NEXT_PUBLIC_API_URL=https://svkk.techui.co.in/api/v1
+#   /var/www/svkk-backend/.env  CORS_ORIGIN=https://svkk.techui.co.in
+#   /var/www/svkk-backend/.env  FRONTEND_APP_URL=https://svkk.techui.co.in
+# Redeploy frontend +: pm2 restart svkk-api
 #
-# First visit: open https://159.89.161.19 → accept certificate warning → login →
-# Policies → Download all policies. After that, /policies works offline on reload.
+# Service workers require a trusted cert (Let's Encrypt). Self-signed IP certs block SW.
 
 server {
-    listen 443 ssl;
-    server_name 159.89.161.19;
-
-    ssl_certificate     /etc/nginx/ssl/svkk.crt;
-    ssl_certificate_key /etc/nginx/ssl/svkk.key;
+    listen 80;
+    server_name svkk.techui.co.in;
 
     # Frontend (Next.js on 3002)
     location / {
@@ -54,10 +44,5 @@ server {
     }
 }
 
-# Optional: redirect HTTP → HTTPS
-server {
-    listen 80;
-    server_name 159.89.161.19;
-    return 301 https://$host$request_uri;
-}
-
+# After `certbot --nginx`, Certbot adds a second server { listen 443 ssl; ... } block
+# with certificates under /etc/letsencrypt/live/svkk.techui.co.in/

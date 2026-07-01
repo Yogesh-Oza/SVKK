@@ -8,12 +8,12 @@
 #
 # --- GitHub repository secrets ---
 #   EC2_HOST, EC2_USER, EC2_PASSWORD
-#   NEXT_PUBLIC_API_URL  → must match backend port, e.g. http://YOUR_SERVER_IP:4000/api/v1
-#                          (or https://api.yourdomain.com/api/v1 behind nginx)
+#   NEXT_PUBLIC_API_URL  → e.g. https://svkk.techui.co.in/api/v1
+#                          (must match nginx host; required for service worker / offline)
 #
 # --- Offline page caching (service worker) ---
-#   Service workers require HTTPS (or localhost). http://IP:3002 cannot cache pages.
-#   See deploy/nginx-svkk-https.conf.example — use https://YOUR_SERVER_IP after nginx + cert.
+#   Requires trusted HTTPS (Let's Encrypt on svkk.techui.co.in). Self-signed IP certs block SW.
+#   See deploy/nginx-svkk-https.conf.example
 #
 # --- Server .env files (create before first deploy) ---
 #   /var/www/svkk-frontend/.env
@@ -24,8 +24,8 @@
 #     DATABASE_URL=mysql://user:pass@127.0.0.1:3306/svkk
 #     ACCESS_TOKEN_SECRET=...
 #     REFRESH_TOKEN_SECRET=...
-#     CORS_ORIGIN=http://YOUR_SERVER_IP:3002
-#     FRONTEND_APP_URL=http://YOUR_SERVER_IP:3002
+#     CORS_ORIGIN=https://svkk.techui.co.in
+#     FRONTEND_APP_URL=https://svkk.techui.co.in
 #     COOKIE_SAME_SITE=lax
 #     UPLOAD_DIR=./uploads
 #
