@@ -2,6 +2,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/auth-context";
 import { FontProvider } from "@/contexts/font-context";
+import { SerwistProviderWrapper } from "@/components/svkk/serwist-provider-wrapper";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Manrope } from "next/font/google";
 import NextToploader from "nextjs-toploader";
@@ -72,8 +73,10 @@ export default function RootLayout({
           <FontProvider>
             <NextToploader color="var(--primary)" showSpinner={false} />
             <AuthProvider>
-              {children}
-              <Toaster />
+              <SerwistProviderWrapper>
+                {children}
+                <Toaster />
+              </SerwistProviderWrapper>
             </AuthProvider>
           </FontProvider>
         </ThemeProvider>
