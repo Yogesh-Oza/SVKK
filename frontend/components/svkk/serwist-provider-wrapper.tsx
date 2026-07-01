@@ -15,13 +15,10 @@ export function SerwistProviderWrapper({ children }: { children: React.ReactNode
 
     void (async () => {
       try {
-        const existing = await navigator.serviceWorker.getRegistration("/");
-        if (existing?.active?.scriptURL.endsWith(SW_URL)) return;
+        const reg = await navigator.serviceWorker.getRegistration("/");
+        if (reg?.installing || reg?.waiting || reg?.active) return;
 
-        const reg = await navigator.serviceWorker.register(SW_URL, { scope: "/" });
-        if (process.env.NODE_ENV === "production") {
-          console.info("[SVKK] Service worker registered:", reg.scope);
-        }
+        await navigator.serviceWorker.register(SW_URL, { scope: "/" });
       } catch (error) {
         console.error("[SVKK] Service worker registration failed:", error);
       }

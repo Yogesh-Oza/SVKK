@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   title: "SVKK — MediClaim & CRM",
   description: "Shree Vagad Kala Kendra — mediclaim policy operations and internal CRM",
   icons: {
-    icon: "/favicon.png",
+    icon: "/svkk_logo.png",
   },
   manifest: "/manifest.webmanifest",
 };

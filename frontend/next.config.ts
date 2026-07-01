@@ -7,11 +7,10 @@ const withSerwist = withSerwistInit({
   disable: process.env.NODE_ENV === "development",
   register: false,
   additionalPrecacheEntries: [
-    { url: "/policies", revision: "4" },
+    { url: "/policies", revision: "5" },
     { url: "/policies/new", revision: "1" },
     { url: "/login", revision: "1" },
     { url: "/offline", revision: "1" },
-    { url: "/favicon.png", revision: "1" },
   ],
 });
 
@@ -19,7 +18,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   // Serwist uses webpack; `next build --webpack` is required (Next 16 defaults to Turbopack).
   async rewrites() {
-    return [{ source: "/favicon.ico", destination: "/favicon.png" }];
+    return [{ source: "/favicon.ico", destination: "/svkk_logo.png" }];
   },
   async redirects() {
     return [
