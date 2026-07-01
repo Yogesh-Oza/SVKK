@@ -75,6 +75,7 @@ import type { FormPaymentMode } from "./ad-policy-payment-mode-fields";
 import { applyDisplayYearLabels, yearChipLabel } from "./policy-year-display";
 import { submitAdPolicyPatchRequest, submitAdPolicyRequest } from "./ad-policy-submit";
 import { debugPolicyUpdate } from "@/lib/svkk/policy-update-debug";
+import { navigatePolicyRoute } from "@/lib/svkk/offline/navigate";
 import {
   pickPolicyYear,
   policyDetailToAdFormValues,
@@ -670,7 +671,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           } else {
             toast.success("Policy updated");
           }
-          void router.push("/policies");
+          navigatePolicyRoute("/policies", router);
         } catch (e) {
           if (tryApplyBackendValidationErrors(e)) {
             setApiErr("Please fix the highlighted fields and try again.");
@@ -700,7 +701,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           setNavigateAfterReceiptClose("/policies");
           openReceiptPreviewRef.current?.();
           if (!openReceiptPreviewRef.current) {
-            void router.push("/policies");
+            navigatePolicyRoute("/policies", router);
           }
         } else {
           toast.success("Policy saved");
@@ -714,7 +715,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               setNavigateAfterReceiptClose("/policies");
               openReceiptPreviewRef.current?.();
               if (!openReceiptPreviewRef.current) {
-                void router.push("/policies");
+                navigatePolicyRoute("/policies", router);
               }
             }
           })();
@@ -3850,7 +3851,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           if (navigateAfterReceiptClose) {
             const target = navigateAfterReceiptClose;
             setNavigateAfterReceiptClose(null);
-            void router.push(target);
+            navigatePolicyRoute(target, router);
           }
         }}
       >
@@ -3875,7 +3876,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 if (navigateAfterReceiptClose) {
                   const target = navigateAfterReceiptClose;
                   setNavigateAfterReceiptClose(null);
-                  void router.push(target);
+                  navigatePolicyRoute(target, router);
                 }
               }}
             >
