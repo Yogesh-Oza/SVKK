@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "private": false,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "format": "prettier --write .",

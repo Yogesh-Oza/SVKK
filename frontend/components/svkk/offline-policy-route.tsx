@@ -2,21 +2,8 @@
 
 import { PolicyDetailPageView } from "@/features/svkk-policies/policy-detail-page-view";
 import { AdPolicyAddForm } from "@/features/svkk-policies/ad-policy-add-form";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
-
-type BrowserRoute = {
-  pathname: string;
-  getParam: (key: string) => string;
-};
-
-function readBrowserRoute(): BrowserRoute {
-  const url = new URL(window.location.href);
-  return {
-    pathname: url.pathname,
-    getParam: (key) => url.searchParams.get(key)?.trim() ?? "",
-  };
-}
+import { usePathname } from "next/navigation";
+import { useSyncExternalStore, type ReactNode } from "react";
 
 function isOfflinePolicySubRoute(pathname: string): boolean {
   return (
@@ -26,39 +13,38 @@ function isOfflinePolicySubRoute(pathname: string): boolean {
   );
 }
 
+function subscribeToConnectivity(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getBrowserPathnameSnapshot(): string {
+  return window.location.pathname;
+}
+
+function getBrowserSearchParam(key: string): string {
+  return new URLSearchParams(window.location.search).get(key)?.trim() ?? "";
+}
+
 /**
  * When offline, the service worker serves the cached /policies list shell for any
- * /policies/* URL. Next.js then thinks the route is /policies — use window.location
- * and render the matching client page.
+ * /policies/* URL. Next.js then thinks the route is /policies — read window.location
+ * and render the matching client page (do not use Suspense fallback=children).
  */
-function OfflinePolicyRouteInner({ children }: { children: ReactNode }) {
+export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
   const nextPathname = usePathname();
-  const searchParams = useSearchParams();
-  const [browserRoute, setBrowserRoute] = useState<BrowserRoute | null>(() =>
-    typeof window !== "undefined" && !navigator.onLine ? readBrowserRoute() : null,
+  const browserPathname = useSyncExternalStore(
+    subscribeToConnectivity,
+    getBrowserPathnameSnapshot,
+    () => "",
   );
 
-  useEffect(() => {
-    const sync = () => {
-      if (!navigator.onLine) setBrowserRoute(readBrowserRoute());
-      else setBrowserRoute(null);
-    };
-    sync();
-    window.addEventListener("offline", sync);
-    window.addEventListener("online", sync);
-    return () => {
-      window.removeEventListener("offline", sync);
-      window.removeEventListener("online", sync);
-    };
-  }, []);
-
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
-  const pathname =
-    offline && browserRoute ? browserRoute.pathname : (nextPathname ?? "");
-  const getParam = (key: string) =>
-    offline && browserRoute
-      ? browserRoute.getParam(key)
-      : (searchParams.get(key)?.trim() ?? "");
+  const pathname = offline && browserPathname ? browserPathname : (nextPathname ?? "");
 
   if (!offline || !isOfflinePolicySubRoute(pathname)) {
     return <>{children}</>;
@@ -70,7 +56,12 @@ function OfflinePolicyRouteInner({ children }: { children: ReactNode }) {
 
   const editMatch = pathname.match(/^\/policies\/([^/]+)\/edit$/);
   if (editMatch?.[1]) {
-    return <AdPolicyAddForm policyId={editMatch[1]} editYearLabel={getParam("year")} />;
+    return (
+      <AdPolicyAddForm
+        policyId={editMatch[1]}
+        editYearLabel={getBrowserSearchParam("year")}
+      />
+    );
   }
 
   const detailMatch = pathname.match(/^\/policies\/([^/]+)$/);
@@ -78,18 +69,10 @@ function OfflinePolicyRouteInner({ children }: { children: ReactNode }) {
     return (
       <PolicyDetailPageView
         policyId={detailMatch[1]}
-        initialYearLabel={getParam("year")}
+        initialYearLabel={getBrowserSearchParam("year")}
       />
     );
   }
 
   return <>{children}</>;
-}
-
-export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
-  return (
-    <Suspense fallback={children}>
-      <OfflinePolicyRouteInner>{children}</OfflinePolicyRouteInner>
-    </Suspense>
-  );
 }
