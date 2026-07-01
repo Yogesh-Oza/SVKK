@@ -15,7 +15,7 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
-  turbopack: {},
+  // Serwist uses webpack; `next build --webpack` is required (Next 16 defaults to Turbopack).
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/favicon.png" }];
   },

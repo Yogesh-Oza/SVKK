@@ -67,6 +67,10 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: npm run build
 
+      - name: Verify service worker was built
+        working-directory: frontend
+        run: test -f public/sw.js
+
       - name: Create release archive
         working-directory: frontend
         run: |
