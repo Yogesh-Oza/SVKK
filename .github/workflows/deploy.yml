@@ -198,13 +198,15 @@ jobs:
             rm -f /tmp/backend-release.tar.gz
             npm ci --omit=dev
             export NODE_ENV=production
+            export NODE_ENV=production
+            export PORT="${PORT:-4000}"
             if [ -f .env ]; then
               set -a
               . ./.env
               set +a
             fi
-            export NODE_ENV=production
-            export PORT="${PORT:-4000}"
+            # If migrate fails with P3009, check _prisma_migrations for duplicate failed rows
+            # (Linux MySQL uses lowercase table names: policy, not Policy).
             npx prisma migrate deploy
             if pm2 describe svkk-api >/dev/null 2>&1; then
               pm2 restart svkk-api --update-env
