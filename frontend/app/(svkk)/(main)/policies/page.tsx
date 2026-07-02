@@ -74,6 +74,7 @@ import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { OfflineDashboard } from "@/components/svkk/offline-dashboard";
 import { OfflineStatusBanner } from "@/components/svkk/offline-status-banner";
 import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
+import { isProvisionalSvkkPublicId } from "@/lib/svkk/offline/offline-svkk-id";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import type { PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
 import { buildReceiptDocumentHtml } from "@/lib/svkk/policy-receipt-print";
@@ -955,9 +956,16 @@ export default function SvkkPoliciesPage() {
         ),
         cell: ({ row }) => {
           const id = row.original.insuredParty.svkkPublicId.trim() || "—";
+          const pending = id !== "—" && isProvisionalSvkkPublicId(id);
           return (
-            <span className={cn(policyTableCell, "max-w-[200px] truncate font-mono text-xs")} title={id !== "—" ? id : undefined}>
+            <span
+              className={cn(policyTableCell, "max-w-[200px] truncate font-mono text-xs")}
+              title={id !== "—" ? (pending ? `${id} — pending sync` : id) : undefined}
+            >
               {id}
+              {pending ? (
+                <span className="text-muted-foreground ml-1 text-[10px] font-sans font-normal">(pending)</span>
+              ) : null}
             </span>
           );
         },

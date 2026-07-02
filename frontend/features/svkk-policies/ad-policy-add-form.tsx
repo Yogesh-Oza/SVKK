@@ -27,6 +27,10 @@ import {
 } from "@/lib/svkk/offline/offline-reference";
 import { takePooledReferenceNo, prefetchReferenceNoPool } from "@/lib/svkk/offline/prepare-offline";
 import {
+  generateOfflineTempSvkkPublicId,
+  isProvisionalSvkkPublicId,
+} from "@/lib/svkk/offline/offline-svkk-id";
+import {
   normPolicyKey,
   quoteFromInput,
   rs,
@@ -1116,21 +1120,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
       const offline = typeof navigator !== "undefined" && !navigator.onLine;
       if (offline) {
+        const tempSvkkId = generateOfflineTempSvkkPublicId();
         const pooled = await takePooledReferenceNo();
         if (pooled) {
           void prefetchReferenceNoPool(5);
           const refSeq = pooled.slice(-4).padStart(4, "0");
-          const composed = composeIdsFromSeq(
-            trimmedGrouping,
-            trimmedMonth,
-            trimmedYear,
-            "0000",
-            refSeq,
-          );
           return {
-            svkkPublicId: composed.svkkPublicId,
+            svkkPublicId: tempSvkkId,
             referenceNo: pooled.toUpperCase(),
-            svkkSeq: "0000",
+            svkkSeq: "",
             refSeq,
           };
         }
@@ -1138,13 +1136,13 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           trimmedGrouping,
           trimmedMonth,
           trimmedYear,
-          "0000",
+          "0001",
           "0001",
         );
         return {
-          svkkPublicId: composed.svkkPublicId,
+          svkkPublicId: tempSvkkId,
           referenceNo: composed.referenceNo,
-          svkkSeq: "0000",
+          svkkSeq: "",
           refSeq: "0001",
         };
       }
@@ -1766,6 +1764,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       void setFieldValue("refNo", composed.referenceNo.toUpperCase());
       return;
     }
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
     void (async () => {
       try {
         const generated = await requestAutoIds(effectiveGroup, month, year);
@@ -1774,10 +1773,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         if (!generated.svkkPublicId && !generated.referenceNo) {
           return;
         }
-        svkkSeqRef.current = generated.svkkSeq || svkkSeqRef.current;
+        if (generated.svkkSeq) {
+          svkkSeqRef.current = generated.svkkSeq;
+        }
         refSeqRef.current = generated.refSeq || refSeqRef.current;
         if (generated.svkkPublicId) {
           void setFieldValue("svkkPublicId", generated.svkkPublicId.toUpperCase());
+        } else if (offline && !isProvisionalSvkkPublicId(values.svkkPublicId)) {
+          void setFieldValue("svkkPublicId", generateOfflineTempSvkkPublicId());
         }
         if (generated.referenceNo) {
           void setFieldValue("refNo", generated.referenceNo.toUpperCase());
@@ -2576,7 +2579,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 <p className="text-foreground mb-3 text-sm font-semibold">SVKK Details</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
-                <AutoFieldLabel hint="Auto-generated from Policy Group + Month sequence. You can override manually.">
+                <AutoFieldLabel
+                  hint={
+                    typeof navigator !== "undefined" &&
+                    !navigator.onLine &&
+                    isProvisionalSvkkPublicId(values.svkkPublicId)
+                      ? "Temporary ID while offline. The server assigns the real SVKK ID when you sync online."
+                      : "Auto-generated from Policy Group + Month sequence. You can override manually."
+                  }
+                >
                   SVKK ID
                 </AutoFieldLabel>
                 <Input
@@ -2585,6 +2596,18 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   onChange={handleChange}
                   onBlur={handleBlur}
                   autoComplete="off"
+                  readOnly={
+                    typeof navigator !== "undefined" &&
+                    !navigator.onLine &&
+                    isProvisionalSvkkPublicId(values.svkkPublicId)
+                  }
+                  className={
+                    typeof navigator !== "undefined" &&
+                    !navigator.onLine &&
+                    isProvisionalSvkkPublicId(values.svkkPublicId)
+                      ? "bg-muted/60"
+                      : undefined
+                  }
                 />
               </div>
               <div className="space-y-2">

@@ -6,6 +6,7 @@ import type { OfflineMutation, SyncResult, SyncTrigger } from "./types";
 import { expandDetail } from "./compress";
 import type { SvkkPolicyDetailForForm } from "@/features/svkk-policies/ad-policy-detail-to-form";
 import { repairCreatePayloadChart } from "./offline-chart-resolve";
+import { prepareOfflineCreatePayloadForSync } from "./offline-svkk-id";
 
 let syncInProgress = false;
 
@@ -88,28 +89,19 @@ async function syncOneMutation(mut: OfflineMutation): Promise<"synced" | "confli
       if (mut.idempotencyKey) {
         headers["Idempotency-Key"] = mut.idempotencyKey;
       }
-      const payload = await repairCreatePayloadChart(mut.payload);
-      if (payload.policyChartId !== mut.payload.policyChartId) {
-        await db.mutations.update(mut.id, { payload });
+      const payload = prepareOfflineCreatePayloadForSync(
+        await repairCreatePayloadChart(mut.payload),
+      );
+      if (payload.policyChartId !== mut.payload.policyChartId || payload.svkkPublicId !== mut.payload.svkkPublicId) {
+        await db.mutations.update(mut.id, { payload: { ...mut.payload, ...payload } });
       }
       const res = await apiPost<Record<string, unknown>>("/policies", payload, { headers });
       const serverId = typeof res.id === "string" ? res.id : null;
       if (serverId) {
         await db.mutations.update(mut.id, { status: "synced", policyId: serverId });
-        if (serverId !== mut.clientTempId) {
-          const tempDetail = await db.policies_detail.get(mut.clientTempId);
-          await db.policies_list.delete(mut.clientTempId);
-          await db.policies_detail.delete(mut.clientTempId);
-          if (tempDetail) {
-            const detail = { ...expandDetail(tempDetail), id: serverId };
-            const { compressDetail, compressListRowFromDetail } = await import("./compress");
-            await db.policies_detail.put(compressDetail(detail as unknown as Record<string, unknown>));
-            await db.policies_list.put(compressListRowFromDetail(detail));
-            await updateMeta({ lastSyncAt: new Date().toISOString() });
-          } else {
-            await refreshPolicyCacheAfterSync(serverId);
-          }
-        }
+        await db.policies_list.delete(mut.clientTempId);
+        await db.policies_detail.delete(mut.clientTempId);
+        await refreshPolicyCacheAfterSync(serverId);
       } else {
         await db.mutations.update(mut.id, { status: "synced" });
       }

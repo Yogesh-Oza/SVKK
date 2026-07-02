@@ -1,4 +1,4 @@
-import type { NavGroup, NavItem } from "@/lib/types";
+import type { NavGroup, NavItem, NavLink } from "@/lib/types";
 
 /** Routes available without network (policies + premium calculator). */
 export function isOfflineAllowedPath(pathname: string): boolean {
@@ -10,7 +10,7 @@ export function isOfflineAllowedPath(pathname: string): boolean {
   return false;
 }
 
-function isCalculatorNav(item: NavItem): boolean {
+function isCalculatorNavLink(item: NavItem): item is NavLink {
   return "url" in item && item.url === "/calculator";
 }
 
@@ -23,7 +23,7 @@ export function filterNavGroupsForOffline(groups: NavGroup[]): NavGroup[] {
   for (const group of groups) {
     if (group.title !== "MediClaim") continue;
     const policies = group.items.find(isPoliciesNav);
-    const calculator = group.items.find(isCalculatorNav);
+    const calculator = group.items.find(isCalculatorNavLink);
     const offlineItems: NavGroup["items"] = [];
 
     if (policies) {
@@ -35,7 +35,7 @@ export function filterNavGroupsForOffline(groups: NavGroup[]): NavGroup[] {
       }
     }
 
-    if (calculator && "url" in calculator) {
+    if (calculator) {
       offlineItems.push({
         title: calculator.title,
         url: calculator.url,
