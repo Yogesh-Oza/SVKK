@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Settings2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,13 +90,21 @@ export default function SvkkCalculatorPage() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function loadSnapshot() {
       try {
         const next = await fetchPremiumSnapshotWithOffline();
-        if (cancelled || !next) return;
+        if (cancelled) return;
+        if (!next) {
+          setLoadError(
+            typeof navigator !== "undefined" && !navigator.onLine
+              ? "Premium charts are not available offline yet. Open the app once while online, then try again."
+              : "Could not load premium charts.",
+          );
+          return;
+        }
+        setLoadError(null);
         setState(next);
-        // If the persisted policy isn't on the server snapshot (e.g. renamed),
-        // fall back to whatever the server returned first.
         setForm((prev) => {
           const nextPolicy = next.defs[prev.policyType]
             ? prev.policyType
@@ -115,9 +120,19 @@ export default function SvkkCalculatorPage() {
           setHydrated(true);
         }
       }
-    })();
+    }
+
+    void loadSnapshot();
+
+    const onPremiumSynced = () => {
+      void loadSnapshot();
+    };
+    window.addEventListener("svkk-premium-synced", onPremiumSynced);
+    window.addEventListener("svkk-cache-synced", onPremiumSynced);
     return () => {
       cancelled = true;
+      window.removeEventListener("svkk-premium-synced", onPremiumSynced);
+      window.removeEventListener("svkk-cache-synced", onPremiumSynced);
     };
   }, []);
 
@@ -206,16 +221,14 @@ export default function SvkkCalculatorPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Premium Calculator</h1>
-        <Button asChild size="sm" variant="outline" className="gap-1.5">
-          <Link href="/calculator/admin">
-            <Settings2 className="size-4" /> Charts &amp; discounts
-          </Link>
-        </Button>
       </div>
       {loadError ? (
         <p className="text-destructive text-sm">{loadError}</p>
+      ) : !hydrated ? (
+        <p className="text-muted-foreground text-sm">Loading premium charts…</p>
       ) : null}
 
+      {!loadError && hydrated ? (
       <Card className="overflow-hidden rounded-3xl border border-[#d9e3ee]/90 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] backdrop-blur">
         <CardContent className="space-y-5 p-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -469,6 +482,7 @@ export default function SvkkCalculatorPage() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
     </div>
   );
 }

@@ -4,4 +4,10 @@
  * shared per-origin, so window code can pre-populate what the SW will later read.
  */
 export const APP_SHELL_CACHE = "svkk-app-shell";
-export const OFFLINE_SHELL_PATHS = ["/policies", "/policies/new", "/login", "/offline"] as const;
+export const OFFLINE_SHELL_PATHS = [
+  "/policies",
+  "/policies/new",
+  "/calculator",
+  "/login",
+  "/offline",
+] as const;

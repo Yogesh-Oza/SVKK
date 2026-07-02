@@ -112,30 +112,18 @@ export function getSvkkNavGroupsForPermissions(permissions: string[]): NavGroup[
 
     const n = flat[i]!;
 
-    if (n.id === "calculator" && flat[i + 1]?.id === "calculatorAdmin") {
-
-      const adm = flat[i + 1]!;
-
+    if (n.id === "calculator") {
       items.push({
-
-        title: "Premium calculator",
-
+        title: n.label,
+        url: n.href,
         icon: IconCalculator,
-
-        items: [
-
-          { title: "Calculator", url: n.href, icon: IconCalculator },
-
-          { title: "Charts & discounts", url: adm.href, icon: IconAdjustments },
-
-        ],
-
       });
-
-      i += 1;
-
+      if (flat[i + 1]?.id === "calculatorAdmin") i += 1;
       continue;
+    }
 
+    if (n.id === "calculatorAdmin") {
+      continue;
     }
 
     if (n.id === "policies" && flat[i + 1]?.id === "policyNew") {

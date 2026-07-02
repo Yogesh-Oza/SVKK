@@ -1,6 +1,6 @@
 import { APP_SHELL_CACHE } from "./sw-cache-names";
 
-const SHELL_PATHS = ["/policies", "/policies/new"] as const;
+const SHELL_PATHS = ["/policies", "/policies/new", "/calculator"] as const;
 
 /**
  * Populate the SW app-shell cache while online (requires an active session).

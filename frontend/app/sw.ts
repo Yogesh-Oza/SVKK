@@ -38,9 +38,15 @@ function isStaticAppShellPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
     pathname === "/offline" ||
+    pathname === "/calculator" ||
     pathname === "/policies" ||
     pathname === "/policies/new"
   );
+}
+
+function isCalculatorRscRequest(request: Request, url: URL): boolean {
+  if (url.pathname !== "/calculator") return false;
+  return isRscPayload(url) || request.headers.get("RSC") === "1";
 }
 
 function isDynamicPolicyShellPath(pathname: string): boolean {
@@ -127,7 +133,8 @@ const serwist = new Serwist({
       handler: appShellCache,
     },
     {
-      matcher: ({ request, url }) => isPolicyRscRequest(request, url),
+      matcher: ({ request, url }) =>
+        isPolicyRscRequest(request, url) || isCalculatorRscRequest(request, url),
       handler: policyRscCache,
     },
     {
