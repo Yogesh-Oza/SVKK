@@ -66,12 +66,36 @@ export const CLAIM_HEADER_ALIASES: Record<string, string> = {
   "cheque no/ payment details": "Cheque No/ Payment Details",
 };
 
+function normalizedHeaderKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/\u00a0/g, " ")
+    .replace(/[()]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 /** Normalize a raw CSV header to its canonical form. */
 export function canonicalClaimHeader(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return trimmed;
   const lower = trimmed.toLowerCase();
-  return CLAIM_HEADER_ALIASES[lower] ?? trimmed;
+  const direct = CLAIM_HEADER_ALIASES[lower];
+  if (direct) return direct;
+
+  // Handles noisy variants like "Claim  No. ( CCN)".
+  const norm = normalizedHeaderKey(trimmed);
+  if (norm === "claim no ccn" || norm === "claim no" || norm === "claim number") {
+    return "Claim Number";
+  }
+  if (norm === "policy no" || norm === "policy number") {
+    return "Policy Number";
+  }
+  if (norm === "sum insured") {
+    return "Sum_Insured";
+  }
+  return trimmed;
 }
 
 /** Build downloadable sample CSV for claim import. */
