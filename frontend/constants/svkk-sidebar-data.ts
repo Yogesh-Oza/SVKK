@@ -113,12 +113,24 @@ export function getSvkkNavGroupsForPermissions(permissions: string[]): NavGroup[
     const n = flat[i]!;
 
     if (n.id === "calculator") {
-      items.push({
-        title: n.label,
-        url: n.href,
-        icon: IconCalculator,
-      });
-      if (flat[i + 1]?.id === "calculatorAdmin") i += 1;
+      if (flat[i + 1]?.id === "calculatorAdmin") {
+        const admin = flat[i + 1]!;
+        items.push({
+          title: "Calculator",
+          icon: IconCalculator,
+          items: [
+            { title: n.label, url: n.href, icon: IconCalculator },
+            { title: admin.label, url: admin.href, icon: IconAdjustments },
+          ],
+        });
+        i += 1;
+      } else {
+        items.push({
+          title: n.label,
+          url: n.href,
+          icon: IconCalculator,
+        });
+      }
       continue;
     }
 

@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Settings2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +37,9 @@ import {
 } from "@/lib/svkk/premium";
 import { fetchPremiumSnapshotWithOffline } from "@/lib/svkk/offline/offline-reference";
 import { formatDateForFormInput } from "@/lib/svkk/form-date";
+import { hasPermission } from "@/lib/svkk/permissions";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 
 type FormState = {
@@ -80,6 +85,8 @@ function loadJson<T>(key: string, fallback: T): T {
 }
 
 export default function SvkkCalculatorPage() {
+  const { user } = useSvkkAuth();
+  const canManageCharts = hasPermission(user?.permissions, "admin:charts");
   const [hydrated, setHydrated] = useState(false);
   const [state, setState] = useState<PremiumState>(() => ({
     defs: {},
@@ -221,6 +228,14 @@ export default function SvkkCalculatorPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Premium Calculator</h1>
+        {canManageCharts ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/calculator/admin">
+              <Settings2 className="mr-2 size-4" />
+              Charts & discounts
+            </Link>
+          </Button>
+        ) : null}
       </div>
       {loadError ? (
         <p className="text-destructive text-sm">{loadError}</p>

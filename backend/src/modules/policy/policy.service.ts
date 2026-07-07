@@ -12,6 +12,10 @@ import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
+import {
+  assertMobileAvailableForNewInsuredParty,
+  resolveInsuredPartyForPolicyCreate,
+} from "./policy-create-insured-party.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
@@ -113,16 +117,10 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     const customSvkk = input.svkkPublicId?.trim() || null;
     const customerId = input.customerId?.trim() || null;
 
-    let party: InsuredParty | null = null;
-    if (customerId) {
-      party = await tx.insuredParty.findUnique({ where: { customerId } });
-      if (party) {
-        party = await reconcileInsuredPartyMobile(tx, party, mobile);
-      }
-    }
-    if (!party) {
-      party = await tx.insuredParty.findUnique({ where: { mobile } });
-    }
+    let party = await resolveInsuredPartyForPolicyCreate(tx, {
+      customSvkk,
+      mobile,
+    });
 
     if (customSvkk) {
       const taken = await tx.insuredParty.findUnique({ where: { svkkPublicId: customSvkk } });
@@ -132,6 +130,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     }
 
     if (!party) {
+      await assertMobileAvailableForNewInsuredParty(tx, mobile);
       const generatedSvkkPublicId =
         customSvkk ||
         (input.policyGrouping && input.periodMonthText
