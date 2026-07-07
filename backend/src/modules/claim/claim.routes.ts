@@ -16,11 +16,13 @@ import { buildSampleClaimCsv } from "./claim-csv-format.js";
 import {
   buildClaimListWhere,
   CLAIM_LIST_EXPORT_MAX_ROWS,
+  CLAIM_LIST_PAGE_SIZE_MAX,
   distinctClaimFilterOptions,
   queryClaimListPaged,
   queryClaimsForExport,
   type ClaimListQuery,
 } from "./claim.list.js";
+import { queryClaimSummary } from "./claim.summary.js";
 import { buildClaimsExportCsv } from "./claim.export-csv.js";
 import { claimDetailSelect } from "./claim-detail.js";
 import { claimUpdateBodySchema } from "./claim-update.schema.js";
@@ -68,13 +70,22 @@ const claimListFiltersSchema = z.object({
   matchStatuses: matchStatusesQuery,
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  admissionDateFrom: z.string().optional(),
+  admissionDateTo: z.string().optional(),
+  svkkPublicIds: stringArrayQuery,
+  categoryKeys: stringArrayQuery,
+  policyTypes: stringArrayQuery,
+  policyGroupings: stringArrayQuery,
+  insuranceCompanies: stringArrayQuery,
+  areas: stringArrayQuery,
+  statusTexts: stringArrayQuery,
   sort: z.string().optional(),
 });
 
 const claimListPagedQuerySchema = claimListFiltersSchema.extend({
   page: z.coerce.number().min(1).optional(),
-  pageSize: z.coerce.number().min(1).max(100).default(20),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  pageSize: z.coerce.number().min(1).max(CLAIM_LIST_PAGE_SIZE_MAX).default(20),
+  limit: z.coerce.number().min(1).max(CLAIM_LIST_PAGE_SIZE_MAX).default(20),
   cursor: z.string().optional(),
   svkkPublicId: z.string().optional(),
   policyId: z.string().optional(),
@@ -82,7 +93,16 @@ const claimListPagedQuerySchema = claimListFiltersSchema.extend({
   village: z.string().optional(),
 });
 
-function listFilterFromQuery(q: z.infer<typeof claimListPagedQuerySchema>): ClaimListQuery {
+function listFilterFromQuery(
+  q: z.infer<typeof claimListFiltersSchema> & {
+    page?: number;
+    pageSize?: number;
+    policyId?: string;
+    svkkPublicId?: string;
+    policyYear?: string;
+    village?: string;
+  },
+): ClaimListQuery {
   return {
     search: q.search,
     villages: q.villages?.length ? q.villages : q.village ? [q.village] : undefined,
@@ -92,6 +112,15 @@ function listFilterFromQuery(q: z.infer<typeof claimListPagedQuerySchema>): Clai
     matchStatuses: q.matchStatuses,
     dateFrom: q.dateFrom,
     dateTo: q.dateTo,
+    admissionDateFrom: q.admissionDateFrom,
+    admissionDateTo: q.admissionDateTo,
+    svkkPublicIds: q.svkkPublicIds,
+    categoryKeys: q.categoryKeys,
+    policyTypes: q.policyTypes,
+    policyGroupings: q.policyGroupings,
+    insuranceCompanies: q.insuranceCompanies,
+    areas: q.areas,
+    statusTexts: q.statusTexts,
     sort: q.sort,
     page: q.page,
     pageSize: q.pageSize,
@@ -121,20 +150,23 @@ export function createClaimRouter(env: Env) {
     }
   });
 
+  r.get("/summary", requirePermission("claim:read"), async (req, res, next) => {
+    try {
+      const q = claimListFiltersSchema.parse(req.query);
+      const listFilter = listFilterFromQuery(q);
+      const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
+      const where = buildClaimListWhere(scope, listFilter);
+      const summary = await queryClaimSummary(where);
+      res.json(summary);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.get("/export.csv", requirePermission("claim:read"), async (req, res, next) => {
     try {
       const q = claimListFiltersSchema.parse(req.query);
-      const listFilter: ClaimListQuery = {
-        search: q.search,
-        villages: q.villages,
-        policyYears: q.policyYears,
-        statuses: q.statuses,
-        claimTypes: q.claimTypes,
-        matchStatuses: q.matchStatuses,
-        dateFrom: q.dateFrom,
-        dateTo: q.dateTo,
-        sort: q.sort,
-      };
+      const listFilter = listFilterFromQuery(q);
       const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
       const where = buildClaimListWhere(scope, listFilter);
       const rows = await queryClaimsForExport(where, listFilter.sort, CLAIM_LIST_EXPORT_MAX_ROWS);

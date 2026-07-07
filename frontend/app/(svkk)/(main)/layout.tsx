@@ -22,12 +22,14 @@ export default function SvkkMainLayout({ children }: { children: ReactNode }) {
         <SidebarConfigProvider>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset className="min-w-0 overflow-x-hidden bg-[#F9FAFB]">
+            <SidebarInset className="flex min-h-svh min-w-0 flex-col bg-[#F9FAFB]">
               <Suspense>
                 <DashboardHeader />
               </Suspense>
-              <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
-                <OfflinePolicyRoute>{children}</OfflinePolicyRoute>
+              <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+                <div className="flex min-w-0 flex-col gap-4 p-4 pt-0">
+                  <OfflinePolicyRoute>{children}</OfflinePolicyRoute>
+                </div>
               </div>
             </SidebarInset>
           </SidebarProvider>

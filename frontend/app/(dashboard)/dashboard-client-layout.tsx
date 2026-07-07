@@ -53,11 +53,13 @@ export default function DashboardClientLayout({
     <SidebarConfigProvider>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset className="bg-[#F9FAFB]">
+        <SidebarInset className="flex min-h-svh min-w-0 flex-col bg-[#F9FAFB]">
           <Suspense>
             <DashboardHeader />
           </Suspense>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+            <div className="flex flex-col gap-4 p-4 pt-0">{children}</div>
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </SidebarConfigProvider>

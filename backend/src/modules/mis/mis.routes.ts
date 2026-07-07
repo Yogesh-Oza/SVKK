@@ -25,6 +25,8 @@ import {
   getVillageReport,
   getClaimReport,
   getClaimTrend,
+  getClaimCategorySummary,
+  getClaimFieldReports,
 } from "./mis.service.js";
 
 function resolvePolicyMisScopeModule(permissions: Set<string>): "mis_policy" | "dashboard" {
@@ -649,6 +651,84 @@ export function createMisRouter(_env: Env) {
               row.sumClaimAmount,
               row.sumApprovedAmount,
               row.sumDeductionAmount,
+            ].join(",") + "\n",
+          );
+        }
+        res.end();
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/claim-category-summary",
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema.parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const module = resolveClaimMisScopeModule(req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
+        const report = await getClaimCategorySummary(req.permissions!, scope, normalized);
+        res.json(report);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/claim-field-reports",
+    requireAnyPermission(["mis:claim:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema.parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const module = resolveClaimMisScopeModule(req.permissions!);
+        const scope = await loadMisScope(req.userId!, req.permissions!, module);
+        const report = await getClaimFieldReports(req.permissions!, scope, normalized);
+        res.json(report);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/export/claim-category-summary.csv",
+    requirePermission("mis:claim:read"),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema.parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
+        const report = await getClaimCategorySummary(req.permissions!, scope, normalized);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          'attachment; filename="claim-mis-category-summary.csv"',
+        );
+        const hdr =
+          "Category,Cash No,Cash Lodge,Cash Settled,Reim No,Reim Lodge,Reim Settled,Cash Denied No,Cash Denied Lodge,REM Denied No,REM Denied Lodge,Total,Total Lodge,Total Settled";
+        res.write(`\uFEFF${hdr}\n`);
+        for (const row of [...report.rows, report.totals]) {
+          res.write(
+            [
+              row.category,
+              row.cashNo,
+              row.cashLodge,
+              row.cashSettled,
+              row.reimNo,
+              row.reimLodge,
+              row.reimSettled,
+              row.cashDeniedNo,
+              row.cashDeniedLodge,
+              row.remDeniedNo,
+              row.remDeniedLodge,
+              row.totalNo,
+              row.totalLodge,
+              row.totalSettled,
             ].join(",") + "\n",
           );
         }

@@ -343,3 +343,169 @@ export function claimReportRowToJson(r: ClaimReportRow) {
     sumDeductionAmount: Number(r.sumDeductionAmount ?? 0),
   };
 }
+
+function isCashlessSql(): Prisma.Sql {
+  return Prisma.sql`(
+    LOWER(COALESCE(${sqlAliasCol("c", "claimType")}, '')) LIKE '%cashless%'
+    OR LOWER(COALESCE(${sqlAliasCol("c", "claimType")}, '')) LIKE '%cash less%'
+  )`;
+}
+
+function isDeniedSql(): Prisma.Sql {
+  return Prisma.sql`(
+    c.status = 'REJECTED'
+    OR LOWER(COALESCE(${sqlAliasCol("c", "statusText")}, '')) LIKE '%denied%'
+    OR LOWER(COALESCE(${sqlAliasCol("c", "statusText")}, '')) LIKE '%reject%'
+    OR LOWER(COALESCE(${sqlAliasCol("c", "statusText")}, '')) LIKE '%repudiat%'
+    OR LOWER(COALESCE(${sqlAliasCol("c", "statusText")}, '')) LIKE '%close%'
+  )`;
+}
+
+function categoryLabelSql(): Prisma.Sql {
+  return Prisma.sql`UPPER(COALESCE(${sqlAliasCol("cat", "key")}, ${sqlParamUtf8("OTHER")}))`;
+}
+
+export type ClaimCategorySummaryRow = {
+  category: string;
+  cashNo: bigint;
+  cashLodge: string | null;
+  cashSettled: string | null;
+  reimNo: bigint;
+  reimLodge: string | null;
+  reimSettled: string | null;
+  cashDeniedNo: bigint;
+  cashDeniedLodge: string | null;
+  remDeniedNo: bigint;
+  remDeniedLodge: string | null;
+  totalNo: bigint;
+  totalLodge: string | null;
+  totalSettled: string | null;
+};
+
+/** Category A/B/C/D matrix with cashless/reimbursement/denied breakdown. */
+export async function queryClaimCategorySummary(
+  prisma: PrismaClient,
+  args: {
+    scopeSql: Prisma.Sql;
+    filters: ClaimReportFilters;
+  },
+): Promise<ClaimCategorySummaryRow[]> {
+  const cat = categoryLabelSql();
+  const cash = isCashlessSql();
+  const denied = isDeniedSql();
+  return prisma.$queryRaw<ClaimCategorySummaryRow[]>`
+    SELECT
+      ${cat} AS category,
+      SUM(CASE WHEN ${cash} AND NOT (${denied}) THEN 1 ELSE 0 END) AS cashNo,
+      COALESCE(SUM(CASE WHEN ${cash} AND NOT (${denied}) THEN ${sqlCol("c", "claimAmount")} ELSE 0 END), 0) AS cashLodge,
+      COALESCE(SUM(CASE WHEN ${cash} AND NOT (${denied}) THEN ${sqlCol("c", "approvedAmount")} ELSE 0 END), 0) AS cashSettled,
+      SUM(CASE WHEN NOT (${cash}) AND NOT (${denied}) THEN 1 ELSE 0 END) AS reimNo,
+      COALESCE(SUM(CASE WHEN NOT (${cash}) AND NOT (${denied}) THEN ${sqlCol("c", "claimAmount")} ELSE 0 END), 0) AS reimLodge,
+      COALESCE(SUM(CASE WHEN NOT (${cash}) AND NOT (${denied}) THEN ${sqlCol("c", "approvedAmount")} ELSE 0 END), 0) AS reimSettled,
+      SUM(CASE WHEN ${cash} AND ${denied} THEN 1 ELSE 0 END) AS cashDeniedNo,
+      COALESCE(SUM(CASE WHEN ${cash} AND ${denied} THEN ${sqlCol("c", "claimAmount")} ELSE 0 END), 0) AS cashDeniedLodge,
+      SUM(CASE WHEN NOT (${cash}) AND ${denied} THEN 1 ELSE 0 END) AS remDeniedNo,
+      COALESCE(SUM(CASE WHEN NOT (${cash}) AND ${denied} THEN ${sqlCol("c", "claimAmount")} ELSE 0 END), 0) AS remDeniedLodge,
+      COUNT(${sqlCol("c", "id")}) AS totalNo,
+      COALESCE(SUM(${sqlCol("c", "claimAmount")}), 0) AS totalLodge,
+      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS totalSettled
+    FROM ${sqlTable("claim")} c
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
+    WHERE ${args.scopeSql}
+    ${dateFilterSql(args.filters)}
+    ${matchStatusFilter(args.filters)}
+    ${policySideFiltersSql(args.filters)}
+    GROUP BY category
+    ORDER BY category ASC
+  `;
+}
+
+export function claimCategorySummaryRowToJson(r: ClaimCategorySummaryRow) {
+  return {
+    category: r.category,
+    cashNo: Number(r.cashNo),
+    cashLodge: Number(r.cashLodge ?? 0),
+    cashSettled: Number(r.cashSettled ?? 0),
+    reimNo: Number(r.reimNo),
+    reimLodge: Number(r.reimLodge ?? 0),
+    reimSettled: Number(r.reimSettled ?? 0),
+    cashDeniedNo: Number(r.cashDeniedNo),
+    cashDeniedLodge: Number(r.cashDeniedLodge ?? 0),
+    remDeniedNo: Number(r.remDeniedNo),
+    remDeniedLodge: Number(r.remDeniedLodge ?? 0),
+    totalNo: Number(r.totalNo),
+    totalLodge: Number(r.totalLodge ?? 0),
+    totalSettled: Number(r.totalSettled ?? 0),
+  };
+}
+
+export type ClaimFieldReportRow = {
+  svkkPublicId: string;
+  policyTypeText: string | null;
+  policyHolderName: string | null;
+  patientName: string | null;
+  patientGender: string | null;
+  village: string | null;
+  insuranceCompany: string | null;
+  hospitalName: string | null;
+  hospitalArea: string | null;
+  illness: string | null;
+  claimType: string | null;
+  statusText: string | null;
+  policyYear: string;
+  networkType: string | null;
+  roomCategory: string | null;
+  claimAmount: string | null;
+  approvedAmount: string | null;
+  deductionAmount: string | null;
+  claimReceivedDate: Date | null;
+  admissionDate: Date | null;
+  dischargeDate: Date | null;
+};
+
+const FIELD_REPORT_MAX_ROWS = 50_000;
+
+/** Fetch claim rows for field-wise MIS reports. */
+export async function queryClaimsForFieldReports(
+  prisma: PrismaClient,
+  args: {
+    scopeSql: Prisma.Sql;
+    filters: ClaimReportFilters;
+  },
+): Promise<ClaimFieldReportRow[]> {
+  return prisma.$queryRaw<ClaimFieldReportRow[]>`
+    SELECT
+      c.svkkPublicId,
+      c.policyTypeText,
+      c.policyHolderName,
+      c.patientName,
+      c.patientGender,
+      c.village,
+      c.insuranceCompany,
+      c.hospitalName,
+      c.hospitalArea,
+      c.illness,
+      c.claimType,
+      c.statusText,
+      c.policyYear,
+      c.networkType,
+      c.roomCategory,
+      CAST(c.claimAmount AS CHAR) AS claimAmount,
+      CAST(c.approvedAmount AS CHAR) AS approvedAmount,
+      CAST(c.deductionAmount AS CHAR) AS deductionAmount,
+      c.claimReceivedDate,
+      c.admissionDate,
+      c.dischargeDate
+    FROM ${sqlTable("claim")} c
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
+    WHERE ${args.scopeSql}
+    ${dateFilterSql(args.filters)}
+    ${matchStatusFilter(args.filters)}
+    ${policySideFiltersSql(args.filters)}
+    LIMIT ${FIELD_REPORT_MAX_ROWS}
+  `;
+}

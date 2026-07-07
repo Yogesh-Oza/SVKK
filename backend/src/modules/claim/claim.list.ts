@@ -12,6 +12,15 @@ export type ClaimListQuery = {
   matchStatuses?: ClaimPolicyMatchStatus[];
   dateFrom?: string;
   dateTo?: string;
+  admissionDateFrom?: string;
+  admissionDateTo?: string;
+  svkkPublicIds?: string[];
+  categoryKeys?: string[];
+  policyTypes?: string[];
+  policyGroupings?: string[];
+  insuranceCompanies?: string[];
+  areas?: string[];
+  statusTexts?: string[];
   page?: number;
   pageSize?: number;
   sort?: string;
@@ -23,6 +32,13 @@ export type ClaimFiltersMeta = {
   villages: string[];
   policyYears: string[];
   claimTypes: string[];
+  svkkPublicIds: string[];
+  categoryKeys: string[];
+  policyTypes: string[];
+  policyGroupings: string[];
+  insuranceCompanies: string[];
+  areas: string[];
+  statusTexts: string[];
 };
 
 const SORTS: Record<string, Prisma.ClaimOrderByWithRelationInput> = {
@@ -42,7 +58,12 @@ const SORTS: Record<string, Prisma.ClaimOrderByWithRelationInput> = {
   claimAmount_asc: { claimAmount: "asc" },
   claimReceivedDate: { claimReceivedDate: "desc" },
   claimReceivedDate_asc: { claimReceivedDate: "asc" },
+  admissionDate: { admissionDate: "desc" },
+  admissionDate_asc: { admissionDate: "asc" },
 };
+
+const FILTER_META_LIMIT = 500;
+export const CLAIM_LIST_PAGE_SIZE_MAX = 500;
 
 function utcDayBoundsFromIsoDate(isoDate: string): { start: Date; end: Date } | undefined {
   const d = new Date(isoDate.trim());
@@ -58,17 +79,21 @@ function utcDayBoundsFromIsoDate(isoDate: string): { start: Date; end: Date } | 
   };
 }
 
-function claimReceivedDateRange(dateFrom?: string, dateTo?: string): Prisma.ClaimWhereInput | undefined {
+function dateFieldRange(
+  field: "claimReceivedDate" | "admissionDate",
+  dateFrom?: string,
+  dateTo?: string,
+): Prisma.ClaimWhereInput | undefined {
   const fromBounds = dateFrom?.trim() ? utcDayBoundsFromIsoDate(dateFrom) : undefined;
   const toBounds = dateTo?.trim() ? utcDayBoundsFromIsoDate(dateTo) : undefined;
   if (fromBounds && toBounds) {
-    return { claimReceivedDate: { gte: fromBounds.start, lte: toBounds.end } };
+    return { [field]: { gte: fromBounds.start, lte: toBounds.end } };
   }
   if (fromBounds) {
-    return { claimReceivedDate: { gte: fromBounds.start } };
+    return { [field]: { gte: fromBounds.start } };
   }
   if (toBounds) {
-    return { claimReceivedDate: { lte: toBounds.end } };
+    return { [field]: { lte: toBounds.end } };
   }
   return undefined;
 }
@@ -98,10 +123,41 @@ export function buildClaimListWhere(scope: GeoScope, q: ClaimListQuery): Prisma.
   if (q.matchStatuses?.length) {
     parts.push({ matchStatus: { in: q.matchStatuses } });
   }
+  if (q.svkkPublicIds?.length) {
+    parts.push({ svkkPublicId: { in: q.svkkPublicIds } });
+  }
+  if (q.policyTypes?.length) {
+    parts.push({ policyTypeText: { in: q.policyTypes } });
+  }
+  if (q.insuranceCompanies?.length) {
+    parts.push({ insuranceCompany: { in: q.insuranceCompanies } });
+  }
+  if (q.areas?.length) {
+    parts.push({ hospitalArea: { in: q.areas } });
+  }
+  if (q.statusTexts?.length) {
+    parts.push({ statusText: { in: q.statusTexts } });
+  }
+  if (q.policyGroupings?.length) {
+    parts.push({ policy: { policyGrouping: { in: q.policyGroupings }, deletedAt: null } });
+  }
+  if (q.categoryKeys?.length) {
+    parts.push({
+      policy: {
+        deletedAt: null,
+        category: { key: { in: q.categoryKeys } },
+      },
+    });
+  }
 
-  const dateRange = claimReceivedDateRange(q.dateFrom, q.dateTo);
-  if (dateRange) {
-    parts.push(dateRange);
+  const receivedRange = dateFieldRange("claimReceivedDate", q.dateFrom, q.dateTo);
+  if (receivedRange) {
+    parts.push(receivedRange);
+  }
+
+  const admissionRange = dateFieldRange("admissionDate", q.admissionDateFrom, q.admissionDateTo);
+  if (admissionRange) {
+    parts.push(admissionRange);
   }
 
   const search = q.search?.trim();
@@ -133,7 +189,7 @@ export function buildClaimListWhere(scope: GeoScope, q: ClaimListQuery): Prisma.
   return parts.length > 1 ? { AND: parts } : scopeWhere;
 }
 
-const claimListSelect = {
+export const claimListSelect = {
   id: true,
   policyId: true,
   claimNo: true,
@@ -145,14 +201,35 @@ const claimListSelect = {
   claimAmount: true,
   approvedAmount: true,
   deductionAmount: true,
+  deductionDetails: true,
   village: true,
   patientName: true,
+  patientAge: true,
+  patientRelation: true,
+  patientGender: true,
   hospitalName: true,
+  hospitalArea: true,
+  hospitalInPpn: true,
+  networkType: true,
   policyHolderName: true,
   policyTypeText: true,
-  matchStatus: true,
+  policyStartDate: true,
+  policyEndDate: true,
+  sumInsured: true,
+  insuranceCompany: true,
+  illness: true,
+  paymentDetails: true,
+  admissionDate: true,
+  dischargeDate: true,
   claimReceivedDate: true,
-  policy: { select: { policyNo: true } },
+  matchStatus: true,
+  policy: {
+    select: {
+      policyNo: true,
+      policyGrouping: true,
+      category: { select: { key: true } },
+    },
+  },
 } satisfies Prisma.ClaimSelect;
 
 export type ClaimListRow = Prisma.ClaimGetPayload<{ select: typeof claimListSelect }>;
@@ -167,7 +244,7 @@ export async function queryClaimListPaged(
   pageSize: number;
   totalPages: number;
 }> {
-  const pageSize = Math.min(Math.max(q.pageSize ?? 20, 1), 100);
+  const pageSize = Math.min(Math.max(q.pageSize ?? 20, 1), CLAIM_LIST_PAGE_SIZE_MAX);
   const page = Math.max(q.page ?? 1, 1);
   const orderBy = parseClaimListOrderBy(q.sort);
 
@@ -206,26 +283,33 @@ export async function queryClaimsForExport(
 
 export const CLAIM_LIST_EXPORT_MAX_ROWS = 100_000;
 
-function nonEmptyFieldFilter(
-  field: "village" | "policyYear" | "claimType",
-): Prisma.ClaimWhereInput {
-  // policyYear is a required String on Claim (not nullable); village/claimType are optional.
-  if (field === "policyYear") {
-    return { policyYear: { not: "" } };
+type ScalarFilterField =
+  | "village"
+  | "policyYear"
+  | "claimType"
+  | "svkkPublicId"
+  | "policyTypeText"
+  | "insuranceCompany"
+  | "hospitalArea"
+  | "statusText";
+
+function nonEmptyFieldFilter(field: ScalarFilterField): Prisma.ClaimWhereInput {
+  if (field === "policyYear" || field === "svkkPublicId") {
+    return { [field]: { not: "" } };
   }
   return { [field]: { not: null } };
 }
 
-async function distinctNonEmpty(
+async function distinctScalar(
   where: Prisma.ClaimWhereInput,
-  field: "village" | "policyYear" | "claimType",
+  field: ScalarFilterField,
 ): Promise<string[]> {
   const rows = await prisma.claim.findMany({
     where: { AND: [where, nonEmptyFieldFilter(field)] },
     distinct: [field],
     select: { [field]: true },
     orderBy: { [field]: "asc" },
-    take: 500,
+    take: FILTER_META_LIMIT,
   });
   return rows
     .map((r) => r[field] as string | null)
@@ -233,11 +317,70 @@ async function distinctNonEmpty(
     .sort((a, b) => a.localeCompare(b));
 }
 
+async function distinctPolicyGroupings(where: Prisma.ClaimWhereInput): Promise<string[]> {
+  const rows = await prisma.claim.findMany({
+    where: {
+      AND: [where, { policy: { policyGrouping: { not: null }, deletedAt: null } }],
+    },
+    distinct: ["policyId"],
+    select: { policy: { select: { policyGrouping: true } } },
+    take: FILTER_META_LIMIT,
+  });
+  const values = rows
+    .map((r) => r.policy?.policyGrouping)
+    .filter((v): v is string => Boolean(v?.trim()));
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+async function distinctCategoryKeys(where: Prisma.ClaimWhereInput): Promise<string[]> {
+  const rows = await prisma.claim.findMany({
+    where: {
+      AND: [where, { policy: { categoryId: { not: null }, deletedAt: null } }],
+    },
+    distinct: ["policyId"],
+    select: { policy: { select: { category: { select: { key: true } } } } },
+    take: FILTER_META_LIMIT,
+  });
+  const values = rows
+    .map((r) => r.policy?.category?.key)
+    .filter((v): v is string => Boolean(v?.trim()));
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
 export async function distinctClaimFilterOptions(scopeWhere: Prisma.ClaimWhereInput): Promise<ClaimFiltersMeta> {
-  const [villages, policyYears, claimTypes] = await Promise.all([
-    distinctNonEmpty(scopeWhere, "village"),
-    distinctNonEmpty(scopeWhere, "policyYear"),
-    distinctNonEmpty(scopeWhere, "claimType"),
+  const [
+    villages,
+    policyYears,
+    claimTypes,
+    svkkPublicIds,
+    policyTypes,
+    insuranceCompanies,
+    areas,
+    statusTexts,
+    policyGroupings,
+    categoryKeys,
+  ] = await Promise.all([
+    distinctScalar(scopeWhere, "village"),
+    distinctScalar(scopeWhere, "policyYear"),
+    distinctScalar(scopeWhere, "claimType"),
+    distinctScalar(scopeWhere, "svkkPublicId"),
+    distinctScalar(scopeWhere, "policyTypeText"),
+    distinctScalar(scopeWhere, "insuranceCompany"),
+    distinctScalar(scopeWhere, "hospitalArea"),
+    distinctScalar(scopeWhere, "statusText"),
+    distinctPolicyGroupings(scopeWhere),
+    distinctCategoryKeys(scopeWhere),
   ]);
-  return { villages, policyYears, claimTypes };
+  return {
+    villages,
+    policyYears,
+    claimTypes,
+    svkkPublicIds,
+    categoryKeys,
+    policyTypes,
+    policyGroupings,
+    insuranceCompanies,
+    areas,
+    statusTexts,
+  };
 }

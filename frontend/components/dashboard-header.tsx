@@ -1,6 +1,7 @@
 "use client";
 
 import { NotificationBell } from "@/components/notification-bell";
+import { OfflineConnectionIndicator } from "@/components/svkk/offline-connection-indicator";
 import { ToggleTheme } from "@/components/theme-toggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -31,9 +32,10 @@ export function DashboardHeader() {
   }, [mounted, searchParams, router]);
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b border-border/50 bg-background/80 px-4 backdrop-blur-xl">
+    <header className="z-50 flex h-16 shrink-0 items-center gap-2 border-b border-border/50 bg-background/95 px-4 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/80">
       <SidebarTrigger className="-ml-1 text-muted-foreground transition-colors hover:text-foreground" />
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex items-center gap-2">
+        <OfflineConnectionIndicator />
         {mounted ? (
           <>
             <ToggleTheme />

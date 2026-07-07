@@ -24,13 +24,17 @@ import {
 } from "./mis.queries.js";
 import {
   buildClaimScopeSqlC,
+  claimCategorySummaryRowToJson,
   claimReportRowToJson,
+  queryClaimCategorySummary,
   queryClaimReport,
+  queryClaimsForFieldReports,
   queryClaimTrend,
   queryDashboardClaimTotals,
   type ClaimReportFilters,
   type ClaimTrendPeriod,
 } from "./claim-mis.queries.js";
+import { buildClaimFieldReports } from "./claim-field-reports.js";
 
 async function loadSumInsuredLabelMap(): Promise<Map<string, string>> {
   const rows = await prisma.dropdownOption.findMany({
@@ -700,5 +704,73 @@ export async function getClaimTrend(
   return {
     period: input.period,
     rows: rows.map(claimReportRowToJson),
+  };
+}
+
+/** Category A/B/C/D matrix with cashless/reimbursement breakdown. */
+export async function getClaimCategorySummary(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: ClaimReportFilters,
+) {
+  const scopeSql = buildClaimScopeSqlC(permissions, scope, input.villages);
+  const rows = await queryClaimCategorySummary(prisma, { scopeSql, filters: input });
+  const mapped = rows.map(claimCategorySummaryRowToJson);
+  const totals = mapped.reduce(
+    (t, r) => ({
+      category: "Total",
+      cashNo: t.cashNo + r.cashNo,
+      cashLodge: t.cashLodge + r.cashLodge,
+      cashSettled: t.cashSettled + r.cashSettled,
+      reimNo: t.reimNo + r.reimNo,
+      reimLodge: t.reimLodge + r.reimLodge,
+      reimSettled: t.reimSettled + r.reimSettled,
+      cashDeniedNo: t.cashDeniedNo + r.cashDeniedNo,
+      cashDeniedLodge: t.cashDeniedLodge + r.cashDeniedLodge,
+      remDeniedNo: t.remDeniedNo + r.remDeniedNo,
+      remDeniedLodge: t.remDeniedLodge + r.remDeniedLodge,
+      totalNo: t.totalNo + r.totalNo,
+      totalLodge: t.totalLodge + r.totalLodge,
+      totalSettled: t.totalSettled + r.totalSettled,
+    }),
+    {
+      category: "Total",
+      cashNo: 0,
+      cashLodge: 0,
+      cashSettled: 0,
+      reimNo: 0,
+      reimLodge: 0,
+      reimSettled: 0,
+      cashDeniedNo: 0,
+      cashDeniedLodge: 0,
+      remDeniedNo: 0,
+      remDeniedLodge: 0,
+      totalNo: 0,
+      totalLodge: 0,
+      totalSettled: 0,
+    },
+  );
+  return {
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
+    rows: mapped,
+    totals,
+  };
+}
+
+/** Field-wise detailed MIS reports. */
+export async function getClaimFieldReports(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: ClaimReportFilters,
+) {
+  const scopeSql = buildClaimScopeSqlC(permissions, scope, input.villages);
+  const rows = await queryClaimsForFieldReports(prisma, { scopeSql, filters: input });
+  const cards = buildClaimFieldReports(rows);
+  return {
+    dateFrom: input.dateFrom?.toISOString() ?? null,
+    dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
+    recordCount: rows.length,
+    cards,
   };
 }
