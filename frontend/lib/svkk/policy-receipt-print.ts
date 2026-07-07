@@ -55,8 +55,11 @@ export type PolicyDetailForReceipt = {
         status?: string | null;
         reason?: string | null;
       } | null;
+      /** Optional display string for receipts; falls back to `transactionNumber` / UTR / cheque no. */
       transactionMode?: string | null;
       transactionDetail?: string | null;
+      /** Raw transaction/UTR number from payment row (non-cheque modes). */
+      transactionNumber?: string | null;
       transactionDate?: string | null;
       nameAsPerCheque?: string | null;
       notOver?: string | null;
@@ -271,7 +274,15 @@ export function buildReceiptDocumentHtml(
   const pay0 = pickPayment(y0);
   const paymentMode = payMode(pay0);
   const transactionDetail =
-    (pay0?.transactionDetail ?? "").trim() || chNo || (y0?.utrRef ?? "").trim() || "—";
+    // Prefer explicit receipt display string when present.
+    (pay0?.transactionDetail ?? "").trim() ||
+    // Then fall back to stored transaction / UTR number on the payment row.
+    (pay0?.transactionNumber ?? "").trim() ||
+    // Then any linked cheque number.
+    chNo ||
+    // Finally, year-level UTR reference if available.
+    (y0?.utrRef ?? "").trim() ||
+    "—";
   const txnDateStr = displayDate(pay0?.transactionDate ?? pay0?.createdAt);
   const cat = p.category?.name ?? p.category?.key ?? "—";
   const amountNum = Number(String(recvRaw).replace(/[^\d.-]/g, "")) || 0;
