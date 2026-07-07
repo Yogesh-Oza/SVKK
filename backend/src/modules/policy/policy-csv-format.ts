@@ -25,7 +25,7 @@ import {
   formatGenderForCsvExport,
   resolveHolderJoiningYearForExport,
 } from "./policy-csv-export-fill.js";
-import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
+import { resolveYearPremiumForExport, resolveReceiptNoForExport } from "./policy-csv-export-resolve.js";
 import {
   csvCell,
   fmtCsvDate,
@@ -251,6 +251,7 @@ export function buildLegacyPolicyCsvCells(
     "policy remarK": remarkCells.policyRemark,
     "category change remark": remarkCells.categoryChangeRemark,
     "ref no": r.referenceNo ?? "",
+    "Receipt No": resolveReceiptNoForExport(r, year),
     "Created at": fmtCsvDateTime(r.createdAt),
     "Updated at": fmtCsvDateTime(r.updatedAt),
     "policy url": formatPolicyUrl(r.policyUrl),

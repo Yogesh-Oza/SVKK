@@ -112,6 +112,7 @@ function minimalRow(overrides: Partial<PolicyExportRow> = {}): PolicyExportRow {
     createdAt: new Date("2026-05-13T06:44:18.937Z"),
     updatedAt: new Date("2026-05-13T06:47:44.544Z"),
     deletedAt: null,
+    receipts: [],
     insuredParty: {
       id: "ip1",
       customerId: "CUST1",
@@ -276,6 +277,7 @@ describe("buildPoliciesExportCsv", () => {
     expect(headerLine).toContain("policy remarK");
     expect(headerLine).toContain("category change remark");
     expect(headerLine).toContain("ref no");
+    expect(headerLine).toContain("Receipt No");
     expect(headerLine.indexOf("Member 2 Name")).toBeLessThan(headerLine.indexOf("nominee_name"));
     expect(dataLine).toContain("Member One");
     expect(dataLine).toContain("Member Three");
@@ -315,5 +317,14 @@ describe("buildPoliciesExportCsv", () => {
     expect(dataLine).toContain("Member Two");
     expect(dataLine).not.toContain("Member Three");
     expect(dataLine).toContain("CH-000038");
+  });
+
+  it("exports receipt number when policy has a receipt", () => {
+    const row = minimalRow({
+      receipts: [{ receiptNo: "RCP/2026/00042", policyYearId: "y1" }],
+    });
+    const csv = buildPoliciesExportCsv([row], new Set(["policy:scope_all"]), ["2026-27"]);
+    const dataLine = csv.replace(/^\uFEFF/, "").split("\r\n")[1] ?? "";
+    expect(dataLine).toContain("RCP/2026/00042");
   });
 });

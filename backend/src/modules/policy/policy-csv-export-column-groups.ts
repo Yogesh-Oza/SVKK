@@ -73,6 +73,7 @@ const REMARKS_META_HEADERS = [
   "policy remarK",
   "category change remark",
   "ref no",
+  "Receipt No",
   "Created at",
   "Updated at",
   "policy url",

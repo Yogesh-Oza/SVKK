@@ -48,6 +48,10 @@ const exportInclude = {
       },
     },
   },
+  receipts: {
+    orderBy: { createdAt: "asc" as const },
+    select: { receiptNo: true, policyYearId: true },
+  },
 } satisfies Prisma.PolicyInclude;
 
 export type PolicyExportRow = Prisma.PolicyGetPayload<{ include: typeof exportInclude }>;

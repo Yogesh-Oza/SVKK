@@ -88,6 +88,7 @@ export const POLICY_CSV_FLAT_HEADERS = [
   "policy remarK",
   "category change remark",
   "ref no",
+  "Receipt No",
   "Created at",
   "Updated at",
   "policy url",

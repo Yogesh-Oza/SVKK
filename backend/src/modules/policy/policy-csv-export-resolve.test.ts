@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
-import { resolveYearPremiumForExport } from "./policy-csv-export-resolve.js";
+import { resolveYearPremiumForExport, resolveReceiptNoForExport } from "./policy-csv-export-resolve.js";
 import { buildPoliciesExportCsv, type PolicyExportRow } from "./policy.export-csv.js";
 import { formatAadhaarForCsvExport, formatPhoneForCsvExport, fmtCsvDate, fmtCsvDateTime, parseCsvDate } from "./policy-csv-utils.js";
 
@@ -70,6 +70,25 @@ describe("resolveYearPremiumForExport", () => {
   it("falls back gaamMahajanContribution from gaamMahajanVkk", () => {
     const resolved = resolveYearPremiumForExport(yearSlice());
     expect(resolved.gaamMahajanContribution?.toString()).toBe("100");
+  });
+});
+
+describe("resolveReceiptNoForExport", () => {
+  it("prefers receipt linked to the exported policy year", () => {
+    const row = {
+      receipts: [
+        { receiptNo: "RCP/2025/00001", policyYearId: "y0" },
+        { receiptNo: "RCP/2026/00042", policyYearId: "y1" },
+      ],
+    } as PolicyExportRow;
+    expect(resolveReceiptNoForExport(row, yearSlice({ id: "y1" }))).toBe("RCP/2026/00042");
+  });
+
+  it("falls back to the first receipt when year has no linked receipt", () => {
+    const row = {
+      receipts: [{ receiptNo: "RCP/2026/00042", policyYearId: "y1" }],
+    } as PolicyExportRow;
+    expect(resolveReceiptNoForExport(row, yearSlice({ id: "y9" }))).toBe("RCP/2026/00042");
   });
 });
 
@@ -195,6 +214,7 @@ describe("buildPoliciesExportCsv premium and phone", () => {
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       updatedAt: new Date("2026-01-01T00:00:00.000Z"),
       deletedAt: null,
+      receipts: [],
       insuredParty: {
         id: "ip1",
         customerId: "C1",

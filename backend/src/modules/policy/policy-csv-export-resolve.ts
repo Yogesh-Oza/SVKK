@@ -57,3 +57,19 @@ export function resolveYearPremiumForExport(
     diffPaidByHolder: year.diffPaidByHolder ?? year.differenceAmountPaidByHolder,
   };
 }
+
+/** Receipt for the exported policy year, else the policy's first receipt. */
+export function resolveReceiptNoForExport(
+  row: PolicyExportRow,
+  year: PolicyYearForExport | undefined,
+): string {
+  const receipts = row.receipts ?? [];
+  if (!receipts.length) return "";
+
+  if (year?.id) {
+    const forYear = receipts.find((r) => r.policyYearId === year.id);
+    if (forYear?.receiptNo?.trim()) return forYear.receiptNo.trim();
+  }
+
+  return receipts[0]?.receiptNo?.trim() ?? "";
+}
