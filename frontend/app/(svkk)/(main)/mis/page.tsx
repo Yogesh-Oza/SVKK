@@ -1,7 +1,7 @@
 "use client";
 
 import { PolicyMemberReportSection } from "@/features/svkk-mis/policy-member-report-section";
-import { ClaimReportSection } from "@/features/svkk-mis/claim-report-section";
+import { ClaimMisSummarySection } from "@/features/svkk-mis/claim-mis-summary-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
@@ -52,13 +52,13 @@ export default function SvkkMisPage() {
             <PolicyMemberReportSection onError={(m) => setErr(m || null)} />
           </TabsContent>
           <TabsContent value="claim" className="mt-6">
-            <ClaimReportSection onError={(m) => setErr(m || null)} />
+            <ClaimMisSummarySection onError={(m) => setErr(m || null)} />
           </TabsContent>
         </Tabs>
       ) : canPolicyMis ? (
         <PolicyMemberReportSection onError={(m) => setErr(m || null)} />
       ) : (
-        <ClaimReportSection onError={(m) => setErr(m || null)} />
+        <ClaimMisSummarySection onError={(m) => setErr(m || null)} />
       )}
     </div>
   );

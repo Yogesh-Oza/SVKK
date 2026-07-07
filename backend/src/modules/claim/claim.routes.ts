@@ -257,14 +257,12 @@ export function createClaimRouter(env: Env) {
       const body = z
         .object({
           claimNo: z.string().min(1),
+          policyId: z.string().optional().nullable(),
+        })
+        .merge(claimUpdateBodySchema.partial())
+        .extend({
           svkkPublicId: z.string().min(1),
           policyYear: z.string().min(1),
-          policyId: z.string().optional().nullable(),
-          patientName: z.string().optional().nullable(),
-          status: z.nativeEnum(ClaimStatus).default(ClaimStatus.PENDING),
-          claimAmount: z.number().nonnegative().optional().nullable(),
-          approvedAmount: z.number().nonnegative().optional().nullable(),
-          village: z.string().optional().nullable(),
         })
         .parse(req.body);
 
@@ -282,8 +280,9 @@ export function createClaimRouter(env: Env) {
         policyArea = policy.area;
       }
 
+      const village = body.village ?? null;
       assertGeoFieldsOnWrite(
-        { village: body.village, area: policyArea },
+        { village, area: policyArea },
         scope,
         req.permissions!,
         "claim",
@@ -293,19 +292,17 @@ export function createClaimRouter(env: Env) {
         where: { svkkPublicId: body.svkkPublicId },
       });
 
+      const { claimNo, policyId, svkkPublicId, policyYear, ...rest } = body;
       const row = await prisma.claim.create({
         data: {
-          claimNo: body.claimNo,
-          svkkPublicId: body.svkkPublicId,
+          claimNo,
+          svkkPublicId,
           insuredPartyId: party?.id,
-          policyId: body.policyId ?? undefined,
-          policyYear: body.policyYear,
-          patientName: body.patientName ?? undefined,
-          status: body.status,
-          claimAmount: body.claimAmount ?? undefined,
-          approvedAmount: body.approvedAmount ?? undefined,
-          village: body.village ?? undefined,
+          policyId: policyId ?? undefined,
+          policyYear,
+          status: body.status ?? ClaimStatus.PENDING,
           createdById: req.userId,
+          ...rest,
         },
       });
 
