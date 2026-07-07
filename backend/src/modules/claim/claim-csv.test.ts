@@ -14,6 +14,8 @@ import {
 } from "./claim-status-map.js";
 import { ClaimStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { canonicalClaimHeader } from "./claim-csv-format.js";
+import { parseClaimRow } from "./claim-csv-import.js";
 
 describe("claim-csv-normalize", () => {
   it("parses ISO and DD-MM-YYYY dates", () => {
@@ -43,5 +45,36 @@ describe("claim-status-map", () => {
     expect(mapStatusTextToEnum("Paid", DEFAULT_CLAIM_STATUS_MAP)).toBe(ClaimStatus.APPROVED);
     expect(mapStatusTextToEnum("under process", DEFAULT_CLAIM_STATUS_MAP)).toBe(ClaimStatus.PENDING);
     expect(normalizeStatusText("  Under   Process ")).toBe("under process");
+  });
+});
+
+describe("claim CSV header aliases", () => {
+  it("normalizes lodge/paid headers used in TPA sheets", () => {
+    expect(canonicalClaimHeader("Claim Lodge Amt")).toBe("Claim Amount");
+    expect(canonicalClaimHeader("Paid Amount")).toBe("Approved Amt");
+    expect(canonicalClaimHeader("Claim LodgeType")).toBe("Claim Type");
+    expect(canonicalClaimHeader("Claim  No. ( CCN)")).toBe("Claim Number");
+  });
+
+  it("parses claim amount and approved amount from aliased headers", () => {
+    const map = new Map<string, string>([
+      ["Claim Number", "MDI123"],
+      ["Policy Number", "PO-1"],
+      ["Policy Holder Name", "Test Holder"],
+      ["Policy Type", "Family Floater"],
+      ["Policy Start Date", "01-01-2025"],
+      ["Policy End Date", "31-12-2025"],
+      ["Claim Amount", "12,345"],
+      ["Approved Amt", "10,001"],
+      ["Status", "Paid"],
+    ]);
+    const row = parseClaimRow(2, map, {
+      paid: ClaimStatus.APPROVED,
+      "under process": ClaimStatus.PENDING,
+      denied: ClaimStatus.REJECTED,
+    });
+    expect(row.claimNo).toBe("MDI123");
+    expect(row.claimAmount).toBe(12345);
+    expect(row.approvedAmount).toBe(10001);
   });
 });
