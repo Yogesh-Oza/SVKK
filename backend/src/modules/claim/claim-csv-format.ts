@@ -42,6 +42,10 @@ export const CLAIM_CSV_HEADERS = [
 export const CLAIM_HEADER_ALIASES: Record<string, string> = {
   "claim number.": "Claim Number",
   "claim no": "Claim Number",
+  "claim no.": "Claim Number",
+  "claim #": "Claim Number",
+  "claim#": "Claim Number",
+  "claim_number": "Claim Number",
   "policy no": "Policy Number",
   "policy number": "Policy Number",
   "holder name": "Policy Holder Name",

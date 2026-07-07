@@ -71,7 +71,15 @@ export function parseClaimRow(
   map: Map<string, string>,
   statusMap: Record<string, ClaimStatus>,
 ): ParsedClaimRow {
-  const claimNo = getClaimField(map, "Claim Number", "Claim Number.");
+  const claimNo = getClaimField(
+    map,
+    "Claim Number",
+    "Claim Number.",
+    "Claim No",
+    "Claim No.",
+    "Claim #",
+    "Claim_Number",
+  );
   const policyStartDate = parseClaimDate(getClaimField(map, "Policy Start Date"));
   const policyEndDate = parseClaimDate(getClaimField(map, "Policy End Date"));
   const statusText = getClaimField(map, "Status") || null;
