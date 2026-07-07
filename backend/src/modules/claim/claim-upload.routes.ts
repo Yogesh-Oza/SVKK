@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { createHash } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { join } from "path";
+import { dirname, join } from "path";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
@@ -268,6 +268,7 @@ async function runClaimImport(
   if (rowErrors.length > 0) {
     const report = buildClaimErrorReportCsv(rowErrors);
     errorReportPath = join(env.UPLOAD_DIR, "claims", job.id, "errors.csv");
+    await mkdir(dirname(errorReportPath), { recursive: true });
     await writeFile(errorReportPath, report, "utf8");
   }
 
