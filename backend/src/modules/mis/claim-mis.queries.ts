@@ -344,10 +344,31 @@ export function claimReportRowToJson(r: ClaimReportRow) {
   };
 }
 
-function isCashlessSql(): Prisma.Sql {
+/**
+ * Cashless test for a lodge-type column expression.
+ * Matches "cashless"/"cash less" but excludes "non cash less"/"non-cash" so
+ * reimbursement rows (e.g. "Non Cash Less") are not miscounted as cashless.
+ */
+function cashlessFromExpr(expr: Prisma.Sql): Prisma.Sql {
+  const lo = Prisma.sql`LOWER(COALESCE(${expr}, ''))`;
   return Prisma.sql`(
-    LOWER(COALESCE(${sqlAliasCol("c", "claimType")}, '')) LIKE '%cashless%'
-    OR LOWER(COALESCE(${sqlAliasCol("c", "claimType")}, '')) LIKE '%cash less%'
+    (${lo} LIKE '%cashless%' OR ${lo} LIKE '%cash less%')
+    AND ${lo} NOT LIKE '%non cashless%'
+    AND ${lo} NOT LIKE '%non cash less%'
+    AND ${lo} NOT LIKE '%non-cash%'
+  )`;
+}
+
+/**
+ * Prefer the definitive `Actual Lodge Type` classifier; fall back to
+ * `Claim LodgeType` only when Actual Lodge Type is blank.
+ */
+function isCashlessSql(): Prisma.Sql {
+  const actual = sqlAliasCol("c", "actualLodgeType");
+  const claimType = sqlAliasCol("c", "claimType");
+  return Prisma.sql`(
+    (COALESCE(${actual}, '') <> '' AND ${cashlessFromExpr(actual)})
+    OR (COALESCE(${actual}, '') = '' AND ${cashlessFromExpr(claimType)})
   )`;
 }
 
@@ -447,19 +468,25 @@ export type ClaimFieldReportRow = {
   policyHolderName: string | null;
   patientName: string | null;
   patientGender: string | null;
+  categoryText: string | null;
   village: string | null;
   insuranceCompany: string | null;
   hospitalName: string | null;
   hospitalArea: string | null;
   illness: string | null;
+  diseaseCategory: string | null;
+  treatmentType: string | null;
   claimType: string | null;
+  actualLodgeType: string | null;
   statusText: string | null;
   policyYear: string;
   networkType: string | null;
   roomCategory: string | null;
   claimAmount: string | null;
+  reportedLodgeAmount: string | null;
   approvedAmount: string | null;
   deductionAmount: string | null;
+  discountAmount: string | null;
   claimReceivedDate: Date | null;
   admissionDate: Date | null;
   dischargeDate: Date | null;
@@ -482,19 +509,25 @@ export async function queryClaimsForFieldReports(
       c.policyHolderName,
       c.patientName,
       c.patientGender,
+      c.categoryText,
       c.village,
       c.insuranceCompany,
       c.hospitalName,
       c.hospitalArea,
       c.illness,
+      c.diseaseCategory,
+      c.treatmentType,
       c.claimType,
+      c.actualLodgeType,
       c.statusText,
       c.policyYear,
       c.networkType,
       c.roomCategory,
       CAST(c.claimAmount AS CHAR) AS claimAmount,
+      CAST(c.reportedLodgeAmount AS CHAR) AS reportedLodgeAmount,
       CAST(c.approvedAmount AS CHAR) AS approvedAmount,
       CAST(c.deductionAmount AS CHAR) AS deductionAmount,
+      CAST(c.discountAmount AS CHAR) AS discountAmount,
       c.claimReceivedDate,
       c.admissionDate,
       c.dischargeDate

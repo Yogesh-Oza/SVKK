@@ -43,12 +43,25 @@ const underProcessOr: Prisma.ClaimWhereInput[] = [
   { statusText: { contains: "Under" } },
 ];
 
-const cashlessOr: Prisma.ClaimWhereInput[] = [
-  { claimType: { contains: "cashless" } },
-  { claimType: { contains: "Cashless" } },
-  { claimType: { contains: "cash less" } },
-  { claimType: { contains: "Cash less" } },
-];
+/**
+ * Pure mirror of the cashless SQL/where rule (see `isCashlessSql` in
+ * claim-mis.queries.ts and `isCashlessWhere` below). Kept in sync so the exact
+ * "Non Cash Less is reimbursement, not cashless" behavior is unit-testable
+ * without a live database. Prefers Actual Lodge Type, falls back to Claim Type.
+ */
+export function isCashlessLodgeType(
+  actualLodgeType: string | null | undefined,
+  claimType?: string | null | undefined,
+): boolean {
+  const matches = (raw: string | null | undefined): boolean => {
+    const v = (raw ?? "").toLowerCase();
+    if (!v) return false;
+    if (v.includes("non cash") || v.includes("non-cash")) return false;
+    return v.includes("cashless") || v.includes("cash less");
+  };
+  const actual = (actualLodgeType ?? "").trim();
+  return actual ? matches(actual) : matches(claimType);
+}
 
 function andWhere(base: Prisma.ClaimWhereInput, extra: Prisma.ClaimWhereInput): Prisma.ClaimWhereInput {
   return { AND: [base, extra] };
@@ -66,8 +79,38 @@ function isUnderProcessWhere(): Prisma.ClaimWhereInput {
   return { OR: underProcessOr };
 }
 
+/**
+ * Cashless on a lodge-type column: matches "cashless"/"cash less" but excludes
+ * "non cash"/"non-cash" so reimbursement ("Non Cash Less") is not miscounted.
+ */
+function cashlessOnActual(): Prisma.ClaimWhereInput {
+  return {
+    AND: [
+      { OR: [{ actualLodgeType: { contains: "cashless" } }, { actualLodgeType: { contains: "cash less" } }] },
+      { NOT: { actualLodgeType: { contains: "non cash" } } },
+      { NOT: { actualLodgeType: { contains: "non-cash" } } },
+    ],
+  };
+}
+
+function cashlessOnClaimType(): Prisma.ClaimWhereInput {
+  return {
+    AND: [
+      { OR: [{ claimType: { contains: "cashless" } }, { claimType: { contains: "cash less" } }] },
+      { NOT: { claimType: { contains: "non cash" } } },
+      { NOT: { claimType: { contains: "non-cash" } } },
+    ],
+  };
+}
+
+/** Prefer definitive Actual Lodge Type; fall back to Claim LodgeType only when blank. */
 function isCashlessWhere(): Prisma.ClaimWhereInput {
-  return { OR: cashlessOr };
+  return {
+    OR: [
+      { AND: [{ NOT: { actualLodgeType: null } }, { NOT: { actualLodgeType: "" } }, cashlessOnActual()] },
+      { AND: [{ OR: [{ actualLodgeType: null }, { actualLodgeType: "" }] }, cashlessOnClaimType()] },
+    ],
+  };
 }
 
 function notDeniedWhere(): Prisma.ClaimWhereInput {

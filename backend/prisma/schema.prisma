@@ -825,13 +825,22 @@ model Claim {
   patientAge              Int?
   patientRelation         String?                 @db.VarChar(100)
   patientGender           String?                 @db.VarChar(16)
+  mdId                    String?                 @db.VarChar(100)
+  categoryText            String?                 @db.VarChar(100)
   status                  ClaimStatus             @default(PENDING)
   statusText              String?                 @db.VarChar(200)
   claimType               String?                 @db.VarChar(100)
+  actualLodgeType         String?                 @db.VarChar(100)
+  treatmentType           String?                 @db.VarChar(100)
+  treatmentProcedure      String?                 @db.VarChar(300)
+  diseaseCategory         String?                 @db.VarChar(200)
   claimAmount             Decimal?                @db.Decimal(14, 2)
+  reportedLodgeAmount     Decimal?                @db.Decimal(14, 2)
   approvedAmount          Decimal?                @db.Decimal(14, 2)
   deductionAmount         Decimal?                @db.Decimal(14, 2)
+  discountAmount          Decimal?                @db.Decimal(14, 2)
   deductionDetails        String?                 @db.Text
+  remark                  String?                 @db.Text
   balanceSumInsured       Decimal?                @db.Decimal(14, 2)
   village                 String?
   tpaName                 String?                 @db.VarChar(200)
@@ -851,10 +860,14 @@ model Claim {
   hospitalInPpn           Boolean?
   admissionDate           DateTime?
   dischargeDate           DateTime?
+  lodgeDate               DateTime?
   illness                 String?                 @db.Text
   deniedReasons           String?                 @db.Text
   roomCategory            String?                 @db.VarChar(100)
   paymentDetails          String?                 @db.Text
+  paymentInFavourOf       String?                 @db.VarChar(200)
+  paymentDate             DateTime?
+  prsCrsDate              DateTime?
   matchStatus             ClaimPolicyMatchStatus?
   verificationWarnings    Json?
   importJobId             String?

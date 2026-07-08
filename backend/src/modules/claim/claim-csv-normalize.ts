@@ -1,13 +1,18 @@
 import type { Prisma } from "@prisma/client";
 
-const DATE_PATTERNS = [
-  /^(\d{4})-(\d{2})-(\d{2})$/,
-  /^(\d{2})-(\d{2})-(\d{4})$/,
-  /^(\d{2})\/(\d{2})\/(\d{4})$/,
-  /^(\d{2})-(\d{2})-(\d{2})$/,
-];
+const toUtc = (year: number, month: number, day: number): Date =>
+  new Date(Date.UTC(year, month - 1, day));
 
-/** Parse flexible date strings and Excel serial numbers to UTC midnight. */
+/**
+ * Parse flexible date strings and Excel serial numbers to UTC midnight.
+ *
+ * Separator/format conventions (order matters):
+ *  - `yyyy-mm-dd`                      ISO
+ *  - `dd-mm-yyyy` / `dd/mm/yyyy`       day-first (legacy TPA sheets)
+ *  - `m/d/yy`                          month-first (field-software "Claim data 25-26", US style)
+ *  - `dd-mm-yy`                        day-first, 2-digit year
+ *  - anything else                     `Date.parse` fallback
+ */
 export function parseClaimDate(raw: string): Date | null {
   const t = raw.trim();
   if (!t) return null;
@@ -19,17 +24,19 @@ export function parseClaimDate(raw: string): Date | null {
     return epoch;
   }
 
-  for (const re of DATE_PATTERNS) {
-    const m = re.exec(t);
-    if (!m) continue;
-    if (re.source.startsWith("^(\\d{4})")) {
-      return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-    }
-    if (m[3]!.length === 4) {
-      return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
-    }
-    const y = 2000 + Number(m[3]);
-    return new Date(Date.UTC(y, Number(m[2]) - 1, Number(m[1])));
+  let m: RegExpExecArray | null;
+
+  if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) {
+    return toUtc(Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+  if ((m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(t))) {
+    return toUtc(Number(m[3]), Number(m[2]), Number(m[1]));
+  }
+  if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(t))) {
+    return toUtc(2000 + Number(m[3]), Number(m[1]), Number(m[2]));
+  }
+  if ((m = /^(\d{1,2})-(\d{1,2})-(\d{2})$/.exec(t))) {
+    return toUtc(2000 + Number(m[3]), Number(m[2]), Number(m[1]));
   }
 
   const parsed = Date.parse(t);

@@ -169,6 +169,12 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                 <Field label="Village">
                   <Input value={form.village} onChange={(e) => set("village")(e.target.value)} />
                 </Field>
+                <Field label="MD ID">
+                  <Input value={form.mdId} onChange={(e) => set("mdId")(e.target.value)} />
+                </Field>
+                <Field label="Category">
+                  <Input value={form.categoryText} onChange={(e) => set("categoryText")(e.target.value)} />
+                </Field>
               </Section>
 
               <Section title="Policy">
@@ -216,8 +222,23 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
               </Section>
 
               <Section title="Claim & amounts">
-                <Field label="Claim type">
+                <Field label="Claim type / lodge type">
                   <Input value={form.claimType} onChange={(e) => set("claimType")(e.target.value)} />
+                </Field>
+                <Field label="Actual lodge type (Cash Less / Non Cash Less)">
+                  <Input value={form.actualLodgeType} onChange={(e) => set("actualLodgeType")(e.target.value)} />
+                </Field>
+                <Field label="Treatment type">
+                  <Input value={form.treatmentType} onChange={(e) => set("treatmentType")(e.target.value)} />
+                </Field>
+                <Field label="Treatment procedure">
+                  <Input
+                    value={form.treatmentProcedure}
+                    onChange={(e) => set("treatmentProcedure")(e.target.value)}
+                  />
+                </Field>
+                <Field label="Disease category" className="sm:col-span-2">
+                  <Input value={form.diseaseCategory} onChange={(e) => set("diseaseCategory")(e.target.value)} />
                 </Field>
                 <Field label="Status">
                   <Select value={form.status} onValueChange={set("status")}>
@@ -236,14 +257,21 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                 <Field label="Status text (import label)">
                   <Input value={form.statusText} onChange={(e) => set("statusText")(e.target.value)} />
                 </Field>
-                <Field label="Claim amount (INR)">
+                <Field label="Claim amount / lodge amount (INR)">
                   <Input
                     value={form.claimAmount}
                     onChange={(e) => set("claimAmount")(e.target.value)}
                     inputMode="decimal"
                   />
                 </Field>
-                <Field label="Approved amount (INR)">
+                <Field label="Reported lodge amount (INR)">
+                  <Input
+                    value={form.reportedLodgeAmount}
+                    onChange={(e) => set("reportedLodgeAmount")(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </Field>
+                <Field label="Approved / paid amount (INR)">
                   <Input
                     value={form.approvedAmount}
                     onChange={(e) => set("approvedAmount")(e.target.value)}
@@ -254,6 +282,13 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                   <Input
                     value={form.deductionAmount}
                     onChange={(e) => set("deductionAmount")(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </Field>
+                <Field label="Discount amount (INR)">
+                  <Input
+                    value={form.discountAmount}
+                    onChange={(e) => set("discountAmount")(e.target.value)}
                     inputMode="decimal"
                   />
                 </Field>
@@ -270,6 +305,9 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                     onChange={(e) => set("deductionDetails")(e.target.value)}
                     rows={2}
                   />
+                </Field>
+                <Field label="Remark" className="sm:col-span-2">
+                  <Textarea value={form.remark} onChange={(e) => set("remark")(e.target.value)} rows={2} />
                 </Field>
               </Section>
 
@@ -310,6 +348,9 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                 <Field label="Discharge">
                   <PolicyDateInput value={form.dischargeDate} onValueChange={set("dischargeDate")} />
                 </Field>
+                <Field label="Claim lodge date">
+                  <PolicyDateInput value={form.lodgeDate} onValueChange={set("lodgeDate")} />
+                </Field>
               </Section>
 
               <Section title="Hospital">
@@ -349,6 +390,18 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
                     onChange={(e) => set("deniedReasons")(e.target.value)}
                     rows={2}
                   />
+                </Field>
+                <Field label="Payment in favour of">
+                  <Input
+                    value={form.paymentInFavourOf}
+                    onChange={(e) => set("paymentInFavourOf")(e.target.value)}
+                  />
+                </Field>
+                <Field label="Payment date">
+                  <PolicyDateInput value={form.paymentDate} onValueChange={set("paymentDate")} />
+                </Field>
+                <Field label="PRS / CRS date">
+                  <PolicyDateInput value={form.prsCrsDate} onValueChange={set("prsCrsDate")} />
                 </Field>
                 <Field label="Payment details" className="sm:col-span-2">
                   <Textarea

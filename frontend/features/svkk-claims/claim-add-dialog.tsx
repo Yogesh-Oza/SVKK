@@ -114,12 +114,45 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
             <Input value={form.village} onChange={(e) => setField("village", e.target.value)} />
           </div>
           <div className="space-y-1.5">
+            <Label className="text-xs">MD ID</Label>
+            <Input value={form.mdId} onChange={(e) => setField("mdId", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Category</Label>
+            <Input value={form.categoryText} onChange={(e) => setField("categoryText", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
             <Label className="text-xs">Claim lodge type</Label>
             <Input value={form.claimType} onChange={(e) => setField("claimType", e.target.value)} />
           </div>
           <div className="space-y-1.5">
+            <Label className="text-xs">Actual lodge type</Label>
+            <Input
+              value={form.actualLodgeType}
+              onChange={(e) => setField("actualLodgeType", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Treatment type</Label>
+            <Input value={form.treatmentType} onChange={(e) => setField("treatmentType", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Disease category</Label>
+            <Input
+              value={form.diseaseCategory}
+              onChange={(e) => setField("diseaseCategory", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
             <Label className="text-xs">Claim amount</Label>
             <Input value={form.claimAmount} onChange={(e) => setField("claimAmount", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reported lodge amount</Label>
+            <Input
+              value={form.reportedLodgeAmount}
+              onChange={(e) => setField("reportedLodgeAmount", e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Approved amount</Label>
@@ -127,6 +160,10 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
               value={form.approvedAmount}
               onChange={(e) => setField("approvedAmount", e.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Discount amount</Label>
+            <Input value={form.discountAmount} onChange={(e) => setField("discountAmount", e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Status text</Label>
@@ -139,6 +176,14 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
           <div className="space-y-1.5">
             <Label className="text-xs">Admission date</Label>
             <PolicyDateInput value={form.admissionDate} onValueChange={(v) => setField("admissionDate", v)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Claim lodge date</Label>
+            <PolicyDateInput value={form.lodgeDate} onValueChange={(v) => setField("lodgeDate", v)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Payment date</Label>
+            <PolicyDateInput value={form.paymentDate} onValueChange={(v) => setField("paymentDate", v)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Received date</Label>

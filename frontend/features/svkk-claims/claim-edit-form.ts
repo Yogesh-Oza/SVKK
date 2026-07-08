@@ -14,13 +14,22 @@ export type ClaimEditFormValues = {
   patientAge: string;
   patientRelation: string;
   patientGender: string;
+  mdId: string;
+  categoryText: string;
   claimType: string;
+  actualLodgeType: string;
+  treatmentType: string;
+  treatmentProcedure: string;
+  diseaseCategory: string;
   status: string;
   statusText: string;
   claimAmount: string;
+  reportedLodgeAmount: string;
   approvedAmount: string;
   deductionAmount: string;
+  discountAmount: string;
   deductionDetails: string;
+  remark: string;
   balanceSumInsured: string;
   tpaName: string;
   insuranceCompany: string;
@@ -34,10 +43,14 @@ export type ClaimEditFormValues = {
   hospitalInPpn: string;
   admissionDate: string;
   dischargeDate: string;
+  lodgeDate: string;
   illness: string;
   deniedReasons: string;
   roomCategory: string;
   paymentDetails: string;
+  paymentInFavourOf: string;
+  paymentDate: string;
+  prsCrsDate: string;
 };
 
 function amountToForm(v: string | number | null | undefined): string {
@@ -69,13 +82,22 @@ export function emptyClaimEditForm(): ClaimEditFormValues {
     patientAge: "",
     patientRelation: "",
     patientGender: "",
+    mdId: "",
+    categoryText: "",
     claimType: "",
+    actualLodgeType: "",
+    treatmentType: "",
+    treatmentProcedure: "",
+    diseaseCategory: "",
     status: "PENDING",
     statusText: "",
     claimAmount: "",
+    reportedLodgeAmount: "",
     approvedAmount: "",
     deductionAmount: "",
+    discountAmount: "",
     deductionDetails: "",
+    remark: "",
     balanceSumInsured: "",
     tpaName: "",
     insuranceCompany: "",
@@ -89,10 +111,14 @@ export function emptyClaimEditForm(): ClaimEditFormValues {
     hospitalInPpn: "",
     admissionDate: "",
     dischargeDate: "",
+    lodgeDate: "",
     illness: "",
     deniedReasons: "",
     roomCategory: "",
     paymentDetails: "",
+    paymentInFavourOf: "",
+    paymentDate: "",
+    prsCrsDate: "",
   };
 }
 
@@ -110,13 +136,22 @@ export function claimDetailToForm(d: ClaimDetail): ClaimEditFormValues {
     patientAge: d.patientAge != null ? String(d.patientAge) : "",
     patientRelation: d.patientRelation ?? "",
     patientGender: d.patientGender ?? "",
+    mdId: d.mdId ?? "",
+    categoryText: d.categoryText ?? "",
     claimType: d.claimType ?? "",
+    actualLodgeType: d.actualLodgeType ?? "",
+    treatmentType: d.treatmentType ?? "",
+    treatmentProcedure: d.treatmentProcedure ?? "",
+    diseaseCategory: d.diseaseCategory ?? "",
     status: d.status ?? "PENDING",
     statusText: d.statusText ?? "",
     claimAmount: amountToForm(d.claimAmount),
+    reportedLodgeAmount: amountToForm(d.reportedLodgeAmount),
     approvedAmount: amountToForm(d.approvedAmount),
     deductionAmount: amountToForm(d.deductionAmount),
+    discountAmount: amountToForm(d.discountAmount),
     deductionDetails: d.deductionDetails ?? "",
+    remark: d.remark ?? "",
     balanceSumInsured: amountToForm(d.balanceSumInsured),
     tpaName: d.tpaName ?? "",
     insuranceCompany: d.insuranceCompany ?? "",
@@ -130,10 +165,14 @@ export function claimDetailToForm(d: ClaimDetail): ClaimEditFormValues {
     hospitalInPpn: boolToForm(d.hospitalInPpn),
     admissionDate: dateToForm(d.admissionDate),
     dischargeDate: dateToForm(d.dischargeDate),
+    lodgeDate: dateToForm(d.lodgeDate),
     illness: d.illness ?? "",
     deniedReasons: d.deniedReasons ?? "",
     roomCategory: d.roomCategory ?? "",
     paymentDetails: d.paymentDetails ?? "",
+    paymentInFavourOf: d.paymentInFavourOf ?? "",
+    paymentDate: dateToForm(d.paymentDate),
+    prsCrsDate: dateToForm(d.prsCrsDate),
   };
 }
 
@@ -162,8 +201,10 @@ export function formToClaimPatch(
 ): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
   const amounts: Array<[keyof ClaimEditFormValues, string]> = [
     ["claimAmount", "Claim amount"],
+    ["reportedLodgeAmount", "Reported lodge amount"],
     ["approvedAmount", "Approved amount"],
     ["deductionAmount", "Deduction amount"],
+    ["discountAmount", "Discount amount"],
     ["balanceSumInsured", "Balance sum insured"],
     ["sumInsured", "Sum insured"],
   ];
@@ -190,13 +231,22 @@ export function formToClaimPatch(
     patientAge: parseOptionalInt(form.patientAge),
     patientRelation: optText(form.patientRelation),
     patientGender: optText(form.patientGender),
+    mdId: optText(form.mdId),
+    categoryText: optText(form.categoryText),
     claimType: optText(form.claimType),
+    actualLodgeType: optText(form.actualLodgeType),
+    treatmentType: optText(form.treatmentType),
+    treatmentProcedure: optText(form.treatmentProcedure),
+    diseaseCategory: optText(form.diseaseCategory),
     status: form.status,
     statusText: optText(form.statusText),
     claimAmount: parseOptionalAmount(form.claimAmount),
+    reportedLodgeAmount: parseOptionalAmount(form.reportedLodgeAmount),
     approvedAmount: parseOptionalAmount(form.approvedAmount),
     deductionAmount: parseOptionalAmount(form.deductionAmount),
+    discountAmount: parseOptionalAmount(form.discountAmount),
     deductionDetails: optText(form.deductionDetails),
+    remark: optText(form.remark),
     balanceSumInsured: parseOptionalAmount(form.balanceSumInsured),
     tpaName: optText(form.tpaName),
     insuranceCompany: optText(form.insuranceCompany),
@@ -210,10 +260,14 @@ export function formToClaimPatch(
     hospitalInPpn: form.hospitalInPpn.trim() || null,
     admissionDate: toApiDateIso(form.admissionDate),
     dischargeDate: toApiDateIso(form.dischargeDate),
+    lodgeDate: toApiDateIso(form.lodgeDate),
     illness: optText(form.illness),
     deniedReasons: optText(form.deniedReasons),
     roomCategory: optText(form.roomCategory),
     paymentDetails: optText(form.paymentDetails),
+    paymentInFavourOf: optText(form.paymentInFavourOf),
+    paymentDate: toApiDateIso(form.paymentDate),
+    prsCrsDate: toApiDateIso(form.prsCrsDate),
   };
 
   return { ok: true, body };

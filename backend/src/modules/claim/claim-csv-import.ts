@@ -40,7 +40,13 @@ export type ParsedClaimRow = {
   patientAge: number | null;
   patientRelation: string | null;
   patientGender: string | null;
+  mdId: string | null;
+  categoryText: string | null;
   claimType: string | null;
+  actualLodgeType: string | null;
+  treatmentType: string | null;
+  treatmentProcedure: string | null;
+  diseaseCategory: string | null;
   statusText: string | null;
   status: ClaimStatus;
   claimReceivedDate: Date | null;
@@ -52,16 +58,23 @@ export type ParsedClaimRow = {
   hospitalInPpn: boolean | null;
   admissionDate: Date | null;
   dischargeDate: Date | null;
+  lodgeDate: Date | null;
   claimAmount: number | null;
+  reportedLodgeAmount: number | null;
   approvedAmount: number | null;
   deductionAmount: number | null;
+  discountAmount: number | null;
   deductionDetails: string | null;
+  remark: string | null;
   sumInsured: number | null;
   balanceSumInsured: number | null;
   illness: string | null;
   deniedReasons: string | null;
   roomCategory: string | null;
   paymentDetails: string | null;
+  paymentInFavourOf: string | null;
+  paymentDate: Date | null;
+  prsCrsDate: Date | null;
   matchInput: ClaimMatchInput;
 };
 
@@ -103,7 +116,13 @@ export function parseClaimRow(
     patientAge: parseClaimAge(getClaimField(map, "Patient Age")),
     patientRelation: getClaimField(map, "Relation") || null,
     patientGender: getClaimField(map, "Gender") || null,
+    mdId: getClaimField(map, "MD ID") || null,
+    categoryText: getClaimField(map, "Category") || null,
     claimType: getClaimField(map, "Claim Type") || null,
+    actualLodgeType: getClaimField(map, "Actual Lodge Type") || null,
+    treatmentType: getClaimField(map, "Treatment Type") || null,
+    treatmentProcedure: getClaimField(map, "Treatment Procedure") || null,
+    diseaseCategory: getClaimField(map, "Disease Category") || null,
     statusText,
     status: mapStatusTextToEnum(statusText ?? "", statusMap),
     claimReceivedDate: parseClaimDate(getClaimField(map, "Claim Received Date")),
@@ -115,16 +134,23 @@ export function parseClaimRow(
     hospitalInPpn: parseYesNo(getClaimField(map, "HOSPITAL IS IN PPN Y/N")),
     admissionDate: parseClaimDate(getClaimField(map, "Date Of Admission")),
     dischargeDate: parseClaimDate(getClaimField(map, "Date Of discharge", "Date Of Discharge")),
+    lodgeDate: parseClaimDate(getClaimField(map, "Claim Lodge Date")),
     claimAmount: parseClaimDecimal(getClaimField(map, "Claim Amount")),
+    reportedLodgeAmount: parseClaimDecimal(getClaimField(map, "Reported Lodge Amt")),
     approvedAmount: parseClaimDecimal(getClaimField(map, "Approved Amt", "Approved Amount")),
     deductionAmount: parseClaimDecimal(getClaimField(map, "Deduction Amount")),
+    discountAmount: parseClaimDecimal(getClaimField(map, "Discount Amt")),
     deductionDetails: getClaimField(map, "Deduction Details") || null,
+    remark: getClaimField(map, "Remark") || null,
     sumInsured,
     balanceSumInsured: parseClaimDecimal(getClaimField(map, "Balance Sum Insured")),
     illness: getClaimField(map, "Illness") || null,
     deniedReasons: getClaimField(map, "Denied Reasons") || null,
     roomCategory: getClaimField(map, "RoomCategory", "Room Category") || null,
     paymentDetails: getClaimField(map, "Cheque No/ Payment Details") || null,
+    paymentInFavourOf: getClaimField(map, "Payment In Favour Of") || null,
+    paymentDate: parseClaimDate(getClaimField(map, "Payment Date")),
+    prsCrsDate: parseClaimDate(getClaimField(map, "PRS/CRS Date")),
     matchInput: {
       policyNo,
       policyHolderName,
@@ -160,13 +186,22 @@ function claimDataFromRow(
     patientAge: row.patientAge,
     patientRelation: row.patientRelation,
     patientGender: row.patientGender,
+    mdId: row.mdId,
+    categoryText: row.categoryText,
     status: row.status,
     statusText: row.statusText,
     claimType: row.claimType,
+    actualLodgeType: row.actualLodgeType,
+    treatmentType: row.treatmentType,
+    treatmentProcedure: row.treatmentProcedure,
+    diseaseCategory: row.diseaseCategory,
     claimAmount: row.claimAmount,
+    reportedLodgeAmount: row.reportedLodgeAmount,
     approvedAmount: row.approvedAmount,
     deductionAmount: row.deductionAmount,
+    discountAmount: row.discountAmount,
     deductionDetails: row.deductionDetails,
+    remark: row.remark,
     balanceSumInsured: row.balanceSumInsured,
     village,
     tpaName: row.tpaName,
@@ -186,10 +221,14 @@ function claimDataFromRow(
     hospitalInPpn: row.hospitalInPpn,
     admissionDate: row.admissionDate,
     dischargeDate: row.dischargeDate,
+    lodgeDate: row.lodgeDate,
     illness: row.illness,
     deniedReasons: row.deniedReasons,
     roomCategory: row.roomCategory,
     paymentDetails: row.paymentDetails,
+    paymentInFavourOf: row.paymentInFavourOf,
+    paymentDate: row.paymentDate,
+    prsCrsDate: row.prsCrsDate,
     matchStatus: match.matchStatus,
     verificationWarnings:
       match.verificationWarnings.length > 0 ? match.verificationWarnings : undefined,

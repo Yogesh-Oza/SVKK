@@ -22,6 +22,11 @@ export function StatusBadge({ value }: { value: string | null | undefined }) {
 export function LodgeTypeBadge({ value }: { value: string | null | undefined }) {
   const v = (value ?? "").toLowerCase();
   if (!v) return <span className="text-muted-foreground">—</span>;
+  const isNonCash = v.includes("non cash") || v.includes("non-cash");
+  if (isNonCash) {
+    // Reimbursement ("Non Cash Less") — must not be styled as cashless.
+    return <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">{value}</Badge>;
+  }
   if (v.includes("cashless") || v.includes("cash less")) {
     return <Badge className="bg-blue-100 text-blue-900 hover:bg-blue-100">{value}</Badge>;
   }

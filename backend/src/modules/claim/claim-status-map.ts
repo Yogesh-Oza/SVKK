@@ -17,6 +17,8 @@ export const DEFAULT_CLAIM_STATUS_MAP: Record<string, ClaimStatus> = {
   "under process": ClaimStatus.PENDING,
   processing: ClaimStatus.PENDING,
   open: ClaimStatus.PENDING,
+  // Field-software ("Claim data 25-26") outstanding-claim status.
+  "end os": ClaimStatus.PENDING,
 };
 
 /** Normalize status text for map lookup. */

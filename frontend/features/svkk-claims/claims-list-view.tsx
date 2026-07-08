@@ -103,6 +103,8 @@ type Claim = {
   deductionAmount?: string | null;
   deductionDetails?: string | null;
   village: string | null;
+  mdId?: string | null;
+  categoryText?: string | null;
   patientName: string | null;
   patientAge?: number | null;
   patientRelation?: string | null;
@@ -110,6 +112,9 @@ type Claim = {
   policyHolderName?: string | null;
   policyTypeText?: string | null;
   claimType?: string | null;
+  actualLodgeType?: string | null;
+  treatmentType?: string | null;
+  diseaseCategory?: string | null;
   hospitalName?: string | null;
   hospitalArea?: string | null;
   insuranceCompany?: string | null;
@@ -117,6 +122,7 @@ type Claim = {
   paymentDetails?: string | null;
   admissionDate?: string | null;
   dischargeDate?: string | null;
+  lodgeDate?: string | null;
   claimReceivedDate?: string | null;
   matchStatus?: string | null;
   policyId?: string | null;
@@ -198,6 +204,8 @@ function listRowFromDetail(d: ClaimDetail): Claim {
     deductionAmount: amt(d.deductionAmount),
     deductionDetails: d.deductionDetails,
     village: d.village ?? null,
+    mdId: d.mdId,
+    categoryText: d.categoryText,
     patientName: d.patientName ?? null,
     patientAge: d.patientAge,
     patientRelation: d.patientRelation,
@@ -205,6 +213,9 @@ function listRowFromDetail(d: ClaimDetail): Claim {
     policyHolderName: d.policyHolderName,
     policyTypeText: d.policyTypeText,
     claimType: d.claimType,
+    actualLodgeType: d.actualLodgeType,
+    treatmentType: d.treatmentType,
+    diseaseCategory: d.diseaseCategory,
     hospitalName: d.hospitalName,
     hospitalArea: d.hospitalArea,
     insuranceCompany: d.insuranceCompany,
@@ -212,6 +223,7 @@ function listRowFromDetail(d: ClaimDetail): Claim {
     paymentDetails: d.paymentDetails,
     admissionDate: d.admissionDate,
     dischargeDate: d.dischargeDate,
+    lodgeDate: d.lodgeDate,
     claimReceivedDate: d.claimReceivedDate,
     matchStatus: d.matchStatus,
     policyId: d.policyId,
@@ -617,7 +629,7 @@ export function ClaimsListView() {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
   }
 
-  const colCount = 22 + (canU || canD ? 1 : 0);
+  const colCount = 26 + (canU || canD ? 1 : 0);
 
   return (
     <motion.div
@@ -938,11 +950,12 @@ export function ClaimsListView() {
               aria-hidden
             />
           ) : null}
-          <Table className="min-w-[2200px] font-sans text-sm antialiased">
+          <Table className="min-w-[2600px] font-sans text-sm antialiased">
             <TableHeader className="[&_tr]:bg-muted/80">
               <TableRow>
                 <TableHead className="text-xs">Category</TableHead>
                 <TableHead className="text-xs">SVKK ID</TableHead>
+                <TableHead className="text-xs">MD ID</TableHead>
                 <TableHead className="text-xs">Policy type</TableHead>
                 <TableHead className="text-xs">Grouping</TableHead>
                 <TableHead className="text-xs">Policy no</TableHead>
@@ -953,10 +966,13 @@ export function ClaimsListView() {
                 <TableHead className="text-xs">Claim #</TableHead>
                 <TableHead className="text-xs">Hospital</TableHead>
                 <TableHead className="text-xs">Area</TableHead>
+                <TableHead className="text-xs">Treatment</TableHead>
+                <TableHead className="text-xs">Disease category</TableHead>
                 <TableHead className="text-xs">Admission</TableHead>
                 <TableHead className="text-xs">Discharge</TableHead>
                 <TableHead className="text-xs">Diagnosis</TableHead>
                 <TableHead className="text-xs">Lodge type</TableHead>
+                <TableHead className="text-xs">Actual lodge type</TableHead>
                 <TableHead className="text-xs">Lodge amt</TableHead>
                 <TableHead className="text-xs">Deduction</TableHead>
                 <TableHead className="text-xs">Paid amt</TableHead>
@@ -981,9 +997,10 @@ export function ClaimsListView() {
                 rows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      <CategoryBadge value={c.policy?.category?.key} />
+                      <CategoryBadge value={c.categoryText ?? c.policy?.category?.key} />
                     </TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.svkkPublicId || "—"}</TableCell>
+                    <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.mdId ?? "—"}</TableCell>
                     <TableCell className="max-w-[100px] truncate text-xs">{c.policyTypeText ?? "—"}</TableCell>
                     <TableCell className="max-w-[90px] truncate text-xs">{c.policy?.policyGrouping ?? "—"}</TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>
@@ -1002,11 +1019,16 @@ export function ClaimsListView() {
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.claimNo}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{c.hospitalName ?? "—"}</TableCell>
                     <TableCell className="max-w-[90px] truncate">{c.hospitalArea ?? "—"}</TableCell>
+                    <TableCell className="max-w-[110px] truncate text-xs">{c.treatmentType ?? "—"}</TableCell>
+                    <TableCell className="max-w-[130px] truncate text-xs">{c.diseaseCategory ?? "—"}</TableCell>
                     <TableCell className="text-xs">{formatDateCell(c.admissionDate)}</TableCell>
                     <TableCell className="text-xs">{formatDateCell(c.dischargeDate)}</TableCell>
                     <TableCell className="max-w-[120px] truncate text-xs">{c.illness ?? "—"}</TableCell>
                     <TableCell>
                       <LodgeTypeBadge value={c.claimType} />
+                    </TableCell>
+                    <TableCell>
+                      <LodgeTypeBadge value={c.actualLodgeType} />
                     </TableCell>
                     <TableCell className={claimTableCell}>{formatInrRupee(c.claimAmount)}</TableCell>
                     <TableCell className={claimTableCell}>{formatInrRupee(c.deductionAmount)}</TableCell>

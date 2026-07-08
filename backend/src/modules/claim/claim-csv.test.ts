@@ -23,6 +23,13 @@ describe("claim-csv-normalize", () => {
     expect(parseClaimDate("15-03-2024")?.toISOString().slice(0, 10)).toBe("2024-03-15");
   });
 
+  it("parses US M/D/YY field-software dates as month-first", () => {
+    expect(parseClaimDate("1/22/25")?.toISOString().slice(0, 10)).toBe("2025-01-22");
+    expect(parseClaimDate("12/3/25")?.toISOString().slice(0, 10)).toBe("2025-12-03");
+    // slash + 4-digit year stays day-first (legacy TPA sheets)
+    expect(parseClaimDate("15/03/2024")?.toISOString().slice(0, 10)).toBe("2024-03-15");
+  });
+
   it("compares dates by UTC day", () => {
     const a = new Date(Date.UTC(2024, 2, 15));
     const b = new Date(Date.UTC(2024, 2, 15, 12, 0, 0));
@@ -56,6 +63,21 @@ describe("claim CSV header aliases", () => {
     expect(canonicalClaimHeader("Claim  No. ( CCN)")).toBe("Claim Number");
   });
 
+  it("normalizes field-software (Claim data 25-26) headers", () => {
+    expect(canonicalClaimHeader("MD ID")).toBe("MD ID");
+    expect(canonicalClaimHeader("Actual Lodge Type")).toBe("Actual Lodge Type");
+    expect(canonicalClaimHeader("Treatment Type")).toBe("Treatment Type");
+    // double-space variant is the distinct procedure column
+    expect(canonicalClaimHeader("Treatment  Type")).toBe("Treatment Procedure");
+    expect(canonicalClaimHeader("Disease Category")).toBe("Disease Category");
+    expect(canonicalClaimHeader("Reported_LodgeAmt")).toBe("Reported Lodge Amt");
+    expect(canonicalClaimHeader("Discount Amt")).toBe("Discount Amt");
+    expect(canonicalClaimHeader("Payment In Faver Of")).toBe("Payment In Favour Of");
+    expect(canonicalClaimHeader("PRSDate/CRS Date")).toBe("PRS/CRS Date");
+    expect(canonicalClaimHeader("Claim Lodge Date")).toBe("Claim Lodge Date");
+    expect(canonicalClaimHeader("DIAGNOSIS")).toBe("Illness");
+  });
+
   it("parses claim amount and approved amount from aliased headers", () => {
     const map = new Map<string, string>([
       ["Claim Number", "MDI123"],
@@ -76,5 +98,48 @@ describe("claim CSV header aliases", () => {
     expect(row.claimNo).toBe("MDI123");
     expect(row.claimAmount).toBe(12345);
     expect(row.approvedAmount).toBe(10001);
+  });
+
+  it("parses a real field-software row (M/D/YY dates, Non Cash Less)", () => {
+    const map = new Map<string, string>([
+      ["Claim Number", "CCN-900"],
+      ["Policy Number", "PO-9"],
+      ["Policy Holder Name", "Field Holder"],
+      ["MD ID", "MD-77"],
+      ["Category", "A"],
+      ["Actual Lodge Type", "Non Cash Less"],
+      ["Claim Type", "Non Cash Less"],
+      ["Treatment Type", "Surgical"],
+      ["Treatment Procedure", "Cataract"],
+      ["Disease Category", "Ophthalmology"],
+      ["Claim Lodge Date", "1/22/25"],
+      ["Payment Date", "2/5/25"],
+      ["PRS/CRS Date", "2/1/25"],
+      ["Reported Lodge Amt", "40,000"],
+      ["Discount Amt", "1,000"],
+      ["Approved Amt", "38,000"],
+      ["Payment In Favour Of", "Eye Care Hospital"],
+      ["Remark", "field verified"],
+      ["Status", "End OS"],
+    ]);
+    const row = parseClaimRow(3, map, {
+      paid: ClaimStatus.APPROVED,
+      "end os": ClaimStatus.PENDING,
+      repudiated: ClaimStatus.REJECTED,
+    });
+    expect(row.mdId).toBe("MD-77");
+    expect(row.actualLodgeType).toBe("Non Cash Less");
+    expect(row.treatmentType).toBe("Surgical");
+    expect(row.treatmentProcedure).toBe("Cataract");
+    expect(row.diseaseCategory).toBe("Ophthalmology");
+    expect(row.reportedLodgeAmount).toBe(40000);
+    expect(row.discountAmount).toBe(1000);
+    expect(row.approvedAmount).toBe(38000);
+    expect(row.paymentInFavourOf).toBe("Eye Care Hospital");
+    expect(row.remark).toBe("field verified");
+    expect(row.lodgeDate?.toISOString().slice(0, 10)).toBe("2025-01-22");
+    expect(row.paymentDate?.toISOString().slice(0, 10)).toBe("2025-02-05");
+    expect(row.prsCrsDate?.toISOString().slice(0, 10)).toBe("2025-02-01");
+    expect(row.status).toBe(ClaimStatus.PENDING);
   });
 });

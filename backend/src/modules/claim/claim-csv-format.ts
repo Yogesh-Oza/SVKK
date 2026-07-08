@@ -36,6 +36,21 @@ export const CLAIM_CSV_HEADERS = [
   "Denied Reasons",
   "RoomCategory",
   "Cheque No/ Payment Details",
+  // Field-software ("Claim data 25-26") columns
+  "MD ID",
+  "Category",
+  "Village",
+  "Actual Lodge Type",
+  "Treatment Type",
+  "Treatment Procedure",
+  "Disease Category",
+  "Claim Lodge Date",
+  "Reported Lodge Amt",
+  "Discount Amt",
+  "Remark",
+  "Payment In Favour Of",
+  "Payment Date",
+  "PRS/CRS Date",
 ] as const;
 
 /** Maps alternate header spellings to canonical names. */
@@ -58,7 +73,8 @@ export const CLAIM_HEADER_ALIASES: Record<string, string> = {
   "sum_insured": "Sum_Insured",
   "claim lodge amt": "Claim Amount",
   "claim lodge amount": "Claim Amount",
-  "claim lodge date": "Claim Received Date",
+  // Field-software sheet has a dedicated "Claim Lodge Date" -> lodgeDate.
+  "claim lodge date": "Claim Lodge Date",
   "claim lodgetype": "Claim Type",
   "claim lodge type": "Claim Type",
   "paid amount": "Approved Amt",
@@ -72,6 +88,36 @@ export const CLAIM_HEADER_ALIASES: Record<string, string> = {
   "network/non-network": "NETWORK/NON-NETWORK",
   "hospital is in ppn y/n": "HOSPITAL IS IN PPN Y/N",
   "cheque no/ payment details": "Cheque No/ Payment Details",
+  // Field-software ("Claim data 25-26") headers
+  "insurance company name": "Insurance_Company",
+  "md id": "MD ID",
+  "category": "Category",
+  "village": "Village",
+  "actual lodge type": "Actual Lodge Type",
+  "treatment type": "Treatment Type",
+  // NB: double space is intentional (distinct procedure column in the sheet).
+  "treatment  type": "Treatment Procedure",
+  "treatment procedure": "Treatment Procedure",
+  "disease category": "Disease Category",
+  diagnosis: "Illness",
+  "reported_lodgeamt": "Reported Lodge Amt",
+  "reported lodgeamt": "Reported Lodge Amt",
+  "reported lodge amt": "Reported Lodge Amt",
+  "discount amt": "Discount Amt",
+  "discount amount": "Discount Amt",
+  "deduction/claim rejection /close": "Deduction Details",
+  "deduction/claim rejection/close": "Deduction Details",
+  "deduction note": "Deduction Details",
+  remark: "Remark",
+  remarks: "Remark",
+  "payment in faver of": "Payment In Favour Of",
+  "payment in favour of": "Payment In Favour Of",
+  "payment date": "Payment Date",
+  "payment detail": "Cheque No/ Payment Details",
+  "payment details": "Cheque No/ Payment Details",
+  "prsdate/crs date": "PRS/CRS Date",
+  "prs/crs date": "PRS/CRS Date",
+  "prs date/crs date": "PRS/CRS Date",
 };
 
 function normalizedHeaderKey(raw: string): string {
