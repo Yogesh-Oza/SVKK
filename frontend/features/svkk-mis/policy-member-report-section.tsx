@@ -854,17 +854,22 @@ export function PolicyMemberReportSection({ onError }: Props) {
             )}
             {!loading && table.getFilteredRowModel().rows.length > 0 ? (
               <TableRow className="border-t-2 border-t-foreground/10 bg-muted/30 font-medium">
-                {ROW_KEYS.map((k) => (
-                  <TableCell key={k} className="py-2 text-sm">
-                    {k === "label" ? (
-                      "TOTAL"
-                    ) : (
-                      <span className="tabular-nums text-right block">
-                        {formatCell(k, total[k] as number)}
-                      </span>
-                    )}
-                  </TableCell>
-                ))}
+                {/* Must follow visible columns — ROW_KEYS includes Commission even when hidden,
+                    which shifts age totals under the wrong headers. */}
+                {table.getVisibleLeafColumns().map((col) => {
+                  const k = col.id as keyof PolicyMemberRow;
+                  return (
+                    <TableCell key={col.id} className="py-2 text-sm">
+                      {k === "label" ? (
+                        "TOTAL"
+                      ) : (
+                        <span className="tabular-nums text-right block">
+                          {formatCell(k, total[k] as number)}
+                        </span>
+                      )}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ) : null}
           </TableBody>
