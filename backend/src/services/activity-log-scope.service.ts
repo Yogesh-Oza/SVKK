@@ -64,6 +64,8 @@ export function buildActivityLogWhere(
   }
   const term = q.search?.trim();
   if (term) {
+    // Holder name, policy ref, recipient email, etc. live in beforeData/afterData JSON
+    // (see UI placeholder). Column filters alone miss those values.
     parts.push({
       OR: [
         { module: { contains: term } },
@@ -72,6 +74,8 @@ export function buildActivityLogWhere(
         { entityType: { contains: term } },
         { user: { name: { contains: term } } },
         { user: { email: { contains: term } } },
+        { afterData: { string_contains: term } },
+        { beforeData: { string_contains: term } },
       ],
     });
   }

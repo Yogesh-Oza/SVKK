@@ -45,4 +45,33 @@ describe("buildActivityLogWhere", () => {
       ],
     });
   });
+
+  it("searches holder/ref/recipient via JSON payloads as well as columns", () => {
+    expect(
+      buildActivityLogWhere({ search: "Neeta Satyan" }, LEGACY_ROLE_SLUGS.SUPER_ADMIN),
+    ).toEqual({
+      OR: [
+        { module: { contains: "Neeta Satyan" } },
+        { action: { contains: "Neeta Satyan" } },
+        { entityId: { contains: "Neeta Satyan" } },
+        { entityType: { contains: "Neeta Satyan" } },
+        { user: { name: { contains: "Neeta Satyan" } } },
+        { user: { email: { contains: "Neeta Satyan" } } },
+        { afterData: { string_contains: "Neeta Satyan" } },
+        { beforeData: { string_contains: "Neeta Satyan" } },
+      ],
+    });
+  });
+
+  it("trims search and ignores blank search", () => {
+    expect(buildActivityLogWhere({ search: "  " }, LEGACY_ROLE_SLUGS.SUPER_ADMIN)).toEqual({});
+    expect(
+      buildActivityLogWhere({ search: "  SVKK2627JUL6136  " }, LEGACY_ROLE_SLUGS.SUPER_ADMIN),
+    ).toMatchObject({
+      OR: expect.arrayContaining([
+        { afterData: { string_contains: "SVKK2627JUL6136" } },
+        { beforeData: { string_contains: "SVKK2627JUL6136" } },
+      ]),
+    });
+  });
 });
