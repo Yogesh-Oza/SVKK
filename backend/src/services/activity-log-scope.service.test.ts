@@ -1,6 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LEGACY_ROLE_SLUGS } from "../lib/permission-seed.js";
-import { buildActivityLogWhere } from "./activity-log-scope.service.js";
+import {
+  activityLogIdsMatchingPayload,
+  buildActivityLogWhere,
+  sanitizeActivityLogSearchTerm,
+} from "./activity-log-scope.service.js";
+
+describe("sanitizeActivityLogSearchTerm", () => {
+  it("trims and strips LIKE metacharacters", () => {
+    expect(sanitizeActivityLogSearchTerm("  dhiraj  ")).toBe("dhiraj");
+    expect(sanitizeActivityLogSearchTerm("100%_done")).toBe("100done");
+  });
+});
 
 describe("buildActivityLogWhere", () => {
   it("super-admin has no actor filter", () => {
@@ -46,32 +57,61 @@ describe("buildActivityLogWhere", () => {
     });
   });
 
-  it("searches holder/ref/recipient via JSON payloads as well as columns", () => {
+  it("includes payload match ids in search OR", () => {
     expect(
-      buildActivityLogWhere({ search: "Neeta Satyan" }, LEGACY_ROLE_SLUGS.SUPER_ADMIN),
+      buildActivityLogWhere(
+        { search: "dhiraj" },
+        LEGACY_ROLE_SLUGS.SUPER_ADMIN,
+        { payloadMatchIds: ["log-1", "log-2"] },
+      ),
     ).toEqual({
       OR: [
-        { module: { contains: "Neeta Satyan" } },
-        { action: { contains: "Neeta Satyan" } },
-        { entityId: { contains: "Neeta Satyan" } },
-        { entityType: { contains: "Neeta Satyan" } },
-        { user: { name: { contains: "Neeta Satyan" } } },
-        { user: { email: { contains: "Neeta Satyan" } } },
-        { afterData: { string_contains: "Neeta Satyan" } },
-        { beforeData: { string_contains: "Neeta Satyan" } },
+        { module: { contains: "dhiraj" } },
+        { action: { contains: "dhiraj" } },
+        { entityId: { contains: "dhiraj" } },
+        { entityType: { contains: "dhiraj" } },
+        { user: { name: { contains: "dhiraj" } } },
+        { user: { email: { contains: "dhiraj" } } },
+        { id: { in: ["log-1", "log-2"] } },
       ],
     });
   });
 
-  it("trims search and ignores blank search", () => {
-    expect(buildActivityLogWhere({ search: "  " }, LEGACY_ROLE_SLUGS.SUPER_ADMIN)).toEqual({});
-    expect(
-      buildActivityLogWhere({ search: "  SVKK2627JUL6136  " }, LEGACY_ROLE_SLUGS.SUPER_ADMIN),
-    ).toMatchObject({
-      OR: expect.arrayContaining([
-        { afterData: { string_contains: "SVKK2627JUL6136" } },
-        { beforeData: { string_contains: "SVKK2627JUL6136" } },
-      ]),
+  it("omits id clause when payload match list is empty", () => {
+    const where = buildActivityLogWhere(
+      { search: "dhiraj" },
+      LEGACY_ROLE_SLUGS.SUPER_ADMIN,
+      { payloadMatchIds: [] },
+    );
+    expect(where).toEqual({
+      OR: [
+        { module: { contains: "dhiraj" } },
+        { action: { contains: "dhiraj" } },
+        { entityId: { contains: "dhiraj" } },
+        { entityType: { contains: "dhiraj" } },
+        { user: { name: { contains: "dhiraj" } } },
+        { user: { email: { contains: "dhiraj" } } },
+      ],
     });
+  });
+});
+
+describe("activityLogIdsMatchingPayload", () => {
+  it("returns empty for blank or wildcard-only terms", async () => {
+    const prisma = { $queryRaw: vi.fn() };
+    await expect(activityLogIdsMatchingPayload(prisma as never, "  ")).resolves.toEqual([]);
+    await expect(activityLogIdsMatchingPayload(prisma as never, "%%")).resolves.toEqual([]);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("queries CAST LIKE and returns ids", async () => {
+    const prisma = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "a" }, { id: "b" }]),
+    };
+    await expect(activityLogIdsMatchingPayload(prisma as never, "dhiraj")).resolves.toEqual([
+      "a",
+      "b",
+    ]);
+    expect(prisma.$queryRaw).toHaveBeenCalledOnce();
   });
 });

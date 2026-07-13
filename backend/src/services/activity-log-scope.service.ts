@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { LEGACY_ROLE_SLUGS } from "../lib/permission-seed.js";
 
 export type ActivityLogQuery = {
@@ -15,12 +15,41 @@ export type ActivityLogQuery = {
   emailOutcome?: "sent" | "failed";
 };
 
+/** Strip LIKE metacharacters so user input is matched literally. */
+export function sanitizeActivityLogSearchTerm(raw: string): string {
+  return raw.trim().replace(/[%_\\]/g, "");
+}
+
+/**
+ * MySQL: Prisma `string_contains` on a JSON *object* adds `JSON_TYPE(...) = 'STRING'`,
+ * which never matches. CAST to CHAR + LIKE finds holderName, referenceNo, recipient, etc.
+ */
+export async function activityLogIdsMatchingPayload(
+  prisma: PrismaClient,
+  term: string,
+): Promise<string[]> {
+  const safe = sanitizeActivityLogSearchTerm(term);
+  if (!safe) {
+    return [];
+  }
+  const like = `%${safe}%`;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM activitylog
+    WHERE CAST(afterData AS CHAR) LIKE ${like}
+       OR CAST(beforeData AS CHAR) LIKE ${like}
+    LIMIT 10000
+  `;
+  return rows.map((r) => r.id);
+}
+
 /**
  * Builds ActivityLog query filters. Non–super-admin readers with logs:read see only user/supervisor actors.
+ * Pass `payloadMatchIds` from {@link activityLogIdsMatchingPayload} when searching.
  */
 export function buildActivityLogWhere(
   q: ActivityLogQuery,
   readerRoleSlug: string,
+  opts?: { payloadMatchIds?: string[] },
 ): Prisma.ActivityLogWhereInput {
   const parts: Prisma.ActivityLogWhereInput[] = [];
   if (q.emailOutcome === "sent") {
@@ -62,22 +91,21 @@ export function buildActivityLogWhere(
       },
     });
   }
-  const term = q.search?.trim();
+  const term = sanitizeActivityLogSearchTerm(q.search ?? "");
   if (term) {
-    // Holder name, policy ref, recipient email, etc. live in beforeData/afterData JSON
-    // (see UI placeholder). Column filters alone miss those values.
-    parts.push({
-      OR: [
-        { module: { contains: term } },
-        { action: { contains: term } },
-        { entityId: { contains: term } },
-        { entityType: { contains: term } },
-        { user: { name: { contains: term } } },
-        { user: { email: { contains: term } } },
-        { afterData: { string_contains: term } },
-        { beforeData: { string_contains: term } },
-      ],
-    });
+    const searchOr: Prisma.ActivityLogWhereInput[] = [
+      { module: { contains: term } },
+      { action: { contains: term } },
+      { entityId: { contains: term } },
+      { entityType: { contains: term } },
+      { user: { name: { contains: term } } },
+      { user: { email: { contains: term } } },
+    ];
+    const payloadIds = opts?.payloadMatchIds ?? [];
+    if (payloadIds.length > 0) {
+      searchOr.push({ id: { in: payloadIds } });
+    }
+    parts.push({ OR: searchOr });
   }
   if (readerRoleSlug === LEGACY_ROLE_SLUGS.ADMIN) {
     parts.push({
@@ -92,4 +120,15 @@ export function buildActivityLogWhere(
     return {};
   }
   return parts.length === 1 ? parts[0]! : { AND: parts };
+}
+
+/** List/search helper: resolve JSON payload matches then build the full where clause. */
+export async function buildActivityLogWhereForSearch(
+  prisma: PrismaClient,
+  q: ActivityLogQuery,
+  readerRoleSlug: string,
+): Promise<Prisma.ActivityLogWhereInput> {
+  const term = sanitizeActivityLogSearchTerm(q.search ?? "");
+  const payloadMatchIds = term ? await activityLogIdsMatchingPayload(prisma, term) : [];
+  return buildActivityLogWhere(q, readerRoleSlug, { payloadMatchIds });
 }

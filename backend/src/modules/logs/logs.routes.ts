@@ -5,7 +5,7 @@ import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
-import { buildActivityLogWhere } from "../../services/activity-log-scope.service.js";
+import { buildActivityLogWhere, buildActivityLogWhereForSearch } from "../../services/activity-log-scope.service.js";
 import {
   formatActivityLogDetails,
   formatActivityLogSummary,
@@ -222,7 +222,8 @@ export function createLogsRouter(env: Env) {
     try {
       const q = listQuerySchema.parse(req.query);
 
-      const where = buildActivityLogWhere(
+      const where = await buildActivityLogWhereForSearch(
+        prisma,
         {
           module: q.module,
           action: q.action,
