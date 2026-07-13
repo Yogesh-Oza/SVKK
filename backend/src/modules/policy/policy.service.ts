@@ -1135,6 +1135,8 @@ export async function updatePolicySections(input: {
 
 /**
  * Soft-deletes a policy; related policy years and members are hidden by `deletedAt` on the parent in reads.
+ * Clears policyNo / referenceNo so those unique values can be reused on a new policy
+ * (MySQL unique indexes still apply to soft-deleted rows).
  */
 export async function softDeletePolicy(input: { actorUserId: string; policyId: string }) {
   const existing = await prisma.policy.findFirst({
@@ -1147,7 +1149,11 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
 
   await prisma.policy.update({
     where: { id: input.policyId },
-    data: { deletedAt: new Date() },
+    data: {
+      deletedAt: new Date(),
+      policyNo: null,
+      referenceNo: null,
+    },
   });
 
   await writeActivityLog({
