@@ -12,10 +12,7 @@ import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeMobile } from "../../domain/phone.js";
 import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
-import {
-  assertMobileAvailableForNewInsuredParty,
-  resolveInsuredPartyForPolicyCreate,
-} from "./policy-create-insured-party.js";
+import { resolveInsuredPartyForPolicyCreate } from "./policy-create-insured-party.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
 import { AppError } from "../../errors/app-error.js";
@@ -130,7 +127,6 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     }
 
     if (!party) {
-      await assertMobileAvailableForNewInsuredParty(tx, mobile);
       const generatedSvkkPublicId =
         customSvkk ||
         (input.policyGrouping && input.periodMonthText
@@ -158,7 +154,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         });
       } catch (e) {
         if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
-          throw new AppError("CONFLICT", "Duplicate customer id or unique field", 409);
+          throw new AppError("CONFLICT", "SVKK public ID is already in use", 409);
         }
         throw e;
       }
@@ -692,14 +688,6 @@ async function applyInsuredPartyPatch(
     });
     if (clash) {
       throw new AppError("CONFLICT", "SVKK ID already in use", 409);
-    }
-  }
-  if (slim.customerId !== undefined && slim.customerId !== current.customerId && slim.customerId) {
-    const clash = await tx.insuredParty.findFirst({
-      where: { customerId: slim.customerId, NOT: { id: partyId } },
-    });
-    if (clash) {
-      throw new AppError("CONFLICT", "Customer ID already in use", 409);
     }
   }
 

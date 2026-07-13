@@ -39,10 +39,13 @@ describe("reconcileInsuredPartyMobile", () => {
     expect(tx.insuredParty.update).not.toHaveBeenCalled();
   });
 
-  it("updates mobile when customer id party uses a new unique number", async () => {
+  it("updates mobile even when another party already has that number", async () => {
     const updated = { ...baseParty, mobile: "+919111222333" };
     const update = vi.fn().mockResolvedValue(updated);
-    const tx = mockTx({ update });
+    const tx = mockTx({
+      findFirst: vi.fn().mockResolvedValue({ id: "party-2" }),
+      update,
+    });
 
     const out = await reconcileInsuredPartyMobile(tx as never, baseParty, "9111222333");
     expect(out.mobile).toBe("+919111222333");
@@ -50,20 +53,7 @@ describe("reconcileInsuredPartyMobile", () => {
       where: { id: "party-1" },
       data: { mobile: "+919111222333" },
     });
-  });
-
-  it("rejects when the new mobile belongs to another party", async () => {
-    const tx = mockTx({
-      findFirst: vi.fn().mockResolvedValue({ id: "party-2" }),
-    });
-
-    await expect(
-      reconcileInsuredPartyMobile(tx as never, baseParty, "9000000000"),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      message: "Mobile number already in use",
-    });
-    expect(tx.insuredParty.update).not.toHaveBeenCalled();
+    expect(tx.insuredParty.findFirst).not.toHaveBeenCalled();
   });
 
   it("throws AppError for invalid mobile input", async () => {

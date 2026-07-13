@@ -1,9 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { InsuredParty } from "@prisma/client";
-import {
-  assertMobileAvailableForNewInsuredParty,
-  resolveInsuredPartyForPolicyCreate,
-} from "./policy-create-insured-party.js";
+import { resolveInsuredPartyForPolicyCreate } from "./policy-create-insured-party.js";
 
 const partyA: InsuredParty = {
   id: "party-a",
@@ -22,14 +19,12 @@ const partyA: InsuredParty = {
 };
 
 function mockTx(overrides: {
-  byCustomerId?: InsuredParty | null;
   bySvkk?: InsuredParty | null;
   byMobile?: InsuredParty | null;
 }) {
   return {
     insuredParty: {
       findUnique: vi.fn(async ({ where }: { where: Record<string, string> }) => {
-        if ("customerId" in where) return overrides.byCustomerId ?? null;
         if ("svkkPublicId" in where) return overrides.bySvkk ?? null;
         if ("mobile" in where) return overrides.byMobile ?? null;
         return null;
@@ -50,8 +45,8 @@ describe("resolveInsuredPartyForPolicyCreate", () => {
     vi.clearAllMocks();
   });
 
-  it("does not match by mobile or customer id when svkk id is absent", async () => {
-    const tx = mockTx({ byMobile: partyA, byCustomerId: partyA });
+  it("does not match by mobile when svkk id is absent", async () => {
+    const tx = mockTx({ byMobile: partyA });
     const out = await resolveInsuredPartyForPolicyCreate(tx as never, {
       customSvkk: null,
       mobile: partyA.mobile,
@@ -60,16 +55,16 @@ describe("resolveInsuredPartyForPolicyCreate", () => {
     expect(tx.insuredParty.findUnique).not.toHaveBeenCalled();
   });
 
-  it("does not match by customer id when svkk id is absent", async () => {
-    const tx = mockTx({ byCustomerId: partyA });
+  it("does not look up by mobile even when mobile already exists", async () => {
+    const tx = mockTx({ byMobile: partyA });
     const out = await resolveInsuredPartyForPolicyCreate(tx as never, {
-      customSvkk: null,
+      customSvkk: "BRANDNEW0001",
       mobile: partyA.mobile,
     });
     expect(out).toBeNull();
-    expect(tx.insuredParty.findUnique).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: { customerId: "CUST-1" } }),
-    );
+    expect(tx.insuredParty.findUnique).toHaveBeenCalledWith({
+      where: { svkkPublicId: "BRANDNEW0001" },
+    });
   });
 
   it("matches by svkk id only", async () => {
@@ -82,24 +77,5 @@ describe("resolveInsuredPartyForPolicyCreate", () => {
     expect(tx.insuredParty.findUnique).toHaveBeenCalledWith({
       where: { svkkPublicId: "RTYMAY3042" },
     });
-  });
-});
-
-describe("assertMobileAvailableForNewInsuredParty", () => {
-  it("throws when mobile belongs to another party", async () => {
-    const tx = mockTx({ byMobile: partyA });
-    await expect(
-      assertMobileAvailableForNewInsuredParty(tx as never, partyA.mobile),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      statusCode: 409,
-    });
-  });
-
-  it("allows mobile when it belongs to the same party", async () => {
-    const tx = mockTx({ byMobile: partyA });
-    await expect(
-      assertMobileAvailableForNewInsuredParty(tx as never, partyA.mobile, partyA.id),
-    ).resolves.toBeUndefined();
   });
 });

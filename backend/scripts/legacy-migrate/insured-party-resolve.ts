@@ -1,5 +1,5 @@
 import type { InsuredParty, Prisma } from "@prisma/client";
-import { syntheticMobileFromRef, type TransformedPolicy } from "./transform.js";
+import type { TransformedPolicy } from "./transform.js";
 
 export type InsuredPartyResolveInput = Pick<
   TransformedPolicy,
@@ -22,8 +22,8 @@ export interface InsuredPartyResolveResult {
 /**
  * Resolve InsuredParty for a legacy policy row.
  *
- * Primary identity is svkkPublicId (legacy svvk_id). customerId and mobile are
- * secondary and must not attach a policy to a party with a different SVKK ID.
+ * Primary identity is svkkPublicId (legacy svvk_id). Mobile and customerId are
+ * not unique and may be shared across holders.
  */
 export async function resolveInsuredPartyForLegacyRow(
   tx: Prisma.TransactionClient,
@@ -40,37 +40,15 @@ export async function resolveInsuredPartyForLegacyRow(
     if (t.customerId && existingBySvkk.customerId && existingBySvkk.customerId !== t.customerId) {
       warnings.push("CUSTOMER_ID_MISMATCH_ON_SVKK");
     }
-    const party = await updateInsuredParty(tx, existingBySvkk, t, migrationRunId, warnings);
+    const party = await updateInsuredParty(tx, existingBySvkk, t, migrationRunId);
     return { party, warnings, created: false };
-  }
-
-  if (t.customerId) {
-    const byCustomer = await tx.insuredParty.findUnique({ where: { customerId: t.customerId } });
-    if (byCustomer && byCustomer.svkkPublicId !== t.svkkPublicId) {
-      warnings.push("CUSTOMER_ID_COLLISION_DIFFERENT_SVKK");
-    }
-  }
-
-  const byMobile = await tx.insuredParty.findUnique({ where: { mobile: t.mobile } });
-  let mobileForCreate = t.mobile;
-  if (byMobile && byMobile.svkkPublicId !== t.svkkPublicId) {
-    warnings.push("MOBILE_COLLISION_DIFFERENT_SVKK");
-    mobileForCreate = syntheticMobileFromRef(`svkk-${t.svkkPublicId}`);
-  }
-
-  let customerIdForCreate: string | undefined = t.customerId ?? undefined;
-  if (t.customerId) {
-    const byCustomer = await tx.insuredParty.findUnique({ where: { customerId: t.customerId } });
-    if (byCustomer && byCustomer.svkkPublicId !== t.svkkPublicId) {
-      customerIdForCreate = undefined;
-    }
   }
 
   try {
     const party = await tx.insuredParty.create({
       data: {
-        mobile: mobileForCreate,
-        customerId: customerIdForCreate,
+        mobile: t.mobile,
+        customerId: t.customerId ?? undefined,
         svkkPublicId: t.svkkPublicId,
         name: t.partyName,
         email: t.email ?? undefined,
@@ -88,7 +66,7 @@ export async function resolveInsuredPartyForLegacyRow(
       });
       if (retryBySvkk) {
         warnings.push("PARTY_DEDUPED_ON_UNIQUE_VIOLATION");
-        const party = await updateInsuredParty(tx, retryBySvkk, t, migrationRunId, warnings);
+        const party = await updateInsuredParty(tx, retryBySvkk, t, migrationRunId);
         return { party, warnings, created: false };
       }
     }
@@ -101,26 +79,14 @@ async function updateInsuredParty(
   party: InsuredParty,
   t: InsuredPartyResolveInput,
   migrationRunId: string,
-  warnings: string[],
 ): Promise<InsuredParty> {
-  if (party.mobile !== t.mobile) {
-    const mobileOwner = await tx.insuredParty.findUnique({ where: { mobile: t.mobile } });
-    if (!mobileOwner || mobileOwner.id === party.id) {
-      // safe to refresh mobile on this SVKK party
-    } else {
-      warnings.push("MOBILE_COLLISION_SKIP_UPDATE");
-    }
-  }
-
   await tx.insuredParty.update({
     where: { id: party.id },
     data: {
       name: t.partyName,
       email: t.email ?? undefined,
-      customerId:
-        t.customerId && (!party.customerId || party.customerId === t.customerId)
-          ? t.customerId
-          : party.customerId ?? undefined,
+      mobile: t.mobile,
+      customerId: t.customerId ?? party.customerId ?? undefined,
       pan: t.pan ?? party.pan,
       dateOfBirth: t.holderDob ?? party.dateOfBirth,
       migratedRunId: migrationRunId,

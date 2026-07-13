@@ -234,7 +234,7 @@ export async function checkBusinessDuplicates(
   const start = row.policy_start_date ? new Date(String(row.policy_start_date)) : null;
   const end = row.policy_expiry_date ? new Date(String(row.policy_expiry_date)) : null;
   if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-    const party = await prisma.insuredParty.findUnique({ where: { mobile } });
+    const party = await prisma.insuredParty.findFirst({ where: { mobile } });
     if (party) {
       const overlap = await prisma.policyYear.findFirst({
         where: {

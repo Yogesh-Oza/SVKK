@@ -219,9 +219,10 @@ model UserSession {
 
 model InsuredParty {
   id                     String    @id @default(cuid())
-  /// External / legacy customer key; searchable
-  customerId             String?   @unique @db.VarChar(64)
-  mobile                 String    @unique
+  /// External / legacy customer key; searchable. Not unique — multiple holders may share it.
+  customerId             String?   @db.VarChar(64)
+  /// Primary mobile. Not unique — multiple policies/holders may share the same number.
+  mobile                 String
   svkkPublicId           String    @unique
   name                   String
   email                  String?
@@ -239,6 +240,7 @@ model InsuredParty {
   claims   Claim[]
 
   @@index([pan])
+  @@index([mobile])
   @@index([customerId])
   @@index([migratedRunId])
   @@index([createdInMigrationRunId])
