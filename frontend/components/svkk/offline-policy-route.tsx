@@ -7,6 +7,7 @@ import {
   getBrowserSearchParam,
   isOfflinePolicySubRoute,
 } from "@/lib/svkk/offline/policy-route-paths";
+import { setOfflineShellRecoveryActive } from "@/lib/svkk/offline/navigate";
 import {
   getBrowserPathnameSnapshot,
   subscribeBrowserPathname,
@@ -85,6 +86,12 @@ export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
       nextPathname === "" ||
       isOfflinePolicySubRoute(nextPathname));
   const shouldRecover = browserIsPolicySubRoute && (offline || shellMismatch);
+
+  useEffect(() => {
+    if (!shouldRecover) return;
+    setOfflineShellRecoveryActive(true);
+    return () => setOfflineShellRecoveryActive(false);
+  }, [shouldRecover]);
 
   useEffect(() => {
     debugOfflineRoute("route state", {

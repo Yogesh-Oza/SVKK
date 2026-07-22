@@ -106,13 +106,15 @@ jobs:
           password: ${{ secrets.EC2_PASSWORD }}
           port: 22
           script: |
-            set -e
+            set -euo pipefail
             export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.npm-global/bin:$PATH"
+            # Load nvm only — do not source ~/.bashrc here. Non-interactive SSH has no
+            # PS1; with `set -u`, `[ -z "$PS1" ]` in bashrc aborts the whole deploy.
             if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              # nvm.sh references unbound vars under nounset
+              set +u
               . "$HOME/.nvm/nvm.sh"
-            fi
-            if [ -f "$HOME/.bashrc" ]; then
-              . "$HOME/.bashrc"
+              set -u
             fi
             if ! command -v node >/dev/null 2>&1; then
               echo "Node.js not found. Install Node 20 LTS on the server."
@@ -211,11 +213,13 @@ jobs:
           script: |
             set -euo pipefail
             export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.npm-global/bin:$PATH"
+            # Load nvm only — do not source ~/.bashrc here. Non-interactive SSH has no
+            # PS1; with `set -u`, `[ -z "$PS1" ]` in bashrc aborts the whole deploy.
             if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              # nvm.sh references unbound vars under nounset
+              set +u
               . "$HOME/.nvm/nvm.sh"
-            fi
-            if [ -f "$HOME/.bashrc" ]; then
-              . "$HOME/.bashrc"
+              set -u
             fi
             if ! command -v node >/dev/null 2>&1; then
               echo "Node.js not found. Install Node 20 LTS on the server."

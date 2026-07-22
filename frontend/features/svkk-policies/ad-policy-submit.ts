@@ -81,6 +81,8 @@ export type SubmitAdPolicyParams = {
   policyChartId: string;
   idemKey: string;
   categoryId?: string;
+  /** When false, omit commission fields so RBAC without policy:commission can still save. */
+  includeCommission?: boolean;
 };
 
 /**
@@ -93,6 +95,7 @@ export async function submitAdPolicyRequest({
   policyChartId,
   idemKey,
   categoryId,
+  includeCommission = true,
 }: SubmitAdPolicyParams): Promise<string> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -188,14 +191,12 @@ export async function submitAdPolicyRequest({
     taxAmount: parseNum(values.taxAmount) ?? null,
     svkkPremium: parseNum(values.svkkPremiumCalc) ?? null,
     netPremium: parseNum(values.netPremiumCalc) ?? null,
-    vkkCommission: parseNum(values.vkkCommission) ?? null,
     policyHolderContribution: parseNum(values.policyHolderPremium) ?? null,
     premiumOneOrTwoLakh: parseNum(values.twoLakhF) ?? null,
     gaamMahajanContribution: parseNum(values.contribution) ?? null,
     differenceAmountPaidByHolder: parseNum(values.differenceAmountPaidByHolder) ?? null,
     vkkPremium: parseNum(values.vkkPremium) ?? null,
     grossPremium: parseNum(values.grossPremium) ?? null,
-    commissionAmount: parseNum(values.commission) ?? null,
     twoLacFloater: parseNum(values.twoLakhF) ?? null,
     yearPolicyHolderPremium: parseNum(values.policyHolderPremium) ?? null,
     gaamMahajanVkk: parseNum(values.gaamMahajan) ?? null,
@@ -217,6 +218,11 @@ export async function submitAdPolicyRequest({
     })),
     payments: mapPaymentTransactionsToApi(values),
   };
+
+  if (includeCommission) {
+    body.vkkCommission = parseNum(values.vkkCommission) ?? null;
+    body.commissionAmount = parseNum(values.commission) ?? null;
+  }
 
   applyPrimaryPaymentModeToBody(body, values);
   if (co != null) {
@@ -258,6 +264,8 @@ export type SubmitAdPolicyPatchParams = {
   categoryId?: string;
   policyTypeId?: string;
   policyChartId?: string;
+  /** When false, omit commission fields so RBAC without policy:commission can still save. */
+  includeCommission?: boolean;
 };
 
 /**
@@ -271,6 +279,7 @@ export async function submitAdPolicyPatchRequest({
   categoryId,
   policyTypeId,
   policyChartId,
+  includeCommission = true,
 }: SubmitAdPolicyPatchParams): Promise<{ offline: boolean }> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -379,14 +388,12 @@ export async function submitAdPolicyPatchRequest({
     taxAmount: parseNum(values.taxAmount) ?? null,
     svkkPremium: parseNum(values.svkkPremiumCalc) ?? null,
     netPremium: parseNum(values.netPremiumCalc) ?? null,
-    vkkCommission: parseNum(values.vkkCommission) ?? null,
     policyHolderContribution: parseNum(values.policyHolderPremium) ?? null,
     premiumOneOrTwoLakh: parseNum(values.twoLakhF) ?? null,
     gaamMahajanContribution: parseNum(values.contribution) ?? null,
     differenceAmountPaidByHolder: parseNum(values.differenceAmountPaidByHolder) ?? null,
     vkkPremium: parseNum(values.vkkPremium) ?? null,
     grossPremium: parseNum(values.grossPremium) ?? null,
-    commissionAmount: parseNum(values.commission) ?? null,
     twoLacFloater: parseNum(values.twoLakhF) ?? null,
     yearPolicyHolderPremium: parseNum(values.policyHolderPremium) ?? null,
     gaamMahajanVkk: parseNum(values.gaamMahajan) ?? null,
@@ -394,6 +401,11 @@ export async function submitAdPolicyPatchRequest({
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
     payments: apiPayments,
   };
+
+  if (includeCommission) {
+    body.vkkCommission = parseNum(values.vkkCommission) ?? null;
+    body.commissionAmount = parseNum(values.commission) ?? null;
+  }
 
   if (policyTypeId) {
     body.policyTypeId = policyTypeId;

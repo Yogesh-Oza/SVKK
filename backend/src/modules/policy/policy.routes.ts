@@ -49,6 +49,7 @@ import { resolveIdempotency, storeIdempotencyResult } from "../../services/idemp
 import { maskInsuredParty } from "../../domain/pii.js";
 import { overlayInsuredPartyWithPolicySnapshot } from "./policy-holder-snapshot.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
+import { assertOrStripCommissionFields } from "./policy-commission-rbac.js";
 import {
   assertGeoFieldsOnWrite,
   assertPolicyReadable,
@@ -369,12 +370,10 @@ export function createPolicyRouter(env: Env) {
       }
 
       const body = createPolicyBodySchema.parse(req.body);
-      if (
-        !hasPermissionInSet(req.permissions!, "policy:commission") &&
-        (body.commissionAmount != null || body.vkkCommission != null)
-      ) {
-        throw new AppError("FORBIDDEN", "Insufficient permissions to set commission fields", 403);
-      }
+      assertOrStripCommissionFields(
+        body,
+        hasPermissionInSet(req.permissions!, "policy:commission"),
+      );
       const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       assertGeoFieldsOnWrite(
         { village: body.village, area: body.area },
@@ -772,12 +771,13 @@ export function createPolicyRouter(env: Env) {
         },
         "policy patch request",
       );
-      if (
-        !hasPermissionInSet(req.permissions!, "policy:commission") &&
-        (year?.commissionAmount !== undefined || year?.vkkCommission !== undefined)
-      ) {
-        throw new AppError("FORBIDDEN", "Insufficient permissions to update commission fields", 403);
-      }
+      // Align with CREATE: only forbid non-null commission values. Clients without
+      // policy:commission often still send null (cleared hidden fields); treat that as
+      // "leave existing commission unchanged" by stripping the keys before update.
+      assertOrStripCommissionFields(
+        year,
+        hasPermissionInSet(req.permissions!, "policy:commission"),
+      );
       assertGeoFieldsOnWrite(
         {
           village: policy?.village !== undefined ? policy.village : existing.village,

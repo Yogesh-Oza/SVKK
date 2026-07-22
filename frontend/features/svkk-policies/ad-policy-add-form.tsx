@@ -667,6 +667,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
             policyTypeId,
             policyChartId,
+            includeCommission: allowCommission,
           });
           if (result.offline) {
             toast.success("Saved offline", {
@@ -696,6 +697,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           policyChartId,
           idemKey: idemKeyRef.current,
           categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
+          includeCommission: allowCommission,
         });
         const offlineSave = typeof navigator !== "undefined" && !navigator.onLine;
         if (offlineSave) {

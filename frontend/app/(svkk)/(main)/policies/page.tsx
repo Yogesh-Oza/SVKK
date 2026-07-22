@@ -126,6 +126,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   navigatePolicyRoute,
   onOfflineAwareLinkClick,
+  setOfflineShellRecoveryActive,
 } from "@/lib/svkk/offline/navigate";
 import { renderOfflinePolicySubRoute } from "@/components/svkk/offline-policy-route";
 import { isOfflinePolicySubRoute } from "@/lib/svkk/offline/policy-route-paths";
@@ -1150,6 +1151,14 @@ export default function SvkkPoliciesPage() {
     if (!isMismatchedSubRoute) return;
     debugOfflineRoute("list page mounted under mismatched URL", { browserPathname });
   }, [browserPathname, isMismatchedSubRoute]);
+
+  // Same hard-nav flag as OfflinePolicyRoute: while this list shell is standing in for a
+  // detail/edit/new URL, soft navigation to /policies can no-op.
+  useEffect(() => {
+    if (!isMismatchedSubRoute) return;
+    setOfflineShellRecoveryActive(true);
+    return () => setOfflineShellRecoveryActive(false);
+  }, [isMismatchedSubRoute]);
 
   if (isMismatchedSubRoute) {
     const recovered = renderOfflinePolicySubRoute(browserPathname);

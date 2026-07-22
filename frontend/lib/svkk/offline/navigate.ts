@@ -12,6 +12,26 @@ function isOfflineHardNavPath(pathname: string): boolean {
   return isOfflineAllowedPath(pathname);
 }
 
+/**
+ * Refcount while `OfflinePolicyRoute` / list-page recovery is substituting the
+ * recovered policy page for a mismatched SW/list shell. Soft nav to `/policies`
+ * is a no-op when Next already thinks it is on `/policies`, so clicks must force
+ * a full document load.
+ */
+let shellRecoveryDepth = 0;
+
+export function setOfflineShellRecoveryActive(active: boolean): void {
+  if (active) {
+    shellRecoveryDepth += 1;
+    return;
+  }
+  shellRecoveryDepth = Math.max(0, shellRecoveryDepth - 1);
+}
+
+export function isOfflineShellRecoveryActive(): boolean {
+  return shellRecoveryDepth > 0;
+}
+
 /** Full document navigation when offline (Next.js client routing needs network for RSC). */
 export function navigatePolicyRoute(
   href: string,
@@ -48,9 +68,13 @@ export function onOfflineAwareLinkClick(
   window.location.assign(href);
 }
 
-/** Capture-phase handler: force full page load for offline-allowed routes when offline. */
+/**
+ * Capture-phase handler: force full page load when soft nav would leave the UI stuck.
+ * - Offline: all offline-allowed destinations (RSC fetch cannot succeed).
+ * - Shell recovery: any destination that differs from the real browser URL (Next may
+ *   already be on that pathname, so client navigation is a no-op).
+ */
 export function handleOfflinePolicyLinkClick(event: globalThis.MouseEvent): void {
-  if (!isOfflineMode()) return;
   if (event.defaultPrevented) return;
   if (event.button !== 0) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -73,9 +97,15 @@ export function handleOfflinePolicyLinkClick(event: globalThis.MouseEvent): void
   }
 
   if (url.origin !== window.location.origin) return;
-  if (!isOfflineHardNavPath(url.pathname)) return;
+
+  const destination = url.pathname + url.search + url.hash;
+  const leavingRecoveredShell =
+    isOfflineShellRecoveryActive() && url.pathname !== window.location.pathname;
+  const offlineHardNav = isOfflineMode() && isOfflineHardNavPath(url.pathname);
+
+  if (!leavingRecoveredShell && !offlineHardNav) return;
 
   event.preventDefault();
   event.stopPropagation();
-  window.location.assign(url.pathname + url.search + url.hash);
+  window.location.assign(destination);
 }
