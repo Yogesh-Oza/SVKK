@@ -180,7 +180,7 @@ async function loadRestoreSnapshot(policyId: string, existing: {
 
 /**
  * Restore an archived policy. Fails with RESTORE_CONFLICT if Policy No / Reference No
- * are already taken by an active policy.
+ * are taken, or if an active policy for the same SVKK already covers the same year.
  */
 export async function restoreArchivedPolicy(input: {
   actorUserId: string;
@@ -188,13 +188,22 @@ export async function restoreArchivedPolicy(input: {
 }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: { not: null } },
-    include: { insuredParty: { select: { name: true } } },
+    include: {
+      insuredParty: { select: { name: true, svkkPublicId: true } },
+      years: {
+        orderBy: { yearLabel: "desc" },
+        take: 1,
+        select: { yearLabel: true },
+      },
+    },
   });
   if (!existing) {
     throw new AppError("NOT_FOUND", "Archived policy not found", 404);
   }
 
   const snapshot = await loadRestoreSnapshot(input.policyId, existing);
+  const yearLabel =
+    existing.periodYearText?.trim() || existing.years[0]?.yearLabel?.trim() || null;
   const conflicts: string[] = [];
 
   if (snapshot.referenceNo) {
@@ -226,10 +235,31 @@ export async function restoreArchivedPolicy(input: {
     }
   }
 
+  if (yearLabel) {
+    const activeSameYear = await prisma.policy.findFirst({
+      where: {
+        id: { not: input.policyId },
+        deletedAt: null,
+        insuredPartyId: existing.insuredPartyId,
+        OR: [
+          { periodYearText: yearLabel },
+          { years: { some: { yearLabel, deletedAt: null } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (activeSameYear) {
+      const svkk = existing.insuredParty.svkkPublicId?.trim() || "this customer";
+      conflicts.push(
+        `year "${yearLabel}" (an active policy for SVKK ${svkk} already exists for that year)`,
+      );
+    }
+  }
+
   if (conflicts.length > 0) {
     throw new AppError(
       "RESTORE_CONFLICT",
-      `Cannot restore: ${conflicts.join(" and ")} already assigned to another active policy`,
+      `Cannot restore: ${conflicts.join("; ")}`,
       409,
     );
   }
@@ -255,11 +285,13 @@ export async function restoreArchivedPolicy(input: {
       deletedAt: existing.deletedAt,
       archivedPolicyNo: existing.archivedPolicyNo,
       archivedReferenceNo: existing.archivedReferenceNo,
+      yearLabel,
     } as unknown as Prisma.InputJsonValue,
     afterData: {
       restored: true,
       policyNo: updated.policyNo,
       referenceNo: updated.referenceNo,
+      yearLabel,
       holderName: resolvePolicyHolderName(existing, existing.insuredParty),
     } as unknown as Prisma.InputJsonValue,
   });

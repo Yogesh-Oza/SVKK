@@ -19,6 +19,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -36,6 +44,7 @@ import {
   canRestorePolicy,
 } from "@/lib/svkk/permissions";
 import { AxiosError } from "axios";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -94,6 +103,7 @@ export default function PolicyArchivePage() {
   const [search, setSearch] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
   const [data, setData] = useState<ArchivedListResponse | null>(null);
@@ -118,7 +128,7 @@ export default function PolicyArchivePage() {
     try {
       const q = new URLSearchParams({
         page: String(page),
-        pageSize: "25",
+        pageSize: String(pageSize),
       });
       if (search.trim()) q.set("search", search.trim());
       const res = await svkkJson<ArchivedListResponse>(`/policies/archived?${q.toString()}`);
@@ -130,7 +140,7 @@ export default function PolicyArchivePage() {
     } finally {
       setLoading(false);
     }
-  }, [canAccess, online, page, search]);
+  }, [canAccess, online, page, pageSize, search]);
 
   useEffect(() => {
     void load();
@@ -217,6 +227,8 @@ export default function PolicyArchivePage() {
   }
 
   const items = data?.items ?? [];
+  const totalPages = Math.max(1, data?.totalPages ?? 1);
+  const total = data?.total ?? 0;
   const allSelected = items.length > 0 && items.every((r) => selected[r.id]);
 
   return (
@@ -351,33 +363,82 @@ export default function PolicyArchivePage() {
             </div>
           )}
         </CardContent>
-        {data && data.totalPages > 1 ? (
-          <CardFooter className="flex items-center justify-between gap-2">
-            <p className="text-muted-foreground text-sm">
-              Page {data.page} of {data.totalPages} ({data.total} total)
+        <CardFooter className="flex flex-col gap-3 border-t py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground text-sm">
+            {total === 0 ? "0 archived policies" : `${total} archived polic${total === 1 ? "y" : "ies"}`}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="archive-page-size" className="text-muted-foreground whitespace-nowrap text-sm">
+                Rows per page
+              </Label>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setPageSize(Number(v));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id="archive-page-size" className="h-8 w-[72px]" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-muted-foreground whitespace-nowrap text-sm">
+              Page <span className="text-foreground font-semibold">{page}</span> of{" "}
+              <span className="text-foreground font-semibold">{totalPages}</span>
             </p>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-1">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                className="size-8 p-0"
+                onClick={() => setPage(1)}
                 disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                Previous
+                <span className="sr-only">First page</span>
+                <ChevronsLeft className="size-4" />
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                disabled={page >= data.totalPages || loading}
-                onClick={() => setPage((p) => p + 1)}
+                className="size-8 p-0"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
               >
-                Next
+                <span className="sr-only">Previous</span>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRight className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 p-0"
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || loading}
+              >
+                <span className="sr-only">Last page</span>
+                <ChevronsRight className="size-4" />
               </Button>
             </div>
-          </CardFooter>
-        ) : null}
+          </div>
+        </CardFooter>
       </Card>
 
       <Dialog open={restoreId != null} onOpenChange={(o) => !o && setRestoreId(null)}>
@@ -385,8 +446,8 @@ export default function PolicyArchivePage() {
           <DialogHeader>
             <DialogTitle>Restore this policy year?</DialogTitle>
             <DialogDescription>
-              Only this archived year will be restored into its SVKK group alongside any still-active years. If its
-              Policy No or Reference No was reused by another active policy, restore will fail with a conflict message.
+              Only this archived year will be restored. Restore fails if Policy No, Reference No, or the same year under
+              this SVKK is already used by an active policy (for example after recreating that year).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -434,8 +495,8 @@ export default function PolicyArchivePage() {
           <DialogHeader>
             <DialogTitle>Restore selected policies?</DialogTitle>
             <DialogDescription>
-              {selectedIds.length} polic{selectedIds.length === 1 ? "y" : "ies"} will be restored. Conflicts on Policy No
-              or Reference No will stop the batch.
+              {selectedIds.length} polic{selectedIds.length === 1 ? "y" : "ies"} will be restored. Conflicts on Policy
+              No, Reference No, or a duplicate year under the same SVKK will stop the batch.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

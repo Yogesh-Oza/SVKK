@@ -76,14 +76,18 @@ describe("restoreArchivedPolicy", () => {
         id: "p1",
         deletedAt: new Date("2026-01-01"),
         policyTypeId: "pt1",
+        insuredPartyId: "party-1",
+        periodYearText: "2026",
         archivedPolicyNo: "PN-1",
         archivedReferenceNo: "REF-1",
         village: "V1",
-        insuredParty: { name: "Holder" },
+        insuredParty: { name: "Holder", svkkPublicId: "svkk1" },
         holderName: "Holder",
+        years: [{ yearLabel: "2026" }],
       })
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(null) // referenceNo free
+      .mockResolvedValueOnce(null) // policyNo free
+      .mockResolvedValueOnce(null); // same-year free
 
     const row = await restoreArchivedPolicy({ actorUserId: "u1", policyId: "p1" });
 
@@ -109,17 +113,47 @@ describe("restoreArchivedPolicy", () => {
         id: "p1",
         deletedAt: new Date("2026-01-01"),
         policyTypeId: "pt1",
+        insuredPartyId: "party-1",
+        periodYearText: "2026",
         archivedPolicyNo: null,
         archivedReferenceNo: "REF-1",
         village: "V1",
-        insuredParty: { name: "Holder" },
+        insuredParty: { name: "Holder", svkkPublicId: "svkk1" },
         holderName: "Holder",
+        years: [{ yearLabel: "2026" }],
       })
       .mockResolvedValueOnce({ id: "other" });
 
     await expect(restoreArchivedPolicy({ actorUserId: "u1", policyId: "p1" })).rejects.toMatchObject({
       code: "RESTORE_CONFLICT",
       statusCode: 409,
+    });
+    expect(policyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("fails with RESTORE_CONFLICT when same SVKK already has an active policy for that year", async () => {
+    policyFindFirst
+      .mockResolvedValueOnce({
+        id: "p1",
+        deletedAt: new Date("2026-01-01"),
+        policyTypeId: "pt1",
+        insuredPartyId: "party-1",
+        periodYearText: "2026",
+        archivedPolicyNo: "PN-OLD",
+        archivedReferenceNo: "REF-OLD",
+        village: "V1",
+        insuredParty: { name: "Holder", svkkPublicId: "svkk1" },
+        holderName: "Holder",
+        years: [{ yearLabel: "2026" }],
+      })
+      .mockResolvedValueOnce(null) // referenceNo free
+      .mockResolvedValueOnce(null) // policyNo free
+      .mockResolvedValueOnce({ id: "new-2026" }); // active same year
+
+    await expect(restoreArchivedPolicy({ actorUserId: "u1", policyId: "p1" })).rejects.toMatchObject({
+      code: "RESTORE_CONFLICT",
+      statusCode: 409,
+      message: expect.stringContaining("2026"),
     });
     expect(policyUpdate).not.toHaveBeenCalled();
   });
