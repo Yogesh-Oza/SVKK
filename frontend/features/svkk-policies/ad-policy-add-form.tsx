@@ -2357,7 +2357,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                   <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Net Premium</p><p className="font-semibold">₹{rs(summary.net)}</p></CardContent></Card>
                 </div>
                 <div className="overflow-x-auto rounded border">
-                  <table className="w-full min-w-[960px] text-sm">
+                  <table className="w-full min-w-[1080px] text-sm">
                     <thead className="bg-muted">
                       <tr>
                         <th className="p-2 text-left">Person</th>
@@ -2366,6 +2366,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                         <th className="p-2 text-left">Age</th>
                         <th className="p-2 text-left">Relationship</th>
                         <th className="p-2 text-left">Gender</th>
+                        <th className="p-2 text-right">Sum Insured</th>
                         <th className="p-2 text-left">Band</th>
                         <th className="p-2 text-right">Basic</th>
                         <th className="p-2 text-right">Rider</th>
@@ -2377,53 +2378,65 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       </tr>
                     </thead>
                     <tbody>
-                      {displayQuote.rows.map((row, idx) => {
-                        const isHolder = idx === 0;
-                        const displayName =
-                          row.name || (isHolder ? values.policyHolder || "Holder" : `Member ${idx}`);
-                        return (
-                          <tr key={`${displayName}-${idx}`} className="border-t">
-                            <td className="p-2 font-medium">{displayName}</td>
-                            <td className="p-2 capitalize">{row.role}</td>
-                            <td className="p-2">{row.dob || "—"}</td>
-                            <td className="p-2 tabular-nums">{row.age ?? "—"}</td>
-                            <td className="p-2 capitalize">{row.relationship || "—"}</td>
-                            <td className="p-2 capitalize">{row.gender || "—"}</td>
-                            <td className="p-2">{row.band || "—"}</td>
-                            <td className="p-2 text-right tabular-nums">
-                              {row.error ? "—" : `₹${rs(row.basic ?? 0)}`}
-                            </td>
-                            <td className="p-2 text-right tabular-nums">
-                              {row.error ? "—" : `₹${rs(row.rider ?? 0)}`}
-                            </td>
-                            <td className="p-2 text-right tabular-nums">
-                              {row.error ? "—" : `₹${rs(row.gross ?? 0)}`}
-                            </td>
-                            <td className="p-2 text-right tabular-nums">
-                              {row.error ? "—" : `${row.pct ?? 0}%`}
-                            </td>
-                            <td className="p-2 text-right tabular-nums">
-                              {row.error ? "—" : `₹${rs(row.disc ?? 0)}`}
-                            </td>
-                            <td className="p-2 text-right font-semibold tabular-nums">
-                              {row.error ? "—" : `₹${rs(row.net ?? 0)}`}
-                            </td>
-                            <td className="p-2">
-                              {row.error ? (
-                                "—"
-                              ) : autoCalcLocked ? (
-                                <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                                  Stored
-                                </span>
-                              ) : (
-                                <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
-                                  Ready
-                                </span>
-                              )}
-                            </td>
-                          </tr>
+                      {(() => {
+                        const validMembersForSi = (values.members || []).filter(
+                          (m) => Boolean(m.name?.trim()) && Boolean(m.dob),
                         );
-                      })}
+                        return displayQuote.rows.map((row, idx) => {
+                          const isHolder = idx === 0;
+                          const displayName =
+                            row.name || (isHolder ? values.policyHolder || "Holder" : `Member ${idx}`);
+                          const sumInsuredRaw = isHolder
+                            ? values.sumInsured
+                            : validMembersForSi[idx - 1]?.sumInsured ?? "";
+                          const sumInsuredAmt = parseInr(sumInsuredRaw);
+                          return (
+                            <tr key={`${displayName}-${idx}`} className="border-t">
+                              <td className="p-2 font-medium">{displayName}</td>
+                              <td className="p-2 capitalize">{row.role}</td>
+                              <td className="p-2">{row.dob || "—"}</td>
+                              <td className="p-2 tabular-nums">{row.age ?? "—"}</td>
+                              <td className="p-2 capitalize">{row.relationship || "—"}</td>
+                              <td className="p-2 capitalize">{row.gender || "—"}</td>
+                              <td className="p-2 text-right tabular-nums">
+                                {sumInsuredAmt > 0 ? `₹${rs(sumInsuredAmt)}` : "—"}
+                              </td>
+                              <td className="p-2">{row.band || "—"}</td>
+                              <td className="p-2 text-right tabular-nums">
+                                {row.error ? "—" : `₹${rs(row.basic ?? 0)}`}
+                              </td>
+                              <td className="p-2 text-right tabular-nums">
+                                {row.error ? "—" : `₹${rs(row.rider ?? 0)}`}
+                              </td>
+                              <td className="p-2 text-right tabular-nums">
+                                {row.error ? "—" : `₹${rs(row.gross ?? 0)}`}
+                              </td>
+                              <td className="p-2 text-right tabular-nums">
+                                {row.error ? "—" : `${row.pct ?? 0}%`}
+                              </td>
+                              <td className="p-2 text-right tabular-nums">
+                                {row.error ? "—" : `₹${rs(row.disc ?? 0)}`}
+                              </td>
+                              <td className="p-2 text-right font-semibold tabular-nums">
+                                {row.error ? "—" : `₹${rs(row.net ?? 0)}`}
+                              </td>
+                              <td className="p-2">
+                                {row.error ? (
+                                  "—"
+                                ) : autoCalcLocked ? (
+                                  <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                    Stored
+                                  </span>
+                                ) : (
+                                  <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
+                                    Ready
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>
