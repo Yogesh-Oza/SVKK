@@ -23,11 +23,12 @@
 
 ## Operational rules
 
-- **One party per mobile** in Phase 1 (`InsuredParty.mobile` UNIQUE).
-- **Mobile change**: update party in admin flow — do **not** mint a new SVKK id.
-- **Shared family phone**: documented limitation; use admin merge in a later phase if needed.
+- **Mobile is not unique.** Multiple insured parties / policies may share the same number (e.g. family phones).
+- **Identity for renewals / carry-forward** is `svkkPublicId` only (unique). Do not match or merge holders by mobile.
+- **Mobile change**: update the party's mobile on create/carry-forward / edit when the number changes — do **not** mint a new SVKK id solely because mobile changed.
+- **Customer ID** is also not unique (searchable legacy key only).
 
 ## Public ids
 
-- `svkkPublicId`: `SVKK-{year}-{6-digit-seq}` via transactional counter.
-- Receipt: `REC-{year}-{6-digit-seq}`.
+- `svkkPublicId`: unique holder key (`{grouping}{mon}{seq}` or `SVKK-{year}-{seq}` fallback) via transactional counter.
+- Receipt: `RCP/{year}/{seq}` (or legacy `REC-…` depending on environment).

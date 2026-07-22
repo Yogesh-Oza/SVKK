@@ -52,15 +52,18 @@ On Add AD Policy (non-edit), a **Remarks** card appears below SVKK ID / Customer
 
 ## Previous task (completed)
 
-**Carry-forward / policy create — allow mobile number change for existing Customer ID**
+**Carry-forward / policy create — shared mobile & customer ID**
 
-Carry-forward submits `POST /policies` with the same `customerId` and `svkkPublicId` but users may correct the primary mobile. `createPolicyWithYear` no longer rejects with `Customer ID is linked to a different mobile number`; it reconciles mobile on the matched `InsuredParty` when the new number is unique. `applyInsuredPartyPatch` reuses the same helper. New module: `insured-party-mobile.ts`.
+Carry-forward submits `POST /policies` with the same `svkkPublicId` (and often `customerId`) but users may correct the primary mobile. Holders are matched by **SVKK ID only**. Mobile and customer ID are **not unique** — families may share a phone. `reconcileInsuredPartyMobile` updates the party's mobile when it changes (no clash check). `applyInsuredPartyPatch` reuses the same helper.
 
 | Layer | Role |
 |-------|------|
-| `insured-party-mobile.ts` | `reconcileInsuredPartyMobile` — normalize, clash check, update |
-| `policy.service.ts` | Create + PATCH paths call reconcile instead of hard conflict |
-| `insured-party-mobile.test.ts` | Unit tests for unchanged / update / clash / invalid |
+| `insured-party-mobile.ts` | `reconcileInsuredPartyMobile` — normalize + update |
+| `policy-create-insured-party.ts` | Resolve party by SVKK only |
+| `policy.service.ts` | Create + PATCH paths call reconcile |
+| `insured-party-mobile.test.ts` | Unit tests for unchanged / update / shared number OK |
+
+**Migration:** `20260713100000_insured_party_mobile_customer_non_unique` — dropped unique indexes on mobile / customerId.
 
 ## Previous task (completed)
 

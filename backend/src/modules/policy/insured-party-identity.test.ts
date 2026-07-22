@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   assertSvkkPublicIdAvailable,
+  insuredPartyUniqueConflictMessage,
   normalizeSvkkPublicIdInput,
   svkkPublicIdsEqual,
 } from "./insured-party-identity.js";
@@ -17,6 +18,18 @@ describe("svkkPublicIdsEqual", () => {
   it("compares case-insensitively", () => {
     expect(svkkPublicIdsEqual("OTHERJUL5334", "otherjul5334")).toBe(true);
     expect(svkkPublicIdsEqual("A", "B")).toBe(false);
+  });
+});
+
+describe("insuredPartyUniqueConflictMessage", () => {
+  it("maps svkkPublicId conflicts clearly", () => {
+    expect(insuredPartyUniqueConflictMessage("svkkPublicId")).toBe("SVKK ID already in use");
+  });
+
+  it("does not claim mobile or customerId are unique", () => {
+    expect(insuredPartyUniqueConflictMessage("mobile")).not.toMatch(/already in use/i);
+    expect(insuredPartyUniqueConflictMessage("customerId")).not.toMatch(/already in use/i);
+    expect(insuredPartyUniqueConflictMessage("mobile")).toMatch(/migrations/i);
   });
 });
 

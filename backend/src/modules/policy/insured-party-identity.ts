@@ -91,11 +91,10 @@ export function insuredPartyUniqueConflictMessage(
   if (targetStr.includes("svkkPublicId")) {
     return "SVKK ID already in use";
   }
-  if (targetStr.includes("mobile")) {
-    return "Mobile number already in use";
-  }
-  if (targetStr.includes("customerId")) {
-    return "Customer ID already in use";
+  // Mobile and customerId are intentionally non-unique (shared family numbers / legacy keys).
+  // If a P2002 still targets them, the DB schema is out of date — ask to run migrations.
+  if (targetStr.includes("mobile") || targetStr.includes("customerId")) {
+    return "Database uniqueness conflict on a non-unique identity field. Apply pending migrations and retry.";
   }
   return `Duplicate unique field${targetStr ? `: ${targetStr}` : ""}`;
 }
