@@ -184,25 +184,43 @@ function personsCount(p: PolicyDetailForReceipt, y0: PolicyDetailForReceipt["yea
   return m > 0 ? String(m + 1) : "—";
 }
 
-function parseRemarksForReceipt(raw: string | null | undefined): { remark: string; generalRemark: string } {
+function parseRemarksForReceipt(raw: string | null | undefined): {
+  generalRemark: string;
+  policyChangeRemark: string;
+  categoryChangeRemark: string;
+} {
   const text = (raw ?? "").trim();
-  if (!text) return { remark: "—", generalRemark: "—" };
-  const gMarker = "General Remark:";
-  const pMarker = "Policy Change Remark:";
-  const gIdx = text.indexOf(gMarker);
-  const pIdx = text.indexOf(pMarker);
-  if (gIdx === -1 && pIdx === -1) return { remark: text, generalRemark: text };
-  let generalRemark = "";
-  let policyChangeRemark = "";
-  if (gIdx !== -1) {
-    const gStart = gIdx + gMarker.length;
-    const gEnd = pIdx !== -1 && pIdx > gStart ? pIdx : text.length;
-    generalRemark = text.slice(gStart, gEnd).trim();
+  if (!text) {
+    return { generalRemark: "—", policyChangeRemark: "—", categoryChangeRemark: "—" };
   }
-  if (pIdx !== -1) {
-    policyChangeRemark = text.slice(pIdx + pMarker.length).trim();
+
+  const markers = [
+    { key: "generalRemark" as const, marker: "General Remark:" },
+    { key: "policyChangeRemark" as const, marker: "Policy Change Remark:" },
+    { key: "categoryChangeRemark" as const, marker: "Category Change Remark:" },
+  ];
+
+  const found = markers
+    .map((s) => ({ ...s, idx: text.indexOf(s.marker) }))
+    .filter((s) => s.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
+
+  if (found.length === 0) {
+    return { generalRemark: text, policyChangeRemark: "—", categoryChangeRemark: "—" };
   }
-  return { remark: policyChangeRemark || generalRemark || "—", generalRemark: generalRemark || "—" };
+
+  const result = { generalRemark: "", policyChangeRemark: "", categoryChangeRemark: "" };
+  for (let i = 0; i < found.length; i++) {
+    const start = found[i].idx + found[i].marker.length;
+    const end = i + 1 < found.length ? found[i + 1].idx : text.length;
+    result[found[i].key] = text.slice(start, end).trim();
+  }
+
+  return {
+    generalRemark: result.generalRemark || "—",
+    policyChangeRemark: result.policyChangeRemark || "—",
+    categoryChangeRemark: result.categoryChangeRemark || "—",
+  };
 }
 
 const DEFAULT_HEADER_IMAGE = "/Header_Receipt.png";
@@ -298,7 +316,8 @@ export function buildReceiptDocumentHtml(
   const aadhaarNo = (p.insuredParty.aadhaarNo ?? "").trim() || "—";
   const parsedRemarks = parseRemarksForReceipt(p.remarks);
   const generalRemark = (p.generalRemark ?? "").trim() || parsedRemarks.generalRemark;
-  const remark = parsedRemarks.remark;
+  const policyChangeRemark = parsedRemarks.policyChangeRemark;
+  const categoryChangeRemark = parsedRemarks.categoryChangeRemark;
 
   const rows: [string, string][] = [
     ["Receipt No.", receiptNo],
@@ -328,8 +347,9 @@ export function buildReceiptDocumentHtml(
     ["Transaction Date", txnDateStr],
     ["PAN No.", panNo],
     ["Aadhaar No.", aadhaarNo],
-    ["Remark", remark],
     ["General Remark", generalRemark],
+    ["Policy Change Remark", policyChangeRemark],
+    ["Category Change Remark", categoryChangeRemark],
   ];
 
   const half = Math.ceil(rows.length / 2);

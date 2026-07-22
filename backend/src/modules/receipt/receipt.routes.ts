@@ -16,6 +16,7 @@ import {
   resolvePolicyHolderName,
   resolvePolicyHolderPan,
 } from "../policy/policy-holder-snapshot.js";
+import { parseRemarks } from "../policy/policy-csv-utils.js";
 
 export function createReceiptRouter(env: Env) {
   const r = Router();
@@ -91,6 +92,7 @@ export function createReceiptRouter(env: Env) {
           issuedAt,
         });
         const no = rec.receiptNo;
+        const remarkParts = parseRemarks(policy.remarks);
         const pdfBytes = await buildReceiptPdf({
           receiptNo: no,
           referenceNo: policy.referenceNo ?? "",
@@ -124,8 +126,9 @@ export function createReceiptRouter(env: Env) {
           transactionNo: pay0?.transactionNumber ?? "",
           transactionDate: pay0?.transactionDate ?? null,
           chequeNo: year?.payments?.find((p) => p.cheque)?.cheque?.number ?? "",
-          remark: policy.remarks ?? "",
-          generalRemark: policy.remarks ?? "",
+          generalRemark: remarkParts.generalRemark || "—",
+          policyChangeRemark: remarkParts.policyChangeRemark || "—",
+          categoryChangeRemark: remarkParts.categoryChangeRemark || "—",
           date: rec.policyDate ?? issuedAt,
         });
         await mkdir(env.UPLOAD_DIR, { recursive: true });
@@ -178,8 +181,9 @@ async function buildReceiptPdf(input: {
   transactionNo: string;
   transactionDate: Date | null;
   chequeNo: string;
-  remark: string;
   generalRemark: string;
+  policyChangeRemark: string;
+  categoryChangeRemark: string;
   date: Date;
 }) {
   const doc = await PDFDocument.create();
@@ -237,8 +241,9 @@ async function buildReceiptPdf(input: {
     ["Transaction Date", input.transactionDate ? formatDmy(input.transactionDate) : "—"],
     ["PAN No.", input.panNo || "—"],
     ["Aadhaar No.", input.aadhaarNo || "—"],
-    ["Remark", input.remark || "—"],
     ["General Remark", input.generalRemark || "—"],
+    ["Policy Change Remark", input.policyChangeRemark || "—"],
+    ["Category Change Remark", input.categoryChangeRemark || "—"],
   ];
 
   for (const [k, v] of rows) {

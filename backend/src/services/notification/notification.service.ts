@@ -8,6 +8,7 @@ import { renderEmailTemplate } from "../email/email-template.service.js";
 import type { EmailTemplateId } from "../email/email-template-catalog.js";
 import { buildReceiptFieldsHtml } from "../email/email-receipt-fields.js";
 import { loadPolicyBundle, templateVarsFromPolicy } from "../email/policy-template-vars.js";
+import { parseRemarks } from "../../modules/policy/policy-csv-utils.js";
 import { formatDateDmy } from "./policy-url.js";
 
 async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string): Promise<string> {
@@ -31,6 +32,7 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
       village: true,
       area: true,
       contactPhone: true,
+      remarks: true,
       insuredParty: {
         select: {
           svkkPublicId: true,
@@ -47,6 +49,7 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
   });
 
   const ip = policy?.insuredParty;
+  const remarkParts = parseRemarks(policy?.remarks);
   return buildReceiptFieldsHtml({
     receiptNo: receipt.receiptNo,
     receiptDate: formatDateDmy(receipt.policyDate),
@@ -65,6 +68,9 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
     premiumAmount: String(receipt.amount),
     amountReceived: String(receipt.amount),
     paymentMode: receipt.paymentMode ?? "",
+    generalRemark: remarkParts.generalRemark || "—",
+    policyChangeRemark: remarkParts.policyChangeRemark || "—",
+    categoryChangeRemark: remarkParts.categoryChangeRemark || "—",
   });
 }
 import { resolveNotificationLinks } from "./policy-url.js";

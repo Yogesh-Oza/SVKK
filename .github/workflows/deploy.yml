@@ -1,5 +1,12 @@
 # Deploy SVKK monorepo to EC2: build on GitHub Actions, ship tarballs, prod deps + PM2 on server.
 #
+# --- Schema migrations (permanent) ---
+#   Every backend deploy runs `scripts/server-migrate.sh` on the server AFTER extract:
+#     prisma migrate status → prisma migrate deploy → prisma generate
+#   The Prisma CLI is a production dependency so `npm ci --omit=dev` still has `npx prisma`.
+#   Deploy FAILS if migrate fails (API is not restarted on a stale schema).
+#   Manual one-off on server:  cd /var/www/svkk-backend && bash scripts/server-migrate.sh
+#
 # --- Port plan (same server as CRM — avoid conflicts) ---
 #   nextjs-app (CRM)     → 3000   (already running)
 #   crm-ws               → 3001   (already running)
@@ -180,6 +187,7 @@ jobs:
           tar -czf ../backend-release.tar.gz \
             dist \
             prisma \
+            scripts/server-migrate.sh \
             package.json \
             package-lock.json
 
@@ -193,7 +201,7 @@ jobs:
           source: backend-release.tar.gz
           target: /tmp/
 
-      - name: Extract, migrate, restart PM2
+      - name: Extract, migrate schema, restart PM2
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -201,7 +209,7 @@ jobs:
           password: ${{ secrets.EC2_PASSWORD }}
           port: 22
           script: |
-            set -e
+            set -euo pipefail
             export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.npm-global/bin:$PATH"
             if [ -s "$HOME/.nvm/nvm.sh" ]; then
               . "$HOME/.nvm/nvm.sh"
@@ -219,8 +227,8 @@ jobs:
             rm -rf dist
             tar -xzf /tmp/backend-release.tar.gz
             rm -f /tmp/backend-release.tar.gz
+            # prisma CLI is a production dependency so migrate works with --omit=dev
             npm ci --omit=dev
-            export NODE_ENV=production
             export NODE_ENV=production
             export PORT="${PORT:-4000}"
             if [ -f .env ]; then
@@ -228,9 +236,14 @@ jobs:
               . ./.env
               set +a
             fi
-            # If migrate fails with P3009, check _prisma_migrations for duplicate failed rows
-            # (Linux MySQL uses lowercase table names: policy, not Policy).
-            npx prisma migrate deploy
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "ERROR: DATABASE_URL missing in $APP_DIR/.env — cannot migrate"
+              exit 1
+            fi
+            chmod +x scripts/server-migrate.sh
+            # Permanent schema sync: applies every pending prisma/migrations/*.sql
+            # Fail the whole deploy if migrate fails (do not restart on stale schema).
+            bash scripts/server-migrate.sh
             if pm2 describe svkk-api >/dev/null 2>&1; then
               pm2 restart svkk-api --update-env
             else

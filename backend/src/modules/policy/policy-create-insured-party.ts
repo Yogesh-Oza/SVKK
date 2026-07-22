@@ -1,4 +1,9 @@
 import type { InsuredParty, Prisma } from "@prisma/client";
+import {
+  debugInsuredPartyIdentity,
+  findInsuredPartyBySvkkPublicId,
+  normalizeSvkkPublicIdInput,
+} from "./insured-party-identity.js";
 import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
 
 export type ResolveInsuredPartyInput = {
@@ -15,11 +20,19 @@ export async function resolveInsuredPartyForPolicyCreate(
   tx: Prisma.TransactionClient,
   input: ResolveInsuredPartyInput,
 ): Promise<InsuredParty | null> {
-  if (!input.customSvkk) {
+  const customSvkk = normalizeSvkkPublicIdInput(input.customSvkk);
+  if (!customSvkk) {
     return null;
   }
 
-  const party = await tx.insuredParty.findUnique({ where: { svkkPublicId: input.customSvkk } });
+  const party = await findInsuredPartyBySvkkPublicId(tx, customSvkk);
+  debugInsuredPartyIdentity("resolveInsuredPartyForPolicyCreate", {
+    incomingSvkkId: customSvkk,
+    incomingMobile: input.mobile,
+    matchedPartyId: party?.id ?? null,
+    matchedSvkkId: party?.svkkPublicId ?? null,
+  });
+
   if (!party) {
     return null;
   }

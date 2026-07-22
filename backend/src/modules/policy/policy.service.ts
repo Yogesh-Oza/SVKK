@@ -11,6 +11,14 @@ import {
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeMobile } from "../../domain/phone.js";
+import {
+  assertSvkkPublicIdAvailable,
+  debugInsuredPartyIdentity,
+  insuredPartyUniqueConflictMessage,
+  normalizeSvkkPublicIdInput,
+  rethrowInsuredPartyUniqueConflict,
+  svkkPublicIdsEqual,
+} from "./insured-party-identity.js";
 import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
 import { resolveInsuredPartyForPolicyCreate } from "./policy-create-insured-party.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
@@ -111,8 +119,14 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       }
     }
 
-    const customSvkk = input.svkkPublicId?.trim() || null;
+    const customSvkk = normalizeSvkkPublicIdInput(input.svkkPublicId);
     const customerId = input.customerId?.trim() || null;
+
+    debugInsuredPartyIdentity("createPolicyWithYear", {
+      incomingSvkkId: customSvkk,
+      incomingMobile: mobile,
+      excludePartyId: null,
+    });
 
     let party = await resolveInsuredPartyForPolicyCreate(tx, {
       customSvkk,
@@ -120,9 +134,9 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     });
 
     if (customSvkk) {
-      const taken = await tx.insuredParty.findUnique({ where: { svkkPublicId: customSvkk } });
-      if (taken && (!party || taken.id !== party.id)) {
-        throw new AppError("CONFLICT", "SVKK public ID is already in use", 409);
+      const svkkCheck = await assertSvkkPublicIdAvailable(tx, customSvkk, party?.id);
+      if (!svkkCheck.ok) {
+        throw new AppError("CONFLICT", "SVKK ID already in use", 409);
       }
     }
 
@@ -153,10 +167,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           },
         });
       } catch (e) {
-        if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
-          throw new AppError("CONFLICT", "SVKK public ID is already in use", 409);
-        }
-        throw e;
+        rethrowInsuredPartyUniqueConflict(e);
       }
     } else {
       const partyUpdate: Prisma.InsuredPartyUpdateInput = {
@@ -659,7 +670,7 @@ async function applyInsuredPartyPatch(
     data.customerId = slim.customerId;
   }
   if (slim.svkkPublicId !== undefined && slim.svkkPublicId != null) {
-    data.svkkPublicId = slim.svkkPublicId;
+    data.svkkPublicId = normalizeSvkkPublicIdInput(slim.svkkPublicId) ?? slim.svkkPublicId;
   }
   if (slim.mobile !== undefined) {
     data.mobile = normalizeMobile(slim.mobile);
@@ -671,6 +682,16 @@ async function applyInsuredPartyPatch(
   }
 
   const current = await tx.insuredParty.findUniqueOrThrow({ where: { id: partyId } });
+  const incomingSvkk = normalizeSvkkPublicIdInput(slim.svkkPublicId);
+
+  debugInsuredPartyIdentity("applyInsuredPartyPatch", {
+    partyId,
+    incomingSvkkId: incomingSvkk,
+    incomingMobile: slim.mobile ?? null,
+    currentSvkkId: current.svkkPublicId,
+    currentMobile: current.mobile,
+  });
+
   if (hasMobilePatch) {
     await reconcileInsuredPartyMobile(tx, current, slim.mobile!);
     delete data.mobile;
@@ -679,19 +700,20 @@ async function applyInsuredPartyPatch(
     return true;
   }
   if (
-    slim.svkkPublicId !== undefined &&
-    slim.svkkPublicId != null &&
-    slim.svkkPublicId !== current.svkkPublicId
+    incomingSvkk != null &&
+    !svkkPublicIdsEqual(incomingSvkk, current.svkkPublicId)
   ) {
-    const clash = await tx.insuredParty.findFirst({
-      where: { svkkPublicId: slim.svkkPublicId, NOT: { id: partyId } },
-    });
-    if (clash) {
+    const svkkCheck = await assertSvkkPublicIdAvailable(tx, incomingSvkk, partyId);
+    if (!svkkCheck.ok) {
       throw new AppError("CONFLICT", "SVKK ID already in use", 409);
     }
   }
 
-  await tx.insuredParty.update({ where: { id: partyId }, data });
+  try {
+    await tx.insuredParty.update({ where: { id: partyId }, data });
+  } catch (e) {
+    rethrowInsuredPartyUniqueConflict(e);
+  }
   return true;
 }
 

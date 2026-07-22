@@ -59,6 +59,11 @@ export function renderOfflinePolicySubRoute(browserPathname: string): ReactNode 
  * When the service worker serves the cached /policies list shell for a /policies/* URL,
  * Next.js usePathname() stays on /policies while window.location has the real URL.
  * Recover by rendering the matching client page from the browser URL.
+ *
+ * Online recovery is limited to the known SW shell mismatch (Next still on `/policies`,
+ * or Next stuck on a *different* policy sub-route). If Next has already navigated to
+ * another app route, always render `children` so menu navigation cannot get stuck on
+ * a previously recovered policy page.
  */
 export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
   const nextPathname = usePathname() ?? "";
@@ -71,7 +76,15 @@ export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
   const browserIsPolicySubRoute = isOfflinePolicySubRoute(browserPathname);
   const routerMismatch = browserIsPolicySubRoute && browserPathname !== nextPathname;
-  const shouldRecover = browserIsPolicySubRoute && (offline || routerMismatch);
+  // SW list-shell bug: Next pathname stays on /policies (or another wrong policy route)
+  // while the browser URL is the real detail/edit/new path. Do not treat "Next already
+  // left for dashboard/mis/etc." as a shell mismatch — that would trap navigation.
+  const shellMismatch =
+    routerMismatch &&
+    (nextPathname === "/policies" ||
+      nextPathname === "" ||
+      isOfflinePolicySubRoute(nextPathname));
+  const shouldRecover = browserIsPolicySubRoute && (offline || shellMismatch);
 
   useEffect(() => {
     debugOfflineRoute("route state", {
@@ -79,10 +92,18 @@ export function OfflinePolicyRoute({ children }: { children: ReactNode }) {
       nextPathname,
       offline,
       routerMismatch,
+      shellMismatch,
       shouldRecover,
       href: typeof window !== "undefined" ? window.location.href : "",
     });
-  }, [browserPathname, nextPathname, offline, routerMismatch, shouldRecover]);
+  }, [
+    browserPathname,
+    nextPathname,
+    offline,
+    routerMismatch,
+    shellMismatch,
+    shouldRecover,
+  ]);
 
   if (!shouldRecover) {
     return <>{children}</>;

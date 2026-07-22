@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:deploy": "prisma migrate deploy && prisma generate",
+    "db:migrate:server": "bash scripts/server-migrate.sh",
     "db:setup": "prisma db push && prisma db seed && tsx scripts/seed-data-md.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:data-md": "tsx scripts/seed-data-md.ts",
@@ -48,6 +49,7 @@
     "pdf-lib": "^1.17.1",
     "pino": "^9.14.0",
     "pino-http": "^11.0.0",
+    "prisma": "^6.19.0",
     "zod": "^3.24.2"
   },
   "prisma": {
@@ -62,7 +64,6 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.0",
     "@types/nodemailer": "^8.0.0",
-    "prisma": "^6.19.0",
     "tsx": "^4.20.5",
     "typescript": "^5.7.2",
     "vitest": "^3.0.5"

@@ -42,6 +42,8 @@ export type ReceiptFieldInput = {
   aadhaarNo?: string;
   remark?: string;
   generalRemark?: string;
+  policyChangeRemark?: string;
+  categoryChangeRemark?: string;
 };
 
 export function buildReceiptFieldsHtml(fields: ReceiptFieldInput): string {
@@ -73,8 +75,9 @@ export function buildReceiptFieldsHtml(fields: ReceiptFieldInput): string {
     row("Transaction Date", fields.transactionDate ?? ""),
     row("PAN No.", fields.panNo ?? ""),
     row("Aadhaar No.", fields.aadhaarNo ?? ""),
-    row("Remark", fields.remark ?? ""),
     row("General Remark", fields.generalRemark ?? ""),
+    row("Policy Change Remark", fields.policyChangeRemark ?? ""),
+    row("Category Change Remark", fields.categoryChangeRemark ?? ""),
   ];
   return `<div class="receipt-box"><table>${rows.join("")}</table></div>`;
 }
@@ -106,6 +109,7 @@ export const SAMPLE_RECEIPT_FIELDS_HTML = buildReceiptFieldsHtml({
   transactionDate: "18/05/2026",
   panNo: "CQLPG5551K",
   aadhaarNo: "—",
-  remark: "—",
   generalRemark: "—",
+  policyChangeRemark: "—",
+  categoryChangeRemark: "—",
 });
