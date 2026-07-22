@@ -2,6 +2,8 @@
 export const PERMISSION_DEPENDENCIES: Record<string, readonly string[]> = {
   "policy:update": ["policy:read"],
   "policy:delete": ["policy:read"],
+  "policy:restore": ["policy:read"],
+  "policy:purge": ["policy:read"],
   "policy:create": ["policy:read", "calculation:live"],
   "claim:update": ["claim:read"],
   "claim:delete": ["claim:read"],
@@ -13,7 +15,14 @@ export const PERMISSION_DEPENDENCIES: Record<string, readonly string[]> = {
 
 export const WILDCARD_PERMISSION = "*:*";
 
-const POLICY_ACCESS_KEYS = ["policy:read", "policy:create", "policy:update", "policy:delete"] as const;
+const POLICY_ACCESS_KEYS = [
+  "policy:read",
+  "policy:create",
+  "policy:update",
+  "policy:delete",
+  "policy:restore",
+  "policy:purge",
+] as const;
 export const POLICY_SCOPE_KEYS = ["policy:scope_all", "policy:scope_village", "policy:scope_own"] as const;
 export const DASHBOARD_SCOPE_KEYS = ["dashboard:scope_all", "dashboard:scope_village"] as const;
 export const MIS_POLICY_SCOPE_KEYS = ["mis:policy:scope_all", "mis:policy:scope_village"] as const;

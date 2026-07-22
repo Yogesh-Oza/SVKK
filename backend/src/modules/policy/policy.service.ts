@@ -1156,9 +1156,8 @@ export async function updatePolicySections(input: {
 }
 
 /**
- * Soft-deletes a policy; related policy years and members are hidden by `deletedAt` on the parent in reads.
- * Clears policyNo / referenceNo so those unique values can be reused on a new policy
- * (MySQL unique indexes still apply to soft-deleted rows).
+ * Soft-deletes (archives) a policy; related years/members are hidden because reads filter parent `deletedAt`.
+ * Snapshots policyNo / referenceNo, then clears live unique fields so they can be reused on a new policy.
  */
 export async function softDeletePolicy(input: { actorUserId: string; policyId: string }) {
   const existing = await prisma.policy.findFirst({
@@ -1173,6 +1172,8 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
     where: { id: input.policyId },
     data: {
       deletedAt: new Date(),
+      archivedPolicyNo: existing.policyNo,
+      archivedReferenceNo: existing.referenceNo,
       policyNo: null,
       referenceNo: null,
     },
@@ -1190,6 +1191,6 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
       village: existing.village,
       holderName: resolvePolicyHolderName(existing, existing.insuredParty),
     } as unknown as Prisma.InputJsonValue,
-    afterData: { deleted: true } as unknown as Prisma.InputJsonValue,
+    afterData: { archived: true } as unknown as Prisma.InputJsonValue,
   });
 }

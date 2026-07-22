@@ -64,6 +64,8 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
 
   policyNew: IconFilePlus,
 
+  policyArchive: IconHistory,
+
   futurePremium: IconTimeline,
 
   futureLookup: IconSearch,
@@ -138,30 +140,31 @@ export function getSvkkNavGroupsForPermissions(permissions: string[]): NavGroup[
       continue;
     }
 
-    if (n.id === "policies" && flat[i + 1]?.id === "policyNew") {
-
-      const add = flat[i + 1]!;
-
+    if (n.id === "policies") {
+      const subItems: NavCollapsible["items"] = [
+        { title: "All policies", url: n.href, icon: IconFileDescription },
+      ];
+      let j = i + 1;
+      while (j < flat.length && (flat[j]!.id === "policyNew" || flat[j]!.id === "policyArchive")) {
+        const sub = flat[j]!;
+        subItems.push({
+          title: sub.id === "policyArchive" ? "Recycle Bin" : sub.label,
+          url: sub.href,
+          icon: sub.id === "policyArchive" ? IconHistory : IconFilePlus,
+        });
+        j += 1;
+      }
       items.push({
-
         title: "Policies",
-
         icon: IconFileDescription,
-
-        items: [
-
-          { title: "All policies", url: n.href, icon: IconFileDescription },
-
-          { title: "Add policy", url: add.href, icon: IconFilePlus },
-
-        ],
-
+        items: subItems,
       });
-
-      i += 1;
-
+      i = j - 1;
       continue;
+    }
 
+    if (n.id === "policyNew" || n.id === "policyArchive") {
+      continue;
     }
 
     if (n.id === "futurePremium" && flat[i + 1]?.id === "futureLookup") {

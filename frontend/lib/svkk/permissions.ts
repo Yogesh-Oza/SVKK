@@ -6,6 +6,7 @@ export type SvkkNavId =
   | "calculatorAdmin"
   | "policies"
   | "policyNew"
+  | "policyArchive"
   | "futurePremium"
   | "futureLookup"
   | "claims"
@@ -37,6 +38,12 @@ const NAV: NavEntry[] = [
   },
   { id: "policies", href: "/policies", label: "Policies", permission: "policy:read" },
   { id: "policyNew", href: "/policies/new", label: "Add policy", permission: "policy:create" },
+  {
+    id: "policyArchive",
+    href: "/policies/archive",
+    label: "Recycle Bin",
+    permission: "policy:delete",
+  },
   {
     id: "futurePremium",
     href: "/future-premium",
@@ -73,6 +80,9 @@ export function getSvkkNavForPermissions(permissions: string[]) {
   const base = NAV.filter((n) => {
     if (n.id === "mis") {
       return canAccessPolicyMis(permissions) || canAccessClaimMis(permissions);
+    }
+    if (n.id === "policyArchive") {
+      return canAccessPolicyArchive(permissions);
     }
     return hasPermission(permissions, n.permission);
   });
@@ -126,6 +136,23 @@ export function canUploadPolicyDrive(permissions: string[]) {
 
 export function canDeletePolicy(permissions: string[]) {
   return hasPermission(permissions, "policy:delete");
+}
+
+export function canRestorePolicy(permissions: string[]) {
+  return hasPermission(permissions, "policy:restore");
+}
+
+export function canPurgePolicy(permissions: string[]) {
+  return hasPermission(permissions, "policy:purge");
+}
+
+/** Recycle Bin / Archive page — any archive-related permission. */
+export function canAccessPolicyArchive(permissions: string[]) {
+  return (
+    canDeletePolicy(permissions) ||
+    canRestorePolicy(permissions) ||
+    canPurgePolicy(permissions)
+  );
 }
 
 export function canCreateReceipt(permissions: string[]) {

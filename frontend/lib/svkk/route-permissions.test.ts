@@ -13,4 +13,17 @@ describe("route-permissions v2", () => {
       "mis:claim:read",
     ]);
   });
+
+  it("maps recycle bin to archive permissions", () => {
+    expect(getRequiredPermissionsForPath("/policies/archive")).toEqual([
+      "policy:delete",
+      "policy:restore",
+      "policy:purge",
+    ]);
+  });
+
+  it("keeps policy create and read distinct from archive", () => {
+    expect(getRequiredPermissionsForPath("/policies/new")).toEqual(["policy:create"]);
+    expect(getRequiredPermissionsForPath("/policies")).toEqual(["policy:read"]);
+  });
 });

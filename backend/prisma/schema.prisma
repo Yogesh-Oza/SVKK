@@ -380,6 +380,10 @@ model Policy {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   deletedAt           DateTime?
+  /// Snapshot of policyNo while archived (live policyNo cleared for uniqueness release)
+  archivedPolicyNo    String?
+  /// Snapshot of referenceNo while archived (live referenceNo cleared for uniqueness release)
+  archivedReferenceNo String?           @db.VarChar(255)
 
   years         PolicyYear[]
   claims        Claim[]
@@ -396,6 +400,7 @@ model Policy {
   @@index([categoryId, deletedAt])
   @@index([policyTypeId, deletedAt])
   @@index([createdAt, deletedAt])
+  @@index([deletedAt])
   @@map("policy")
 }
 

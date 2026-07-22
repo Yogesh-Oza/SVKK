@@ -176,9 +176,14 @@ export function assertValidScopeSet(keys: Iterable<string>): void {
 
   const set = new Set(list);
   const hasWildcard = set.has(WILDCARD_PERMISSION);
-  const hasPolicyAccess = ["policy:read", "policy:create", "policy:update", "policy:delete"].some(
-    (k) => set.has(k),
-  );
+  const hasPolicyAccess = [
+    "policy:read",
+    "policy:create",
+    "policy:update",
+    "policy:delete",
+    "policy:restore",
+    "policy:purge",
+  ].some((k) => set.has(k));
   const hasPolicyScope = POLICY_SCOPE_KEYS.some((k) => set.has(k));
   if (!hasWildcard && hasPolicyAccess && !hasPolicyScope) {
     throw new AppError(

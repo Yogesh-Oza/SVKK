@@ -61,8 +61,15 @@ import {
   allocateOfflineReferenceNoBatch,
   buildPolicyOfflineBundle,
 } from "./policy-offline-bundle.js";
+import {
+  buildArchivedPolicyReadWhere,
+  permanentlyDeleteArchivedPolicy,
+  queryArchivedPolicies,
+  restoreArchivedPolicy,
+} from "./policy-archive.js";
 
 const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
+const POLICY_ARCHIVE_PERMISSIONS = ["policy:delete", "policy:restore", "policy:purge"] as const;
 
 async function loadPolicyReadScope(userId: string, permissions: Set<string>) {
   const module = resolvePolicyReadScopeModule(permissions);
@@ -697,6 +704,151 @@ export function createPolicyRouter(env: Env) {
           .parse({ ...req.query, ...req.body });
         const referenceNos = await allocateOfflineReferenceNoBatch(q);
         res.json({ referenceNos });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/archived",
+    requireAnyPermission([...POLICY_ARCHIVE_PERMISSIONS]),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            page: z.coerce.number().int().min(1).default(1),
+            pageSize: z.coerce.number().int().min(1).max(100).default(25),
+            search: z.string().optional(),
+            village: z.string().optional(),
+            villages: stringArrayQuery,
+          })
+          .parse(req.query);
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+        const where = buildArchivedPolicyReadWhere(
+          scope,
+          q.village,
+          req.userId!,
+          req.permissions!,
+          q.villages,
+        );
+        const out = await queryArchivedPolicies({
+          where,
+          page: q.page,
+          pageSize: q.pageSize,
+          search: q.search,
+        });
+        res.json({
+          ...out,
+          items: out.items.map((r) => {
+            const insuredParty = maskInsuredParty(req.permissions!, r.insuredParty) ?? r.insuredParty;
+            return {
+              ...r,
+              insuredParty,
+              displayHolderName:
+                r.holderName?.trim() ||
+                (typeof insuredParty.name === "string" ? insuredParty.name : r.insuredParty.name),
+            };
+          }),
+        });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.post("/:id/restore", requirePermission("policy:restore"), async (req, res, next) => {
+    try {
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+      const existing = await prisma.policy.findFirst({
+        where: { id: String(req.params.id), deletedAt: { not: null } },
+        select: { id: true, village: true, area: true, createdById: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Archived policy not found", 404);
+      assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
+
+      const row = await restoreArchivedPolicy({
+        actorUserId: req.userId!,
+        policyId: String(req.params.id),
+      });
+      res.json({ id: row.id, policyNo: row.policyNo, referenceNo: row.referenceNo });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.delete("/:id/permanent", requirePermission("policy:purge"), async (req, res, next) => {
+    try {
+      const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+      const existing = await prisma.policy.findFirst({
+        where: { id: String(req.params.id), deletedAt: { not: null } },
+        select: { id: true, village: true, area: true, createdById: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Archived policy not found", 404);
+      assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
+
+      await permanentlyDeleteArchivedPolicy({
+        actorUserId: req.userId!,
+        policyId: String(req.params.id),
+      });
+      res.status(204).end();
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post(
+    "/bulk-restore",
+    requirePermission("policy:restore"),
+    async (req, res, next) => {
+      try {
+        const body = z
+          .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
+          .parse(req.body);
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+        for (const id of body.ids) {
+          const existing = await prisma.policy.findFirst({
+            where: { id, deletedAt: { not: null } },
+            select: { id: true, village: true, area: true, createdById: true },
+          });
+          if (!existing) {
+            throw new AppError("NOT_FOUND", `Archived policy not found: ${id}`, 404);
+          }
+          assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
+        }
+        for (const id of body.ids) {
+          await restoreArchivedPolicy({ actorUserId: req.userId!, policyId: id });
+        }
+        res.json({ ok: true, count: body.ids.length });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.post(
+    "/bulk-purge",
+    requirePermission("policy:purge"),
+    async (req, res, next) => {
+      try {
+        const body = z
+          .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
+          .parse(req.body);
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+        for (const id of body.ids) {
+          const existing = await prisma.policy.findFirst({
+            where: { id, deletedAt: { not: null } },
+            select: { id: true, village: true, area: true, createdById: true },
+          });
+          if (!existing) {
+            throw new AppError("NOT_FOUND", `Archived policy not found: ${id}`, 404);
+          }
+          assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
+        }
+        for (const id of body.ids) {
+          await permanentlyDeleteArchivedPolicy({ actorUserId: req.userId!, policyId: id });
+        }
+        res.json({ ok: true, count: body.ids.length });
       } catch (e) {
         next(e);
       }

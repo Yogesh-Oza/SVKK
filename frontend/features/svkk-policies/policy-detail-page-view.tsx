@@ -210,11 +210,11 @@ export function PolicyDetailPageView({
     setDeleteBusy(true);
     try {
       await backendApi.delete(`/policies/${id}`);
-      toast.success("Policy deleted");
+      toast.success("Policy year moved to Recycle Bin");
       setConfirmDeleteOpen(false);
       router.replace("/policies");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "Archive failed");
     } finally {
       setDeleteBusy(false);
     }
@@ -359,14 +359,15 @@ export function PolicyDetailPageView({
             disabled={deleteBusy}
             onClick={() => setConfirmDeleteOpen(true)}
           >
-            Delete policy
+            Archive this year
           </Button>
           <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete this policy?</DialogTitle>
+                <DialogTitle>Archive this policy year?</DialogTitle>
                 <DialogDescription>
-                  This cannot be undone. Only administrators can delete policies.
+                  Only this policy year will be moved to the Recycle Bin. Other years under the same SVKK ID stay active.
+                  You can restore it later from Policies → Recycle Bin.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -383,7 +384,7 @@ export function PolicyDetailPageView({
                   disabled={deleteBusy}
                   onClick={() => void deletePolicy()}
                 >
-                  {deleteBusy ? "Deleting…" : "Delete"}
+                  {deleteBusy ? "Moving…" : "Archive this year"}
                 </Button>
               </DialogFooter>
             </DialogContent>

@@ -742,11 +742,13 @@ export default function SvkkPoliciesPage() {
   );
 
   async function bulkDelete() {
+    // Archive only the latest year (primary) per selected SVKK group — not every year in the group.
     const ids = [
       ...new Set(
         Object.entries(rowSelection)
           .filter(([, v]) => v)
-          .flatMap(([svkkId]) => rows.find((r) => r.svkkPublicId === svkkId)?.years.map((y) => y.policyId) ?? []),
+          .map(([svkkId]) => rows.find((r) => r.svkkPublicId === svkkId)?.primaryPolicyId)
+          .filter((id): id is string => Boolean(id)),
       ),
     ];
     if (ids.length === 0) return;
@@ -756,11 +758,13 @@ export default function SvkkPoliciesPage() {
         method: "POST",
         body: JSON.stringify({ ids }),
       });
-      toast.success(`Deleted ${ids.length} polic${ids.length === 1 ? "y" : "ies"}`);
+      toast.success(
+        `Moved ${ids.length} latest year${ids.length === 1 ? "" : "s"} to Recycle Bin`,
+      );
       setBulkOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Bulk delete failed");
+      toast.error(e instanceof Error ? e.message : "Bulk archive failed");
     } finally {
       setActionBusy(false);
     }
@@ -770,11 +774,11 @@ export default function SvkkPoliciesPage() {
     setActionBusy(true);
     try {
       await backendApi.delete(`/policies/${id}`);
-      toast.success("Policy deleted");
+      toast.success("Latest year moved to Recycle Bin");
       setRowDeleteId(null);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "Archive failed");
     } finally {
       setActionBusy(false);
     }
@@ -1095,7 +1099,7 @@ export default function SvkkPoliciesPage() {
                         onClick={() => setRowDeleteId(p.primaryPolicyId)}
                       >
                         <Trash2 />
-                        Delete latest year
+                        Archive latest year
                       </DropdownMenuItem>
                     </>
                   ) : null}
@@ -1459,7 +1463,7 @@ export default function SvkkPoliciesPage() {
             onClick={() => setBulkOpen(true)}
           >
             <Trash2 className="size-3.5" />
-            Delete selected
+            Archive latest year
           </Button>
         </motion.div>
       ) : null}
@@ -1748,10 +1752,10 @@ export default function SvkkPoliciesPage() {
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete selected policies?</DialogTitle>
+            <DialogTitle>Archive latest year for selected?</DialogTitle>
             <DialogDescription>
-              This will soft-delete {selectedCount} polic{selectedCount === 1 ? "y" : "ies"}. This action is reserved for
-              administrators.
+              Only the latest policy year for each selected customer will be moved to the Recycle Bin. Older years stay
+              active in the register. You can restore archived years from Policies → Recycle Bin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1759,7 +1763,7 @@ export default function SvkkPoliciesPage() {
               Cancel
             </Button>
             <Button type="button" variant="destructive" disabled={actionBusy} onClick={() => void bulkDelete()}>
-              {actionBusy ? "Deleting…" : "Delete"}
+              {actionBusy ? "Moving…" : "Archive latest year"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1768,8 +1772,11 @@ export default function SvkkPoliciesPage() {
       <Dialog open={rowDeleteId != null} onOpenChange={(o) => !o && setRowDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete this policy?</DialogTitle>
-            <DialogDescription>This cannot be undone.</DialogDescription>
+            <DialogTitle>Archive latest year?</DialogTitle>
+            <DialogDescription>
+              Only the latest policy year for this customer will be moved to the Recycle Bin. Other years stay active in
+              the same SVKK group. You can restore it later from Policies → Recycle Bin.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setRowDeleteId(null)}>
@@ -1781,7 +1788,7 @@ export default function SvkkPoliciesPage() {
               disabled={actionBusy}
               onClick={() => rowDeleteId && void deleteOne(rowDeleteId)}
             >
-              {actionBusy ? "Deleting…" : "Delete"}
+              {actionBusy ? "Moving…" : "Archive latest year"}
             </Button>
           </DialogFooter>
         </DialogContent>

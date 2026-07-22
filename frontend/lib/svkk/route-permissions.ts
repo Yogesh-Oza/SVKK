@@ -26,6 +26,9 @@ export function getRequiredPermissionsForPath(pathname: string): string[] | unde
   if (pathname.startsWith("/calculator/admin")) return ["admin:charts"];
   if (pathname.startsWith("/calculator")) return ["calculation:live"];
   if (pathname.startsWith("/policies/new")) return ["policy:create"];
+  if (pathname.startsWith("/policies/archive")) {
+    return ["policy:delete", "policy:restore", "policy:purge"];
+  }
   if (pathname.startsWith("/policies")) return ["policy:read"];
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard")) return ["dashboard:read"];
   return undefined;

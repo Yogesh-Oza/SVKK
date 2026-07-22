@@ -23,6 +23,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
       "policy:read",
       "policy:update",
       "policy:delete",
+      "policy:restore",
+      "policy:purge",
       "policy:commission",
       "policy:scope_all",
       "calculation:live",

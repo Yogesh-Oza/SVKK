@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { backfillPolicyCommissionPermission } from "./migrate-rbac-v2-permissions.js";
+import {
+  backfillPolicyCommissionPermission,
+  backfillPolicyRestorePermission,
+} from "./migrate-rbac-v2-permissions.js";
 
-function createMockClient() {
+function createMockClient(permKeys: Record<string, string>) {
   const rolePermissions = new Map<string, { roleId: string; permissionId: string; effect: "ALLOW" | "DENY" }>();
   const key = (roleId: string, permissionId: string) => `${roleId}:${permissionId}`;
-
-  const permIds = { update: "perm-update", commission: "perm-commission" };
 
   const client = {
     permission: {
       findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
-        if (where.key === "policy:update") return { id: permIds.update };
-        if (where.key === "policy:commission") return { id: permIds.commission };
-        return null;
+        const id = permKeys[where.key];
+        return id ? { id } : null;
       }),
     },
     rolePermission: {
@@ -53,7 +53,7 @@ function createMockClient() {
     $transaction: vi.fn(async (fn: (tx: typeof client) => Promise<void>) => fn(client)),
   };
 
-  return { client, rolePermissions, permIds };
+  return { client, rolePermissions };
 }
 
 describe("backfillPolicyCommissionPermission", () => {
@@ -62,25 +62,31 @@ describe("backfillPolicyCommissionPermission", () => {
   });
 
   it("grants policy:commission to roles with policy:update", async () => {
-    const { client, rolePermissions, permIds } = createMockClient();
+    const { client, rolePermissions } = createMockClient({
+      "policy:update": "perm-update",
+      "policy:commission": "perm-commission",
+    });
 
     await backfillPolicyCommissionPermission(client as never);
 
-    expect(rolePermissions.get(`role-admin:${permIds.commission}`)?.effect).toBe("ALLOW");
-    expect(rolePermissions.get(`role-supervisor:${permIds.commission}`)?.effect).toBe("ALLOW");
+    expect(rolePermissions.get("role-admin:perm-commission")?.effect).toBe("ALLOW");
+    expect(rolePermissions.get("role-supervisor:perm-commission")?.effect).toBe("ALLOW");
     expect(client.rbacRole.update).toHaveBeenCalledTimes(2);
   });
 
   it("is idempotent when commission already allowed", async () => {
-    const { client, rolePermissions, permIds } = createMockClient();
-    rolePermissions.set(`role-admin:${permIds.commission}`, {
+    const { client, rolePermissions } = createMockClient({
+      "policy:update": "perm-update",
+      "policy:commission": "perm-commission",
+    });
+    rolePermissions.set("role-admin:perm-commission", {
       roleId: "role-admin",
-      permissionId: permIds.commission,
+      permissionId: "perm-commission",
       effect: "ALLOW",
     });
-    rolePermissions.set(`role-supervisor:${permIds.commission}`, {
+    rolePermissions.set("role-supervisor:perm-commission", {
       roleId: "role-supervisor",
-      permissionId: permIds.commission,
+      permissionId: "perm-commission",
       effect: "ALLOW",
     });
 
@@ -88,5 +94,23 @@ describe("backfillPolicyCommissionPermission", () => {
 
     expect(client.rolePermission.upsert).not.toHaveBeenCalled();
     expect(client.rbacRole.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("backfillPolicyRestorePermission", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("grants policy:restore to roles with policy:delete", async () => {
+    const { client, rolePermissions } = createMockClient({
+      "policy:delete": "perm-delete",
+      "policy:restore": "perm-restore",
+    });
+
+    await backfillPolicyRestorePermission(client as never);
+
+    expect(rolePermissions.get("role-admin:perm-restore")?.effect).toBe("ALLOW");
+    expect(rolePermissions.get("role-supervisor:perm-restore")?.effect).toBe("ALLOW");
   });
 });

@@ -110,8 +110,48 @@ export async function backfillPolicyCommissionPermission(client: PrismaClient): 
   await bumpRoles(client, roleIdsTouched);
 }
 
-/** Run all idempotent RBAC data migrations (MIS split + commission backfill). */
+/**
+ * Grant policy:restore to roles that can soft-delete (archive) policies.
+ * Does not grant policy:purge (least privilege).
+ */
+export async function backfillPolicyRestorePermission(client: PrismaClient): Promise<void> {
+  const [deletePerm, restorePerm] = await Promise.all([
+    client.permission.findUnique({ where: { key: "policy:delete" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "policy:restore" }, select: { id: true } }),
+  ]);
+  if (!deletePerm || !restorePerm) {
+    return;
+  }
+
+  const rolesWithDelete = await client.rolePermission.findMany({
+    where: { permissionId: deletePerm.id, effect: "ALLOW" },
+    select: { roleId: true },
+  });
+
+  const roleIdsTouched = new Set<string>();
+  for (const { roleId } of rolesWithDelete) {
+    const existing = await client.rolePermission.findUnique({
+      where: { roleId_permissionId: { roleId, permissionId: restorePerm.id } },
+      select: { effect: true },
+    });
+    if (existing?.effect === "ALLOW") {
+      continue;
+    }
+
+    await client.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId, permissionId: restorePerm.id } },
+      update: { effect: "ALLOW" },
+      create: { roleId, permissionId: restorePerm.id, effect: "ALLOW" },
+    });
+    roleIdsTouched.add(roleId);
+  }
+
+  await bumpRoles(client, roleIdsTouched);
+}
+
+/** Run all idempotent RBAC data migrations (MIS split + commission + restore backfill). */
 export async function migrateRbacV2Permissions(client: PrismaClient): Promise<void> {
   await migrateLegacyMisPermissions(client);
   await backfillPolicyCommissionPermission(client);
+  await backfillPolicyRestorePermission(client);
 }
