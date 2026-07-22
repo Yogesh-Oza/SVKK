@@ -37,6 +37,8 @@ export type MemberInput = {
   relationship: string;
   gender: "" | "male" | "female";
   addOnRider: number;
+  /** Optional per-person SI; when set, overrides QuoteInput.sumInsured for that row. */
+  sumInsured?: number;
 };
 
 export type QuoteRowOk = {

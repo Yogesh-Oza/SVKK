@@ -160,28 +160,35 @@ function quoteFromPolicyFormForOffset(
   }
 
   const policyKey = normPolicy(formValues.adProduct || "");
+  const isIndividual = policyKey === "individual";
   const validMembers = (formValues.members || []).filter(
     (m) => Boolean(m.name?.trim()) && Boolean(m.dob),
   );
+  const holderSi = money(formValues.sumInsured) || 0;
   const holderMember: MemberInput = {
     name: formValues.policyHolder || "Policy Holder",
     dob: formValues.dob || "",
     relationship: (formValues.relation || "self").toLowerCase() || "self",
     gender: genderToQuoteInput(formValues.holderGender),
     addOnRider: money(formValues.holderAddOns) || 0,
+    ...(isIndividual && holderSi > 0 ? { sumInsured: holderSi } : {}),
   };
-  const memberInputs: MemberInput[] = validMembers.map((m, i) => ({
-    name: m.name.trim() || `Member ${i + 1}`,
-    dob: m.dob,
-    relationship: (m.relationship || "member").toLowerCase() || "member",
-    gender: genderToQuoteInput(m.gender),
-    addOnRider: money(m.addOnsAmount) || 0,
-  }));
+  const memberInputs: MemberInput[] = validMembers.map((m, i) => {
+    const memberSi = money(m.sumInsured) || 0;
+    return {
+      name: m.name.trim() || `Member ${i + 1}`,
+      dob: m.dob,
+      relationship: (m.relationship || "member").toLowerCase() || "member",
+      gender: genderToQuoteInput(m.gender),
+      addOnRider: money(m.addOnsAmount) || 0,
+      ...(isIndividual && memberSi > 0 ? { sumInsured: memberSi } : {}),
+    };
+  });
 
   return quoteFromInput(premiumState, {
     policyType: policyKey,
     memberCount: 1 + memberInputs.length,
-    sumInsured: money(formValues.sumInsured) || 0,
+    sumInsured: holderSi,
     endDate,
     members: [holderMember, ...memberInputs],
   });

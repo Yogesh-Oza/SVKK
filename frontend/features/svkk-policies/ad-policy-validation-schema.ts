@@ -39,6 +39,15 @@ const memberRowSchema = yup.object({
   gender: yup.string().default("M"),
 });
 
+function isIndividualPolicyProduct(adProduct: string | undefined): boolean {
+  const key = (adProduct || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return key === "individual";
+}
+
 /** Validation for Add AD policy (mandatory fields per business rules). */
 export const adPolicyValidationSchema = yup.object({
   svkkPublicId: yup.string().trim().optional(),
@@ -131,6 +140,31 @@ export const adPolicyValidationSchema = yup.object({
     .array()
     .of(memberRowSchema)
     .test("members", "Members are invalid", (arr) => !arr || arr.length >= 0)
+    .test(
+      "individual-member-si",
+      "Select sum insured for each member",
+      function (arr) {
+        if (!isIndividualPolicyProduct(this.parent?.adProduct)) {
+          return true;
+        }
+        if (!arr?.length) {
+          return true;
+        }
+        for (let i = 0; i < arr.length; i++) {
+          const m = arr[i];
+          if (!m) continue;
+          const hasIdentity = Boolean(m.name?.trim()) && Boolean(m.dob?.trim());
+          if (!hasIdentity) continue;
+          if (!String(m.sumInsured ?? "").trim()) {
+            return this.createError({
+              path: `members[${i}].sumInsured`,
+              message: "Select sum insured",
+            });
+          }
+        }
+        return true;
+      },
+    )
     .required(),
 
   policyNo: yup.string().optional(),

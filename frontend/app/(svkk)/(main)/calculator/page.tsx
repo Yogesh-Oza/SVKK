@@ -205,17 +205,25 @@ export default function SvkkCalculatorPage() {
     });
   }, [form.policyType, form.memberCount, sis]);
 
-  const quote = useMemo(
-    () =>
-      quoteFromInput(state, {
-        policyType: form.policyType,
-        memberCount: form.memberCount,
-        sumInsured: form.sumInsured,
-        endDate: form.endDate,
-        members: form.members,
-      }),
-    [state, form],
-  );
+  const quote = useMemo(() => {
+    const members =
+      form.policyType === "individual"
+        ? form.members.map((m) => ({
+            ...m,
+            sumInsured:
+              m.sumInsured != null && Number(m.sumInsured) > 0
+                ? Number(m.sumInsured)
+                : form.sumInsured,
+          }))
+        : form.members.map(({ sumInsured: _ignored, ...rest }) => rest);
+    return quoteFromInput(state, {
+      policyType: form.policyType,
+      memberCount: form.memberCount,
+      sumInsured: form.sumInsured,
+      endDate: form.endDate,
+      members,
+    });
+  }, [state, form]);
 
   const updateMember = (index: number, patch: Partial<MemberInput>) => {
     setForm((prev) => ({
@@ -280,10 +288,22 @@ export default function SvkkCalculatorPage() {
                 }
               />
             </FieldShell>
-            <FieldShell label="Sum Insured">
+            <FieldShell label={form.policyType === "individual" ? "Policy Holder Sum Insured" : "Sum Insured"}>
               <Select
                 value={String(form.sumInsured)}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, sumInsured: Number(v) }))}
+                onValueChange={(v) => {
+                  const nextSi = Number(v);
+                  setForm((prev) => ({
+                    ...prev,
+                    sumInsured: nextSi,
+                    members:
+                      prev.policyType === "individual"
+                        ? prev.members.map((m, i) =>
+                            i === 0 ? { ...m, sumInsured: nextSi } : m,
+                          )
+                        : prev.members,
+                  }));
+                }}
               >
                 <SelectTrigger className="h-11 w-full text-left">
                   <SelectValue placeholder="Select SI" />
@@ -390,6 +410,34 @@ export default function SvkkCalculatorPage() {
                     </CellShell>
                   </div>
                   <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
+                    {form.policyType === "individual" ? (
+                      <CellShell label="Sum Insured">
+                        <Select
+                          value={String(m.sumInsured ?? form.sumInsured)}
+                          onValueChange={(v) => {
+                            const nextSi = Number(v);
+                            setForm((prev) => ({
+                              ...prev,
+                              ...(i === 0 ? { sumInsured: nextSi } : {}),
+                              members: prev.members.map((row, idx) =>
+                                idx === i ? { ...row, sumInsured: nextSi } : row,
+                              ),
+                            }));
+                          }}
+                        >
+                          <SelectTrigger className="h-10 w-full text-left">
+                            <SelectValue placeholder="Select SI" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sumInsuredOpts.map((o) => (
+                              <SelectItem key={o.value} value={String(o.value)}>
+                                ₹{o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </CellShell>
+                    ) : null}
                     <CellShell label="Add-on Rider">
                       <Input
                         type="number"
@@ -401,9 +449,11 @@ export default function SvkkCalculatorPage() {
                         }
                       />
                     </CellShell>
-                    <p className="text-xs leading-relaxed text-[#66798f]">
-                      Age is auto-calculated from DOB and policy end date.
-                    </p>
+                    {form.policyType !== "individual" ? (
+                      <p className="text-xs leading-relaxed text-[#66798f]">
+                        Age is auto-calculated from DOB and policy end date.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               );

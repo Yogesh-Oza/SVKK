@@ -94,12 +94,18 @@ export function normalizeMember(
     relationship === "daughter"
       ? "female"
       : ((member.gender as MemberInput["gender"]) || (index === 0 ? "male" : ""));
+  const sumInsuredRaw = member.sumInsured;
+  const sumInsured =
+    sumInsuredRaw != null && Number.isFinite(Number(sumInsuredRaw)) && Number(sumInsuredRaw) > 0
+      ? Number(sumInsuredRaw)
+      : undefined;
   return {
     name: String(member.name || (index === 0 ? "Policy Holder" : "Member " + index)),
     dob: String(member.dob || ""),
     relationship,
     gender,
     addOnRider: Number(member.addOnRider) || 0,
+    ...(sumInsured != null ? { sumInsured } : {}),
   };
 }
 
@@ -259,7 +265,11 @@ export function quoteFromInput(
         error: "Age could not be calculated.",
       };
     }
-    const premium = premiumFor(state.charts, input.policyType, appliedRole, age, Number(input.sumInsured));
+    const rowSumInsured =
+      member.sumInsured != null && Number.isFinite(Number(member.sumInsured))
+        ? Number(member.sumInsured)
+        : Number(input.sumInsured);
+    const premium = premiumFor(state.charts, input.policyType, appliedRole, age, rowSumInsured);
     if ("error" in premium) {
       return { ...member, role: appliedRole, age, error: premium.error };
     }

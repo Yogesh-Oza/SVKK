@@ -20,6 +20,8 @@ export interface PremiumMemberInput {
   relationship: string;
   gender: string;
   riderAmount?: number;
+  /** Optional per-person SI; when set, overrides PremiumCalculationInput.sumInsured for that line. */
+  sumInsured?: number;
 }
 
 export interface PremiumCalculationInput {

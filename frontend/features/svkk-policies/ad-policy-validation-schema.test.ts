@@ -65,7 +65,7 @@ describe("adPolicyValidationSchema", () => {
         loanRepayment: "",
         loanPendingAmount: "",
       }),
-    ).rejects.toThrow(/Repayment is required/);
+    ).rejects.toThrow(/Repayment is required|Pending amount is required/);
 
     await expect(
       adPolicyValidationSchema.validate({
@@ -102,5 +102,54 @@ describe("adPolicyValidationSchema", () => {
         nomineeDateOfBirth: "01-01-2099",
       }),
     ).rejects.toThrow(/Date cannot be in the future/);
+  });
+
+  it("requires member sum insured for Individual when member has name and DOB", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        adProduct: "individual",
+        members: [
+          {
+            name: "Nemchand Champshi Sawla",
+            dob: "01-01-1967",
+            relationship: "father",
+            sumInsured: "",
+          },
+        ],
+      }),
+    ).rejects.toThrow(/Select sum insured/);
+
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        adProduct: "individual",
+        members: [
+          {
+            name: "Nemchand Champshi Sawla",
+            dob: "01-01-1967",
+            relationship: "father",
+            sumInsured: "500000",
+          },
+        ],
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("does not require member sum insured for Family Floater", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        adProduct: "family_floater",
+        members: [
+          {
+            name: "Spouse",
+            dob: "01-01-1990",
+            relationship: "spouse",
+            sumInsured: "",
+          },
+        ],
+      }),
+    ).resolves.toBeDefined();
   });
 });

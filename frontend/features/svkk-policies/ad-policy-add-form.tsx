@@ -827,25 +827,32 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const liveQuote = useMemo(() => {
     const rawKey = normPolicyKey(values.adProduct || "");
     const policyKey = premiumState.charts[rawKey] ? rawKey : "individual";
+    const isIndividual = policyKey === "individual";
     const sumInsured = resolveQuoteSumInsured(values.sumInsured, values.members);
     const endDate = values.previousEndDate || values.policyEnd || "";
     // Ignore placeholder/blank member rows (e.g. fetched policies with 0 members).
     const validMembers = (values.members || []).filter((m) => Boolean(m.name?.trim()) && Boolean(m.dob));
     const memberCount = 1 + validMembers.length;
+    const holderSi = parseInr(values.sumInsured);
     const holderMember: MemberInput = {
       name: values.policyHolder || "Policy Holder",
       dob: values.dob || "",
       relationship: (values.relation || "self").toLowerCase() || "self",
       gender: genderToQuoteInput(values.holderGender),
       addOnRider: parseInr(values.holderAddOns),
+      ...(isIndividual && holderSi > 0 ? { sumInsured: holderSi } : {}),
     };
-    const memberInputs: MemberInput[] = validMembers.map((m, i) => ({
-      name: m.name.trim() || `Member ${i + 1}`,
-      dob: m.dob,
-      relationship: (m.relationship || "member").toLowerCase() || "member",
-      gender: genderToQuoteInput(m.gender),
-      addOnRider: parseInr(m.addOnsAmount),
-    }));
+    const memberInputs: MemberInput[] = validMembers.map((m, i) => {
+      const memberSi = parseInr(m.sumInsured);
+      return {
+        name: m.name.trim() || `Member ${i + 1}`,
+        dob: m.dob,
+        relationship: (m.relationship || "member").toLowerCase() || "member",
+        gender: genderToQuoteInput(m.gender),
+        addOnRider: parseInr(m.addOnsAmount),
+        ...(isIndividual && memberSi > 0 ? { sumInsured: memberSi } : {}),
+      };
+    });
     return quoteFromInput(premiumState, {
       policyType: policyKey,
       memberCount,
@@ -2555,7 +2562,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                 />
               </div>
               <div className="space-y-2">
-                <RequiredLabel>Sum Insured (SI)</RequiredLabel>
+                <RequiredLabel>
+                  {normPolicyKey(values.adProduct || "") === "individual"
+                    ? "Policy Holder Sum Insured (SI)"
+                    : "Sum Insured (SI)"}
+                </RequiredLabel>
                 <DropdownCombobox
                   value={values.sumInsured}
                   onChange={(v) => void setFieldValueWithUnlock("sumInsured", v)}
@@ -3011,6 +3022,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       options={sumInsuredOptions}
                       placeholder="Select sum insured"
                       searchPlaceholder="Search amount"
+                    />
+                    <FormikError
+                      name={`members[${i}].sumInsured`}
+                      errors={errors}
+                      touched={touched}
+                      submitCount={submitCount}
                     />
                   </div>
                   <div className="space-y-1">

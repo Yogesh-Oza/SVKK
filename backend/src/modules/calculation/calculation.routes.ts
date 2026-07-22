@@ -320,6 +320,7 @@ export function createCalculationRouter(env: Env) {
                 relationship: z.string().min(1),
                 gender: z.string().min(1),
                 riderAmount: z.number().nonnegative().optional(),
+                sumInsured: z.number().positive().optional(),
               }),
             )
             .min(1),

@@ -101,7 +101,11 @@ export function calculatePremium(input: PremiumCalculationInput): PremiumResult 
           : input.memberChart ?? input.holderChart;
 
     const band = findBand(chart, m.age);
-    const basic = matrixPremium(chart, m.age, input.sumInsured);
+    const lineSumInsured =
+      m.sumInsured != null && Number.isFinite(Number(m.sumInsured)) && Number(m.sumInsured) > 0
+        ? Number(m.sumInsured)
+        : input.sumInsured;
+    const basic = matrixPremium(chart, m.age, lineSumInsured);
     const rider = Number(m.riderAmount ?? 0);
     const gross = basic + rider;
     const discountPercent = lineDiscountPercent(m.relationship, chart);
