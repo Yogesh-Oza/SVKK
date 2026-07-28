@@ -13,6 +13,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   allMisExportUiKeys,
+  buildMisExportColumnGroups,
   type MisCsvExportColumnGroup,
   type MisExportReport,
 } from "@/features/svkk-mis/mis-csv-export-columns";
@@ -59,15 +60,16 @@ export function MisCsvExportDialog({
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
+    const fallbackGroups = buildMisExportColumnGroups(report);
     try {
       const data = await svkkJson<ExportColumnsResponse>(`/mis/export-columns?report=${report}`);
-      const nextGroups = data.groups ?? [];
+      const nextGroups = (data.groups ?? []).length > 0 ? data.groups : fallbackGroups;
       setGroups(nextGroups);
       setSelected(new Set(allMisExportUiKeys(nextGroups)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load export columns");
-      setGroups([]);
-      setSelected(new Set());
+      setGroups(fallbackGroups);
+      setSelected(new Set(allMisExportUiKeys(fallbackGroups)));
     } finally {
       setLoading(false);
     }
