@@ -9,7 +9,7 @@ import {
 import { svkkJson } from "@/lib/svkk/api";
 import { resolveNotificationNavigation } from "@/lib/svkk/notification-navigation";
 import { getSvkkApiBase } from "@/lib/svkk/config";
-import { hasPermission } from "@/lib/svkk/permissions";
+import { canUpdateNotifications } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { Bell } from "lucide-react";
 import Link from "next/link";
@@ -28,8 +28,9 @@ type Notification = {
 };
 
 export function NotificationBell() {
-  const { user } = useSvkkAuth();
-  const canSee = user ? hasPermission(user.permissions, "notifications:read") : false;
+  const { user, can } = useSvkkAuth();
+  const canSee = can("notifications:read");
+  const canMarkRead = user?.permissions ? canUpdateNotifications(user.permissions) : false;
   const useSvkk = Boolean(getSvkkApiBase()) && canSee;
 
   const [open, setOpen] = React.useState(false);
@@ -73,7 +74,7 @@ export function NotificationBell() {
   }, [useSvkk, fetchNotifications]);
 
   const handleNotificationClick = async (n: Notification) => {
-    if (!n.isRead && useSvkk) {
+    if (!n.isRead && useSvkk && canMarkRead) {
       try {
         await svkkJson(`/notifications/${n.id}/read`, { method: "POST" });
         setUnreadCount((c) => Math.max(0, c - 1));

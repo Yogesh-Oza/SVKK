@@ -240,7 +240,7 @@ export async function updateRole(
   if (input.permissionKeys) {
     const resolved = resolvePermissionClosure(input.permissionKeys);
     if (isProtectedRoleSlug(role.slug)) {
-      if (!resolved.has(WILDCARD_PERMISSION) && !resolved.has("roles:manage")) {
+      if (!resolved.has(WILDCARD_PERMISSION) && !resolved.has("roles:update")) {
         throw new AppError("FORBIDDEN", "Cannot strip critical permissions from super-admin", 403);
       }
     }

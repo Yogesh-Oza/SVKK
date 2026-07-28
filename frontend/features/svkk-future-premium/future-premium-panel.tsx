@@ -30,6 +30,7 @@ import {
   buildFutureResults,
   computeFutureMis,
   filterFutureResults,
+  formatPolicyName,
   FUTURE_DISCOUNT_OPTIONS,
   FUTURE_POLICY_TYPE_OPTIONS,
   FUTURE_PREMIUM_SOURCE_OPTIONS,
@@ -69,6 +70,12 @@ function StatCard({ label, value, highlight }: { label: string; value: string | 
   );
 }
 
+function riskLabel(pct: number): "Low" | "Medium" | "High" {
+  if (pct > 15) return "High";
+  if (pct >= 5) return "Medium";
+  return "Low";
+}
+
 export function FuturePremiumPanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const {
@@ -96,6 +103,7 @@ export function FuturePremiumPanel() {
   const [policyFilter, setPolicyFilter] = useState("all");
   const [siFilter, setSiFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("default");
   const [selectedDetail, setSelectedDetail] = useState<FuturePremiumResult | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -115,10 +123,14 @@ export function FuturePremiumPanel() {
   const isDbSource = source === "policy_list_only";
 
   const mis = useMemo(() => computeFutureMis(generated ? results : []), [generated, results]);
-  const visibleRows = useMemo(
-    () => filterFutureResults(results, search, policyFilter, siFilter, statusFilter),
-    [results, search, policyFilter, siFilter, statusFilter],
-  );
+  const visibleRows = useMemo(() => {
+    const filtered = filterFutureResults(results, search, policyFilter, siFilter, statusFilter);
+    if (sortBy === "highest_increase") return [...filtered].sort((a, b) => b.premiumDiff - a.premiumDiff);
+    if (sortBy === "highest_percent") {
+      return [...filtered].sort((a, b) => b.premiumIncreasePct - a.premiumIncreasePct);
+    }
+    return filtered;
+  }, [results, search, policyFilter, siFilter, statusFilter, sortBy]);
   const tableRows = useMemo(() => {
     if (isDbSource) return visibleRows;
     const start = (page - 1) * pageSize;
@@ -172,6 +184,16 @@ export function FuturePremiumPanel() {
       else premiumIncrease.high += 1;
     }
     return { ageBand, premiumIncrease, futureSi, policyType, renewalMonth };
+  }, [visibleRows]);
+  const histogramBars = useMemo(() => {
+    const buckets = [
+      { label: "<=0%", count: visibleRows.filter((row) => row.premiumIncreasePct <= 0).length },
+      { label: "0-5%", count: visibleRows.filter((row) => row.premiumIncreasePct > 0 && row.premiumIncreasePct < 5).length },
+      { label: "5-15%", count: visibleRows.filter((row) => row.premiumIncreasePct >= 5 && row.premiumIncreasePct <= 15).length },
+      { label: ">15%", count: visibleRows.filter((row) => row.premiumIncreasePct > 15).length },
+    ];
+    const max = Math.max(1, ...buckets.map((bucket) => bucket.count));
+    return buckets.map((bucket) => ({ ...bucket, width: `${(bucket.count / max) * 100}%` }));
   }, [visibleRows]);
 
   const policyTypeOptions = useMemo(
@@ -556,7 +578,7 @@ export function FuturePremiumPanel() {
                 <SelectContent>
                   {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
                     <SelectItem key={policy} value={policy}>
-                      {policy.replace(/_/g, " ").toUpperCase()}
+                      {formatPolicyName(policy)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -629,9 +651,9 @@ export function FuturePremiumPanel() {
           <div><p className="text-muted-foreground text-xs">Future Year</p><p className="font-semibold">{yearOffsetLabel(yearOffset)}</p></div>
           <div><p className="text-muted-foreground text-xs">Calculation Date</p><p className="font-semibold">{results[0]?.calcDate || "—"}</p></div>
           <div><p className="text-muted-foreground text-xs">Calculation Year</p><p className="font-semibold">{results[0]?.calcYear || "—"}</p></div>
-          <div><p className="text-muted-foreground text-xs">Selected SI</p><p className="font-semibold">{futureSiMode === "change" ? `₹${rs(futureSiValue)}` : "Existing"}</p></div>
-          <div><p className="text-muted-foreground text-xs">Selected Discount</p><p className="font-semibold">{discountMode === "custom" ? `${customDiscountPct}%` : discountMode}</p></div>
-          <div><p className="text-muted-foreground text-xs">Selected Product</p><p className="font-semibold">{futurePolicyMode === "change" ? futurePolicyType : "Existing"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected SI</p><p className="font-semibold">{futureSiMode === "change" ? `Change to ₹${rs(futureSiValue)}` : "Keep Existing"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected Discount</p><p className="font-semibold">{discountMode === "custom" ? `Custom ${customDiscountPct}%` : discountMode === "chart" ? "Apply Chart Discount" : "Use Existing Discount"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected Product</p><p className="font-semibold">{futurePolicyMode === "change" ? formatPolicyName(futurePolicyType) : "Keep Existing Product"}</p></div>
           <div><p className="text-muted-foreground text-xs">Chart Version</p><p className="font-semibold">Live Admin Chart</p></div>
         </CardContent>
       </Card>
@@ -747,7 +769,7 @@ export function FuturePremiumPanel() {
           <div>
             <p className="font-semibold">Policy Type Distribution</p>
             {[...chartBuckets.policyType.entries()].map(([k, v]) => (
-              <p key={k} className="text-muted-foreground">{k}: {v}</p>
+              <p key={k} className="text-muted-foreground">{formatPolicyName(k)}: {v}</p>
             ))}
           </div>
           <div>
@@ -758,7 +780,19 @@ export function FuturePremiumPanel() {
           </div>
           <div>
             <p className="font-semibold">Premium Difference Histogram</p>
-            <p className="text-muted-foreground">Data grouped in increase buckets in this release.</p>
+            <div className="mt-2 space-y-2">
+              {histogramBars.map((bucket) => (
+                <div key={bucket.label}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span>{bucket.label}</span>
+                    <span>{bucket.count}</span>
+                  </div>
+                  <div className="bg-muted h-2 rounded-full">
+                    <div className="bg-primary h-2 rounded-full" style={{ width: bucket.width }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -773,7 +807,7 @@ export function FuturePremiumPanel() {
         <CardContent>
           <FutureMisCards
             groups={mis.byType}
-            formatLabel={(k) => k.replace(/_/g, " ").toUpperCase()}
+            formatLabel={(k) => formatPolicyName(k)}
           />
         </CardContent>
       </Card>
@@ -817,7 +851,7 @@ export function FuturePremiumPanel() {
                   <SelectItem value="all">All Policy Types</SelectItem>
                   {policyTypeOptions.map((v) => (
                     <SelectItem key={v} value={v}>
-                      {v.replace(/_/g, " ").toUpperCase()}
+                      {formatPolicyName(v)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -852,6 +886,19 @@ export function FuturePremiumPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Sort By</Label>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default</SelectItem>
+                  <SelectItem value="highest_increase">Highest Premium Increase</SelectItem>
+                  <SelectItem value="highest_percent">Highest Increase %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-md border">
@@ -874,6 +921,7 @@ export function FuturePremiumPanel() {
                   <TableHead>Future Premium</TableHead>
                   <TableHead>Difference</TableHead>
                   <TableHead>Increase %</TableHead>
+                  <TableHead>Risk</TableHead>
                   <TableHead>Reasons</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -909,6 +957,7 @@ export function FuturePremiumPanel() {
                       <TableCell>₹{rs(r.futurePremium)}</TableCell>
                       <TableCell>{r.premiumDiff >= 0 ? "+" : ""}₹{rs(r.premiumDiff)}</TableCell>
                       <TableCell>{r.premiumIncreasePct.toFixed(2)}%</TableCell>
+                      <TableCell>{riskLabel(r.premiumIncreasePct)}</TableCell>
                       <TableCell className="max-w-[220px] truncate">{r.reasons.join(", ") || "—"}</TableCell>
                       <TableCell>
                         {r.status === "Issue" ? (
@@ -921,7 +970,7 @@ export function FuturePremiumPanel() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={19} className="text-muted-foreground text-center">
+                    <TableCell colSpan={20} className="text-muted-foreground text-center">
                       {generated ? "No rows match the current filters." : "Generate to see results."}
                     </TableCell>
                   </TableRow>

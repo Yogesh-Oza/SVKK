@@ -87,6 +87,7 @@ import {
 import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import {
   canDeletePolicy,
+  canExportPolicy,
   canUpdatePolicy,
   hasPermission,
 } from "@/lib/svkk/permissions";
@@ -263,6 +264,7 @@ export default function SvkkPoliciesPage() {
   const perms = user?.permissions ?? [];
   const canDel = canDeletePolicy(perms) && online;
   const canEdit = canUpdatePolicy(perms);
+  const canExport = canExportPolicy(perms);
   const canCsvUpload = hasPermission(perms, "upload:csv");
   const receiptImageUrls = useReceiptSettings();
   const { options: ddOptions } = useDropdownOptions();
@@ -1368,7 +1370,7 @@ export default function SvkkPoliciesPage() {
                   variant="default"
                   size="sm"
                   className="gap-1.5"
-                  disabled={loading || exportBusy}
+                  disabled={!canExport || loading || exportBusy}
                   onClick={() => setExportDialogOpen(true)}
                 >
                   <Download className="size-3.5" />

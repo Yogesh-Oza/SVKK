@@ -72,6 +72,14 @@ export function yearOffsetLabel(v: string): string {
   return `${n} Yr`;
 }
 
+export function formatPolicyName(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "—";
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\w\S*/g, (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+}
+
 function ymd(d: Date | null): string {
   if (!d) return "";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -89,6 +97,29 @@ function fiscalYearLabelFromDate(value: string): string {
   const start = d.getMonth() >= 3 ? y : y - 1;
   const end2 = String((start + 1) % 100).padStart(2, "0");
   return `${start}-${end2}`;
+}
+
+export function shiftPolicyYearLabel(label: string, offset: number): string {
+  const match = String(label || "").trim().match(/^(\d{4})-(\d{2}|\d{4})$/);
+  if (!match) return label || "—";
+  const startYear = Number(match[1]);
+  const endPart = match[2]!;
+  const endYear = endPart.length === 2 ? Math.floor(startYear / 100) * 100 + Number(endPart) : Number(endPart);
+  const nextStart = startYear + offset;
+  const nextEnd = endYear + offset;
+  return `${nextStart}-${String(nextEnd % 100).padStart(2, "0")}`;
+}
+
+export function alignDateToPolicyYear(value: string, policyYearLabel: string, kind: "start" | "end"): string {
+  const d = dateParse(value);
+  if (!d) return value || "";
+  const match = String(policyYearLabel || "").trim().match(/^(\d{4})-(\d{2}|\d{4})$/);
+  if (!match) return ymd(d);
+  const startYear = Number(match[1]);
+  const endPart = match[2]!;
+  const endYear = endPart.length === 2 ? Math.floor(startYear / 100) * 100 + Number(endPart) : Number(endPart);
+  const targetYear = kind === "start" ? startYear : endYear;
+  return ymd(new Date(targetYear, d.getMonth(), Math.min(d.getDate(), new Date(targetYear, d.getMonth() + 1, 0).getDate())));
 }
 
 export function addYearsToDateString(value: string, years: number): string {
@@ -126,23 +157,37 @@ function buildCalculationContext(
   yearOffset: string,
   currentStartDate: string,
   currentEndDate: string,
+  currentPolicyYear?: string,
 ): FutureCalculationContext {
   const offset = yearOffsetValue(yearOffset);
   const calculationDate = addYearsToDateString(todayStamp(), offset);
   const calculationYear = dateParse(calculationDate)?.getFullYear() ?? new Date().getFullYear();
-  const futureStartDate = addYearsToDateString(currentStartDate, offset);
-  const futureEndDate = addYearsToDateString(currentEndDate, offset);
+  const basePolicyYear = currentPolicyYear?.trim() || fiscalYearLabelFromDate(currentEndDate);
+  const derivedStartFromEnd = (() => {
+    const end = dateParse(currentEndDate);
+    if (!end) return "";
+    const derived = new Date(end.getFullYear() - 1, end.getMonth(), end.getDate() + 1);
+    return ymd(derived);
+  })();
+  const normalizedCurrentStart = currentPolicyYear
+    ? alignDateToPolicyYear(currentStartDate || derivedStartFromEnd, currentPolicyYear, "start")
+    : ymd(dateParse(currentStartDate || derivedStartFromEnd));
+  const normalizedCurrentEnd = currentPolicyYear
+    ? alignDateToPolicyYear(currentEndDate, currentPolicyYear, "end")
+    : ymd(dateParse(currentEndDate));
+  const futureStartDate = addYearsToDateString(normalizedCurrentStart, offset);
+  const futureEndDate = addYearsToDateString(normalizedCurrentEnd, offset);
   return {
     yearOffset: offset,
     futureYearLabel: yearOffsetLabel(yearOffset),
     calculationDate,
     calculationYear,
-    currentStartDate,
-    currentEndDate,
+    currentStartDate: normalizedCurrentStart,
+    currentEndDate: normalizedCurrentEnd,
     futureStartDate,
     futureEndDate,
-    currentPolicyYear: fiscalYearLabelFromDate(currentEndDate),
-    futurePolicyYear: fiscalYearLabelFromDate(futureEndDate),
+    currentPolicyYear: basePolicyYear,
+    futurePolicyYear: shiftPolicyYearLabel(basePolicyYear, offset),
   };
 }
 
@@ -233,12 +278,23 @@ function collectReasons(
   members: MemberDelta[],
 ): FuturePremiumResult["reasons"] {
   const reasons = new Set<FuturePremiumResult["reasons"][number]>();
-  if (futureQuote.net > currentQuote.net) reasons.add("Age Increased");
+  const discountPctChanged = futureQuote.rows.some((row, index) => {
+    const current = currentQuote.rows[index];
+    if (row.error || current?.error) return false;
+    return (row.pct ?? 0) !== (current?.pct ?? 0);
+  });
+  if (members.some((m) => (m.futureAge ?? 0) > (m.currentAge ?? 0))) reasons.add("Age Increased");
   if (members.some((m) => m.bandChanged)) reasons.add("Age Band Changed");
   if (currentSi !== futureSi) reasons.add("SI Changed");
   if (currentPolicy !== futurePolicy) reasons.add("Product Changed");
-  if (futureQuote.disc !== currentQuote.disc) reasons.add("Discount Changed");
-  if (futureQuote.gross !== currentQuote.gross) reasons.add("Rate Chart Updated");
+  if (discountPctChanged) reasons.add("Discount Changed");
+  if (members.some((m) => m.issue?.includes("No premium found for SI"))) reasons.add("Unsupported SI");
+  if (members.some((m) => m.issue?.includes("No age band found"))) reasons.add("Invalid Age Band");
+  if (!currentPolicy || !futurePolicy) reasons.add("Missing Policy Type");
+  if (members.some((m) => m.issue?.includes("Age could not be calculated."))) reasons.add("Chart Configuration Missing");
+  if (futureQuote.gross !== currentQuote.gross && currentSi === futureSi && currentPolicy === futurePolicy) {
+    reasons.add("Rate Chart Updated");
+  }
   return [...reasons];
 }
 
@@ -263,7 +319,8 @@ export function buildFutureResults(
       "expiry_date",
       "policy end",
     ]);
-    const context = buildCalculationContext(yearOffset, baseStart, baseEnd);
+    const currentPolicyYear = getv(row, ["year", "policy_year", "policy year"]);
+    const context = buildCalculationContext(yearOffset, baseStart, baseEnd, currentPolicyYear);
     const start = context.futureStartDate;
     const end = context.futureEndDate;
     const futurePolicy =
@@ -319,7 +376,7 @@ export function buildFutureResults(
       customerId,
       policyNo,
       holder,
-      policy: futurePolicy,
+      policy: formatPolicyName(futurePolicy),
       memberCount,
       si: futureSi,
       start,
@@ -332,8 +389,8 @@ export function buildFutureResults(
       scenario,
       currentSi,
       futureSi,
-      currentPolicy: policy,
-      futurePolicy,
+      currentPolicy: formatPolicyName(policy),
+      futurePolicy: formatPolicyName(futurePolicy),
       currentPremium: currentQuote.net,
       futurePremium: quote.net,
       premiumDiff,

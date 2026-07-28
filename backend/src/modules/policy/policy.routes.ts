@@ -502,7 +502,7 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export-sample.csv", requirePermission("policy:read"), async (_req, res, next) => {
+  r.get("/export-sample.csv", requirePermission("upload:csv"), async (_req, res, next) => {
     try {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="policies-import-sample.csv"');
@@ -512,7 +512,7 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export-sample-policy-update.csv", requirePermission("policy:read"), async (_req, res, next) => {
+  r.get("/export-sample-policy-update.csv", requirePermission("upload:csv"), async (_req, res, next) => {
     try {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
@@ -525,7 +525,7 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export-columns", requirePermission("policy:read"), async (req, res, next) => {
+  r.get("/export-columns", requirePermission("policy:export"), async (req, res, next) => {
     try {
       const includeCommission = hasPermissionInSet(req.permissions!, "policy:commission");
       const groups = buildPolicyCsvExportColumnGroups({ includeCommission });
@@ -535,7 +535,7 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export.json", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
+  r.get("/export.json", requirePermission("policy:export"), async (req, res, next) => {
     try {
       const q = policyExportPagedQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
@@ -579,7 +579,7 @@ export function createPolicyRouter(env: Env) {
     }
   });
 
-  r.get("/export.csv", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
+  r.get("/export.csv", requirePermission("policy:export"), async (req, res, next) => {
     try {
       const q = policyExportQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);

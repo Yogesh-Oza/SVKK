@@ -5,6 +5,7 @@ import { ImageIcon, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReceiptImagePreview } from "@/features/svkk-policies/receipt-image-preview";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import {
   DEFAULT_RECEIPT_FOOTER_IMAGE,
@@ -20,6 +21,9 @@ import { invalidateReceiptSettingsCache } from "@/lib/svkk/use-receipt-settings"
 import { toast } from "sonner";
 
 export default function ReceiptSettingsPage() {
+  const { can } = useSvkkAuth();
+  const canReadSettings = can("settings:read");
+  const canUpdateSettings = can("settings:update");
   const [headerUrl, setHeaderUrl] = useState("");
   const [footerUrl, setFooterUrl] = useState("");
   const [headerFileId, setHeaderFileId] = useState("");
@@ -45,6 +49,7 @@ export default function ReceiptSettingsPage() {
     let cancelled = false;
     (async () => {
       try {
+        if (!canReadSettings) return;
         const settings = await svkkJson<Record<string, string>>("/settings");
         if (cancelled) return;
         setHeaderUrl(settings.receipt_header_image ?? "");
@@ -60,7 +65,7 @@ export default function ReceiptSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canReadSettings]);
 
   const uploadToOneDrive = useCallback(
     async (file: File): Promise<{ webViewLink: string; fileId: string } | null> => {
@@ -81,8 +86,11 @@ export default function ReceiptSettingsPage() {
   );
 
   const saveSetting = useCallback(async (key: string, value: string) => {
+    if (!canUpdateSettings) {
+      throw new Error("You do not have permission to update receipt settings.");
+    }
     await backendApi.put(`/settings/${key}`, { value });
-  }, []);
+  }, [canUpdateSettings]);
 
   async function handleHeaderUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -171,6 +179,10 @@ export default function ReceiptSettingsPage() {
     };
   }, [headerLocalPreview, footerLocalPreview]);
 
+  if (!canReadSettings) {
+    return <p className="text-muted-foreground text-sm">You do not have permission to view receipt settings.</p>;
+  }
+
   if (!loaded) {
     return (
       <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
@@ -249,7 +261,7 @@ export default function ReceiptSettingsPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={uploadingHeader || savingHeader}
+              disabled={!canUpdateSettings || uploadingHeader || savingHeader}
               onClick={() => headerInputRef.current?.click()}
             >
               {uploadingHeader ? (
@@ -302,7 +314,7 @@ export default function ReceiptSettingsPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={uploadingFooter || savingFooter}
+              disabled={!canUpdateSettings || uploadingFooter || savingFooter}
               onClick={() => footerInputRef.current?.click()}
             >
               {uploadingFooter ? (

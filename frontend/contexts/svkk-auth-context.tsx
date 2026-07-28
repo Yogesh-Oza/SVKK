@@ -1,6 +1,7 @@
 "use client";
 
 import { registerSessionInvalidationHandler } from "@/lib/svkk/session-invalidation";
+import { hasAnyPermission, hasPermission } from "@/lib/svkk/permissions";
 import { clearAuth, initializeAuth, loginWithPassword, logoutUser } from "@/lib/store/slices/auth-slice";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import type { SvkkUser } from "@/lib/svkk/types";
@@ -19,9 +20,12 @@ export type { SvkkUser } from "@/lib/svkk/types";
 
 type SvkkAuthState = {
   user: SvkkUser | null;
+  permissions: string[];
   loading: boolean;
   /** True once `/auth/me` has resolved and `user.permissions` is available. */
   permissionsHydrated: boolean;
+  can: (key: string) => boolean;
+  canAny: (keys: readonly string[]) => boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -70,10 +74,17 @@ export function SvkkAuthProvider({ children }: { children: ReactNode }) {
   const loading = status === "loading";
   const permissionsHydrated =
     status === "authenticated" && user != null && Array.isArray(user.permissions);
+  const permissions = user?.permissions ?? [];
+
+  const can = useCallback((key: string) => hasPermission(permissions, key), [permissions]);
+  const canAny = useCallback(
+    (keys: readonly string[]) => hasAnyPermission(permissions, keys),
+    [permissions],
+  );
 
   const value = useMemo(
-    () => ({ user, loading, permissionsHydrated, login, logout }),
-    [user, loading, permissionsHydrated, login, logout],
+    () => ({ user, permissions, loading, permissionsHydrated, can, canAny, login, logout }),
+    [user, permissions, loading, permissionsHydrated, can, canAny, login, logout],
   );
 
   return <SvkkAuthContext.Provider value={value}>{children}</SvkkAuthContext.Provider>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@/contexts/auth-context";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import {
   flexRender,
   getCoreRowModel,
@@ -72,7 +72,7 @@ interface DataTableProps {
 }
 
 export function DataTable({ users, onSuccess }: DataTableProps) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, can } = useSvkkAuth();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -80,6 +80,9 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const canCreateUsers = can("users:create");
+  const canUpdateUsers = can("users:update");
+  const canDeleteUsers = can("users:delete");
 
   const getRoleColor = (role: string) => {
     switch (role) {
@@ -188,44 +191,52 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
         const user = row.original;
         return (
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 cursor-pointer"
-              onClick={() => handleEditClick(user)}
-            >
-              <Pencil className="size-4" />
-              <span className="sr-only">Edit user</span>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 cursor-pointer"
-                >
-                  <EllipsisVertical className="size-4" />
-                  <span className="sr-only">More actions</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() => handleEditClick(user)}
-                >
-                  Edit User
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  className="cursor-pointer"
-                  onClick={() => handleDeleteClick(user)}
-                >
-                  <Trash2 className="size-4" />
-                  Delete User
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {canUpdateUsers ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 cursor-pointer"
+                onClick={() => handleEditClick(user)}
+              >
+                <Pencil className="size-4" />
+                <span className="sr-only">Edit user</span>
+              </Button>
+            ) : null}
+            {canUpdateUsers || canDeleteUsers ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 cursor-pointer"
+                  >
+                    <EllipsisVertical className="size-4" />
+                    <span className="sr-only">More actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {canUpdateUsers ? (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={() => handleEditClick(user)}
+                    >
+                      Edit User
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canUpdateUsers && canDeleteUsers ? <DropdownMenuSeparator /> : null}
+                  {canDeleteUsers ? (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      className="cursor-pointer"
+                      onClick={() => handleDeleteClick(user)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete User
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         );
       },
@@ -267,16 +278,18 @@ export function DataTable({ users, onSuccess }: DataTableProps) {
           </div>
         </div>
         <div className="flex items-center space-x-2">
-          <Button
-            className="cursor-pointer"
-            onClick={() => {
-              setEditingUser(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            Add New User
-          </Button>
+          {canCreateUsers ? (
+            <Button
+              className="cursor-pointer"
+              onClick={() => {
+                setEditingUser(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="size-4" />
+              Add New User
+            </Button>
+          ) : null}
         </div>
       </div>
 

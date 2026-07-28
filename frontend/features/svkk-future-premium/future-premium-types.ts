@@ -61,7 +61,11 @@ export type ChangeReasonCode =
   | "SI Changed"
   | "Discount Changed"
   | "Product Changed"
-  | "Rate Chart Updated";
+  | "Rate Chart Updated"
+  | "Unsupported SI"
+  | "Invalid Age Band"
+  | "Missing Policy Type"
+  | "Chart Configuration Missing";
 
 export type FuturePremiumResult = {
   source: string;

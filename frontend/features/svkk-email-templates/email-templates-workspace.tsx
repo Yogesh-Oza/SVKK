@@ -71,11 +71,13 @@ type EmailTemplatesWorkspaceProps = {
   onSubjectChange: (id: string, subject: string) => void;
   onBodyChange: (id: string, body: string) => void;
   onSave: (id: string) => void;
+  canSave?: boolean;
   onReset: (id: string) => void;
   testEmail: string;
   onTestEmailChange: (email: string) => void;
   sendingTestId: string | null;
   onSendTest: (id: string) => void;
+  canSendTest?: boolean;
 };
 
 export function EmailTemplatesWorkspace({
@@ -87,11 +89,13 @@ export function EmailTemplatesWorkspace({
   onSubjectChange,
   onBodyChange,
   onSave,
+  canSave = true,
   onReset,
   testEmail,
   onTestEmailChange,
   sendingTestId,
   onSendTest,
+  canSendTest = true,
 }: EmailTemplatesWorkspaceProps) {
   const groups = useMemo(() => groupTemplates(templates), [templates]);
   const active = templates.find((t) => t.id === selectedId) ?? templates[0];
@@ -194,11 +198,13 @@ export function EmailTemplatesWorkspace({
             onSubjectChange={(subject) => onSubjectChange(active.id, subject)}
             onBodyChange={(body) => onBodyChange(active.id, body)}
             onSave={() => onSave(active.id)}
+            canSave={canSave}
             onReset={() => onReset(active.id)}
             testEmail={testEmail}
             onTestEmailChange={onTestEmailChange}
             sendingTest={sendingTestId === active.id}
             onSendTest={() => onSendTest(active.id)}
+            canSendTest={canSendTest}
           />
         </CardContent>
       </Card>

@@ -13,7 +13,10 @@ import {
 import { normPolicy } from "./future-csv-utils";
 import {
   addYearsToDateString,
+  alignDateToPolicyYear,
+  formatPolicyName,
   policyYearSortKey,
+  shiftPolicyYearLabel,
   sourceLabel,
   type FutureGenerationOptions,
   yearOffsetValue,
@@ -150,11 +153,13 @@ function quoteFromPolicyFormForOffset(
   formValues: ReturnType<typeof policyDetailToAdFormValues>,
   yearOffset: string,
   premiumState: PremiumState,
+  policyYearLabel: string,
   options: FutureGenerationOptions = {},
 ) {
   const offset = yearOffsetValue(yearOffset);
   const baseEnd = formValues.policyEnd || formValues.previousEndDate || "";
-  const endDate = addYearsToDateString(baseEnd, offset);
+  const normalizedEndDate = alignDateToPolicyYear(baseEnd, policyYearLabel, "end");
+  const endDate = addYearsToDateString(normalizedEndDate, offset);
   const currentSi = money(formValues.sumInsured) || 0;
   const selectedSi =
     options.futureSiMode === "change" && options.selectedFutureSi
@@ -229,10 +234,19 @@ export function policyDetailToLookupResult(
 
   const baseEnd = formValues.policyEnd || formValues.previousEndDate || "";
   const offset = yearOffsetValue(yearOffset);
-  const start = addYearsToDateString(formValues.policyStart || "", offset);
-  const end = addYearsToDateString(baseEnd, offset);
-  const currentQuote = quoteFromStoredFormValues(formValues, premiumState, baseEnd, { useStoredAges: false });
-  const quote = quoteFromPolicyFormForOffset(formValues, yearOffset, premiumState, options);
+  const derivedCurrentStart = (() => {
+    const endDate = dateParse(baseEnd);
+    if (!endDate) return "";
+    return new Date(endDate.getFullYear() - 1, endDate.getMonth(), endDate.getDate() + 1)
+      .toISOString()
+      .slice(0, 10);
+  })();
+  const normalizedCurrentStart = alignDateToPolicyYear(formValues.policyStart || derivedCurrentStart, yearLabel, "start");
+  const normalizedCurrentEnd = alignDateToPolicyYear(baseEnd, yearLabel, "end");
+  const start = addYearsToDateString(normalizedCurrentStart, offset);
+  const end = addYearsToDateString(normalizedCurrentEnd, offset);
+  const currentQuote = quoteFromStoredFormValues(formValues, premiumState, normalizedCurrentEnd, { useStoredAges: false });
+  const quote = quoteFromPolicyFormForOffset(formValues, yearOffset, premiumState, yearLabel, options);
   const memberCount = quote.rows.length;
   const endParsed = dateParse(baseEnd);
   const calcDate = addYearsToDateString(new Date().toISOString().slice(0, 10), offset);
@@ -278,12 +292,23 @@ export function policyDetailToLookupResult(
     };
   });
   const reasons: FuturePremiumResult["reasons"] = [];
-  if (quote.net > currentQuote.net) reasons.push("Age Increased");
+  if (memberTimeline.some((m) => (m.futureAge ?? 0) > (m.currentAge ?? 0))) reasons.push("Age Increased");
   if (memberTimeline.some((m) => m.bandChanged)) reasons.push("Age Band Changed");
   if (futureSi !== currentSi) reasons.push("SI Changed");
   if (futurePolicy !== currentPolicy) reasons.push("Product Changed");
-  if (quote.disc !== currentQuote.disc) reasons.push("Discount Changed");
-  if (quote.gross !== currentQuote.gross) reasons.push("Rate Chart Updated");
+  const discountPctChanged = quote.rows.some((row, index) => {
+    const current = currentQuote.rows[index];
+    if (row.error || current?.error) return false;
+    return (row.pct ?? 0) !== (current?.pct ?? 0);
+  });
+  if (discountPctChanged) reasons.push("Discount Changed");
+  if (memberTimeline.some((m) => m.issue?.includes("No premium found for SI"))) reasons.push("Unsupported SI");
+  if (memberTimeline.some((m) => m.issue?.includes("No age band found"))) reasons.push("Invalid Age Band");
+  if (!currentPolicy || !futurePolicy) reasons.push("Missing Policy Type");
+  if (memberTimeline.some((m) => m.issue?.includes("Age could not be calculated."))) reasons.push("Chart Configuration Missing");
+  if (quote.gross !== currentQuote.gross && futureSi === currentSi && futurePolicy === currentPolicy) {
+    reasons.push("Rate Chart Updated");
+  }
 
   return {
     source: sourceLabel("policy_list_only"),
@@ -291,7 +316,7 @@ export function policyDetailToLookupResult(
     customerId: detail.insuredParty.customerId?.trim() || "—",
     policyNo: detail.policyNo?.trim() || "—",
     holder: formValues.policyHolder?.trim() || detail.insuredParty.name?.trim() || "—",
-    policy: futurePolicy,
+    policy: formatPolicyName(futurePolicy),
     memberCount,
     si: futureSi,
     start,
@@ -305,12 +330,12 @@ export function policyDetailToLookupResult(
       futureYearLabel: offset === 0 ? "Current Year" : offset === 1 ? "Next Year" : `${offset} Yr`,
       calculationDate: calcDate,
       calculationYear: calcYear,
-      currentStartDate: formValues.policyStart || "",
-      currentEndDate: baseEnd,
+      currentStartDate: normalizedCurrentStart,
+      currentEndDate: normalizedCurrentEnd,
       futureStartDate: start,
       futureEndDate: end,
       currentPolicyYear: yearLabel,
-      futurePolicyYear: `${calcYear}-${String((calcYear + 1) % 100).padStart(2, "0")}`,
+      futurePolicyYear: shiftPolicyYearLabel(yearLabel, offset),
     },
     scenario: {
       futureSi,
@@ -321,8 +346,8 @@ export function policyDetailToLookupResult(
     },
     currentSi,
     futureSi,
-    currentPolicy,
-    futurePolicy,
+    currentPolicy: formatPolicyName(currentPolicy),
+    futurePolicy: formatPolicyName(futurePolicy),
     currentPremium: currentQuote.net,
     futurePremium: quote.net,
     premiumDiff: quote.net - currentQuote.net,

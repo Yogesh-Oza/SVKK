@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DropdownType } from "@prisma/client";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
+import { requireAnyPermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import { loadRoleGeoValues } from "../../services/role-geo.service.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
@@ -17,7 +18,23 @@ export function createDropdownsRouter(env: Env) {
   const r = Router();
   r.use(requireAuth(env));
 
-  r.get("/", async (req, res, next) => {
+  r.get(
+    "/",
+    requireAnyPermission([
+      "policy:read",
+      "policy:create",
+      "policy:update",
+      "claim:read",
+      "claim:create",
+      "claim:update",
+      "future:read",
+      "future:lookup",
+      "mis:policy:read",
+      "mis:claim:read",
+      "dashboard:read",
+      "admin:dropdowns:read",
+    ]),
+    async (req, res, next) => {
     try {
       const typeFilter = req.query.type
         ? z.enum(dropdownTypeValues).parse(req.query.type)
@@ -78,10 +95,22 @@ export function createDropdownsRouter(env: Env) {
     } catch (e) {
       next(e);
     }
-  });
+    },
+  );
 
   /** Policy types for add/edit forms (same table as admin Policy Types). */
-  r.get("/policy-types", async (_req, res, next) => {
+  r.get(
+    "/policy-types",
+    requireAnyPermission([
+      "policy:read",
+      "policy:create",
+      "policy:update",
+      "calculation:live",
+      "future:read",
+      "mis:policy:read",
+      "admin:dropdowns:read",
+    ]),
+    async (_req, res, next) => {
     try {
       const rows = await prisma.policyType.findMany({
         orderBy: { name: "asc" },
@@ -91,10 +120,19 @@ export function createDropdownsRouter(env: Env) {
     } catch (e) {
       next(e);
     }
-  });
+    },
+  );
 
   /** Public read of the admin-managed Policy Group list (no admin permission required). */
-  r.get("/policy-groupings", async (_req, res, next) => {
+  r.get(
+    "/policy-groupings",
+    requireAnyPermission([
+      "policy:read",
+      "policy:create",
+      "policy:update",
+      "admin:dropdowns:read",
+    ]),
+    async (_req, res, next) => {
     try {
       const rows = await prisma.policyGroupingOption.findMany({
         orderBy: { name: "asc" },
@@ -103,7 +141,8 @@ export function createDropdownsRouter(env: Env) {
     } catch (e) {
       next(e);
     }
-  });
+    },
+  );
 
   return r;
 }

@@ -3,7 +3,7 @@ import multer from "multer";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import { CsvImportMode, CsvUpdateMode } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
@@ -119,7 +119,7 @@ export function createUploadRouter(env: Env) {
   /** Stream OneDrive file bytes for receipt header/footer (embed in print HTML). */
   r.get(
     "/one-drive/by-share/content",
-    requirePermission("policy:read"),
+    requireAnyPermission(["receipt:create", "settings:read"]),
     async (req, res, next) => {
       try {
         const url = z.string().url().parse(req.query.url);
@@ -138,7 +138,7 @@ export function createUploadRouter(env: Env) {
 
   r.get(
     "/one-drive/:fileId/content",
-    requirePermission("policy:read"),
+    requireAnyPermission(["receipt:create", "settings:read"]),
     async (req, res, next) => {
       try {
         const fileId = z.string().min(1).parse(req.params.fileId);

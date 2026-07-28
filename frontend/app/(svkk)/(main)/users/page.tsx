@@ -6,17 +6,16 @@ import type { User } from "@/features/users/utils/schema";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { apiGet } from "@/lib/api/svkk-client";
 import { getSvkkApiBase } from "@/lib/svkk/config";
-import { canManageUsers } from "@/lib/svkk/permissions";
 import { getSvkkErrorMessage } from "@/features/users/utils/api-error";
 import { useCallback, useEffect, useState } from "react";
 
 export default function SvkkUsersPage() {
-  const { user, permissionsHydrated } = useSvkkAuth();
+  const { permissionsHydrated, can } = useSvkkAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const missingUrl = !getSvkkApiBase();
-  const canManage = user?.permissions ? canManageUsers(user.permissions) : false;
+  const canReadUsers = can("users:read");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -46,11 +45,11 @@ export default function SvkkUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (missingUrl || !canManage || !permissionsHydrated) {
+    if (missingUrl || !canReadUsers || !permissionsHydrated) {
       return;
     }
     void fetchUsers();
-  }, [missingUrl, canManage, permissionsHydrated, fetchUsers]);
+  }, [missingUrl, canReadUsers, permissionsHydrated, fetchUsers]);
 
   if (missingUrl) {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
@@ -64,12 +63,12 @@ export default function SvkkUsersPage() {
     );
   }
 
-  if (!canManage) {
+  if (!canReadUsers) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
         <h2 className="text-xl font-semibold">Access denied</h2>
         <p className="text-muted-foreground max-w-md text-sm">
-          You need users:manage permission to manage users.
+          You need users:read permission to view users.
         </p>
       </div>
     );

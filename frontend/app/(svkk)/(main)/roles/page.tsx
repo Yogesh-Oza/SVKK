@@ -3,7 +3,6 @@
 import { RoleFormDialog, type RbacRoleRow } from "@/features/rbac/components/role-form-dialog";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { apiDelete, apiGet, apiPatch } from "@/lib/api/svkk-client";
-import { canManageRoles } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,14 +18,19 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export default function RolesPage() {
-  const { user, permissionsHydrated } = useSvkkAuth();
+  const { permissionsHydrated, can } = useSvkkAuth();
   const [roles, setRoles] = useState<RbacRoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RbacRoleRow | null>(null);
   const [cloning, setCloning] = useState<RbacRoleRow | null>(null);
 
-  const canManage = user?.permissions ? canManageRoles(user.permissions) : false;
+  const canReadRoles = can("roles:read");
+  const canCreateRoles = can("roles:create");
+  const canUpdateRoles = can("roles:update");
+  const canCloneRoles = can("roles:clone");
+  const canToggleRoles = can("roles:toggle");
+  const canDeleteRoles = can("roles:delete");
 
   const fetchRoles = useCallback(async () => {
     setLoading(true);
@@ -42,9 +46,9 @@ export default function RolesPage() {
   }, []);
 
   useEffect(() => {
-    if (!getSvkkApiBase() || !canManage || !permissionsHydrated) return;
+    if (!getSvkkApiBase() || !canReadRoles || !permissionsHydrated) return;
     void fetchRoles();
-  }, [canManage, permissionsHydrated, fetchRoles]);
+  }, [canReadRoles, permissionsHydrated, fetchRoles]);
 
   const handleToggleActive = async (role: RbacRoleRow) => {
     try {
@@ -80,12 +84,12 @@ export default function RolesPage() {
     );
   }
 
-  if (!canManage) {
+  if (!canReadRoles) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
         <h2 className="text-xl font-semibold">Access denied</h2>
         <p className="text-muted-foreground max-w-md text-sm">
-          You need roles:manage permission to manage roles.
+          You need roles:read permission to view roles.
         </p>
       </div>
     );
@@ -100,15 +104,17 @@ export default function RolesPage() {
             Create custom roles and assign permissions
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setCloning(null);
-            setDialogOpen(true);
-          }}
-        >
-          Create role
-        </Button>
+        {canCreateRoles ? (
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setCloning(null);
+              setDialogOpen(true);
+            }}
+          >
+            Create role
+          </Button>
+        ) : null}
       </div>
 
       {loading ? (
@@ -148,44 +154,52 @@ export default function RolesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditing(role);
-                        setCloning(null);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setCloning(role);
-                        setEditing(null);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      Clone
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleToggleActive(role)}
-                      disabled={role.isSystem}
-                    >
-                      {role.isActive ? "Disable" : "Enable"}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => void handleDelete(role)}
-                      disabled={role.isSystem}
-                    >
-                      Delete
-                    </Button>
+                    {canUpdateRoles ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(role);
+                          setCloning(null);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    ) : null}
+                    {canCloneRoles ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setCloning(role);
+                          setEditing(null);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        Clone
+                      </Button>
+                    ) : null}
+                    {canToggleRoles ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleToggleActive(role)}
+                        disabled={role.isSystem}
+                      >
+                        {role.isActive ? "Disable" : "Enable"}
+                      </Button>
+                    ) : null}
+                    {canDeleteRoles ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => void handleDelete(role)}
+                        disabled={role.isSystem}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

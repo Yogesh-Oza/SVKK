@@ -59,12 +59,12 @@ const NAV: NavEntry[] = [
   { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
   { id: "mis", href: "/mis", label: "MIS", permission: "mis:policy:read" },
   { id: "notifications", href: "/notifications", label: "Notifications", permission: "notifications:read" },
-  { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:policyTypes" },
-  { id: "roles", href: "/roles", label: "Roles & permissions", permission: "roles:manage" },
-  { id: "users", href: "/users", label: "Users", permission: "users:manage" },
-  { id: "settings", href: "/receipt-settings", label: "Receipt Settings", permission: "admin:settings" },
-  { id: "emailTemplates", href: "/email-templates", label: "Email templates", permission: "admin:settings" },
-  { id: "categoryForm", href: "/category-form", label: "Category form", permission: "admin:settings" },
+  { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:dropdowns:read" },
+  { id: "roles", href: "/roles", label: "Roles & permissions", permission: "roles:read" },
+  { id: "users", href: "/users", label: "Users", permission: "users:read" },
+  { id: "settings", href: "/receipt-settings", label: "Receipt Settings", permission: "settings:read" },
+  { id: "emailTemplates", href: "/email-templates", label: "Email templates", permission: "emailTemplates:read" },
+  { id: "categoryForm", href: "/category-form", label: "Category form", permission: "categoryForm:read" },
   { id: "logs", href: "/logs", label: "Activity logs", permission: "logs:read" },
 ];
 
@@ -74,6 +74,13 @@ export type SvkkRole = "USER" | "SUPERVISOR" | "ADMIN" | "SUPER_ADMIN";
 export function hasPermission(permissions: string[] | undefined, key: string): boolean {
   if (!permissions?.length) return false;
   return permissions.includes(WILDCARD_PERMISSION) || permissions.includes(key);
+}
+
+export function hasAnyPermission(
+  permissions: string[] | undefined,
+  keys: readonly string[],
+): boolean {
+  return keys.some((key) => hasPermission(permissions, key));
 }
 
 export function getSvkkNavForPermissions(permissions: string[]) {
@@ -121,6 +128,10 @@ export function canAccessDashboardMis(permissions: string[]) {
 
 export function canUpdatePolicy(permissions: string[]) {
   return hasPermission(permissions, "policy:update");
+}
+
+export function canExportPolicy(permissions: string[]) {
+  return hasPermission(permissions, "policy:export");
 }
 
 export function canSeeCommission(permissions: string[]) {
@@ -175,10 +186,106 @@ export function canImportClaim(permissions: string[]) {
   return hasPermission(permissions, "claim:import");
 }
 
-export function canManageUsers(permissions: string[]) {
-  return hasPermission(permissions, "users:manage");
+export function canExportClaim(permissions: string[]) {
+  return hasPermission(permissions, "claim:export");
 }
 
-export function canManageRoles(permissions: string[]) {
-  return hasPermission(permissions, "roles:manage");
+export function canReadUsers(permissions: string[]) {
+  return hasPermission(permissions, "users:read");
+}
+
+export function canCreateUsers(permissions: string[]) {
+  return hasPermission(permissions, "users:create");
+}
+
+export function canUpdateUsers(permissions: string[]) {
+  return hasPermission(permissions, "users:update");
+}
+
+export function canDeleteUsers(permissions: string[]) {
+  return hasPermission(permissions, "users:delete");
+}
+
+export function canReadRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:read");
+}
+
+export function canCreateRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:create");
+}
+
+export function canUpdateRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:update");
+}
+
+export function canCloneRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:clone");
+}
+
+export function canToggleRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:toggle");
+}
+
+export function canDeleteRoles(permissions: string[]) {
+  return hasPermission(permissions, "roles:delete");
+}
+
+export function canReadSettings(permissions: string[]) {
+  return hasPermission(permissions, "settings:read");
+}
+
+export function canUpdateSettings(permissions: string[]) {
+  return hasPermission(permissions, "settings:update");
+}
+
+export function canReadEmailTemplates(permissions: string[]) {
+  return hasPermission(permissions, "emailTemplates:read");
+}
+
+export function canUpdateEmailTemplates(permissions: string[]) {
+  return hasPermission(permissions, "emailTemplates:update");
+}
+
+export function canSendTestEmailTemplates(permissions: string[]) {
+  return hasPermission(permissions, "emailTemplates:send_test");
+}
+
+export function canReadCategoryForm(permissions: string[]) {
+  return hasPermission(permissions, "categoryForm:read");
+}
+
+export function canUpdateCategoryForm(permissions: string[]) {
+  return hasPermission(permissions, "categoryForm:update");
+}
+
+export function canSendTestCategoryForm(permissions: string[]) {
+  return hasPermission(permissions, "categoryForm:send_test");
+}
+
+export function canSendCategoryForm(permissions: string[]) {
+  return hasPermission(permissions, "categoryForm:send");
+}
+
+export function canUpdateNotifications(permissions: string[]) {
+  return hasPermission(permissions, "notifications:update");
+}
+
+export function canDeleteNotifications(permissions: string[]) {
+  return hasPermission(permissions, "notifications:delete");
+}
+
+export function canReadAdminDropdowns(permissions: string[]) {
+  return hasPermission(permissions, "admin:dropdowns:read");
+}
+
+export function canCreateAdminDropdowns(permissions: string[]) {
+  return hasPermission(permissions, "admin:dropdowns:create");
+}
+
+export function canUpdateAdminDropdowns(permissions: string[]) {
+  return hasPermission(permissions, "admin:dropdowns:update");
+}
+
+export function canDeleteAdminDropdowns(permissions: string[]) {
+  return hasPermission(permissions, "admin:dropdowns:delete");
 }

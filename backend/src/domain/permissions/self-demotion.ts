@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../errors/app-error.js";
 import { getEffectivePermissions, hasPermissionInSet } from "../../services/rbac.service.js";
 
-const CRITICAL_PERMISSIONS = ["roles:manage", "users:manage"] as const;
+const CRITICAL_PERMISSIONS = ["roles:update", "users:update"] as const;
 
 /**
  * Prevents an actor from removing their own last critical privilege or locking out all admins.
@@ -29,7 +29,7 @@ export async function assertSafeUserRoleChange(
 }
 
 /**
- * Ensures at least one other user retains roles:manage when actor demotes self.
+ * Ensures at least one other user retains role-admin update access when actor demotes self.
  */
 export async function assertAtLeastOneOtherRolesManager(
   actorId: string,
@@ -37,7 +37,7 @@ export async function assertAtLeastOneOtherRolesManager(
   newRoleId: string,
 ): Promise<void> {
   const newPerms = await getEffectivePermissions(newRoleId);
-  if (hasPermissionInSet(newPerms, "roles:manage")) {
+  if (hasPermissionInSet(newPerms, "roles:update")) {
     return;
   }
 
@@ -48,7 +48,7 @@ export async function assertAtLeastOneOtherRolesManager(
   if (!actor) return;
 
   const actorPerms = await getEffectivePermissions(actor.roleId);
-  if (!hasPermissionInSet(actorPerms, "roles:manage")) {
+  if (!hasPermissionInSet(actorPerms, "roles:update")) {
     return;
   }
 
@@ -63,14 +63,14 @@ export async function assertAtLeastOneOtherRolesManager(
 
   for (const u of others) {
     const p = await getEffectivePermissions(u.roleId);
-    if (hasPermissionInSet(p, "roles:manage")) {
+    if (hasPermissionInSet(p, "roles:update")) {
       return;
     }
   }
 
   throw new AppError(
     "FORBIDDEN",
-    "Cannot remove roles:manage from the last role manager in the system",
+    "Cannot remove roles:update from the last role manager in the system",
     403,
   );
 }

@@ -4,6 +4,7 @@ import { SAMPLE_CHARTS, SAMPLE_DEFS } from "../../lib/svkk/premium/sample-data";
 import type { PremiumState } from "../../lib/svkk/premium/types";
 import { buildMembersFromFutureRow, detectMemberSlotCount } from "./future-csv-utils";
 import {
+  formatPolicyName,
   buildFutureResults,
   computeFutureMis,
   filterFutureResults,
@@ -11,6 +12,7 @@ import {
   normalizeLookupToken,
   pickBestLookupMatch,
   policyYearSortKey,
+  shiftPolicyYearLabel,
   yearOffsetLabel,
 } from "./future-premium-engine";
 import { FUTURE_PREMIUM_SAMPLE_ROWS } from "./future-premium-export";
@@ -90,6 +92,16 @@ describe("future-premium-engine", () => {
     expect(yearOffsetLabel("1")).toBe("Next Year");
     expect(yearOffsetLabel("3")).toBe("3 Yr");
     expect(yearOffsetLabel("10")).toBe("10 Yr");
+  });
+
+  it("shifts fiscal year labels for future renewal year", () => {
+    expect(shiftPolicyYearLabel("2026-27", 0)).toBe("2026-27");
+    expect(shiftPolicyYearLabel("2026-27", 2)).toBe("2028-29");
+  });
+
+  it("formats friendly product names", () => {
+    expect(formatPolicyName("family_floater")).toBe("Family Floater");
+    expect(formatPolicyName("asha_kiran")).toBe("Asha Kiran");
   });
 
   it("orders fiscal year labels for latest-first selection", () => {
@@ -212,5 +224,42 @@ describe("future-premium-engine", () => {
     const built = buildFutureResults([older, newer], "policy_list_only", "0", premiumState);
     const picked = pickBestLookupMatch(built, "2025-26");
     expect(picked?.details.year).toBe("2025-26");
+  });
+
+  it("normalizes single-age rows into display age slabs when contiguous premiums match", () => {
+    const rows = [
+      {
+        svkk_id: "T1",
+        holder_name: "Holder",
+        policy_type: "individual",
+        sum_insured: "300000",
+        start_date: "2025-06-16",
+        end_date: "2026-06-15",
+        year: "2025-26",
+        member_count: "1",
+        holder_dob: "1999-06-01",
+        holder_gender: "male",
+      },
+    ];
+    const customState: PremiumState = {
+      defs: SAMPLE_DEFS,
+      charts: {
+        ...SAMPLE_CHARTS,
+        individual: [
+          { label: "21", min: 21, max: 21, premiums: { "300000": 1111 } },
+          { label: "22", min: 22, max: 22, premiums: { "300000": 1111 } },
+          { label: "23", min: 23, max: 23, premiums: { "300000": 1111 } },
+          { label: "24", min: 24, max: 24, premiums: { "300000": 1111 } },
+          { label: "25", min: 25, max: 25, premiums: { "300000": 1111 } },
+          { label: "26", min: 26, max: 26, premiums: { "300000": 1111 } },
+          { label: "27", min: 27, max: 27, premiums: { "300000": 1111 } },
+          { label: "28", min: 28, max: 28, premiums: { "300000": 1111 } },
+          { label: "29", min: 29, max: 29, premiums: { "300000": 1111 } },
+          { label: "30", min: 30, max: 30, premiums: { "300000": 1111 } },
+        ],
+      },
+    };
+    const built = buildFutureResults(rows, "uploaded_csv_only", "0", customState);
+    expect(built[0]?.memberTimeline[0]?.futureBand).toBe("21-30");
   });
 });

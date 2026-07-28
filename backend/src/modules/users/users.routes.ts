@@ -14,9 +14,8 @@ import {
 export function createUsersRouter(_env: Env) {
   const r = Router();
   r.use(requireAuth(_env));
-  r.use(requirePermission("users:manage"));
 
-  r.get("/", async (_req, res, next) => {
+  r.get("/", requirePermission("users:read"), async (_req, res, next) => {
     try {
       const users = await listUsers();
       res.json({ users });
@@ -25,7 +24,7 @@ export function createUsersRouter(_env: Env) {
     }
   });
 
-  r.post("/", async (req, res, next) => {
+  r.post("/", requirePermission("users:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -43,7 +42,7 @@ export function createUsersRouter(_env: Env) {
     }
   });
 
-  r.patch("/:id", async (req, res, next) => {
+  r.patch("/:id", requirePermission("users:update"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       const body = z
@@ -77,7 +76,7 @@ export function createUsersRouter(_env: Env) {
     }
   });
 
-  r.delete("/:id", async (req, res, next) => {
+  r.delete("/:id", requirePermission("users:delete"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       await assertCanDeleteUser(req.userId!, id);

@@ -1,12 +1,39 @@
 import type { PrismaClient } from "@prisma/client";
 import { bumpRtvForUsersWithRole } from "../services/rbac.service.js";
 
-const DEPRECATED_KEYS = ["mis:read", "mis:scope_all", "mis:scope_village"] as const;
+const DEPRECATED_KEYS = [
+  "mis:read",
+  "mis:scope_all",
+  "mis:scope_village",
+  "admin:policyTypes",
+  "admin:settings",
+  "users:manage",
+  "roles:manage",
+] as const;
 
 const KEY_MAP: Record<string, readonly string[]> = {
   "mis:read": ["mis:policy:read", "mis:claim:read"],
   "mis:scope_all": ["mis:policy:scope_all", "mis:claim:scope_all"],
   "mis:scope_village": ["mis:policy:scope_village", "mis:claim:scope_village"],
+  "admin:policyTypes": [
+    "admin:dropdowns:read",
+    "admin:dropdowns:create",
+    "admin:dropdowns:update",
+    "admin:dropdowns:delete",
+  ],
+  "admin:settings": [
+    "settings:read",
+    "settings:update",
+    "emailTemplates:read",
+    "emailTemplates:update",
+    "emailTemplates:send_test",
+    "categoryForm:read",
+    "categoryForm:update",
+    "categoryForm:send_test",
+    "categoryForm:send",
+  ],
+  "users:manage": ["users:read", "users:create", "users:update", "users:delete"],
+  "roles:manage": ["roles:read", "roles:create", "roles:update", "roles:clone", "roles:toggle", "roles:delete"],
 };
 
 async function bumpRoles(client: PrismaClient, roleIds: Iterable<string>): Promise<void> {
@@ -149,9 +176,120 @@ export async function backfillPolicyRestorePermission(client: PrismaClient): Pro
   await bumpRoles(client, roleIdsTouched);
 }
 
-/** Run all idempotent RBAC data migrations (MIS split + commission + restore backfill). */
+export async function backfillPolicyExportPermission(client: PrismaClient): Promise<void> {
+  const [readPerm, exportPerm] = await Promise.all([
+    client.permission.findUnique({ where: { key: "policy:read" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "policy:export" }, select: { id: true } }),
+  ]);
+  if (!readPerm || !exportPerm) {
+    return;
+  }
+
+  const rolesWithRead = await client.rolePermission.findMany({
+    where: { permissionId: readPerm.id, effect: "ALLOW" },
+    select: { roleId: true },
+  });
+
+  const roleIdsTouched = new Set<string>();
+  for (const { roleId } of rolesWithRead) {
+    const existing = await client.rolePermission.findUnique({
+      where: { roleId_permissionId: { roleId, permissionId: exportPerm.id } },
+      select: { effect: true },
+    });
+    if (existing?.effect === "ALLOW") {
+      continue;
+    }
+
+    await client.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId, permissionId: exportPerm.id } },
+      update: { effect: "ALLOW" },
+      create: { roleId, permissionId: exportPerm.id, effect: "ALLOW" },
+    });
+    roleIdsTouched.add(roleId);
+  }
+
+  await bumpRoles(client, roleIdsTouched);
+}
+
+export async function backfillClaimExportPermission(client: PrismaClient): Promise<void> {
+  const [readPerm, exportPerm] = await Promise.all([
+    client.permission.findUnique({ where: { key: "claim:read" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "claim:export" }, select: { id: true } }),
+  ]);
+  if (!readPerm || !exportPerm) {
+    return;
+  }
+
+  const rolesWithRead = await client.rolePermission.findMany({
+    where: { permissionId: readPerm.id, effect: "ALLOW" },
+    select: { roleId: true },
+  });
+
+  const roleIdsTouched = new Set<string>();
+  for (const { roleId } of rolesWithRead) {
+    const existing = await client.rolePermission.findUnique({
+      where: { roleId_permissionId: { roleId, permissionId: exportPerm.id } },
+      select: { effect: true },
+    });
+    if (existing?.effect === "ALLOW") {
+      continue;
+    }
+
+    await client.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId, permissionId: exportPerm.id } },
+      update: { effect: "ALLOW" },
+      create: { roleId, permissionId: exportPerm.id, effect: "ALLOW" },
+    });
+    roleIdsTouched.add(roleId);
+  }
+
+  await bumpRoles(client, roleIdsTouched);
+}
+
+export async function backfillNotificationActionPermissions(client: PrismaClient): Promise<void> {
+  const [readPerm, updatePerm, deletePerm] = await Promise.all([
+    client.permission.findUnique({ where: { key: "notifications:read" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "notifications:update" }, select: { id: true } }),
+    client.permission.findUnique({ where: { key: "notifications:delete" }, select: { id: true } }),
+  ]);
+  if (!readPerm || !updatePerm || !deletePerm) {
+    return;
+  }
+
+  const rolesWithRead = await client.rolePermission.findMany({
+    where: { permissionId: readPerm.id, effect: "ALLOW" },
+    select: { roleId: true },
+  });
+
+  const roleIdsTouched = new Set<string>();
+  for (const { roleId } of rolesWithRead) {
+    for (const permissionId of [updatePerm.id, deletePerm.id]) {
+      const existing = await client.rolePermission.findUnique({
+        where: { roleId_permissionId: { roleId, permissionId } },
+        select: { effect: true },
+      });
+      if (existing?.effect === "ALLOW") {
+        continue;
+      }
+
+      await client.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId } },
+        update: { effect: "ALLOW" },
+        create: { roleId, permissionId, effect: "ALLOW" },
+      });
+      roleIdsTouched.add(roleId);
+    }
+  }
+
+  await bumpRoles(client, roleIdsTouched);
+}
+
+/** Run all idempotent RBAC data migrations. */
 export async function migrateRbacV2Permissions(client: PrismaClient): Promise<void> {
   await migrateLegacyMisPermissions(client);
   await backfillPolicyCommissionPermission(client);
   await backfillPolicyRestorePermission(client);
+  await backfillPolicyExportPermission(client);
+  await backfillClaimExportPermission(client);
+  await backfillNotificationActionPermissions(client);
 }

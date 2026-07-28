@@ -37,10 +37,15 @@ export function listFuturePremiumIssues(result: FuturePremiumResult): FuturePrem
 
   for (const row of result.quote.rows) {
     if (row.error) {
+      const message = row.error.includes("No premium found for SI")
+        ? `${row.error}. Unsupported SI or missing chart configuration for this policy/product.`
+        : row.error.includes("No age band found")
+          ? `${row.error}. No premium slab matches this member age.`
+          : row.error;
       issues.push({
         scope: "member",
         memberName: row.name,
-        message: row.error,
+        message,
       });
       continue;
     }

@@ -90,6 +90,17 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
             {result.holder} · {result.policy.replace(/_/g, " ")} · ₹{rs(result.si)} ·{" "}
             {result.memberCount} member(s) · {result.status}
           </DialogDescription>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" className="text-primary text-sm font-medium hover:underline" onClick={() => window.print()}>
+              Print details
+            </button>
+            <button type="button" className="text-primary text-sm font-medium hover:underline" onClick={() => navigator.clipboard.writeText(result.policyNo || "")}>
+              Copy policy
+            </button>
+            <button type="button" className="text-primary text-sm font-medium hover:underline" onClick={() => navigator.clipboard.writeText(result.customerId || "")}>
+              Copy customer ID
+            </button>
+          </div>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-4">
@@ -128,6 +139,20 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
             <PremiumSummaryCard label="Difference" value={`${result.premiumDiff >= 0 ? "+" : ""}₹${rs(result.premiumDiff)}`} />
             <PremiumSummaryCard label="Increase %" value={`${result.premiumIncreasePct.toFixed(2)}%`} highlight />
             <PremiumSummaryCard label="Status" value={result.status} />
+          </div>
+          <div className="rounded-md border bg-muted/20 p-4 text-sm">
+            <p className="mb-2 font-semibold">Changes Summary</p>
+            <p>{result.reasons.includes("Age Increased") ? "✓" : "•"} Age Increased</p>
+            <p>✓ {result.memberTimeline.filter((m) => m.bandChanged).length} member(s) changed age band</p>
+            <p>✓ Premium changed by {result.premiumDiff >= 0 ? "+" : ""}₹{rs(result.premiumDiff)}</p>
+            <p>{result.currentSi === result.futureSi ? "✓ No SI change" : `✓ SI changed to ₹${rs(result.futureSi)}`}</p>
+            <p>{result.currentPolicy === result.futurePolicy ? "✓ No Product change" : `✓ Product changed to ${result.futurePolicy}`}</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <PremiumSummaryCard label="Base Premium" value={`₹${rs(result.quote.basic)}`} />
+            <PremiumSummaryCard label="Rider" value={`₹${rs(result.quote.rider)}`} />
+            <PremiumSummaryCard label="Gross" value={`₹${rs(result.quote.gross)}`} />
+            <PremiumSummaryCard label={`Discount (${result.quote.gross ? Math.round((result.quote.disc / result.quote.gross) * 100) : 0}%)`} value={`₹${rs(result.quote.disc)}`} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -178,7 +203,7 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
                   {result.memberTimeline.map((m) => (
                     <TableRow
                       key={m.key}
-                      className={m.issue ? "bg-destructive/5" : undefined}
+                      className={m.issue ? "bg-destructive/5" : m.bandChanged || m.deltaNet !== 0 ? "bg-amber-500/5" : undefined}
                     >
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.role}</TableCell>

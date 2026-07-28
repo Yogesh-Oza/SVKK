@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { rbacRateLimit } from "../../middlewares/rate-limit.js";
 import {
   cloneRole,
@@ -21,7 +21,7 @@ export function createRbacRouter(_env: Env) {
   r.use(requireAuth(_env));
   r.use(rbacRateLimit);
 
-  r.get("/geo-options", requirePermission("roles:manage"), async (_req, res, next) => {
+  r.get("/geo-options", requirePermission("roles:read"), async (_req, res, next) => {
     try {
       const options = await listGeoMasterOptions();
       res.json(options);
@@ -30,7 +30,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.get("/permissions", requirePermission("roles:manage"), async (_req, res, next) => {
+  r.get("/permissions", requirePermission("roles:read"), async (_req, res, next) => {
     try {
       const groups = await listPermissionsGrouped();
       res.json({ groups });
@@ -39,7 +39,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.get("/roles/assignable", requirePermission("users:manage"), async (_req, res, next) => {
+  r.get("/roles/assignable", requireAnyPermission(["users:read", "users:create", "users:update"]), async (_req, res, next) => {
     try {
       const roles = await listRoles();
       res.json({
@@ -55,7 +55,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.get("/roles", requirePermission("roles:manage"), async (_req, res, next) => {
+  r.get("/roles", requirePermission("roles:read"), async (_req, res, next) => {
     try {
       const roles = await listRoles();
       const rolesWithGeo = await Promise.all(
@@ -84,7 +84,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.get("/roles/:id", requirePermission("roles:manage"), async (req, res, next) => {
+  r.get("/roles/:id", requirePermission("roles:read"), async (req, res, next) => {
     try {
       const role = await getRoleById(String(req.params.id));
       res.json({ role });
@@ -93,7 +93,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.post("/roles", requirePermission("roles:manage"), async (req, res, next) => {
+  r.post("/roles", requirePermission("roles:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -112,7 +112,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.post("/roles/:id/clone", requirePermission("roles:manage"), async (req, res, next) => {
+  r.post("/roles/:id/clone", requirePermission("roles:clone"), async (req, res, next) => {
     try {
       const body = z.object({ name: z.string().min(2).max(80) }).parse(req.body);
       const role = await cloneRole(req.userId!, String(req.params.id), body.name);
@@ -122,7 +122,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.patch("/roles/:id", requirePermission("roles:manage"), async (req, res, next) => {
+  r.patch("/roles/:id", requireAnyPermission(["roles:update", "roles:toggle"]), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -141,7 +141,7 @@ export function createRbacRouter(_env: Env) {
     }
   });
 
-  r.delete("/roles/:id", requirePermission("roles:manage"), async (req, res, next) => {
+  r.delete("/roles/:id", requirePermission("roles:delete"), async (req, res, next) => {
     try {
       await softDeleteRole(req.userId!, String(req.params.id));
       res.status(204).send();
@@ -152,7 +152,7 @@ export function createRbacRouter(_env: Env) {
 
   r.get(
     "/users/:id/effective-permissions",
-    requirePermission("roles:manage"),
+    requirePermission("roles:read"),
     async (req, res, next) => {
       try {
         const permissions = await getEffectivePermissionsForUser(String(req.params.id));

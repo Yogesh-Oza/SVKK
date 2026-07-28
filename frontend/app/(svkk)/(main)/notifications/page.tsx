@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { svkkJson } from "@/lib/svkk/api";
 import { resolveNotificationNavigation } from "@/lib/svkk/notification-navigation";
-import { hasPermission } from "@/lib/svkk/permissions";
+import { canDeleteNotifications, canUpdateNotifications } from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { Bell, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -26,9 +26,11 @@ type NotificationItem = {
 const PAGE_SIZE = 10;
 
 export default function SvkkNotificationsPage() {
-  const { user } = useSvkkAuth();
+  const { user, can } = useSvkkAuth();
   const router = useRouter();
-  const canSee = user ? hasPermission(user.permissions, "notifications:read") : false;
+  const canSee = can("notifications:read");
+  const canMarkRead = user?.permissions ? canUpdateNotifications(user.permissions) : false;
+  const canDeleteAll = user?.permissions ? canDeleteNotifications(user.permissions) : false;
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -83,18 +85,21 @@ export default function SvkkNotificationsPage() {
   const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
 
   async function markRead(id: string) {
+    if (!canMarkRead) return;
     await svkkJson(`/notifications/${id}/read`, { method: "POST" });
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
   }
 
   async function markAllRead() {
+    if (!canMarkRead) return;
     await svkkJson("/notifications/read-all", { method: "POST" });
     setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
   }
 
   async function deleteAll() {
+    if (!canDeleteAll) return;
     if (!window.confirm(`Delete all ${totalCount} notifications? This cannot be undone.`)) {
       return;
     }
@@ -132,7 +137,7 @@ export default function SvkkNotificationsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {unreadCount > 0 ? (
+          {canMarkRead && unreadCount > 0 ? (
             <Button
               type="button"
               variant="outline"
@@ -144,7 +149,7 @@ export default function SvkkNotificationsPage() {
               Mark all read ({unreadCount})
             </Button>
           ) : null}
-          {totalCount > 0 ? (
+          {canDeleteAll && totalCount > 0 ? (
             <Button
               type="button"
               variant="outline"
@@ -242,7 +247,7 @@ export default function SvkkNotificationsPage() {
         </CardContent>
       </Card>
 
-      {hasPermission(user?.permissions ?? [], "admin:settings") ? (
+      {can("emailTemplates:read") ? (
         <p className="text-muted-foreground text-sm">
           <Link href="/email-templates" className="text-primary hover:underline">
             Edit email templates

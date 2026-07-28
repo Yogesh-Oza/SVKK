@@ -11,13 +11,13 @@ export function getRequiredPermissionsForPath(pathname: string): string[] | unde
   if (pathname === "/login" || pathname.startsWith("/login")) {
     return undefined;
   }
-  if (pathname.startsWith("/roles")) return ["roles:manage"];
-  if (pathname.startsWith("/admin")) return ["admin:policyTypes"];
+  if (pathname.startsWith("/roles")) return ["roles:read"];
+  if (pathname.startsWith("/admin")) return ["admin:dropdowns:read"];
   if (pathname.startsWith("/logs")) return ["logs:read"];
-  if (pathname.startsWith("/users")) return ["users:manage"];
-  if (pathname.startsWith("/receipt-settings")) return ["admin:settings"];
-  if (pathname.startsWith("/email-templates")) return ["admin:settings"];
-  if (pathname.startsWith("/category-form")) return ["admin:settings"];
+  if (pathname.startsWith("/users")) return ["users:read"];
+  if (pathname.startsWith("/receipt-settings")) return ["settings:read"];
+  if (pathname.startsWith("/email-templates")) return ["emailTemplates:read"];
+  if (pathname.startsWith("/category-form")) return ["categoryForm:read"];
   if (pathname.startsWith("/notifications")) return ["notifications:read"];
   if (pathname.startsWith("/claims")) return ["claim:read"];
   if (pathname.startsWith("/mis")) return ["mis:policy:read", "mis:claim:read"];

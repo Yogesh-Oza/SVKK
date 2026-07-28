@@ -163,7 +163,7 @@ export function createClaimRouter(env: Env) {
     }
   });
 
-  r.get("/export.csv", requirePermission("claim:read"), async (req, res, next) => {
+  r.get("/export.csv", requirePermission("claim:export"), async (req, res, next) => {
     try {
       const q = claimListFiltersSchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);

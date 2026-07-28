@@ -157,6 +157,52 @@ export function chartRows(
   return role === "holder" ? chart.holder || [] : chart.member || chart.holder || [];
 }
 
+function samePremiumMap(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    const key = aKeys[i]!;
+    if (key !== bKeys[i] || a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function defaultAgeSlab(age: number): string {
+  if (age <= 20) return "0-20";
+  if (age <= 30) return "21-30";
+  if (age <= 35) return "31-35";
+  if (age <= 40) return "36-40";
+  if (age <= 45) return "41-45";
+  if (age <= 50) return "46-50";
+  if (age <= 55) return "51-55";
+  if (age <= 60) return "56-60";
+  if (age <= 65) return "61-65";
+  return "65+";
+}
+
+export function displayBandLabel(row: ChartBand, rows: ChartBand[]): string {
+  if (!row) return "—";
+  if (row.label && /-/.test(row.label)) return row.label;
+  let min = row.min;
+  let max = row.max;
+  const hitIndex = rows.findIndex((candidate) => candidate === row);
+  if (hitIndex >= 0) {
+    for (let i = hitIndex - 1; i >= 0; i -= 1) {
+      const prev = rows[i]!;
+      if (prev.max + 1 !== min || !samePremiumMap(prev.premiums, row.premiums)) break;
+      min = prev.min;
+    }
+    for (let i = hitIndex + 1; i < rows.length; i += 1) {
+      const next = rows[i]!;
+      if (max + 1 !== next.min || !samePremiumMap(next.premiums, row.premiums)) break;
+      max = next.max;
+    }
+  }
+  if (min === max) return defaultAgeSlab(min);
+  return `${min}-${max}`;
+}
+
 export function siList(charts: PremiumState["charts"], policy: PolicyKey): number[] {
   const chart = charts[policy];
   const rows: ChartBand[] = Array.isArray(chart)
@@ -178,7 +224,7 @@ function premiumFor(
   if (!hit) return { error: "No age band found for age " + age };
   const value = hit.premiums?.[String(si)];
   if (value == null) return { error: "No premium found for SI ₹" + si + " in age band " + hit.label };
-  return { premium: Number(value), band: hit.label };
+  return { premium: Number(value), band: displayBandLabel(hit, rows) };
 }
 
 function asNumber(v: unknown): number {

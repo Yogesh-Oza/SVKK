@@ -83,7 +83,7 @@ export function createNotificationsRouter(env: Env) {
   r.post(
     "/read-all",
     requireAuth(env),
-    requirePermission("notifications:read"),
+    requirePermission("notifications:update"),
     async (req, res, next) => {
       try {
         await prisma.notification.updateMany({
@@ -103,7 +103,7 @@ export function createNotificationsRouter(env: Env) {
   r.post(
     "/delete-all",
     requireAuth(env),
-    requirePermission("notifications:read"),
+    requirePermission("notifications:delete"),
     async (req, res, next) => {
       try {
         const result = await prisma.notification.deleteMany({
@@ -119,7 +119,7 @@ export function createNotificationsRouter(env: Env) {
   r.post(
     "/:id/read",
     requireAuth(env),
-    requirePermission("notifications:read"),
+    requirePermission("notifications:update"),
     async (req, res, next) => {
       try {
         const id = z.string().min(1).parse(req.params.id);

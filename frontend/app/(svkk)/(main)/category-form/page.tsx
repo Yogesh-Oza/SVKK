@@ -14,7 +14,12 @@ import { EmailTemplateEditor } from "@/features/svkk-email-templates/email-templ
 import { PolicyFilterMulti } from "@/features/svkk-policies/policy-filter-multi";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
-import { hasPermission } from "@/lib/svkk/permissions";
+import {
+  canReadCategoryForm,
+  canSendCategoryForm,
+  canSendTestCategoryForm,
+  canUpdateCategoryForm,
+} from "@/lib/svkk/permissions";
 import { ExternalLink, FileText, Loader2, Send, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -47,7 +52,10 @@ type PreviewCounts = {
 
 export default function CategoryFormPage() {
   const { user } = useSvkkAuth();
-  const canEdit = user ? hasPermission(user.permissions, "admin:settings") : false;
+  const canRead = user?.permissions ? canReadCategoryForm(user.permissions) : false;
+  const canEdit = user?.permissions ? canUpdateCategoryForm(user.permissions) : false;
+  const canSendTest = user?.permissions ? canSendTestCategoryForm(user.permissions) : false;
+  const canSend = user?.permissions ? canSendCategoryForm(user.permissions) : false;
 
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<CategoryFormConfig | null>(null);
@@ -77,7 +85,7 @@ export default function CategoryFormPage() {
   }, [user?.email]);
 
   const load = useCallback(async () => {
-    if (!canEdit) return;
+    if (!canRead) return;
     setLoading(true);
     try {
       const [formRes, catRes] = await Promise.all([
@@ -93,7 +101,7 @@ export default function CategoryFormPage() {
     } finally {
       setLoading(false);
     }
-  }, [canEdit]);
+  }, [canRead]);
 
   useEffect(() => {
     void load();
@@ -249,9 +257,9 @@ export default function CategoryFormPage() {
     }
   }
 
-  if (!canEdit) {
+  if (!canRead) {
     return (
-      <p className="text-muted-foreground text-sm">You do not have permission to manage the category form.</p>
+      <p className="text-muted-foreground text-sm">You do not have permission to view the category form.</p>
     );
   }
 
@@ -313,7 +321,7 @@ export default function CategoryFormPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={uploadingPdf}
+                disabled={uploadingPdf || !canEdit}
                 onClick={() => pdfInputRef.current?.click()}
               >
                 {uploadingPdf ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
@@ -323,7 +331,7 @@ export default function CategoryFormPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={removingPdf}
+                disabled={removingPdf || !canEdit}
                 onClick={() => void removePdf()}
               >
                 {removingPdf ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Trash2 className="mr-2 size-4" />}
@@ -331,7 +339,7 @@ export default function CategoryFormPage() {
               </Button>
             </>
           ) : (
-            <Button type="button" disabled={uploadingPdf} onClick={() => pdfInputRef.current?.click()}>
+            <Button type="button" disabled={uploadingPdf || !canEdit} onClick={() => pdfInputRef.current?.click()}>
               {uploadingPdf ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
               Upload PDF to OneDrive
             </Button>
@@ -370,7 +378,7 @@ export default function CategoryFormPage() {
           ) : null}
           <Button
             type="button"
-            disabled={!selectedCategoryIds.length || !hasPdf || sending}
+            disabled={!canSend || !selectedCategoryIds.length || !hasPdf || sending}
             onClick={() => setSendOpen(true)}
           >
             <Send className="mr-2 size-4" />
@@ -398,12 +406,18 @@ export default function CategoryFormPage() {
             saving={saving}
             onSubjectChange={(subject) => setDraft((d) => ({ ...d, subject }))}
             onBodyChange={(body) => setDraft((d) => ({ ...d, body }))}
-            onSave={() => void saveTemplate()}
+            onSave={() => {
+              if (!canEdit) return;
+              void saveTemplate();
+            }}
             onReset={resetToDefault}
             testEmail={testEmail}
             onTestEmailChange={handleTestEmailChange}
             sendingTest={sendingTest}
-            onSendTest={() => void sendTest()}
+            onSendTest={() => {
+              if (!canSendTest) return;
+              void sendTest();
+            }}
           />
         </CardContent>
       </Card>
@@ -427,7 +441,7 @@ export default function CategoryFormPage() {
             <Button type="button" variant="outline" onClick={() => setSendOpen(false)} disabled={sending}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void confirmSend()} disabled={sending}>
+            <Button type="button" onClick={() => void confirmSend()} disabled={sending || !canSend}>
               {sending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
               Confirm send
             </Button>

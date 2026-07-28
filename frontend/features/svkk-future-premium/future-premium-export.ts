@@ -36,7 +36,7 @@ export function downloadCsv(filename: string, rows: Record<string, unknown>[]): 
 }
 
 export function summaryExportRows(results: FuturePremiumResult[]): Record<string, unknown>[] {
-  return results.map((r) => ({
+  const rows = results.map((r) => ({
     policy_number: r.policyNo,
     holder_name: r.holder,
     policy_type: r.futurePolicy,
@@ -65,10 +65,23 @@ export function summaryExportRows(results: FuturePremiumResult[]): Record<string
     reason: r.reasons.join("; "),
     status: r.status,
   }));
+  if (!rows.length) return rows;
+  const totalIncrease = results.reduce((sum, r) => sum + r.premiumDiff, 0);
+  rows.push({
+    policy_number: "TOTAL",
+    holder_name: "",
+    future_net_premium: results.reduce((sum, r) => sum + r.futurePremium, 0),
+    current_net_premium: results.reduce((sum, r) => sum + r.currentPremium, 0),
+    difference: totalIncrease,
+    increase_percent: "",
+    reason: "Total Increase",
+    status: "",
+  });
+  return rows;
 }
 
 export function detailExportRows(results: FuturePremiumResult[]): Record<string, unknown>[] {
-  return results.flatMap((r) =>
+  const rows = results.flatMap((r) =>
     r.memberTimeline.map((m) => ({
       svkk_id: r.svkkId,
       customer_id: r.customerId,
@@ -103,6 +116,17 @@ export function detailExportRows(results: FuturePremiumResult[]): Record<string,
       status: m.issue || "Ready",
     })),
   );
+  if (!rows.length) return rows;
+  rows.push({
+    policy_number: "TOTAL",
+    person_name: "",
+    current_net_premium: results.reduce((sum, r) => sum + r.currentPremium, 0),
+    future_net_premium: results.reduce((sum, r) => sum + r.futurePremium, 0),
+    difference: results.reduce((sum, r) => sum + r.premiumDiff, 0),
+    increase_percent: "",
+    status: "",
+  });
+  return rows;
 }
 
 /** Built-in demo rows for Future Premium (also used by “Load sample” in the UI). */

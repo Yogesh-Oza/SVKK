@@ -24,7 +24,7 @@ const uploadPdf = multer({
 export function createCategoryFormRouter(env: Env) {
   const r = Router();
 
-  r.get("/", requireAuth(env), requirePermission("admin:settings"), async (_req, res, next) => {
+  r.get("/", requireAuth(env), requirePermission("categoryForm:read"), async (_req, res, next) => {
     try {
       const config = await getCategoryFormForAdmin();
       res.json(config);
@@ -33,7 +33,7 @@ export function createCategoryFormRouter(env: Env) {
     }
   });
 
-  r.put("/", requireAuth(env), requirePermission("admin:settings"), async (req, res, next) => {
+  r.put("/", requireAuth(env), requirePermission("categoryForm:update"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -51,7 +51,7 @@ export function createCategoryFormRouter(env: Env) {
   r.post(
     "/pdf",
     requireAuth(env),
-    requirePermission("admin:settings"),
+    requirePermission("categoryForm:update"),
     uploadPdf.single("file"),
     async (req, res, next) => {
       try {
@@ -76,7 +76,7 @@ export function createCategoryFormRouter(env: Env) {
     },
   );
 
-  r.delete("/pdf", requireAuth(env), requirePermission("admin:settings"), async (_req, res, next) => {
+  r.delete("/pdf", requireAuth(env), requirePermission("categoryForm:update"), async (_req, res, next) => {
     try {
       await clearCategoryFormPdf();
       res.json({ ok: true });
@@ -85,7 +85,7 @@ export function createCategoryFormRouter(env: Env) {
     }
   });
 
-  r.post("/preview", requireAuth(env), requirePermission("admin:settings"), async (req, res, next) => {
+  r.post("/preview", requireAuth(env), requirePermission("categoryForm:read"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -99,7 +99,7 @@ export function createCategoryFormRouter(env: Env) {
     }
   });
 
-  r.post("/send-test", requireAuth(env), requirePermission("admin:settings"), async (req, res, next) => {
+  r.post("/send-test", requireAuth(env), requirePermission("categoryForm:send_test"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -120,7 +120,7 @@ export function createCategoryFormRouter(env: Env) {
     }
   });
 
-  r.post("/send", requireAuth(env), requirePermission("admin:settings"), async (req, res, next) => {
+  r.post("/send", requireAuth(env), requirePermission("categoryForm:send"), async (req, res, next) => {
     try {
       const body = z
         .object({

@@ -62,6 +62,7 @@ import { toIsoDateParam } from "@/lib/svkk/form-date";
 import {
   canCreateClaim,
   canDeleteClaim,
+  canExportClaim,
   canImportClaim,
   canUpdateClaim,
 } from "@/lib/svkk/permissions";
@@ -256,12 +257,14 @@ const MATCH_OPTIONS: PolicyFilterOption[] = [
 export function ClaimsListView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useSvkkAuth();
+  const { user, can } = useSvkkAuth();
   const perms = user?.permissions ?? [];
+  const canRead = can("claim:read");
   const canU = canUpdateClaim(perms);
   const canD = canDeleteClaim(perms);
   const canImport = canImportClaim(perms);
   const canCreate = canCreateClaim(perms);
+  const canExport = canExportClaim(perms);
   const missingUrl = !getSvkkApiBase();
 
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -502,10 +505,10 @@ export function ClaimsListView() {
 
   useEffect(() => {
     if (missingUrl) return;
-    if (!user?.permissions?.includes("claim:read") && !user?.permissions?.includes("*:*")) return;
+    if (!canRead) return;
     void loadList();
     void loadSummary();
-  }, [missingUrl, user, loadList, loadSummary]);
+  }, [missingUrl, canRead, loadList, loadSummary]);
 
   useEffect(() => {
     if (missingUrl) return;
@@ -621,7 +624,7 @@ export function ClaimsListView() {
     setPage(1);
   }
 
-  if (user && !user.permissions?.includes("claim:read") && !user.permissions?.includes("*:*")) {
+  if (!canRead) {
     return <p className="text-muted-foreground text-sm">You do not have access to claims.</p>;
   }
 
@@ -844,7 +847,7 @@ export function ClaimsListView() {
                   variant="default"
                   size="sm"
                   className="gap-1.5"
-                  disabled={loading || exportBusy}
+                  disabled={!canExport || loading || exportBusy}
                   onClick={() => void exportClaimsCsv()}
                 >
                   <Download className="size-3.5" />

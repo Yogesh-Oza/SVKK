@@ -28,6 +28,7 @@ import { rs } from "@/lib/svkk/premium";
 import { getv } from "./future-csv-utils";
 import {
   FUTURE_DISCOUNT_OPTIONS,
+  formatPolicyName,
   FUTURE_POLICY_TYPE_OPTIONS,
   FUTURE_SI_OPTIONS,
   FUTURE_YEAR_OPTIONS,
@@ -49,6 +50,18 @@ function LookupField({ label, value }: { label: string; value: string }) {
       <Input value={value || "—"} disabled />
     </div>
   );
+}
+
+function riskLabel(pct: number): "Low" | "Medium" | "High" {
+  if (pct > 15) return "High";
+  if (pct >= 5) return "Medium";
+  return "Low";
+}
+
+function riskTone(pct: number): string {
+  if (pct > 15) return "bg-destructive/10 text-destructive border-destructive/30";
+  if (pct >= 5) return "bg-amber-500/10 text-amber-700 border-amber-500/30";
+  return "bg-emerald-500/10 text-emerald-700 border-emerald-500/30";
 }
 
 function lookupStatusMessage(opts: {
@@ -358,7 +371,7 @@ export function FutureLookupPanel() {
                 <SelectContent>
                   {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
                     <SelectItem key={policy} value={policy}>
-                      {policy.replace(/_/g, " ").toUpperCase()}
+                      {formatPolicyName(policy)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -463,6 +476,22 @@ export function FutureLookupPanel() {
                 <p className="text-muted-foreground text-xs">Reason</p>
                 <p className="font-semibold">{renewalReason}</p>
               </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Renewal Risk</p>
+                <Badge variant="outline" className={riskTone(result.premiumIncreasePct)}>{riskLabel(result.premiumIncreasePct)}</Badge>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">View Changes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <p>{result.reasons.includes("Age Increased") ? "✓" : "•"} Age Increased</p>
+              <p>✓ {result.memberTimeline.filter((m) => m.bandChanged).length} member(s) changed age band</p>
+              <p>✓ Premium changed by {result.premiumDiff >= 0 ? "+" : ""}₹{rs(result.premiumDiff)}</p>
+              <p>{result.currentSi === result.futureSi ? "✓ No SI change" : `✓ SI changed to ₹${rs(result.futureSi)}`}</p>
+              <p>{result.currentPolicy === result.futurePolicy ? "✓ No Product change" : `✓ Product changed to ${result.futurePolicy}`}</p>
             </CardContent>
           </Card>
 
@@ -488,7 +517,7 @@ export function FutureLookupPanel() {
             <Card>
               <CardContent className="pt-4">
                 <p className="text-muted-foreground text-xs font-semibold uppercase">Policy Type</p>
-                <p className="mt-1 font-semibold">{result.policy}</p>
+                <p className="mt-1 font-semibold">{formatPolicyName(result.policy)}</p>
               </CardContent>
             </Card>
             <Card className="border-primary/30 bg-primary text-primary-foreground">
@@ -552,6 +581,7 @@ export function FutureLookupPanel() {
               <LookupField label="Future Year" value={result.context.futureYearLabel} />
               <LookupField label="Calculation Date" value={result.calcDate} />
               <LookupField label="Calculation Year" value={String(result.calcYear)} />
+              <LookupField label="Status" value={result.status} />
               <LookupField label="Category" value={detailVal(["category", "Category"])} />
               <LookupField label="Area" value={detailVal(["area"])} />
               <LookupField label="Village" value={detailVal(["village", "Village"])} />
@@ -580,41 +610,52 @@ export function FutureLookupPanel() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Premium Breakdown</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const rows = result.memberTimeline.map((m) => ({
-                    svkk_id: result.svkkId,
-                    customer_id: result.customerId,
-                    policy_number: result.policyNo,
-                    holder_name: result.holder,
-                    current_policy_type: result.currentPolicy,
-                    future_policy_type: result.futurePolicy,
-                    current_sum_insured: result.currentSi,
-                    future_sum_insured: result.futureSi,
-                    member_count: result.memberCount,
-                    person_name: m.name,
-                    role: m.role,
-                    dob: m.dob,
-                    current_age: m.currentAge ?? "",
-                    future_age: m.futureAge ?? "",
-                    current_band: m.currentBand,
-                    future_band: m.futureBand,
-                    current_premium: m.currentNet,
-                    future_premium: m.futureNet,
-                    difference: m.deltaNet,
-                    increase_percent: m.deltaPct,
-                    status: m.issue || "Ready",
-                  }));
-                  downloadCsv(`policy-${result.policyNo}-detail.csv`, rows);
-                }}
-              >
-                <Download className="mr-2 size-4" />
-                Export detail CSV
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => window.print()}>
+                  Print details
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const rows = result.memberTimeline.map((m) => ({
+                      svkk_id: result.svkkId,
+                      customer_id: result.customerId,
+                      policy_number: result.policyNo,
+                      holder_name: result.holder,
+                      current_policy_type: result.currentPolicy,
+                      future_policy_type: result.futurePolicy,
+                      current_sum_insured: result.currentSi,
+                      future_sum_insured: result.futureSi,
+                      member_count: result.memberCount,
+                      person_name: m.name,
+                      role: m.role,
+                      dob: m.dob,
+                      current_age: m.currentAge ?? "",
+                      future_age: m.futureAge ?? "",
+                      current_band: m.currentBand,
+                      future_band: m.futureBand,
+                      current_premium: m.currentNet,
+                      future_premium: m.futureNet,
+                      difference: m.deltaNet,
+                      increase_percent: m.deltaPct,
+                      status: m.issue || "Ready",
+                    }));
+                    downloadCsv(`policy-${result.policyNo}-detail.csv`, rows);
+                  }}
+                >
+                  <Download className="mr-2 size-4" />
+                  Export detail CSV
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
+              <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Base Premium</p><p className="font-semibold">₹{rs(result.quote.basic)}</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Rider</p><p className="font-semibold">₹{rs(result.quote.rider)}</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Gross</p><p className="font-semibold">₹{rs(result.quote.gross)}</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-muted-foreground text-xs">Discount</p><p className="font-semibold">₹{rs(result.quote.disc)}</p></CardContent></Card>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -636,7 +677,10 @@ export function FutureLookupPanel() {
                 </TableHeader>
                 <TableBody>
                   {result.memberTimeline.map((m) => (
-                    <TableRow key={m.key}>
+                    <TableRow
+                      key={m.key}
+                      className={m.bandChanged || m.deltaNet !== 0 ? "bg-amber-500/5" : undefined}
+                    >
                       <TableCell>{m.name}</TableCell>
                       <TableCell>{m.role}</TableCell>
                       <TableCell>{m.relationship || "—"}</TableCell>
@@ -678,6 +722,18 @@ export function FutureLookupPanel() {
               </Button>
               <Button variant="outline" onClick={() => void runLookup(result.policyNo)}>
                 Generate Future Premium
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => navigator.clipboard.writeText(result.policyNo)}
+              >
+                Copy Policy
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => navigator.clipboard.writeText(result.customerId)}
+              >
+                Copy Customer ID
               </Button>
               <Button
                 variant="outline"

@@ -29,6 +29,12 @@ import {
 } from "@/components/ui/table";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { svkkJson } from "@/lib/svkk/api";
+import {
+  canCreateAdminDropdowns,
+  canDeleteAdminDropdowns,
+  canReadAdminDropdowns,
+  canUpdateAdminDropdowns,
+} from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -134,6 +140,10 @@ export default function SvkkAdminPage() {
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
 
   const missingUrl = !getSvkkApiBase();
+  const canRead = user?.permissions ? canReadAdminDropdowns(user.permissions) : false;
+  const canCreate = user?.permissions ? canCreateAdminDropdowns(user.permissions) : false;
+  const canUpdate = user?.permissions ? canUpdateAdminDropdowns(user.permissions) : false;
+  const canDelete = user?.permissions ? canDeleteAdminDropdowns(user.permissions) : false;
 
   async function loadAll() {
     const [typeRows, categoryRes, groupingRes, dropdownRes] = await Promise.all([
@@ -172,8 +182,7 @@ export default function SvkkAdminPage() {
   }, [categories.length, types.length, groupings.length, dropdowns]);
 
   useEffect(() => {
-    if (missingUrl) return;
-    if (user && !user.permissions?.includes("admin:policyTypes") && !user.permissions?.includes("*:*")) return;
+    if (missingUrl || !canRead) return;
     void (async () => {
       try {
         await loadAll();
@@ -181,7 +190,7 @@ export default function SvkkAdminPage() {
         setErr(e instanceof Error ? e.message : "Failed");
       }
     })();
-  }, [missingUrl, user]);
+  }, [missingUrl, canRead]);
 
   async function guarded(action: () => Promise<void>, opts?: { refreshDropdowns?: boolean }) {
     setBusy(true);
@@ -434,11 +443,7 @@ export default function SvkkAdminPage() {
     );
   }
 
-  if (
-    user &&
-    !user.permissions?.includes("admin:policyTypes") &&
-    !user.permissions?.includes("*:*")
-  ) {
+  if (!canRead) {
     return <p className="text-muted-foreground text-sm">You do not have access to admin.</p>;
   }
   if (missingUrl) {
@@ -501,9 +506,11 @@ export default function SvkkAdminPage() {
             <div className="text-muted-foreground text-xs font-medium uppercase">
               {selectedLabel}
             </div>
-            <Button size="sm" onClick={() => openCreate(selected)}>
-              <Plus className="mr-1 size-4" /> Add {selectedLabel}
-            </Button>
+            {canCreate ? (
+              <Button size="sm" onClick={() => openCreate(selected)}>
+                <Plus className="mr-1 size-4" /> Add {selectedLabel}
+              </Button>
+            ) : null}
           </div>
 
           {selected.kind === "category" ? (
@@ -532,23 +539,27 @@ export default function SvkkAdminPage() {
                       </TableCell>
                       <TableCell>{c.type}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mr-1"
-                          disabled={busy}
-                          onClick={() => openEditCategory(c)}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => void deleteCategory(c.id)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
+                        {canUpdate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mr-1"
+                            disabled={busy}
+                            onClick={() => openEditCategory(c)}
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                        ) : null}
+                        {canDelete ? (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => void deleteCategory(c.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -583,23 +594,27 @@ export default function SvkkAdminPage() {
                       </TableCell>
                       <TableCell>{t.chartMode}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mr-1"
-                          disabled={busy}
-                          onClick={() => openEditPolicyType(t)}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => void deletePolicyType(t.id)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
+                        {canUpdate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mr-1"
+                            disabled={busy}
+                            onClick={() => openEditPolicyType(t)}
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                        ) : null}
+                        {canDelete ? (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => void deletePolicyType(t.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -628,23 +643,27 @@ export default function SvkkAdminPage() {
                     <TableRow key={g.id}>
                       <TableCell className="font-medium">{g.name}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mr-1"
-                          disabled={busy}
-                          onClick={() => openEditGrouping(g)}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => void deleteGrouping(g.id)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
+                        {canUpdate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mr-1"
+                            disabled={busy}
+                            onClick={() => openEditGrouping(g)}
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                        ) : null}
+                        {canDelete ? (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => void deleteGrouping(g.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -690,7 +709,7 @@ export default function SvkkAdminPage() {
                         <div className="flex items-center gap-2">
                           <Switch
                             checked={d.isActive}
-                            disabled={busy}
+                            disabled={busy || !canUpdate}
                             onCheckedChange={(v) => void toggleDropdownActive(d, v)}
                           />
                           <span className="text-muted-foreground text-xs">
@@ -699,23 +718,27 @@ export default function SvkkAdminPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mr-1"
-                          disabled={busy}
-                          onClick={() => openEditDropdown(d)}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => void deleteDropdown(d.id)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
+                        {canUpdate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mr-1"
+                            disabled={busy}
+                            onClick={() => openEditDropdown(d)}
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                        ) : null}
+                        {canDelete ? (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => void deleteDropdown(d.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -833,7 +856,12 @@ export default function SvkkAdminPage() {
             <Button
               type="button"
               onClick={() => void submitEditor()}
-              disabled={busy || !editor.label.trim() || !editor.value.trim()}
+              disabled={
+                busy ||
+                !editor.label.trim() ||
+                !editor.value.trim() ||
+                (editor.mode === "create" ? !canCreate : !canUpdate)
+              }
             >
               {editor.mode === "create" ? "Add" : "Save changes"}
             </Button>

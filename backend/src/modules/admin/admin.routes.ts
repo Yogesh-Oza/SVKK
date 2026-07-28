@@ -16,7 +16,7 @@ export function createAdminRouter(env: Env) {
   const r = Router();
   r.use(requireAuth(env));
 
-  r.post("/policy-types", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.post("/policy-types", requirePermission("admin:dropdowns:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -34,7 +34,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.get("/policy-types", requirePermission("admin:policyTypes"), async (_req, res, next) => {
+  r.get("/policy-types", requirePermission("admin:dropdowns:read"), async (_req, res, next) => {
     try {
       const rows = await prisma.policyType.findMany({ orderBy: { name: "asc" } });
       res.json(rows);
@@ -43,7 +43,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.patch("/policy-types/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.patch("/policy-types/:id", requirePermission("admin:dropdowns:update"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       const body = z
@@ -64,7 +64,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.delete("/policy-types/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.delete("/policy-types/:id", requirePermission("admin:dropdowns:delete"), async (req, res, next) => {
     try {
       await deletePolicyType(String(req.params.id));
       res.status(204).end();
@@ -73,7 +73,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.get("/categories", requirePermission("admin:policyTypes"), async (_req, res, next) => {
+  r.get("/categories", requirePermission("admin:dropdowns:read"), async (_req, res, next) => {
     try {
       const rows = await prisma.category.findMany({
         orderBy: [{ type: "asc" }, { key: "asc" }],
@@ -84,7 +84,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.post("/categories", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.post("/categories", requirePermission("admin:dropdowns:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -100,7 +100,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.patch("/categories/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.patch("/categories/:id", requirePermission("admin:dropdowns:update"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       const body = z
@@ -120,7 +120,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.delete("/categories/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.delete("/categories/:id", requirePermission("admin:dropdowns:delete"), async (req, res, next) => {
     try {
       await prisma.category.delete({
         where: { id: String(req.params.id) },
@@ -131,7 +131,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.get("/policy-groupings", requirePermission("admin:policyTypes"), async (_req, res, next) => {
+  r.get("/policy-groupings", requirePermission("admin:dropdowns:read"), async (_req, res, next) => {
     try {
       const rows = await prisma.policyGroupingOption.findMany({
         orderBy: { name: "asc" },
@@ -142,7 +142,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.post("/policy-groupings", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.post("/policy-groupings", requirePermission("admin:dropdowns:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -158,7 +158,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.delete("/policy-groupings/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.delete("/policy-groupings/:id", requirePermission("admin:dropdowns:delete"), async (req, res, next) => {
     try {
       await prisma.policyGroupingOption.delete({
         where: { id: String(req.params.id) },
@@ -169,7 +169,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.patch("/policy-groupings/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.patch("/policy-groupings/:id", requirePermission("admin:dropdowns:update"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       const body = z
@@ -229,7 +229,7 @@ export function createAdminRouter(env: Env) {
   });
 
   // Form Dropdowns: generic admin CRUD for DropdownOption rows
-  r.get("/dropdowns", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.get("/dropdowns", requirePermission("admin:dropdowns:read"), async (req, res, next) => {
     try {
       const typeFilter = req.query.type
         ? z.enum(dropdownTypeValues).parse(req.query.type)
@@ -244,7 +244,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.post("/dropdowns", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.post("/dropdowns", requirePermission("admin:dropdowns:create"), async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -271,7 +271,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.patch("/dropdowns/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.patch("/dropdowns/:id", requirePermission("admin:dropdowns:update"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       const body = z
@@ -292,7 +292,7 @@ export function createAdminRouter(env: Env) {
     }
   });
 
-  r.delete("/dropdowns/:id", requirePermission("admin:policyTypes"), async (req, res, next) => {
+  r.delete("/dropdowns/:id", requirePermission("admin:dropdowns:delete"), async (req, res, next) => {
     try {
       const id = z.string().min(1).parse(req.params.id);
       await deleteDropdownOption(id);

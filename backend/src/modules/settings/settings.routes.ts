@@ -8,7 +8,7 @@ import { prisma } from "../../lib/prisma.js";
 export function createSettingsRouter(env: Env) {
   const r = Router();
 
-  r.get("/", async (_req, res, next) => {
+  r.get("/", requireAuth(env), requirePermission("settings:read"), async (_req, res, next) => {
     try {
       const rows = await prisma.appSetting.findMany();
       const map: Record<string, string> = {};
@@ -19,7 +19,7 @@ export function createSettingsRouter(env: Env) {
     }
   });
 
-  r.put("/:key", requireAuth(env), requirePermission("admin:settings"), async (req, res, next) => {
+  r.put("/:key", requireAuth(env), requirePermission("settings:update"), async (req, res, next) => {
     try {
       const key = z.string().min(1).max(100).parse(req.params.key);
       const { value } = z.object({ value: z.string().min(1) }).parse(req.body);

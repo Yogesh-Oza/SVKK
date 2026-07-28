@@ -26,11 +26,13 @@ type EmailTemplateEditorProps = {
   onSubjectChange: (subject: string) => void;
   onBodyChange: (body: string) => void;
   onSave: () => void;
+  canSave?: boolean;
   onReset?: () => void;
   testEmail: string;
   onTestEmailChange: (email: string) => void;
   sendingTest: boolean;
   onSendTest: () => void;
+  canSendTest?: boolean;
 };
 
 function insertAtCursor(el: HTMLElement, html: string) {
@@ -60,11 +62,13 @@ export function EmailTemplateEditor({
   onSubjectChange,
   onBodyChange,
   onSave,
+  canSave = true,
   onReset,
   testEmail,
   onTestEmailChange,
   sendingTest,
   onSendTest,
+  canSendTest = true,
 }: EmailTemplateEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
@@ -266,7 +270,7 @@ export function EmailTemplateEditor({
             type="button"
             variant="secondary"
             className="shrink-0 cursor-pointer"
-            disabled={sendingTest || !testEmail.trim()}
+            disabled={!canSendTest || sendingTest || !testEmail.trim()}
             onClick={onSendTest}
           >
             {sendingTest ? (
@@ -280,7 +284,7 @@ export function EmailTemplateEditor({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" className="cursor-pointer" disabled={saving} onClick={onSave}>
+        <Button type="button" className="cursor-pointer" disabled={!canSave || saving} onClick={onSave}>
           {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
           Save template
         </Button>

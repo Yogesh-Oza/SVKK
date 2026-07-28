@@ -1,6 +1,7 @@
 import {
   calculateAge,
   chartRows,
+  displayBandLabel,
   discountPct,
   normalizeMember,
 } from "../../lib/svkk/premium/engine";
@@ -304,7 +305,7 @@ export function quoteFromStoredFormValues(
       ...normalized,
       role,
       age,
-      band: bandHit?.label || "—",
+      band: bandHit ? displayBandLabel(bandHit, chartRows(premiumState.charts, policyKey, role)) : "—",
       basic,
       rider,
       gross,

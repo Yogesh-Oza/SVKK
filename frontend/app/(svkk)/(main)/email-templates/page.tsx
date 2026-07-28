@@ -3,7 +3,11 @@
 import { EmailTemplatesWorkspace } from "@/features/svkk-email-templates/email-templates-workspace";
 import { backendApi } from "@/lib/svkk/api";
 import { isMediclaimTemplateId } from "@/lib/svkk/email-template-layout";
-import { hasPermission } from "@/lib/svkk/permissions";
+import {
+  canReadEmailTemplates,
+  canSendTestEmailTemplates,
+  canUpdateEmailTemplates,
+} from "@/lib/svkk/permissions";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -26,7 +30,9 @@ const TEST_EMAIL_STORAGE_KEY = "svkk-email-template-test-to";
 
 export default function EmailTemplatesPage() {
   const { user } = useSvkkAuth();
-  const canEdit = user ? hasPermission(user.permissions, "admin:settings") : false;
+  const canRead = user?.permissions ? canReadEmailTemplates(user.permissions) : false;
+  const canEdit = user?.permissions ? canUpdateEmailTemplates(user.permissions) : false;
+  const canSendTest = user?.permissions ? canSendTestEmailTemplates(user.permissions) : false;
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -48,7 +54,7 @@ export default function EmailTemplatesPage() {
   }, [user?.email]);
 
   const load = useCallback(async () => {
-    if (!canEdit) return;
+    if (!canRead) return;
     setLoading(true);
     try {
       const { data } = await backendApi.get<{ templates: EmailTemplate[] }>("/email-templates");
@@ -65,7 +71,7 @@ export default function EmailTemplatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [canEdit]);
+  }, [canRead]);
 
   useEffect(() => {
     void load();
@@ -132,8 +138,8 @@ export default function EmailTemplatesPage() {
     }
   }
 
-  if (!canEdit) {
-    return <p className="text-muted-foreground text-sm">You do not have permission to edit email templates.</p>;
+  if (!canRead) {
+    return <p className="text-muted-foreground text-sm">You do not have permission to view email templates.</p>;
   }
 
   return (
@@ -156,7 +162,7 @@ export default function EmailTemplatesPage() {
           selectedId={selectedId}
           onSelectId={setSelectedId}
           drafts={drafts}
-          savingId={savingId}
+          savingId={canEdit ? savingId : "__disabled__"}
           onSubjectChange={(id, subject) =>
             setDrafts((d) => ({
               ...d,
@@ -169,12 +175,20 @@ export default function EmailTemplatesPage() {
               [id]: { subject: d[id]?.subject ?? "", body },
             }))
           }
-          onSave={(id) => void save(id)}
+          onSave={(id) => {
+            if (!canEdit) return;
+            void save(id);
+          }}
+          canSave={canEdit}
           onReset={resetToDefault}
           testEmail={testEmail}
           onTestEmailChange={handleTestEmailChange}
-          sendingTestId={sendingTestId}
-          onSendTest={(id) => void sendTest(id)}
+          sendingTestId={canSendTest ? sendingTestId : "__disabled__"}
+          onSendTest={(id) => {
+            if (!canSendTest) return;
+            void sendTest(id);
+          }}
+          canSendTest={canSendTest}
         />
       )}
     </div>

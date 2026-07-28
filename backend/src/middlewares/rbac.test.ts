@@ -74,6 +74,6 @@ describe("rbac effective permissions", () => {
       { key: WILDCARD_PERMISSION, effect: "ALLOW" },
     ]);
     expect(effective.has(WILDCARD_PERMISSION)).toBe(true);
-    expect(effective.has("roles:manage")).toBe(true);
+    expect(effective.has("roles:read")).toBe(true);
   });
 });

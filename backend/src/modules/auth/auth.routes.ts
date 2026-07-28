@@ -2,6 +2,7 @@ import { Router } from "express";
 import cookieParser from "cookie-parser";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
+import { requireAnyPermission } from "../../middlewares/rbac.js";
 import { AppError } from "../../errors/app-error.js";
 import {
   assertRefreshVersion,
@@ -47,7 +48,27 @@ function serializeUser(
 export function createAuthRouter(env: Env) {
   const r = Router();
 
-  r.get("/me", requireAuth(env), async (req, res, next) => {
+  r.get(
+    "/me",
+    requireAuth(env),
+    requireAnyPermission([
+      "dashboard:read",
+      "policy:read",
+      "policy:create",
+      "claim:read",
+      "claim:create",
+      "future:read",
+      "mis:policy:read",
+      "mis:claim:read",
+      "users:read",
+      "roles:read",
+      "settings:read",
+      "emailTemplates:read",
+      "categoryForm:read",
+      "notifications:read",
+      "*:*",
+    ]),
+    async (req, res, next) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.userId },
@@ -66,9 +87,30 @@ export function createAuthRouter(env: Env) {
     } catch (e) {
       next(e);
     }
-  });
+    },
+  );
 
-  r.patch("/me", requireAuth(env), async (req, res, next) => {
+  r.patch(
+    "/me",
+    requireAuth(env),
+    requireAnyPermission([
+      "dashboard:read",
+      "policy:read",
+      "policy:create",
+      "claim:read",
+      "claim:create",
+      "future:read",
+      "mis:policy:read",
+      "mis:claim:read",
+      "users:read",
+      "roles:read",
+      "settings:read",
+      "emailTemplates:read",
+      "categoryForm:read",
+      "notifications:read",
+      "*:*",
+    ]),
+    async (req, res, next) => {
     try {
       const body = z
         .object({
@@ -101,7 +143,8 @@ export function createAuthRouter(env: Env) {
     } catch (e) {
       next(e);
     }
-  });
+    },
+  );
 
   r.post("/login", authRateLimit, async (req, res, next) => {
     try {

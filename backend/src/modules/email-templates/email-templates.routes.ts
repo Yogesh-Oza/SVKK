@@ -20,7 +20,7 @@ const templateIdSchema = z.enum(
 export function createEmailTemplatesRouter(env: Env) {
   const r = Router();
 
-  r.get("/", requireAuth(env), requirePermission("admin:settings"), async (_req, res, next) => {
+  r.get("/", requireAuth(env), requirePermission("emailTemplates:read"), async (_req, res, next) => {
     try {
       const templates = await listEmailTemplatesForAdmin();
       res.json({ templates });
@@ -32,7 +32,7 @@ export function createEmailTemplatesRouter(env: Env) {
   r.put(
     "/:templateId",
     requireAuth(env),
-    requirePermission("admin:settings"),
+    requirePermission("emailTemplates:update"),
     async (req, res, next) => {
       try {
         const templateId = templateIdSchema.parse(req.params.templateId);
@@ -53,7 +53,7 @@ export function createEmailTemplatesRouter(env: Env) {
   r.post(
     "/:templateId/send-test",
     requireAuth(env),
-    requirePermission("admin:settings"),
+    requirePermission("emailTemplates:send_test"),
     async (req, res, next) => {
       try {
         const templateId = templateIdSchema.parse(req.params.templateId);

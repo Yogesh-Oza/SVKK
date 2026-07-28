@@ -259,18 +259,18 @@ export function assertRecordInGeoScope(
 
   const { villageValues, areaValues } = scope;
   if (villageValues.length === 0 && areaValues.length === 0) {
-    throw new AppError("NOT_FOUND", "Record outside your village/area scope", 404);
+    throw new AppError("FORBIDDEN", "Record outside your village/area scope", 403);
   }
 
   if (villageValues.length > 0) {
     if (!matchesGeoValue(record.village, villageValues)) {
-      throw new AppError("NOT_FOUND", "Record outside your village/area scope", 404);
+      throw new AppError("FORBIDDEN", "Record outside your village/area scope", 403);
     }
   }
 
   if (areaValues.length > 0) {
     if (!matchesGeoValue(record.area ?? null, areaValues)) {
-      throw new AppError("NOT_FOUND", "Record outside your village/area scope", 404);
+      throw new AppError("FORBIDDEN", "Record outside your village/area scope", 403);
     }
   }
 }
@@ -313,7 +313,7 @@ export function assertPolicyReadable(
   }
   if (hasPermissionInSet(permissions, "policy:scope_own")) {
     if (policy.createdById !== userId) {
-      throw new AppError("NOT_FOUND", "Policy not found", 404);
+      throw new AppError("FORBIDDEN", "Policy outside your scope", 403);
     }
     if (!hasPermissionInSet(permissions, "policy:scope_village")) {
       return;
