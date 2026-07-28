@@ -9,6 +9,7 @@
     "format": "prettier --write .",
     "lint": "eslint .",
     "test": "vitest run",
+    "verify:rbac-ui": "tsx scripts/verify-rbac-ui-access.ts",
     "prepare": "husky install || true",
     "db:seed": "tsx scripts/seed-user.ts",
     "ws:server": "tsx lib/ws/server.ts",

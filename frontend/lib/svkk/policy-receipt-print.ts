@@ -42,7 +42,13 @@ export type PolicyDetailForReceipt = {
     bankName: string | null;
     utrRef?: string | null;
     yearRemarks?: string | null;
-    members?: unknown[];
+    members?: Array<{
+      name?: string | null;
+      relationship?: string | null;
+      dob?: string | null;
+      gender?: string | null;
+      ageAtEntry?: number | null;
+    }>;
     receipts?: Array<{ receiptNo: string; policyDate?: string | null; createdAt?: string | null }>;
     payments?: Array<{
       method?: string | null;
@@ -108,6 +114,42 @@ function displayDate(raw: unknown): string {
     return `${day}-${month}-${year}`;
   }
   return s;
+}
+
+function displayAge(raw: unknown): string {
+  if (raw == null || raw === "") return "—";
+  const num = Number(raw);
+  if (Number.isFinite(num) && num >= 0) return String(num);
+  const value = String(raw).trim();
+  return value || "—";
+}
+
+function genderLabel(g: unknown): string {
+  if (g == null) return "—";
+  const value = String(g).trim();
+  if (!value) return "—";
+  const upper = value.toUpperCase();
+  if (upper === "M" || upper === "MALE") return "Male";
+  if (upper === "F" || upper === "FEMALE") return "Female";
+  if (upper === "O" || upper === "OTHER") return "Other";
+  return value;
+}
+
+function receiptMembers(
+  y0: PolicyDetailForReceipt["years"][0] | undefined,
+): Array<Required<NonNullable<PolicyDetailForReceipt["years"][0]["members"]>[number]>> {
+  return (y0?.members ?? [])
+    .filter((member) => {
+      const name = String(member?.name ?? "").trim();
+      return name.length > 0;
+    })
+    .map((member) => ({
+      name: String(member?.name ?? "").trim(),
+      relationship: String(member?.relationship ?? "").trim() || "—",
+      dob: String(member?.dob ?? "").trim() || null,
+      gender: String(member?.gender ?? "").trim() || null,
+      ageAtEntry: member?.ageAtEntry ?? null,
+    }));
 }
 
 function policyTypeLabel(p: PolicyDetailForReceipt): string {
@@ -318,6 +360,7 @@ export function buildReceiptDocumentHtml(
   const generalRemark = (p.generalRemark ?? "").trim() || parsedRemarks.generalRemark;
   const policyChangeRemark = parsedRemarks.policyChangeRemark;
   const categoryChangeRemark = parsedRemarks.categoryChangeRemark;
+  const members = receiptMembers(y0);
 
   const rows: [string, string][] = [
     ["Receipt No.", receiptNo],
@@ -364,6 +407,35 @@ export function buildReceiptDocumentHtml(
       )
       .join("");
 
+  const membersHtml =
+    members.length === 0
+      ? `<div class="member-card member-empty">No members added.</div>`
+      : `<div class="member-card members-card">
+          <div class="member-title">Insured Members</div>
+          <table class="members-table" aria-label="Insured Members">
+            <thead>
+              <tr>
+                <th>Member Name</th>
+                <th>Relationship</th>
+                <th>Age</th>
+                <th>Gender</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${members
+                .map(
+                  (member) => `<tr>
+                    <td>${escapeHtml(member.name)}</td>
+                    <td>${escapeHtml(member.relationship)}</td>
+                    <td>${escapeHtml(displayAge(member.ageAtEntry))}</td>
+                    <td>${escapeHtml(genderLabel(member.gender))}</td>
+                  </tr>`,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>`;
+
   const embedded = options?.embedded === true;
   const bodyClass = embedded ? "receipt-root receipt-embedded" : "receipt-root";
   const headerImg = options?.headerImageUrl || DEFAULT_HEADER_IMAGE;
@@ -380,6 +452,7 @@ export function buildReceiptDocumentHtml(
           <div class="rcol">${colHtml(left)}</div>
           <div class="rcol">${colHtml(right)}</div>
         </div>
+        ${membersHtml}
         <div class="receipt-tail">
           <div class="member-card receipt-words"><div class="words-label">Amount in Words</div><div class="words-value">${escapeHtml(amountInWords)}</div></div>
           <div class="member-card receipt-thanks">Received with thanks the above amount towards mediclaim premium.</div>
@@ -537,6 +610,39 @@ export function buildReceiptDocumentHtml(
     .rrow > div:first-child { font-weight: 800; color: #334155; }
     .rrow > div:last-child { min-width: 0; overflow-wrap: anywhere; word-break: break-word; hyphens: auto; }
     .rcol:first-child { border-right: 1px solid #e5e7eb; }
+    .members-card,
+    .member-empty {
+      margin-top: 8px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .member-title {
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #334155;
+    }
+    .members-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      table-layout: fixed;
+    }
+    .members-table th,
+    .members-table td {
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      border-top: 1px solid #e5e7eb;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .members-table th {
+      color: #334155;
+      font-weight: 800;
+      border-top: none;
+      padding-top: 0;
+    }
     .receipt-tail {
       flex: 0 0 auto;
       margin-top: auto;
@@ -593,6 +699,10 @@ export function buildReceiptDocumentHtml(
       .receipt-title { font-size: 18px; padding: 4px 14px; }
       .rrow { font-size: 10.5px; padding: 5px 8px; }
       .member-card { padding: 6px 10px; border-radius: 10px; }
+      .member-title,
+      .members-table { font-size: 10.5px; }
+      .members-table th,
+      .members-table td { padding: 5px 6px; }
       .receipt-signatures { margin-top: 10px !important; }
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }

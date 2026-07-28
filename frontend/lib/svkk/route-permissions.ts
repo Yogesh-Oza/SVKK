@@ -1,3 +1,5 @@
+import { hasPermission } from "@/lib/svkk/permissions";
+
 /**
  * Path → required permission. `undefined` means any authenticated user.
  * For paths with multiple valid permissions, use getRequiredPermissionsForPath.
@@ -32,4 +34,15 @@ export function getRequiredPermissionsForPath(pathname: string): string[] | unde
   if (pathname.startsWith("/policies")) return ["policy:read"];
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard")) return ["dashboard:read"];
   return undefined;
+}
+
+export function canAccessPath(
+  permissions: readonly string[] | undefined,
+  pathname: string,
+): boolean {
+  const required = getRequiredPermissionsForPath(pathname);
+  if (!required?.length) {
+    return true;
+  }
+  return required.some((key) => hasPermission(permissions as string[] | undefined, key));
 }
