@@ -20,7 +20,7 @@ import {
 import { svkkJson } from "@/lib/svkk/api";
 import { cn } from "@/lib/utils";
 import { Download } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type ExportColumnsResponse = {
@@ -48,9 +48,12 @@ export function MisCsvExportDialog({
   title: string;
   description: string;
 }) {
-  const [groups, setGroups] = useState<MisCsvExportColumnGroup[]>([]);
+  const fallbackGroups = useMemo(() => buildMisExportColumnGroups(report), [report]);
+  const [groups, setGroups] = useState<MisCsvExportColumnGroup[]>(() => fallbackGroups);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(allMisExportUiKeys(fallbackGroups)),
+  );
 
   const uiKeys = useMemo(() => allMisExportUiKeys(groups), [groups]);
   const selectedUiCount = useMemo(
@@ -60,7 +63,6 @@ export function MisCsvExportDialog({
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
-    const fallbackGroups = buildMisExportColumnGroups(report);
     try {
       const data = await svkkJson<ExportColumnsResponse>(`/mis/export-columns?report=${report}`);
       const nextGroups = (data.groups ?? []).length > 0 ? data.groups : fallbackGroups;
@@ -73,13 +75,20 @@ export function MisCsvExportDialog({
     } finally {
       setLoading(false);
     }
-  }, [report]);
+  }, [fallbackGroups, report]);
+
+  useEffect(() => {
+    setGroups(fallbackGroups);
+    setSelected(new Set(allMisExportUiKeys(fallbackGroups)));
+  }, [fallbackGroups]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadGroups();
+  }, [loadGroups, open]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
-    if (nextOpen) {
-      void loadGroups();
-    }
   };
 
   const toggleGroup = (group: MisCsvExportColumnGroup, checked: boolean) => {
