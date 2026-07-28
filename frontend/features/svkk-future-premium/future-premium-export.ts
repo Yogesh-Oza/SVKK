@@ -36,7 +36,7 @@ export function downloadCsv(filename: string, rows: Record<string, unknown>[]): 
 }
 
 export function summaryExportRows(results: FuturePremiumResult[]): Record<string, unknown>[] {
-  const rows = results.map((r) => ({
+  const rows: Record<string, unknown>[] = results.map((r) => ({
     policy_number: r.policyNo,
     holder_name: r.holder,
     policy_type: r.futurePolicy,
@@ -81,7 +81,7 @@ export function summaryExportRows(results: FuturePremiumResult[]): Record<string
 }
 
 export function detailExportRows(results: FuturePremiumResult[]): Record<string, unknown>[] {
-  const rows = results.flatMap((r) =>
+  const rows: Record<string, unknown>[] = results.flatMap((r) =>
     r.memberTimeline.map((m) => ({
       svkk_id: r.svkkId,
       customer_id: r.customerId,
