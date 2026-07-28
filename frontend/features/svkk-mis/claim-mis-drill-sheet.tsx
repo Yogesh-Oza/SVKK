@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -16,9 +17,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { svkkJson } from "@/lib/svkk/api";
+import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { formatInr } from "@/features/svkk-dashboard/currency";
+import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { MisCsvExportDialog } from "./mis-csv-export-dialog";
 
 type ClaimDrillRow = {
   label: string;
@@ -42,13 +45,17 @@ type Props = {
 
 export function ClaimMisDrillSheet({ open, onOpenChange, village, reportQueryString }: Props) {
   const [loading, setLoading] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [detail, setDetail] = useState<DrillResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !village) {
       setDetail(null);
       setError(null);
+      setExportError(null);
       return;
     }
 
@@ -79,15 +86,61 @@ export function ClaimMisDrillSheet({ open, onOpenChange, village, reportQueryStr
     { claimCount: 0, sumClaimAmount: 0, sumApprovedAmount: 0, sumDeductionAmount: 0 },
   );
 
+  async function exportDrillCsv(columns: string[]) {
+    if (!village) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const q = new URLSearchParams(reportQueryString);
+      q.set("drillVillage", village);
+      columns.forEach((column) => q.append("fields", column));
+      const res = await backendApi.get(`/mis/export/claim-report-detail.csv?${q.toString()}`, {
+        responseType: "blob",
+      });
+      const slug = village
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `claim-mis-village-${slug || "detail"}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(80vh,640px)] w-[min(98vw,900px)] max-w-[min(98vw,900px)]! flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(98vw,900px)]!">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <DialogTitle>Village: {village}</DialogTitle>
-          <DialogDescription>
-            Claim breakdown by category for this village. Uses the same date and filters as the
-            main Claim MIS report.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <DialogTitle>Village: {village}</DialogTitle>
+              <DialogDescription>
+                Claim breakdown by category for this village. Uses the same date and filters as the
+                main Claim MIS report.
+              </DialogDescription>
+              {exportError ? <p className="text-destructive text-sm">{exportError}</p> : null}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="gap-1.5"
+              disabled={loading || exportBusy || !village}
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" />
+              {exportBusy ? "Exporting…" : "Export CSV"}
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -162,6 +215,15 @@ export function ClaimMisDrillSheet({ open, onOpenChange, village, reportQueryStr
           )}
         </div>
       </DialogContent>
+      <MisCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        onExport={exportDrillCsv}
+        exporting={exportBusy}
+        report="claim-report-detail"
+        title="Export Claim MIS detail CSV"
+        description="Choose which fields to include. Current table filters still apply to exported rows."
+      />
     </Dialog>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { quoteFromInput } from "./engine";
+import { calculateAge, quoteFromInput } from "./engine";
 import { SAMPLE_CHARTS, SAMPLE_DEFS } from "./sample-data";
 import type { PremiumState } from "./types";
 
@@ -114,5 +114,22 @@ describe("quoteFromInput per-member sumInsured", () => {
     expect(after.rows[1]?.basic).not.toBe(before.rows[1]?.basic);
     expect(after.rows[1]?.basic).toBe(3700); // 36-45 @ 300000
     expect(after.basic).toBe((before.rows[0]?.basic ?? 0) + 3700);
+  });
+});
+
+describe("calculateAge", () => {
+  it("calculates age from DOB and future calculation date", () => {
+    expect(calculateAge("21-11-1979", "2028-07-28")).toBe(48);
+  });
+
+  it("does not add future years twice", () => {
+    const dob = "21-11-1979";
+    const currentCalculationDate = "2026-07-28";
+    const futureCalculationDate = "2028-07-28";
+    const currentAge = calculateAge(dob, currentCalculationDate);
+    const futureAge = calculateAge(dob, futureCalculationDate);
+    expect(currentAge).toBe(46);
+    expect(futureAge).toBe(48);
+    expect(futureAge).not.toBe((currentAge ?? 0) + 3);
   });
 });

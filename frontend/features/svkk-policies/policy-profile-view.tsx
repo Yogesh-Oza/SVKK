@@ -12,6 +12,7 @@ import {
 } from "@/features/svkk-policies/policy-detail-view-body";
 import {
   displayVal,
+  formatPolicyDateDmy,
   formatViewDateDmy,
   genderLabel,
   yesNoLabel,
@@ -107,26 +108,6 @@ function fmtAmount(v: unknown): string {
 function formatInr(v: unknown): string {
   const n = formatNumIn(v);
   return n ? `₹${n}` : "";
-}
-
-function formatDateIso(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function formatDateDmy(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const day = String(d.getDate()).padStart(2, "0");
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const y = d.getFullYear();
-  return `${day}-${m}-${y}`;
 }
 
 function holderAge(row: PolicyDetailViewRow): string {
@@ -330,22 +311,28 @@ export function PolicyProfileView({
 
   const allowCommission = user?.permissions ? canSeeCommission(user.permissions) : false;
   const fmt = fmtAmount;
-  const fmtDate = (iso: string | null | undefined) => displayVal(iso ? formatDateIso(iso) : "");
-  const fmtDob = (iso: string | null | undefined) => displayVal(iso ? formatDateDmy(iso) : "");
+  const fmtDate = (iso: string | null | undefined) => displayVal(formatPolicyDateDmy(iso));
+  const fmtDob = (iso: string | null | undefined) => displayVal(formatPolicyDateDmy(iso));
   const categoryLabel = resolveCategoryDisplayLabel(row.category, row.categoryText, categoryByKey);
   const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(row.remarks);
   const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
   const status = policyStatus(y);
 
   const holderJoiningDisplay = row.holderJoiningDate
-    ? formatDateIso(row.holderJoiningDate)
+    ? formatPolicyDateDmy(row.holderJoiningDate)
     : (y?.holderJoiningYear ?? "");
 
-  const refundDateRaw = row.refundChequeDate ? formatDateIso(row.refundChequeDate) : "";
+  const refundDateRaw = row.refundChequeDate ?? "";
   const refundDateDisplay =
     refundDateRaw === "0000-01-01" || refundDateRaw.startsWith("0000-00")
       ? ""
-      : formatDateDmy(row.refundChequeDate);
+      : formatPolicyDateDmy(row.refundChequeDate);
+
+  const generatedDateRaw =
+    y?.receipts?.[0]?.policyDate ??
+    y?.receipts?.[0]?.createdAt ??
+    createdAt ??
+    null;
 
   const periodLabel =
     y?.policyStart && y?.policyEnd
@@ -361,9 +348,9 @@ export function PolicyProfileView({
             <FileText className={cn("size-4", profileTheme.icon)} />
             Policy Details &amp; Information
           </p>
-          {createdAt ? (
+          {generatedDateRaw ? (
             <p className={cn("mt-1 text-xs", profileTheme.subtext)}>
-              Generated {displayVal(formatViewDateDmy(createdAt))}
+              Generated {displayVal(formatPolicyDateDmy(generatedDateRaw))}
             </p>
           ) : null}
         </div>
@@ -749,7 +736,7 @@ export function PolicyProfileView({
                               label={field.label}
                               value={
                                 field.label.toLowerCase().includes("date")
-                                  ? displayVal(formatDateIso(field.value) || field.value)
+                                  ? displayVal(formatPolicyDateDmy(field.value))
                                   : displayVal(field.value)
                               }
                               monetary={!field.label.toLowerCase().includes("date")}

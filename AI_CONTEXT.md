@@ -1,5 +1,8 @@
 # AI_CONTEXT.md — SVKK Insurance Platform
 
+admin@svkk.local
+admin123!
+
 ## Project purpose
 
 Standalone Next.js + Express insurance management system for policy registration, premium calculation, claims, and MIS reporting.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Download, Loader2, Settings2, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,10 @@ import {
   buildFutureResults,
   computeFutureMis,
   filterFutureResults,
+  FUTURE_DISCOUNT_OPTIONS,
+  FUTURE_POLICY_TYPE_OPTIONS,
   FUTURE_PREMIUM_SOURCE_OPTIONS,
+  FUTURE_SI_OPTIONS,
   FUTURE_YEAR_OPTIONS,
   sourceLabel,
   yearOffsetLabel,
@@ -99,6 +102,15 @@ export function FuturePremiumPanel() {
   const [pageSize, setPageSize] = useState(25);
   const [listTotal, setListTotal] = useState(0);
   const [listTotalPages, setListTotalPages] = useState(0);
+  const [futureSiMode, setFutureSiMode] = useState<"existing" | "change">("existing");
+  const [futureSiValue, setFutureSiValue] = useState(String(FUTURE_SI_OPTIONS[0]));
+  const [bulkSiUpgrade, setBulkSiUpgrade] = useState(false);
+  const [futurePolicyMode, setFuturePolicyMode] = useState<"existing" | "change">("existing");
+  const [futurePolicyType, setFuturePolicyType] = useState("family_floater");
+  const [discountMode, setDiscountMode] = useState<"existing" | "chart" | "custom">("chart");
+  const [customDiscountPct, setCustomDiscountPct] = useState(String(FUTURE_DISCOUNT_OPTIONS[1]));
+  const [progressText, setProgressText] = useState("");
+  const cancelGenerationRef = useRef(false);
 
   const isDbSource = source === "policy_list_only";
 
@@ -116,18 +128,51 @@ export function FuturePremiumPanel() {
   const displayTotalPages = isDbSource
     ? Math.max(1, listTotalPages)
     : Math.max(1, Math.ceil(visibleRows.length / pageSize) || 1);
-
-  useEffect(() => {
-    if (!isDbSource) setPage(1);
-  }, [search, policyFilter, siFilter, statusFilter, isDbSource]);
-
-  useEffect(() => {
-    setPage(1);
-    setListTotal(0);
-    setListTotalPages(0);
-    setResults([]);
-    setGenerated(false);
-  }, [source]);
+  const comparisonMetrics = useMemo(() => {
+    const deltas = visibleRows.map((r) => r.premiumDiff);
+    const totalIncrease = deltas.reduce((sum, d) => sum + d, 0);
+    const increases = deltas.filter((d) => d > 0);
+    const avgIncrease = increases.length ? totalIncrease / increases.length : 0;
+    const highestIncrease = Math.max(0, ...deltas);
+    const highestDiscount = Math.max(0, ...visibleRows.map((r) => r.quote.disc));
+    const bandCrossings = visibleRows.filter((r) => r.memberTimeline.some((m) => m.bandChanged)).length;
+    const siChanges = visibleRows.filter((r) => r.currentSi !== r.futureSi).length;
+    const productChanges = visibleRows.filter((r) => r.currentPolicy !== r.futurePolicy).length;
+    const ready = visibleRows.filter((r) => r.status === "Ready").length;
+    const renewalSuccessProjection = visibleRows.length ? (ready / visibleRows.length) * 100 : 0;
+    return {
+      totalIncrease,
+      avgIncrease,
+      highestIncrease,
+      highestDiscount,
+      bandCrossings,
+      siChanges,
+      productChanges,
+      renewalSuccessProjection,
+    };
+  }, [visibleRows]);
+  const chartBuckets = useMemo(() => {
+    const ageBand = new Map<string, number>();
+    const premiumIncrease = { noChange: 0, low: 0, medium: 0, high: 0 };
+    const futureSi = new Map<string, number>();
+    const policyType = new Map<string, number>();
+    const renewalMonth = new Map<string, number>();
+    for (const row of visibleRows) {
+      policyType.set(row.futurePolicy, (policyType.get(row.futurePolicy) ?? 0) + 1);
+      futureSi.set(`₹${rs(row.futureSi)}`, (futureSi.get(`₹${rs(row.futureSi)}`) ?? 0) + 1);
+      const month = row.context.futureEndDate?.slice(5, 7) || "—";
+      renewalMonth.set(month, (renewalMonth.get(month) ?? 0) + 1);
+      for (const m of row.memberTimeline) {
+        const band = m.futureBand || "—";
+        ageBand.set(band, (ageBand.get(band) ?? 0) + 1);
+      }
+      if (row.premiumDiff <= 0) premiumIncrease.noChange += 1;
+      else if (row.premiumIncreasePct < 10) premiumIncrease.low += 1;
+      else if (row.premiumIncreasePct < 20) premiumIncrease.medium += 1;
+      else premiumIncrease.high += 1;
+    }
+    return { ageBand, premiumIncrease, futureSi, policyType, renewalMonth };
+  }, [visibleRows]);
 
   const policyTypeOptions = useMemo(
     () => [...new Set(results.map((r) => r.policy).filter(Boolean))],
@@ -187,6 +232,15 @@ export function FuturePremiumPanel() {
         size,
         yearOffset,
         premiumState,
+        {
+          futureSiMode,
+          selectedFutureSi: Number(futureSiValue || 0),
+          bulkSiUpgrade,
+          futurePolicyMode,
+          selectedFuturePolicy: futurePolicyType,
+          discountMode,
+          customDiscountPct: Number(customDiscountPct || 0),
+        },
       );
       if (!pageData.items.length) {
         setResults([]);
@@ -233,6 +287,8 @@ export function FuturePremiumPanel() {
       return;
     }
     setBusy(true);
+    cancelGenerationRef.current = false;
+    setProgressText("Preparing generation...");
     try {
       const raw = filterFutureCsvRows(
         uploadedRows,
@@ -253,7 +309,30 @@ export function FuturePremiumPanel() {
         );
         return;
       }
-      const next = buildFutureResults(raw, source, yearOffset, premiumState);
+      const chunkSize = 400;
+      const chunks = Math.max(1, Math.ceil(raw.length / chunkSize));
+      const next: FuturePremiumResult[] = [];
+      for (let i = 0; i < chunks; i += 1) {
+        if (cancelGenerationRef.current) {
+          showMessage("Generation cancelled by user.", true);
+          break;
+        }
+        const start = i * chunkSize;
+        const chunkRows = raw.slice(start, start + chunkSize);
+        next.push(
+          ...buildFutureResults(chunkRows, source, yearOffset, premiumState, {
+            futureSiMode,
+            selectedFutureSi: Number(futureSiValue || 0),
+            bulkSiUpgrade,
+            futurePolicyMode,
+            selectedFuturePolicy: futurePolicyType,
+            discountMode,
+            customDiscountPct: Number(customDiscountPct || 0),
+          }),
+        );
+        setProgressText(`Processing ${Math.min(raw.length, start + chunkRows.length)} / ${raw.length} policies...`);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       setResults(next);
       setGenerated(true);
       setPage(1);
@@ -268,6 +347,7 @@ export function FuturePremiumPanel() {
       showMessage(e instanceof Error ? e.message : "Generate failed. Please try again.", true);
     } finally {
       setBusy(false);
+      setProgressText("");
     }
   };
 
@@ -317,7 +397,17 @@ export function FuturePremiumPanel() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <Label>Source</Label>
-              <Select value={source} onValueChange={(v) => setSource(v as FutureSourceKey)}>
+              <Select
+                value={source}
+                onValueChange={(v) => {
+                  setSource(v as FutureSourceKey);
+                  setPage(1);
+                  setListTotal(0);
+                  setListTotalPages(0);
+                  setResults([]);
+                  setGenerated(false);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -390,7 +480,115 @@ export function FuturePremiumPanel() {
                 >
                   Download sample CSV
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!busy}
+                  onClick={() => {
+                    cancelGenerationRef.current = true;
+                  }}
+                >
+                  Cancel
+                </Button>
               </div>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Future Sum Insured</Label>
+              <Select value={futureSiMode} onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
+                  <SelectItem value="change">Change Sum Insured</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future SI Value</Label>
+              <Select value={futureSiValue} onValueChange={setFutureSiValue} disabled={futureSiMode !== "change"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_SI_OPTIONS.map((si) => (
+                    <SelectItem key={si} value={String(si)}>
+                      ₹{rs(si)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Bulk SI Upgrade Rules</Label>
+              <Select value={bulkSiUpgrade ? "yes" : "no"} onValueChange={(v) => setBulkSiUpgrade(v === "yes")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">Disabled</SelectItem>
+                  <SelectItem value="yes">Enabled (1L→2L→3L→5L→10L)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future Policy Type</Label>
+              <Select value={futurePolicyMode} onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Keep Existing Product</SelectItem>
+                  <SelectItem value="change">Change Product</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Future Product Selection</Label>
+              <Select value={futurePolicyType} onValueChange={setFuturePolicyType} disabled={futurePolicyMode !== "change"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
+                    <SelectItem key={policy} value={policy}>
+                      {policy.replace(/_/g, " ").toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future Discount</Label>
+              <Select value={discountMode} onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Use Existing Discount</SelectItem>
+                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
+                  <SelectItem value="custom">Custom Discount %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Custom Discount %</Label>
+              <Select value={customDiscountPct} onValueChange={setCustomDiscountPct} disabled={discountMode !== "custom"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
+                    <SelectItem key={pct} value={String(pct)}>
+                      {pct}%
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <FuturePremiumPolicyFilters
@@ -419,6 +617,22 @@ export function FuturePremiumPanel() {
           >
             {message}
           </p>
+          {progressText ? <p className="text-muted-foreground text-sm">{progressText}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Future Assumptions</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7 text-sm">
+          <div><p className="text-muted-foreground text-xs">Future Year</p><p className="font-semibold">{yearOffsetLabel(yearOffset)}</p></div>
+          <div><p className="text-muted-foreground text-xs">Calculation Date</p><p className="font-semibold">{results[0]?.calcDate || "—"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Calculation Year</p><p className="font-semibold">{results[0]?.calcYear || "—"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected SI</p><p className="font-semibold">{futureSiMode === "change" ? `₹${rs(futureSiValue)}` : "Existing"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected Discount</p><p className="font-semibold">{discountMode === "custom" ? `${customDiscountPct}%` : discountMode}</p></div>
+          <div><p className="text-muted-foreground text-xs">Selected Product</p><p className="font-semibold">{futurePolicyMode === "change" ? futurePolicyType : "Existing"}</p></div>
+          <div><p className="text-muted-foreground text-xs">Chart Version</p><p className="font-semibold">Live Admin Chart</p></div>
         </CardContent>
       </Card>
 
@@ -487,6 +701,67 @@ export function FuturePremiumPanel() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Increase" value={`₹${rs(comparisonMetrics.totalIncrease)}`} />
+        <StatCard label="Avg Increase" value={`₹${rs(Math.round(comparisonMetrics.avgIncrease))}`} />
+        <StatCard label="Highest Increase" value={`₹${rs(comparisonMetrics.highestIncrease)}`} />
+        <StatCard label="Highest Discount" value={`₹${rs(comparisonMetrics.highestDiscount)}`} />
+        <StatCard label="Band Crossings" value={comparisonMetrics.bandCrossings} />
+        <StatCard label="SI Changes" value={comparisonMetrics.siChanges} />
+        <StatCard label="Product Changes" value={comparisonMetrics.productChanges} />
+        <StatCard
+          label="Renewal Success Projection"
+          value={`${comparisonMetrics.renewalSuccessProjection.toFixed(1)}%`}
+          highlight
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Distribution Charts</CardTitle>
+          <CardDescription>
+            Age band distribution, premium increase buckets, future SI, policy type, and renewal month.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 text-sm">
+          <div>
+            <p className="font-semibold">Age Band Distribution</p>
+            {[...chartBuckets.ageBand.entries()].slice(0, 8).map(([k, v]) => (
+              <p key={k} className="text-muted-foreground">{k}: {v}</p>
+            ))}
+          </div>
+          <div>
+            <p className="font-semibold">Premium Increase Distribution</p>
+            <p className="text-muted-foreground">No Change: {chartBuckets.premiumIncrease.noChange}</p>
+            <p className="text-muted-foreground">&lt;10%: {chartBuckets.premiumIncrease.low}</p>
+            <p className="text-muted-foreground">10-20%: {chartBuckets.premiumIncrease.medium}</p>
+            <p className="text-muted-foreground">&gt;=20%: {chartBuckets.premiumIncrease.high}</p>
+          </div>
+          <div>
+            <p className="font-semibold">Future SI Distribution</p>
+            {[...chartBuckets.futureSi.entries()].map(([k, v]) => (
+              <p key={k} className="text-muted-foreground">{k}: {v}</p>
+            ))}
+          </div>
+          <div>
+            <p className="font-semibold">Policy Type Distribution</p>
+            {[...chartBuckets.policyType.entries()].map(([k, v]) => (
+              <p key={k} className="text-muted-foreground">{k}: {v}</p>
+            ))}
+          </div>
+          <div>
+            <p className="font-semibold">Renewal Month Distribution</p>
+            {[...chartBuckets.renewalMonth.entries()].map(([k, v]) => (
+              <p key={k} className="text-muted-foreground">{k}: {v}</p>
+            ))}
+          </div>
+          <div>
+            <p className="font-semibold">Premium Difference Histogram</p>
+            <p className="text-muted-foreground">Data grouped in increase buckets in this release.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -588,14 +863,18 @@ export function FuturePremiumPanel() {
                   <TableHead>Policy No</TableHead>
                   <TableHead>Customer ID</TableHead>
                   <TableHead>Holder</TableHead>
-                  <TableHead>Policy</TableHead>
-                  <TableHead>SI</TableHead>
+                  <TableHead>Current Policy</TableHead>
+                  <TableHead>Future Policy</TableHead>
+                  <TableHead>Current SI</TableHead>
+                  <TableHead>Future SI</TableHead>
                   <TableHead>Members</TableHead>
                   <TableHead>Calculation Year</TableHead>
                   <TableHead>Calculation Date</TableHead>
-                  <TableHead>Gross</TableHead>
-                  <TableHead>Discount</TableHead>
-                  <TableHead>Net</TableHead>
+                  <TableHead>Current Premium</TableHead>
+                  <TableHead>Future Premium</TableHead>
+                  <TableHead>Difference</TableHead>
+                  <TableHead>Increase %</TableHead>
+                  <TableHead>Reasons</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -619,14 +898,18 @@ export function FuturePremiumPanel() {
                       <TableCell className="max-w-[180px] truncate font-mono text-xs">{r.policyNo || "—"}</TableCell>
                       <TableCell>{r.customerId}</TableCell>
                       <TableCell>{r.holder}</TableCell>
-                      <TableCell>{r.policy}</TableCell>
-                      <TableCell>₹{rs(r.si)}</TableCell>
+                      <TableCell>{r.currentPolicy}</TableCell>
+                      <TableCell>{r.futurePolicy}</TableCell>
+                      <TableCell>₹{rs(r.currentSi)}</TableCell>
+                      <TableCell>₹{rs(r.futureSi)}</TableCell>
                       <TableCell>{r.memberCount}</TableCell>
                       <TableCell>{r.calcYear}</TableCell>
                       <TableCell>{r.calcDate}</TableCell>
-                      <TableCell>₹{rs(r.quote.gross)}</TableCell>
-                      <TableCell>₹{rs(r.quote.disc)}</TableCell>
-                      <TableCell>₹{rs(r.quote.net)}</TableCell>
+                      <TableCell>₹{rs(r.currentPremium)}</TableCell>
+                      <TableCell>₹{rs(r.futurePremium)}</TableCell>
+                      <TableCell>{r.premiumDiff >= 0 ? "+" : ""}₹{rs(r.premiumDiff)}</TableCell>
+                      <TableCell>{r.premiumIncreasePct.toFixed(2)}%</TableCell>
+                      <TableCell className="max-w-[220px] truncate">{r.reasons.join(", ") || "—"}</TableCell>
                       <TableCell>
                         {r.status === "Issue" ? (
                           <span className="text-destructive font-semibold">Issue — view details</span>
@@ -638,7 +921,7 @@ export function FuturePremiumPanel() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-muted-foreground text-center">
+                    <TableCell colSpan={19} className="text-muted-foreground text-center">
                       {generated ? "No rows match the current filters." : "Generate to see results."}
                     </TableCell>
                   </TableRow>

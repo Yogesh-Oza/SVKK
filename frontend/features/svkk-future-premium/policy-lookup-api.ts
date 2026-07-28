@@ -15,7 +15,7 @@ import {
   addYearsToDateString,
   policyYearSortKey,
   sourceLabel,
-  todayStamp,
+  type FutureGenerationOptions,
   yearOffsetValue,
 } from "./future-premium-engine";
 import type { CsvRowObject, FuturePremiumResult } from "./future-premium-types";
@@ -150,21 +150,27 @@ function quoteFromPolicyFormForOffset(
   formValues: ReturnType<typeof policyDetailToAdFormValues>,
   yearOffset: string,
   premiumState: PremiumState,
+  options: FutureGenerationOptions = {},
 ) {
   const offset = yearOffsetValue(yearOffset);
   const baseEnd = formValues.policyEnd || formValues.previousEndDate || "";
   const endDate = addYearsToDateString(baseEnd, offset);
+  const currentSi = money(formValues.sumInsured) || 0;
+  const selectedSi =
+    options.futureSiMode === "change" && options.selectedFutureSi
+      ? options.selectedFutureSi
+      : currentSi;
+  const selectedPolicy =
+    options.futurePolicyMode === "change" && options.selectedFuturePolicy
+      ? normPolicy(options.selectedFuturePolicy)
+      : normPolicy(formValues.adProduct || "");
 
-  if (offset === 0) {
-    return quoteFromStoredFormValues(formValues, premiumState, endDate, { useStoredAges: true });
-  }
-
-  const policyKey = normPolicy(formValues.adProduct || "");
+  const policyKey = selectedPolicy;
   const isIndividual = policyKey === "individual";
   const validMembers = (formValues.members || []).filter(
     (m) => Boolean(m.name?.trim()) && Boolean(m.dob),
   );
-  const holderSi = money(formValues.sumInsured) || 0;
+  const holderSi = selectedSi;
   const holderMember: MemberInput = {
     name: formValues.policyHolder || "Policy Holder",
     dob: formValues.dob || "",
@@ -185,13 +191,29 @@ function quoteFromPolicyFormForOffset(
     };
   });
 
-  return quoteFromInput(premiumState, {
+  const baseQuote = quoteFromInput(premiumState, {
     policyType: policyKey,
     memberCount: 1 + memberInputs.length,
     sumInsured: holderSi,
     endDate,
     members: [holderMember, ...memberInputs],
   });
+  const discountMode = options.discountMode ?? "chart";
+  const customPct = Math.max(0, Number(options.customDiscountPct ?? 0));
+  if (discountMode === "chart") return baseQuote;
+  const rows = baseQuote.rows.map((row) => {
+    if (row.error) return row;
+    const gross = row.gross ?? 0;
+    const pct = discountMode === "custom" ? customPct : row.pct ?? 0;
+    const disc = Math.ceil((gross * pct) / 100);
+    const net = Math.ceil(gross - disc);
+    return { ...row, pct, disc, net };
+  });
+  const basic = rows.reduce((sum, r) => sum + (r.basic || 0), 0);
+  const rider = rows.reduce((sum, r) => sum + (r.rider || 0), 0);
+  const gross = rows.reduce((sum, r) => sum + (r.gross || 0), 0);
+  const disc = rows.reduce((sum, r) => sum + (r.disc || 0), 0);
+  return { rows, basic, rider, gross, disc, net: Math.ceil(gross - disc) };
 }
 
 export function policyDetailToLookupResult(
@@ -199,6 +221,7 @@ export function policyDetailToLookupResult(
   yearLabel: string,
   yearOffset: string,
   premiumState: PremiumState,
+  options: FutureGenerationOptions = {},
 ): FuturePremiumResult | null {
   const formValues = policyDetailToAdFormValues(detail, { yearLabel });
   const year = detail.years.find((y) => y.yearLabel === yearLabel) ?? detail.years[0];
@@ -208,12 +231,59 @@ export function policyDetailToLookupResult(
   const offset = yearOffsetValue(yearOffset);
   const start = addYearsToDateString(formValues.policyStart || "", offset);
   const end = addYearsToDateString(baseEnd, offset);
-  const quote = quoteFromPolicyFormForOffset(formValues, yearOffset, premiumState);
+  const currentQuote = quoteFromStoredFormValues(formValues, premiumState, baseEnd, { useStoredAges: false });
+  const quote = quoteFromPolicyFormForOffset(formValues, yearOffset, premiumState, options);
   const memberCount = quote.rows.length;
   const endParsed = dateParse(baseEnd);
-  const calcYear = endParsed
-    ? endParsed.getFullYear() + offset
-    : new Date().getFullYear();
+  const calcDate = addYearsToDateString(new Date().toISOString().slice(0, 10), offset);
+  const calcYear = dateParse(calcDate)?.getFullYear() ?? (endParsed ? endParsed.getFullYear() + offset : new Date().getFullYear());
+  const currentSi = money(formValues.sumInsured) || money(year.sumInsured) || 0;
+  const futureSi =
+    options.futureSiMode === "change" && options.selectedFutureSi
+      ? options.selectedFutureSi
+      : currentSi;
+  const currentPolicy = normPolicy(formValues.adProduct || detail.policyType?.key || "");
+  const futurePolicy =
+    options.futurePolicyMode === "change" && options.selectedFuturePolicy
+      ? normPolicy(options.selectedFuturePolicy)
+      : currentPolicy;
+  const memberTimeline = quote.rows.map((m, idx) => {
+    const current = currentQuote.rows[idx];
+    const currentNet = current?.net || 0;
+    const futureNet = m.net || 0;
+    return {
+      key: `${m.name}-${m.dob}-${idx}`,
+      name: m.name,
+      role: m.role,
+      relationship: m.relationship,
+      gender: m.gender,
+      dob: m.dob,
+      currentAge: current?.age ?? null,
+      futureAge: m.age ?? null,
+      currentBand: current?.band || "—",
+      futureBand: m.band || "—",
+      currentBasic: current?.basic || 0,
+      futureBasic: m.basic || 0,
+      currentGross: current?.gross || 0,
+      futureGross: m.gross || 0,
+      currentDisc: current?.disc || 0,
+      futureDisc: m.disc || 0,
+      currentNet,
+      futureNet,
+      deltaNet: futureNet - currentNet,
+      deltaPct: currentNet > 0 ? ((futureNet - currentNet) / currentNet) * 100 : 0,
+      nearBandChange: current?.band === m.band && Math.abs((m.age ?? 0) - (current?.age ?? 0)) <= 1,
+      bandChanged: (current?.band || "—") !== (m.band || "—"),
+      issue: m.error || current?.error,
+    };
+  });
+  const reasons: FuturePremiumResult["reasons"] = [];
+  if (quote.net > currentQuote.net) reasons.push("Age Increased");
+  if (memberTimeline.some((m) => m.bandChanged)) reasons.push("Age Band Changed");
+  if (futureSi !== currentSi) reasons.push("SI Changed");
+  if (futurePolicy !== currentPolicy) reasons.push("Product Changed");
+  if (quote.disc !== currentQuote.disc) reasons.push("Discount Changed");
+  if (quote.gross !== currentQuote.gross) reasons.push("Rate Chart Updated");
 
   return {
     source: sourceLabel("policy_list_only"),
@@ -221,14 +291,44 @@ export function policyDetailToLookupResult(
     customerId: detail.insuredParty.customerId?.trim() || "—",
     policyNo: detail.policyNo?.trim() || "—",
     holder: formValues.policyHolder?.trim() || detail.insuredParty.name?.trim() || "—",
-    policy: normPolicy(formValues.adProduct || detail.policyType?.key || ""),
+    policy: futurePolicy,
     memberCount,
-    si: money(formValues.sumInsured) || money(year.sumInsured) || 0,
+    si: futureSi,
     start,
     end,
     calcYear,
-    calcDate: todayStamp(),
+    calcDate,
+    currentQuote,
     quote,
+    context: {
+      yearOffset: offset,
+      futureYearLabel: offset === 0 ? "Current Year" : offset === 1 ? "Next Year" : `${offset} Yr`,
+      calculationDate: calcDate,
+      calculationYear: calcYear,
+      currentStartDate: formValues.policyStart || "",
+      currentEndDate: baseEnd,
+      futureStartDate: start,
+      futureEndDate: end,
+      currentPolicyYear: yearLabel,
+      futurePolicyYear: `${calcYear}-${String((calcYear + 1) % 100).padStart(2, "0")}`,
+    },
+    scenario: {
+      futureSi,
+      futurePolicyType: futurePolicy,
+      discountMode: options.discountMode ?? "chart",
+      customDiscountPct: Number(options.customDiscountPct ?? 0),
+      appliedDiscountPct: Number(options.customDiscountPct ?? 0),
+    },
+    currentSi,
+    futureSi,
+    currentPolicy,
+    futurePolicy,
+    currentPremium: currentQuote.net,
+    futurePremium: quote.net,
+    premiumDiff: quote.net - currentQuote.net,
+    premiumIncreasePct: currentQuote.net > 0 ? ((quote.net - currentQuote.net) / currentQuote.net) * 100 : 0,
+    memberTimeline,
+    reasons,
     status: quote.rows.some((r) => r.error) ? "Issue" : "Ready",
     details: buildLookupDetailsFromPolicy(detail, yearLabel),
   };
@@ -249,6 +349,7 @@ export async function fetchFuturePremiumPageFromApi(
   pageSize: number,
   yearOffset: string,
   premiumState: PremiumState,
+  options: FutureGenerationOptions = {},
 ): Promise<PolicyListPagedResponse & { results: FuturePremiumResult[] }> {
   const res = await svkkJson<PolicyListPagedResponse>(
     `/policies?${buildFuturePremiumListQuery(filterQuery, page, pageSize)}`,
@@ -261,7 +362,7 @@ export async function fetchFuturePremiumPageFromApi(
         const yearLabel = listItemYearLabel(item);
         if (!yearLabel) return null;
         const detail = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${item.id}`);
-        return policyDetailToLookupResult(detail, yearLabel, yearOffset, premiumState);
+        return policyDetailToLookupResult(detail, yearLabel, yearOffset, premiumState, options);
       }),
     )
   ).filter((r): r is FuturePremiumResult => r != null);
@@ -282,6 +383,7 @@ export async function resolveLookupFromPolicyApi(
   yearOffset: string,
   premiumState: PremiumState,
   preferredYearLabel?: string,
+  options: FutureGenerationOptions = {},
 ): Promise<FuturePremiumResult | null> {
   const items = await fetchMatchingPolicyListItems(token, filterQuery);
   const picked = pickBestPolicyListItem(items, token, preferredYearLabel);
@@ -294,5 +396,6 @@ export async function resolveLookupFromPolicyApi(
     preferredYearLabel && preferredYearLabel !== "—" ? preferredYearLabel : yearLabel,
     yearOffset,
     premiumState,
+    options,
   );
 }

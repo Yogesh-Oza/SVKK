@@ -26,7 +26,12 @@ import {
 } from "@/components/ui/table";
 import { rs } from "@/lib/svkk/premium";
 import { getv } from "./future-csv-utils";
-import { FUTURE_YEAR_OPTIONS } from "./future-premium-engine";
+import {
+  FUTURE_DISCOUNT_OPTIONS,
+  FUTURE_POLICY_TYPE_OPTIONS,
+  FUTURE_SI_OPTIONS,
+  FUTURE_YEAR_OPTIONS,
+} from "./future-premium-engine";
 import { downloadCsv } from "./future-premium-export";
 import type { FuturePremiumResult } from "./future-premium-types";
 import { LookupSuggestionsList } from "./lookup-suggestions-list";
@@ -79,6 +84,21 @@ export function FutureLookupPanel() {
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suppressSuggestions, setSuppressSuggestions] = useState(false);
+  const [futureSiMode, setFutureSiMode] = useState<"existing" | "change">("existing");
+  const [futureSi, setFutureSi] = useState(String(FUTURE_SI_OPTIONS[0]));
+  const [futurePolicyMode, setFuturePolicyMode] = useState<"existing" | "change">("existing");
+  const [futurePolicyType, setFuturePolicyType] = useState("family_floater");
+  const [discountMode, setDiscountMode] = useState<"existing" | "chart" | "custom">("chart");
+  const [customDiscountPct, setCustomDiscountPct] = useState(String(FUTURE_DISCOUNT_OPTIONS[1]));
+  const [lookupHistory, setLookupHistory] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("future_lookup_history_v1") || "[]");
+      return Array.isArray(parsed) ? parsed.slice(0, 8).map((v) => String(v)) : [];
+    } catch {
+      return [];
+    }
+  });
   const lookupRequestRef = useRef(0);
   const suggestRequestRef = useRef(0);
 
@@ -96,14 +116,42 @@ export function FutureLookupPanel() {
           yearOffset,
           premiumState,
           preferredYearLabel,
+          {
+            futureSiMode,
+            selectedFutureSi: Number(futureSi || 0),
+            futurePolicyMode,
+            selectedFuturePolicy: futurePolicyType,
+            discountMode,
+            customDiscountPct: Number(customDiscountPct || 0),
+          },
         );
         if (requestId !== lookupRequestRef.current) return;
         setResult(next);
+        if (next) {
+          setLookupHistory((prev) => {
+            const normalized = [token.trim(), ...prev.filter((v) => v.toLowerCase() !== token.trim().toLowerCase())];
+            const trimmed = normalized.slice(0, 8);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("future_lookup_history_v1", JSON.stringify(trimmed));
+            }
+            return trimmed;
+          });
+        }
       } finally {
         if (requestId === lookupRequestRef.current) setBusy(false);
       }
     },
-    [premiumState, filterQuery, yearOffset],
+    [
+      premiumState,
+      filterQuery,
+      yearOffset,
+      futureSiMode,
+      futureSi,
+      futurePolicyMode,
+      futurePolicyType,
+      discountMode,
+      customDiscountPct,
+    ],
   );
 
   const handleGenerate = () => void runLookup(lookupNo);
@@ -126,8 +174,6 @@ export function FutureLookupPanel() {
     if (suppressSuggestions) return;
     const query = lookupNo.trim();
     if (query.length < lookupMinQueryLength(query)) {
-      setSuggestions([]);
-      setActiveSuggestionIndex(-1);
       return;
     }
     const timer = setTimeout(() => {
@@ -180,6 +226,9 @@ export function FutureLookupPanel() {
   const details = result?.details ?? {};
   const detailVal = (keys: string[]) => getv(details, keys) || "—";
   const status = lookupStatusMessage({ busy, searched, lookupNo, result });
+  const renewalReason = result?.reasons[0] || "No significant change";
+  const canDownload = Boolean(result);
+  const changeSeverity = (pct: number) => (pct >= 20 ? "text-destructive" : pct >= 10 ? "text-amber-600" : "text-emerald-600");
 
   return (
     <div className="space-y-6">
@@ -215,10 +264,15 @@ export function FutureLookupPanel() {
               <Input
                 value={lookupNo}
                 onChange={(e) => {
+                  const nextValue = e.target.value;
                   setSuppressSuggestions(false);
-                  setLookupNo(e.target.value);
+                  setLookupNo(nextValue);
                   setResult(null);
                   setSearched(false);
+                  if (nextValue.trim().length < lookupMinQueryLength(nextValue)) {
+                    setSuggestions([]);
+                    setActiveSuggestionIndex(-1);
+                  }
                 }}
                 onKeyDown={handleSuggestionKeyDown}
                 placeholder="Type holder name, SVKK ID, policy or customer no."
@@ -255,6 +309,106 @@ export function FutureLookupPanel() {
               </Button>
             </div>
           </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Future Sum Insured</Label>
+              <Select value={futureSiMode} onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
+                  <SelectItem value="change">Change Sum Insured</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future SI Value</Label>
+              <Select value={futureSi} onValueChange={setFutureSi} disabled={futureSiMode !== "change"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_SI_OPTIONS.map((si) => (
+                    <SelectItem key={si} value={String(si)}>
+                      ₹{rs(si)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future Product</Label>
+              <Select value={futurePolicyMode} onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Keep Existing Product</SelectItem>
+                  <SelectItem value="change">Change Product</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Future Product Type</Label>
+              <Select value={futurePolicyType} onValueChange={setFuturePolicyType} disabled={futurePolicyMode !== "change"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
+                    <SelectItem key={policy} value={policy}>
+                      {policy.replace(/_/g, " ").toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Discount Mode</Label>
+              <Select value={discountMode} onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">Use Existing Discount</SelectItem>
+                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
+                  <SelectItem value="custom">Custom Discount %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Custom Discount %</Label>
+              <Select value={customDiscountPct} onValueChange={setCustomDiscountPct} disabled={discountMode !== "custom"}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
+                    <SelectItem key={pct} value={String(pct)}>
+                      {pct}%
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Recent Lookups</Label>
+              <div className="flex flex-wrap gap-2 rounded-md border p-2">
+                {lookupHistory.length ? (
+                  lookupHistory.map((item) => (
+                    <Button key={item} variant="outline" size="sm" onClick={() => void runLookup(item)}>
+                      {item}
+                    </Button>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground text-xs">No recent lookups</span>
+                )}
+              </div>
+            </div>
+          </div>
 
           <FuturePremiumPolicyFilters
             filters={filters}
@@ -280,6 +434,38 @@ export function FutureLookupPanel() {
 
       {result ? (
         <>
+          <Card className="border-primary/30">
+            <CardHeader>
+              <CardTitle className="text-base">Renewal Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-5">
+              <div>
+                <p className="text-muted-foreground text-xs">Current Premium</p>
+                <p className="font-semibold">₹{rs(result.currentPremium)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Future Premium</p>
+                <p className="font-semibold">₹{rs(result.futurePremium)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Difference</p>
+                <p className={`font-semibold ${changeSeverity(result.premiumIncreasePct)}`}>
+                  {result.premiumDiff >= 0 ? "+" : ""}₹{rs(result.premiumDiff)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Increase %</p>
+                <p className={`font-semibold ${changeSeverity(result.premiumIncreasePct)}`}>
+                  {result.premiumIncreasePct.toFixed(2)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Reason</p>
+                <p className="font-semibold">{renewalReason}</p>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Card>
               <CardContent className="pt-4">
@@ -322,8 +508,14 @@ export function FutureLookupPanel() {
             </Card>
             <Card>
               <CardContent className="pt-4">
-                <p className="text-muted-foreground text-xs font-semibold uppercase">Sum Insured</p>
-                <p className="mt-1 font-semibold">₹{rs(result.si)}</p>
+                <p className="text-muted-foreground text-xs font-semibold uppercase">Current SI</p>
+                <p className="mt-1 font-semibold">₹{rs(result.currentSi)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-muted-foreground text-xs font-semibold uppercase">Future SI</p>
+                <p className="mt-1 font-semibold">₹{rs(result.futureSi)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -351,9 +543,15 @@ export function FutureLookupPanel() {
               <CardTitle className="text-base">Policy Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <LookupField label="Policy Year" value={detailVal(["year", "policy_year", "policy year"])} />
-              <LookupField label="Start Date" value={result.start} />
-              <LookupField label="End Date" value={result.end} />
+              <LookupField label="Current Policy Year" value={result.context.currentPolicyYear} />
+              <LookupField label="Future Renewal Year" value={result.context.futurePolicyYear} />
+              <LookupField label="Current Start Date" value={result.context.currentStartDate} />
+              <LookupField label="Future Start Date" value={result.context.futureStartDate} />
+              <LookupField label="Current End Date" value={result.context.currentEndDate} />
+              <LookupField label="Future End Date" value={result.context.futureEndDate} />
+              <LookupField label="Future Year" value={result.context.futureYearLabel} />
+              <LookupField label="Calculation Date" value={result.calcDate} />
+              <LookupField label="Calculation Year" value={String(result.calcYear)} />
               <LookupField label="Category" value={detailVal(["category", "Category"])} />
               <LookupField label="Area" value={detailVal(["area"])} />
               <LookupField label="Village" value={detailVal(["village", "Village"])} />
@@ -386,26 +584,28 @@ export function FutureLookupPanel() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const rows = result.quote.rows.map((m) => ({
+                  const rows = result.memberTimeline.map((m) => ({
                     svkk_id: result.svkkId,
                     customer_id: result.customerId,
                     policy_number: result.policyNo,
                     holder_name: result.holder,
-                    policy_type: result.policy,
-                    sum_insured: result.si,
+                    current_policy_type: result.currentPolicy,
+                    future_policy_type: result.futurePolicy,
+                    current_sum_insured: result.currentSi,
+                    future_sum_insured: result.futureSi,
                     member_count: result.memberCount,
                     person_name: m.name,
                     role: m.role,
                     dob: m.dob,
-                    age: m.age ?? "",
-                    band: m.band || "",
-                    basic_premium: m.basic || 0,
-                    add_on_rider: m.rider || 0,
-                    gross_premium: m.gross || 0,
-                    discount_percent: m.pct || 0,
-                    discount_amount: m.disc || 0,
-                    net_premium: m.net || 0,
-                    status: m.error || "Ready",
+                    current_age: m.currentAge ?? "",
+                    future_age: m.futureAge ?? "",
+                    current_band: m.currentBand,
+                    future_band: m.futureBand,
+                    current_premium: m.currentNet,
+                    future_premium: m.futureNet,
+                    difference: m.deltaNet,
+                    increase_percent: m.deltaPct,
+                    status: m.issue || "Ready",
                   }));
                   downloadCsv(`policy-${result.policyNo}-detail.csv`, rows);
                 }}
@@ -423,38 +623,100 @@ export function FutureLookupPanel() {
                     <TableHead>Relationship</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead>DOB</TableHead>
-                    <TableHead>Age</TableHead>
-                    <TableHead>Band</TableHead>
-                    <TableHead>Basic</TableHead>
-                    <TableHead>Rider</TableHead>
-                    <TableHead>Gross</TableHead>
-                    <TableHead>Discount %</TableHead>
-                    <TableHead>Discount</TableHead>
-                    <TableHead>Net</TableHead>
+                    <TableHead>Current Age</TableHead>
+                    <TableHead>Future Age</TableHead>
+                    <TableHead>Current Band</TableHead>
+                    <TableHead>Future Band</TableHead>
+                    <TableHead>Current Net</TableHead>
+                    <TableHead>Future Net</TableHead>
+                    <TableHead>Difference</TableHead>
+                    <TableHead>Increase %</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {result.quote.rows.map((m) => (
-                    <TableRow key={`${m.name}-${m.dob}`}>
+                  {result.memberTimeline.map((m) => (
+                    <TableRow key={m.key}>
                       <TableCell>{m.name}</TableCell>
                       <TableCell>{m.role}</TableCell>
                       <TableCell>{m.relationship || "—"}</TableCell>
                       <TableCell>{m.gender || "—"}</TableCell>
                       <TableCell>{m.dob || "—"}</TableCell>
-                      <TableCell>{m.age ?? "—"}</TableCell>
-                      <TableCell>{m.band || "—"}</TableCell>
-                      <TableCell>{m.error ? m.error : `₹${rs(m.basic ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.rider ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.gross ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `${m.pct ?? 0}%`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.disc ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.net ?? 0)}`}</TableCell>
-                      <TableCell>{m.error || "Ready"}</TableCell>
+                      <TableCell>{m.currentAge ?? "—"}</TableCell>
+                      <TableCell>{m.futureAge ?? "—"}</TableCell>
+                      <TableCell>{m.currentBand || "—"}</TableCell>
+                      <TableCell>
+                        <span
+                          className={
+                            m.bandChanged ? "text-destructive font-semibold" : m.nearBandChange ? "text-amber-600 font-semibold" : "text-emerald-600 font-semibold"
+                          }
+                        >
+                          {m.futureBand || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>₹{rs(m.currentNet)}</TableCell>
+                      <TableCell>₹{rs(m.futureNet)}</TableCell>
+                      <TableCell>{m.deltaNet >= 0 ? "+" : ""}₹{rs(m.deltaNet)}</TableCell>
+                      <TableCell>{m.deltaPct.toFixed(2)}%</TableCell>
+                      <TableCell>{m.issue || "Ready"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild>
+                <Link href={`/policies?search=${encodeURIComponent(result.policyNo)}`}>Open Policy</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/policies?search=${encodeURIComponent(result.policyNo)}`}>Edit Policy</Link>
+              </Button>
+              <Button variant="outline" onClick={() => void runLookup(result.policyNo)}>
+                Generate Future Premium
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!canDownload}
+                onClick={() => {
+                  const rows = result.memberTimeline.map((m) => ({
+                    policy_number: result.policyNo,
+                    holder_name: result.holder,
+                    person_name: m.name,
+                    current_age: m.currentAge ?? "",
+                    future_age: m.futureAge ?? "",
+                    current_band: m.currentBand,
+                    future_band: m.futureBand,
+                    current_premium: m.currentNet,
+                    future_premium: m.futureNet,
+                    difference: m.deltaNet,
+                    increase_percent: m.deltaPct,
+                  }));
+                  downloadCsv(`policy-${result.policyNo}-comparison.csv`, rows);
+                }}
+              >
+                Download CSV
+              </Button>
+              <Button variant="outline" disabled={!canDownload} onClick={() => window.print()}>
+                Download PDF
+              </Button>
+              <Button variant="outline" disabled={!canDownload} onClick={() => window.print()}>
+                Print
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () =>
+                  navigator.clipboard.writeText(
+                    `${result.holder} | ${result.policyNo} | ${result.svkkId} | ${result.customerId}`,
+                  )
+                }
+              >
+                Copy Customer Details
+              </Button>
             </CardContent>
           </Card>
         </>

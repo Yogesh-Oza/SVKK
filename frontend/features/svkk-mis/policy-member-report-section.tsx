@@ -49,6 +49,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { PolicyMemberDrillDownSheet } from "@/features/svkk-mis/policy-member-drill-down-sheet";
+import { MisCsvExportDialog } from "@/features/svkk-mis/mis-csv-export-dialog";
 import { ArrowUpDown, Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -340,6 +341,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
   const [activeGroup, setActiveGroup] = useState<ReportResponse["groupBy"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillTarget, setDrillTarget] = useState<{
@@ -616,12 +618,14 @@ export function PolicyMemberReportSection({ onError }: Props) {
     ],
   );
 
-  const exportReportCsv = useCallback(() => {
+  const exportReportCsv = useCallback((columns: string[]) => {
     void (async () => {
       setExportBusy(true);
       try {
+        const q = buildQuery();
+        columns.forEach((column) => q.append("fields", column));
         const res = await backendApi.get(
-          `/mis/export/policy-member-report.csv?${buildQuery().toString()}`,
+          `/mis/export/policy-member-report.csv?${q.toString()}`,
           { responseType: "blob" },
         );
         const blob = new Blob([res.data], { type: "text/csv" });
@@ -631,6 +635,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
         a.download = "policy-member-report.csv";
         a.click();
         URL.revokeObjectURL(url);
+        setExportDialogOpen(false);
       } catch (e) {
         onError(e instanceof Error ? e.message : "Export failed");
       } finally {
@@ -758,7 +763,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
           size="sm"
           className="gap-1.5"
           disabled={loading || exportBusy}
-          onClick={() => void exportReportCsv()}
+          onClick={() => setExportDialogOpen(true)}
         >
           <Download className="size-3.5" />
           {exportBusy ? "Exporting…" : "Export CSV"}
@@ -882,6 +887,15 @@ export function PolicyMemberReportSection({ onError }: Props) {
         drillType={drillTarget?.type ?? null}
         drillLabel={drillTarget?.label ?? null}
         reportQueryString={reportQueryString}
+      />
+      <MisCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        onExport={async (columns) => exportReportCsv(columns)}
+        exporting={exportBusy}
+        report="policy-member-report"
+        title="Export Policy MIS CSV"
+        description="Choose which fields to include. Current table filters still apply to exported rows."
       />
     </div>
   );

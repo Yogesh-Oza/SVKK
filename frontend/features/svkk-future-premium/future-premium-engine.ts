@@ -1,4 +1,4 @@
-import { dateParse, quoteFromInput } from "../../lib/svkk/premium/engine";
+import { calculateAge, dateParse, quoteFromInput } from "../../lib/svkk/premium/engine";
 import type { PremiumState } from "../../lib/svkk/premium/types";
 import { money } from "../../lib/svkk/premium/csv";
 import {
@@ -9,6 +9,9 @@ import {
 } from "./future-csv-utils";
 import type {
   CsvRowObject,
+  FutureCalculationContext,
+  FutureScenarioContext,
+  MemberDelta,
   FutureMisGroup,
   FutureMisSnapshot,
   FuturePremiumResult,
@@ -26,6 +29,14 @@ export function buildFutureYearOptions(maxOffset = FUTURE_YEAR_MAX_OFFSET): { va
 }
 
 export const FUTURE_YEAR_OPTIONS = buildFutureYearOptions();
+export const FUTURE_SI_OPTIONS = [100000, 200000, 300000, 500000, 1000000];
+export const FUTURE_DISCOUNT_OPTIONS = [0, 5, 10, 15, 20];
+export const FUTURE_POLICY_TYPE_OPTIONS = [
+  "family_floater",
+  "individual",
+  "asha_kiran",
+  "senior_citizen",
+];
 
 export const FUTURE_SOURCE_OPTIONS: { value: FutureSourceKey; label: string; lookup?: boolean }[] = [
   { value: "uploaded_csv_policy_list", label: "Uploaded CSV + Policy List" },
@@ -71,6 +82,15 @@ export function todayStamp(): string {
   return ymd(d);
 }
 
+function fiscalYearLabelFromDate(value: string): string {
+  const d = dateParse(value);
+  if (!d) return "—";
+  const y = d.getFullYear();
+  const start = d.getMonth() >= 3 ? y : y - 1;
+  const end2 = String((start + 1) % 100).padStart(2, "0");
+  return `${start}-${end2}`;
+}
+
 export function addYearsToDateString(value: string, years: number): string {
   const d = dateParse(value);
   if (!d) return value || "";
@@ -81,10 +101,145 @@ export function addYearsToDateString(value: string, years: number): string {
   return ymd(new Date(y, m, Math.min(day, lastDay)));
 }
 
-function calcYearFromEnd(end: string, offset: string): number {
-  const adjusted = addYearsToDateString(end, yearOffsetValue(offset));
-  const d = dateParse(adjusted);
-  return d ? d.getFullYear() : new Date().getFullYear();
+export type FutureGenerationOptions = {
+  futureSiMode?: "existing" | "change";
+  selectedFutureSi?: number;
+  bulkSiUpgrade?: boolean;
+  futurePolicyMode?: "existing" | "change";
+  selectedFuturePolicy?: string;
+  discountMode?: "existing" | "chart" | "custom";
+  customDiscountPct?: number;
+};
+
+const DEFAULT_SI_UPGRADE_RULES: Record<number, number> = {
+  100000: 200000,
+  200000: 300000,
+  300000: 500000,
+  500000: 1000000,
+};
+
+function applyBulkSiUpgrade(currentSi: number): number {
+  return DEFAULT_SI_UPGRADE_RULES[currentSi] ?? currentSi;
+}
+
+function buildCalculationContext(
+  yearOffset: string,
+  currentStartDate: string,
+  currentEndDate: string,
+): FutureCalculationContext {
+  const offset = yearOffsetValue(yearOffset);
+  const calculationDate = addYearsToDateString(todayStamp(), offset);
+  const calculationYear = dateParse(calculationDate)?.getFullYear() ?? new Date().getFullYear();
+  const futureStartDate = addYearsToDateString(currentStartDate, offset);
+  const futureEndDate = addYearsToDateString(currentEndDate, offset);
+  return {
+    yearOffset: offset,
+    futureYearLabel: yearOffsetLabel(yearOffset),
+    calculationDate,
+    calculationYear,
+    currentStartDate,
+    currentEndDate,
+    futureStartDate,
+    futureEndDate,
+    currentPolicyYear: fiscalYearLabelFromDate(currentEndDate),
+    futurePolicyYear: fiscalYearLabelFromDate(futureEndDate),
+  };
+}
+
+function applyDiscountOverride(
+  base: ReturnType<typeof quoteFromInput>,
+  mode: "existing" | "chart" | "custom",
+  customPct: number,
+): ReturnType<typeof quoteFromInput> {
+  if (mode === "chart") return base;
+  const rows = base.rows.map((row) => {
+    if (row.error) return row;
+    const gross = row.gross ?? 0;
+    const pct = mode === "custom" ? customPct : row.pct ?? 0;
+    const rawDiscount = (gross * pct) / 100;
+    const disc = Math.ceil(rawDiscount);
+    const net = Math.ceil(gross - disc);
+    return { ...row, pct, disc, net };
+  });
+  const basic = rows.reduce((sum, r) => sum + (r.basic || 0), 0);
+  const rider = rows.reduce((sum, r) => sum + (r.rider || 0), 0);
+  const gross = rows.reduce((sum, r) => sum + (r.gross || 0), 0);
+  const disc = rows.reduce((sum, r) => sum + (r.disc || 0), 0);
+  const net = Math.ceil(gross - disc);
+  return { rows, basic, rider, gross, disc, net };
+}
+
+function buildMemberTimeline(
+  currentQuote: ReturnType<typeof quoteFromInput>,
+  futureQuote: ReturnType<typeof quoteFromInput>,
+  context: FutureCalculationContext,
+): MemberDelta[] {
+  const max = Math.max(currentQuote.rows.length, futureQuote.rows.length);
+  const timeline: MemberDelta[] = [];
+  for (let i = 0; i < max; i += 1) {
+    const current = currentQuote.rows[i];
+    const future = futureQuote.rows[i];
+    if (!current && !future) continue;
+    const name = future?.name || current?.name || `Member ${i + 1}`;
+    const role = future?.role || current?.role || "member";
+    const relationship = future?.relationship || current?.relationship || "";
+    const gender = future?.gender || current?.gender || "";
+    const dob = future?.dob || current?.dob || "";
+    const currentAge = calculateAge(dob, context.currentEndDate);
+    const futureAge = calculateAge(dob, context.futureEndDate);
+    const currentBand = current?.band || "—";
+    const futureBand = future?.band || "—";
+    const currentNet = current?.net || 0;
+    const futureNet = future?.net || 0;
+    const delta = futureNet - currentNet;
+    const deltaPct = currentNet > 0 ? (delta / currentNet) * 100 : 0;
+    timeline.push({
+      key: `${name}-${dob}-${i}`,
+      name,
+      role,
+      relationship,
+      gender,
+      dob,
+      currentAge,
+      futureAge,
+      currentBand,
+      futureBand,
+      currentBasic: current?.basic || 0,
+      futureBasic: future?.basic || 0,
+      currentGross: current?.gross || 0,
+      futureGross: future?.gross || 0,
+      currentDisc: current?.disc || 0,
+      futureDisc: future?.disc || 0,
+      currentNet,
+      futureNet,
+      deltaNet: delta,
+      deltaPct,
+      nearBandChange:
+        currentAge != null && futureAge != null && currentBand === futureBand && Math.abs(futureAge - currentAge) <= 1,
+      bandChanged: currentBand !== futureBand,
+      issue: current?.error || future?.error,
+    });
+  }
+  return timeline;
+}
+
+function collectReasons(
+  currentPolicy: string,
+  futurePolicy: string,
+  currentSi: number,
+  futureSi: number,
+  currentQuote: ReturnType<typeof quoteFromInput>,
+  futureQuote: ReturnType<typeof quoteFromInput>,
+  members: MemberDelta[],
+): FuturePremiumResult["reasons"] {
+  const reasons = new Set<FuturePremiumResult["reasons"][number]>();
+  if (futureQuote.net > currentQuote.net) reasons.add("Age Increased");
+  if (members.some((m) => m.bandChanged)) reasons.add("Age Band Changed");
+  if (currentSi !== futureSi) reasons.add("SI Changed");
+  if (currentPolicy !== futurePolicy) reasons.add("Product Changed");
+  if (futureQuote.disc !== currentQuote.disc) reasons.add("Discount Changed");
+  if (futureQuote.gross !== currentQuote.gross) reasons.add("Rate Chart Updated");
+  return [...reasons];
 }
 
 export function buildFutureResults(
@@ -92,13 +247,14 @@ export function buildFutureResults(
   sourceKey: FutureSourceKey,
   yearOffset: string,
   premiumState: PremiumState,
+  options: FutureGenerationOptions = {},
 ): FuturePremiumResult[] {
   return (rawRows || []).map((row, idx) => {
     const policy = normPolicy(getv(row, ["policy_type", "type", "product type", "product_type"]));
     const declaredCount = futureMemberCount(row);
     const members = buildMembersFromFutureRow(row, policy, declaredCount || 12);
     const memberCount = Math.max(members.length, declaredCount) || members.length || 1;
-    const si = money(getv(row, ["sum_insured", "si", "sum insured"])) || 0;
+    const currentSi = money(getv(row, ["sum_insured", "si", "sum insured"])) || 0;
     const baseStart = getv(row, ["start_date", "policy_start_date", "current_start_date", "policy start"]);
     const baseEnd = getv(row, [
       "end_date",
@@ -107,9 +263,19 @@ export function buildFutureResults(
       "expiry_date",
       "policy end",
     ]);
-    const offset = yearOffsetValue(yearOffset);
-    const start = addYearsToDateString(baseStart, offset);
-    const end = addYearsToDateString(baseEnd, offset);
+    const context = buildCalculationContext(yearOffset, baseStart, baseEnd);
+    const start = context.futureStartDate;
+    const end = context.futureEndDate;
+    const futurePolicy =
+      options.futurePolicyMode === "change" && options.selectedFuturePolicy
+        ? normPolicy(options.selectedFuturePolicy)
+        : policy;
+    const futureSi =
+      options.futureSiMode === "change" && options.selectedFutureSi
+        ? options.selectedFutureSi
+        : options.bulkSiUpgrade
+          ? applyBulkSiUpgrade(currentSi)
+          : currentSi;
     const policyNo =
       getv(row, ["policy_number", "policy_no", "policyno", "policy no"]) ||
       `POL-${String(idx + 1).padStart(4, "0")}`;
@@ -118,28 +284,62 @@ export function buildFutureResults(
       "Policy Holder";
     const svkkId = getv(row, ["svkk_id", "svkkid", "svkk id"]) || "—";
     const customerId = getv(row, ["customer_id", "customerid", "customer id"]) || "—";
-    const quote = quoteFromInput(premiumState, {
+    const currentQuote = quoteFromInput(premiumState, {
       policyType: policy,
       memberCount,
-      sumInsured: si,
-      endDate: end,
+      sumInsured: currentSi,
+      endDate: context.currentEndDate,
       members,
     });
+    const baseFutureQuote = quoteFromInput(premiumState, {
+      policyType: futurePolicy,
+      memberCount,
+      sumInsured: futureSi,
+      endDate: context.futureEndDate,
+      members,
+    });
+    const discountMode = options.discountMode ?? "chart";
+    const appliedDiscountPct = Math.max(0, Number(options.customDiscountPct ?? 0));
+    const quote = applyDiscountOverride(baseFutureQuote, discountMode, appliedDiscountPct);
+    const scenario: FutureScenarioContext = {
+      futureSi,
+      futurePolicyType: futurePolicy,
+      discountMode,
+      customDiscountPct: appliedDiscountPct,
+      appliedDiscountPct,
+    };
+    const memberTimeline = buildMemberTimeline(currentQuote, quote, context);
+    const reasons = collectReasons(policy, futurePolicy, currentSi, futureSi, currentQuote, quote, memberTimeline);
     const status = quote.rows.some((r) => r.error) ? "Issue" : "Ready";
+    const premiumDiff = quote.net - currentQuote.net;
+    const premiumIncreasePct = currentQuote.net > 0 ? (premiumDiff / currentQuote.net) * 100 : 0;
     return {
       source: sourceLabel(sourceKey),
       svkkId,
       customerId,
       policyNo,
       holder,
-      policy,
+      policy: futurePolicy,
       memberCount,
-      si,
+      si: futureSi,
       start,
       end,
-      calcYear: calcYearFromEnd(baseEnd, yearOffset),
-      calcDate: todayStamp(),
+      calcYear: context.calculationYear,
+      calcDate: context.calculationDate,
+      currentQuote,
       quote,
+      context,
+      scenario,
+      currentSi,
+      futureSi,
+      currentPolicy: policy,
+      futurePolicy,
+      currentPremium: currentQuote.net,
+      futurePremium: quote.net,
+      premiumDiff,
+      premiumIncreasePct,
+      memberTimeline,
+      reasons,
       status,
       details: row,
     };

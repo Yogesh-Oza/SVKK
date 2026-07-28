@@ -21,6 +21,7 @@ import {
 import { svkkJson } from "@/lib/svkk/api";
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { MisCsvExportDialog } from "./mis-csv-export-dialog";
 import {
   formatCell,
   type PolicyMemberRow,
@@ -85,6 +86,7 @@ export function PolicyMemberDrillDownSheet({
   const [detail, setDetail] = useState<DrillResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !drillType || !drillLabel) {
@@ -118,7 +120,7 @@ export function PolicyMemberDrillDownSheet({
     })();
   }, [open, drillType, drillLabel, reportQueryString]);
 
-  const exportDrillDownCsv = useCallback(() => {
+  const exportDrillDownCsv = useCallback((columns: string[]) => {
     if (!drillType || !drillLabel) return;
     void (async () => {
       setExportBusy(true);
@@ -130,6 +132,7 @@ export function PolicyMemberDrillDownSheet({
         } else {
           q.set("drillArea", drillLabel);
         }
+        columns.forEach((column) => q.append("fields", column));
         const res = await backendApi.get(
           `/mis/export/policy-member-report-detail.csv?${q.toString()}`,
           { responseType: "blob" },
@@ -146,6 +149,7 @@ export function PolicyMemberDrillDownSheet({
         a.download = `policy-member-${drillType}-${slug || "detail"}.csv`;
         a.click();
         URL.revokeObjectURL(url);
+        setExportDialogOpen(false);
       } catch (e) {
         setExportError(e instanceof Error ? e.message : "Export failed");
       } finally {
@@ -180,7 +184,7 @@ export function PolicyMemberDrillDownSheet({
               size="sm"
               className="shrink-0 gap-1.5"
               disabled={loading || exportBusy || !drillType || !drillLabel}
-              onClick={() => exportDrillDownCsv()}
+              onClick={() => setExportDialogOpen(true)}
             >
               <Download className="size-3.5" />
               {exportBusy ? "Exporting…" : "Export CSV"}
@@ -264,6 +268,15 @@ export function PolicyMemberDrillDownSheet({
           )}
         </div>
       </DialogContent>
+      <MisCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        onExport={async (columns) => exportDrillDownCsv(columns)}
+        exporting={exportBusy}
+        report="policy-member-report-detail"
+        title="Export Policy MIS detail CSV"
+        description="Choose which fields to include. Current table filters still apply to exported rows."
+      />
     </Dialog>
   );
 }

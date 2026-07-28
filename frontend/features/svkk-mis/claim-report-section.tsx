@@ -31,6 +31,7 @@ import { todayFormDate, toIsoDateParam, formatDateForFormInput } from "@/lib/svk
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { ClaimMisDrillSheet } from "@/features/svkk-mis/claim-mis-drill-sheet";
+import { MisCsvExportDialog } from "@/features/svkk-mis/mis-csv-export-dialog";
 import { Download, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -111,6 +112,7 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillVillage, setDrillVillage] = useState<string | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const reportFetchGenerationRef = useRef(0);
   const reportDebounceReadyRef = useRef(false);
@@ -320,10 +322,12 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
     [filteredRows],
   );
 
-  const exportCsv = useCallback(async () => {
+  const exportCsv = useCallback(async (columns: string[]) => {
     setExportBusy(true);
     try {
-      const res = await backendApi.get(`/mis/export/claim-report.csv?${buildQuery().toString()}`, {
+      const q = buildQuery();
+      columns.forEach((column) => q.append("fields", column));
+      const res = await backendApi.get(`/mis/export/claim-report.csv?${q.toString()}`, {
         responseType: "blob",
       });
       const blob = new Blob([res.data], { type: "text/csv" });
@@ -333,6 +337,7 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
       a.download = "claim-mis-report.csv";
       a.click();
       URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : "Export failed");
     } finally {
@@ -445,7 +450,7 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
           size="sm"
           className="gap-1.5"
           disabled={loading || exportBusy}
-          onClick={() => void exportCsv()}
+          onClick={() => setExportDialogOpen(true)}
         >
           <Download className="size-3.5" />
           {exportBusy ? "Exporting…" : "Export CSV"}
@@ -575,6 +580,15 @@ export function ClaimReportSection({ onError }: ClaimReportSectionProps) {
         onOpenChange={setDrillOpen}
         village={drillVillage}
         reportQueryString={reportQueryString}
+      />
+      <MisCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        onExport={exportCsv}
+        exporting={exportBusy}
+        report="claim-report"
+        title="Export Claim MIS report CSV"
+        description="Choose which fields to include. Current table filters still apply to exported rows."
       />
     </div>
   );

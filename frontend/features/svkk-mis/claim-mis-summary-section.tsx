@@ -20,6 +20,7 @@ import {
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { formatInrCompact } from "@/features/svkk-claims/claim-register-badges";
 import { ClaimMisDrillSheet } from "@/features/svkk-mis/claim-mis-drill-sheet";
+import { MisCsvExportDialog } from "@/features/svkk-mis/mis-csv-export-dialog";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { todayFormDate, toIsoDateParam, formatDateForFormInput } from "@/lib/svkk/form-date";
@@ -111,6 +112,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillVillage, setDrillVillage] = useState<string | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (urlHydrated.current) return;
@@ -220,10 +222,12 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
     };
   }, [categoryRows, categoryTotals]);
 
-  async function exportCategoryCsv() {
+  async function exportCategoryCsv(columns: string[]) {
     setExportBusy(true);
     try {
-      const res = await backendApi.get(`/mis/export/claim-category-summary.csv?${buildQuery()}`, {
+      const q = buildQuery();
+      columns.forEach((column) => q.append("fields", column));
+      const res = await backendApi.get(`/mis/export/claim-category-summary.csv?${q.toString()}`, {
         responseType: "blob",
       });
       const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
@@ -233,6 +237,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
       a.download = "claim-mis-category-summary.csv";
       a.click();
       URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
       toast.success("MIS exported");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export failed");
@@ -276,7 +281,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" className="gap-1.5" disabled={exportBusy} onClick={() => void exportCategoryCsv()}>
+          <Button type="button" size="sm" className="gap-1.5" disabled={exportBusy} onClick={() => setExportDialogOpen(true)}>
             <Download className="size-3.5" />
             Export MIS CSV
           </Button>
@@ -345,7 +350,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
             <CardTitle className="text-base">Category-wise claim summary</CardTitle>
             <CardDescription>Cashless + Reimbursement breakdown by Category A / B / C / D</CardDescription>
           </div>
-          <Button type="button" variant="outline" size="sm" disabled={exportBusy} onClick={() => void exportCategoryCsv()}>
+          <Button type="button" variant="outline" size="sm" disabled={exportBusy} onClick={() => setExportDialogOpen(true)}>
             Download CSV
           </Button>
         </CardHeader>
@@ -503,6 +508,15 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
         onOpenChange={setDrillOpen}
         village={drillVillage}
         reportQueryString={buildQuery().toString()}
+      />
+      <MisCsvExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        onExport={exportCategoryCsv}
+        exporting={exportBusy}
+        report="claim-category-summary"
+        title="Export Claim MIS CSV"
+        description="Choose which fields to include. Current table filters still apply to exported rows."
       />
     </div>
   );

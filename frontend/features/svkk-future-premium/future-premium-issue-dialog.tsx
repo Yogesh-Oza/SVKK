@@ -123,10 +123,10 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <PremiumSummaryCard label="Basic" value={`₹${rs(result.quote.basic)}`} />
-            <PremiumSummaryCard label="Gross" value={`₹${rs(result.quote.gross)}`} />
-            <PremiumSummaryCard label="Discount" value={`₹${rs(result.quote.disc)}`} />
-            <PremiumSummaryCard label="Net" value={`₹${rs(result.quote.net)}`} highlight />
+            <PremiumSummaryCard label="Current Net" value={`₹${rs(result.currentPremium)}`} />
+            <PremiumSummaryCard label="Future Net" value={`₹${rs(result.futurePremium)}`} />
+            <PremiumSummaryCard label="Difference" value={`${result.premiumDiff >= 0 ? "+" : ""}₹${rs(result.premiumDiff)}`} />
+            <PremiumSummaryCard label="Increase %" value={`${result.premiumIncreasePct.toFixed(2)}%`} highlight />
             <PremiumSummaryCard label="Status" value={result.status} />
           </div>
 
@@ -137,8 +137,15 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
             <DetailField label="Source" value={result.source} />
             <DetailField label="Calculation year" value={String(result.calcYear)} />
             <DetailField label="Calculation date" value={result.calcDate} />
-            <DetailField label="Start date" value={result.start} />
-            <DetailField label="End date" value={result.end} />
+            <DetailField label="Current policy year" value={result.context.currentPolicyYear} />
+            <DetailField label="Future renewal year" value={result.context.futurePolicyYear} />
+            <DetailField label="Current start date" value={result.context.currentStartDate} />
+            <DetailField label="Future start date" value={result.context.futureStartDate} />
+            <DetailField label="Current end date" value={result.context.currentEndDate} />
+            <DetailField label="Future end date" value={result.context.futureEndDate} />
+            <DetailField label="Current SI" value={`₹${rs(result.currentSi)}`} />
+            <DetailField label="Future SI" value={`₹${rs(result.futureSi)}`} />
+            <DetailField label="Reasons" value={result.reasons.join(", ") || "—"} />
             <DetailField label="Category" value={detailVal(["category", "Category"])} />
             <DetailField label="Area" value={detailVal(["area", "Area"])} />
             <DetailField label="Village" value={detailVal(["village", "Village"])} />
@@ -146,7 +153,7 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
           </div>
 
           <div>
-            <h3 className="mb-2 text-sm font-semibold">Member premium breakdown</h3>
+            <h3 className="mb-2 text-sm font-semibold">Member timeline comparison</h3>
             <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
@@ -156,42 +163,42 @@ export function FuturePremiumIssueDialog({ result, open, onOpenChange }: Props) 
                     <TableHead>Relationship</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead>DOB</TableHead>
-                    <TableHead>Age</TableHead>
-                    <TableHead>Band</TableHead>
-                    <TableHead>Basic</TableHead>
-                    <TableHead>Rider</TableHead>
-                    <TableHead>Gross</TableHead>
-                    <TableHead>Disc %</TableHead>
-                    <TableHead>Discount</TableHead>
-                    <TableHead>Net</TableHead>
+                    <TableHead>Current Age</TableHead>
+                    <TableHead>Future Age</TableHead>
+                    <TableHead>Current Band</TableHead>
+                    <TableHead>Future Band</TableHead>
+                    <TableHead>Current Net</TableHead>
+                    <TableHead>Future Net</TableHead>
+                    <TableHead>Difference</TableHead>
+                    <TableHead>Increase %</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {result.quote.rows.map((m) => (
+                  {result.memberTimeline.map((m) => (
                     <TableRow
-                      key={`${m.name}-${m.dob}`}
-                      className={m.error ? "bg-destructive/5" : undefined}
+                      key={m.key}
+                      className={m.issue ? "bg-destructive/5" : undefined}
                     >
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.role}</TableCell>
                       <TableCell>{m.relationship || "—"}</TableCell>
                       <TableCell>{m.gender || "—"}</TableCell>
                       <TableCell>{m.dob || "—"}</TableCell>
-                      <TableCell>{m.age ?? "—"}</TableCell>
-                      <TableCell>{m.band || "—"}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.basic ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.rider ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.gross ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `${m.pct ?? 0}%`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.disc ?? 0)}`}</TableCell>
-                      <TableCell>{m.error ? "—" : `₹${rs(m.net ?? 0)}`}</TableCell>
+                      <TableCell>{m.currentAge ?? "—"}</TableCell>
+                      <TableCell>{m.futureAge ?? "—"}</TableCell>
+                      <TableCell>{m.currentBand || "—"}</TableCell>
+                      <TableCell>{m.futureBand || "—"}</TableCell>
+                      <TableCell>₹{rs(m.currentNet)}</TableCell>
+                      <TableCell>₹{rs(m.futureNet)}</TableCell>
+                      <TableCell>{m.deltaNet >= 0 ? "+" : ""}₹{rs(m.deltaNet)}</TableCell>
+                      <TableCell>{m.deltaPct.toFixed(2)}%</TableCell>
                       <TableCell
                         className={
-                          m.error ? "text-destructive font-medium" : "text-primary font-medium"
+                          m.issue ? "text-destructive font-medium" : "text-primary font-medium"
                         }
                       >
-                        {m.error || "Ready"}
+                        {m.issue || "Ready"}
                       </TableCell>
                     </TableRow>
                   ))}

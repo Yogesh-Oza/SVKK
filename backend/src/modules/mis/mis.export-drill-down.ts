@@ -132,7 +132,14 @@ export function drillDownSectionTitle(
  * CSV layout mirrors the drill-down dialog: section title, header row, SVKK/NVKK/RTY/OTHER rows,
  * blank line between categories.
  */
-export function buildPolicyMemberDrillDownCsv(detail: PolicyMemberDrillDownCsvInput): string {
+export function buildPolicyMemberDrillDownCsv(
+  detail: PolicyMemberDrillDownCsvInput,
+  selectedColumns?: PolicyMemberReportMetricCol[],
+): string {
+  const selectedSet = selectedColumns?.length ? new Set(selectedColumns) : null;
+  const columns = selectedSet
+    ? DRILL_CSV_COLUMNS.filter((column) => selectedSet.has(column.key))
+    : DRILL_CSV_COLUMNS;
   const lines: string[] = [];
   let firstSection = true;
 
@@ -145,9 +152,9 @@ export function buildPolicyMemberDrillDownCsv(detail: PolicyMemberDrillDownCsvIn
     lines.push(
       csvCell(drillDownSectionTitle(detail.drillType, detail.drillLabel, section.categoryLabel)),
     );
-    lines.push(DRILL_CSV_COLUMNS.map((c) => csvCell(c.title)).join(","));
+    lines.push(columns.map((c) => csvCell(c.title)).join(","));
     for (const row of section.rows) {
-      const cells = DRILL_CSV_COLUMNS.map((col) => {
+      const cells = columns.map((col) => {
         if (col.key === "label") {
           return csvCell(String(row.label ?? "").toUpperCase());
         }
@@ -159,7 +166,7 @@ export function buildPolicyMemberDrillDownCsv(detail: PolicyMemberDrillDownCsvIn
     }
     if (section.rows.length > 0) {
       const total = sumPolicyMemberDrillRows(section.rows);
-      const cells = DRILL_CSV_COLUMNS.map((col) => {
+      const cells = columns.map((col) => {
         if (col.key === "label") {
           return csvCell("TOTAL");
         }

@@ -26,15 +26,42 @@ export const VIEW_TD_CLASS = "border border-border px-2 py-2 align-top text-sm";
 
 const EMPTY = "—";
 
-/** Policy / receipt style: DD-MM-YYYY */
-export function formatViewDateDmy(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
+function isValidYmdParts(y: number, m: number, d: number): boolean {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
+/**
+ * Centralized policy date formatter (DD-MM-YYYY).
+ * Returns an empty string for null/undefined/invalid values so callers can pass
+ * through `displayVal()` and render "—" consistently.
+ */
+export function formatPolicyDateDmy(raw: unknown): string {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+
+  // Preserve plain YYYY-MM-DD semantics without timezone shifting.
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) {
+    const year = Number(ymd[1]);
+    const month = Number(ymd[2]);
+    const day = Number(ymd[3]);
+    if (!isValidYmdParts(year, month, day)) return "";
+    return `${ymd[3]}-${ymd[2]}-${ymd[1]}`;
+  }
+
+  const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "";
-  const day = String(d.getDate()).padStart(2, "0");
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const y = d.getFullYear();
-  return `${day}-${m}-${y}`;
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const year = d.getUTCFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+/** Backward-compatible alias used by existing views. */
+export function formatViewDateDmy(iso: string | null | undefined): string {
+  return formatPolicyDateDmy(iso);
 }
 
 export function displayVal(v: unknown): string {

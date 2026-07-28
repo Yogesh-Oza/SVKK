@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
@@ -11,9 +11,14 @@ import {
   mergeDateRange,
 } from "../../services/mis-scope.service.js";
 import {
+  MIS_EXPORT_REPORTS,
+  buildMisExportColumnGroups,
+  pickMisExportColumnKeys,
+} from "./mis.export-columns.js";
+import {
   buildPolicyMemberDrillDownCsv,
   drillDownExportFilename,
-  POLICY_MEMBER_REPORT_METRIC_COLS,
+  type PolicyMemberReportMetricCol,
 } from "./mis.export-drill-down.js";
 import {
   getDashboardCharts,
@@ -69,6 +74,19 @@ const intArrayQuery = z.preprocess((v) => {
   const nums = arr.map((s) => Number.parseInt(s, 10)).filter((n) => Number.isFinite(n));
   return nums.length ? [...new Set(nums)] : undefined;
 }, z.array(z.number().int()).optional());
+const exportFieldArrayQuery = z.preprocess(queryToStringArray, z.array(z.string()).optional());
+
+function csvCell(value: unknown): string {
+  const s = String(value ?? "");
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return `"${s.replaceAll('"', '""')}"`;
+  }
+  return s;
+}
+
+function writeCsvRow(res: Response, values: unknown[]) {
+  res.write(`${values.map((value) => csvCell(value)).join(",")}\n`);
+}
 
 function parseOptionalDate(s: string | undefined): Date | null {
   if (!s?.trim()) return null;
@@ -149,6 +167,23 @@ function normalizePolicyMemberReportQuery(q: z.infer<typeof policyMemberReportQu
 export function createMisRouter(_env: Env) {
   const r = Router();
   r.use(requireAuth(_env));
+
+  r.get(
+    "/export-columns",
+    requireAnyPermission(["mis:policy:read", "mis:claim:read", "dashboard:read"]),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            report: z.enum(MIS_EXPORT_REPORTS),
+          })
+          .parse(req.query);
+        res.json({ groups: buildMisExportColumnGroups(q.report) });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
 
   r.get(
     "/summary",
@@ -367,6 +402,7 @@ export function createMisRouter(_env: Env) {
           .extend({
             drillVillage: z.string().optional(),
             drillArea: z.string().optional(),
+            fields: exportFieldArrayQuery,
           })
           .parse(req.query);
         const normalized = normalizePolicyMemberReportQuery(q);
@@ -389,7 +425,11 @@ export function createMisRouter(_env: Env) {
             fiscalLabels: normalized.fiscalLabels,
           },
         );
-        const csv = buildPolicyMemberDrillDownCsv(rep);
+        const selectedFields = pickMisExportColumnKeys(
+          "policy-member-report-detail",
+          q.fields,
+        ) as PolicyMemberReportMetricCol[];
+        const csv = buildPolicyMemberDrillDownCsv(rep, selectedFields);
         const filename = drillDownExportFilename(rep.drillType, rep.drillLabel);
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -406,7 +446,9 @@ export function createMisRouter(_env: Env) {
     requirePermission("mis:policy:read"),
     async (req, res, next) => {
       try {
-        const q = policyMemberReportQuerySchema.parse(req.query);
+        const q = policyMemberReportQuerySchema
+          .extend({ fields: exportFieldArrayQuery })
+          .parse(req.query);
         const scope = await loadMisScope(req.userId!, req.permissions!, "mis_policy");
         const rep = await getPolicyMemberReport(
           req.userId!,
@@ -414,19 +456,12 @@ export function createMisRouter(_env: Env) {
           scope,
           normalizePolicyMemberReportQuery(q),
         );
-        const cols = POLICY_MEMBER_REPORT_METRIC_COLS;
+        const cols = pickMisExportColumnKeys("policy-member-report", q.fields) as (keyof (typeof rep.rows)[number])[];
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="policy-member-report.csv"');
-        res.write(`${cols.join(",")}\n`);
+        writeCsvRow(res, cols);
         for (const r0 of rep.rows) {
-          const line = cols.map((c) => {
-            const v = r0[c];
-            if (typeof v === "string" && (v.includes(",") || v.includes('"'))) {
-              return `"${v.replaceAll('"', '""')}"`;
-            }
-            return String(v);
-          });
-          res.write(`${line.join(",")}\n`);
+          writeCsvRow(res, cols.map((c) => r0[c]));
         }
         res.end();
       } catch (e) {
@@ -636,23 +671,55 @@ export function createMisRouter(_env: Env) {
     requirePermission("mis:claim:read"),
     async (req, res, next) => {
       try {
-        const q = claimReportQuerySchema.parse(req.query);
+        const q = claimReportQuerySchema
+          .extend({ fields: exportFieldArrayQuery })
+          .parse(req.query);
         const normalized = normalizeClaimReportQuery(q);
         const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
         const report = await getClaimReport(req.permissions!, scope, normalized);
+        const cols = pickMisExportColumnKeys("claim-report", q.fields) as (keyof (typeof report.rows)[number])[];
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="claim-mis-report.csv"');
-        res.write("label,claimCount,sumClaimAmount,sumApprovedAmount,sumDeductionAmount\n");
+        writeCsvRow(res, cols);
         for (const row of report.rows) {
-          res.write(
-            [
-              JSON.stringify(row.label),
-              row.claimCount,
-              row.sumClaimAmount,
-              row.sumApprovedAmount,
-              row.sumDeductionAmount,
-            ].join(",") + "\n",
-          );
+          writeCsvRow(res, cols.map((col) => row[col]));
+        }
+        res.end();
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/export/claim-report-detail.csv",
+    requirePermission("mis:claim:read"),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema
+          .extend({
+            drillVillage: z.string().optional(),
+            fields: exportFieldArrayQuery,
+          })
+          .parse(req.query);
+        const drillVillage = q.drillVillage?.trim() || null;
+        if (!drillVillage) {
+          res.status(400).json({ success: false, message: "drillVillage is required" });
+          return;
+        }
+        const normalized = normalizeClaimReportQuery({ ...q, groupBy: "category" });
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
+        const report = await getClaimReport(req.permissions!, scope, {
+          ...normalized,
+          groupBy: "category",
+          villages: [drillVillage],
+        });
+        const cols = pickMisExportColumnKeys("claim-report-detail", q.fields) as (keyof (typeof report.rows)[number])[];
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="claim-mis-village-${drillVillage.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "detail"}.csv"`);
+        writeCsvRow(res, cols);
+        for (const row of report.rows) {
+          writeCsvRow(res, cols.map((col) => row[col]));
         }
         res.end();
       } catch (e) {
@@ -700,37 +767,22 @@ export function createMisRouter(_env: Env) {
     requirePermission("mis:claim:read"),
     async (req, res, next) => {
       try {
-        const q = claimReportQuerySchema.parse(req.query);
+        const q = claimReportQuerySchema
+          .extend({ fields: exportFieldArrayQuery })
+          .parse(req.query);
         const normalized = normalizeClaimReportQuery(q);
         const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
         const report = await getClaimCategorySummary(req.permissions!, scope, normalized);
+        const cols = pickMisExportColumnKeys("claim-category-summary", q.fields) as (keyof (typeof report.rows)[number])[];
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader(
           "Content-Disposition",
           'attachment; filename="claim-mis-category-summary.csv"',
         );
-        const hdr =
-          "Category,Cash No,Cash Lodge,Cash Settled,Reim No,Reim Lodge,Reim Settled,Cash Denied No,Cash Denied Lodge,REM Denied No,REM Denied Lodge,Total,Total Lodge,Total Settled";
-        res.write(`\uFEFF${hdr}\n`);
+        res.write("\uFEFF");
+        writeCsvRow(res, cols);
         for (const row of [...report.rows, report.totals]) {
-          res.write(
-            [
-              row.category,
-              row.cashNo,
-              row.cashLodge,
-              row.cashSettled,
-              row.reimNo,
-              row.reimLodge,
-              row.reimSettled,
-              row.cashDeniedNo,
-              row.cashDeniedLodge,
-              row.remDeniedNo,
-              row.remDeniedLodge,
-              row.totalNo,
-              row.totalLodge,
-              row.totalSettled,
-            ].join(",") + "\n",
-          );
+          writeCsvRow(res, cols.map((col) => row[col]));
         }
         res.end();
       } catch (e) {

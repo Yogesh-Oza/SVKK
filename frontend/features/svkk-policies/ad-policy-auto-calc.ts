@@ -1,5 +1,6 @@
 import {
-  customAge,
+  calculateAge,
+  chartRows,
   discountPct,
   normalizeMember,
 } from "../../lib/svkk/premium/engine";
@@ -225,7 +226,7 @@ export function resolveQuoteRowAge(
       return stored;
     }
   }
-  return customAge(dob, endDate);
+  return calculateAge(dob, endDate);
 }
 
 /**
@@ -281,6 +282,9 @@ export function quoteFromStoredFormValues(
     }
 
     const basic = storedBasics[index] ?? 0;
+    const bandHit = chartRows(premiumState.charts, policyKey, role).find(
+      (row) => age >= row.min && age <= row.max,
+    );
     const rider = Number(normalized.addOnRider) || 0;
     const gross = basic + rider;
     const pct = discountPct(
@@ -300,7 +304,7 @@ export function quoteFromStoredFormValues(
       ...normalized,
       role,
       age,
-      band: "—",
+      band: bandHit?.label || "—",
       basic,
       rider,
       gross,

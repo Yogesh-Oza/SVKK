@@ -160,6 +160,11 @@ export type PolicyDetailViewYear = {
       reason?: string | null;
     } | null;
   }>;
+  receipts?: Array<{
+    receiptNo?: string | null;
+    policyDate?: string | null;
+    createdAt?: string | null;
+  }>;
 };
 
 function dStr(v: unknown): string {

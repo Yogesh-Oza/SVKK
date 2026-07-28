@@ -75,6 +75,11 @@ export function customAge(dob: unknown, endDate: unknown): number | null {
   return years;
 }
 
+/** Shared age helper used across future premium and lookup. */
+export function calculateAge(dob: unknown, calculationDate: unknown): number | null {
+  return customAge(dob, calculationDate);
+}
+
 export function relationshipOptions(policy: PolicyKey, index: number): string[] {
   if (index === 0) return ["self"];
   if (policy === "asha_kiran") return ["spouse", "daughter"];
