@@ -8,17 +8,17 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   use: {
-    baseURL: `http://127.0.0.1:${port}`,
+    baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",
   },
   webServer: {
     command: "npm run dev",
     cwd: __dirname,
-    url: `http://127.0.0.1:${port}/login`,
+    url: `http://localhost:${port}/login`,
     reuseExistingServer: true,
     timeout: 120_000,
     env: {
-      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000/api/v1",
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1",
       PORT: String(port),
     },
   },

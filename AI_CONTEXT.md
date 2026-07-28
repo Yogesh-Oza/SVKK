@@ -1,5 +1,5 @@
 # AI_CONTEXT.md — SVKK Insurance Platform
-
+login id 
 admin@svkk.local
 admin123!
 
