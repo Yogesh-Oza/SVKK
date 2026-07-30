@@ -409,7 +409,7 @@ export function buildReceiptDocumentHtml(
 
   const membersHtml =
     members.length === 0
-      ? `<div class="member-card member-empty">No members added.</div>`
+      ? ""
       : `<div class="member-card members-card">
           <div class="member-title">Insured Members</div>
           <table class="members-table" aria-label="Insured Members">

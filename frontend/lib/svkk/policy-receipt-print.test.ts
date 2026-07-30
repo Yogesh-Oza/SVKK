@@ -61,10 +61,12 @@ describe("buildReceiptDocumentHtml", () => {
     expect(html).toContain("Male");
   });
 
-  it("renders empty state when no members exist", () => {
+  it("omits insured members section when no members exist", () => {
     const html = buildReceiptDocumentHtml(basePolicy(), { embedded: true });
 
-    expect(html).toContain("No members added.");
+    expect(html).not.toContain("No members added.");
+    expect(html).not.toContain("Insured Members");
+    expect(html).toContain("Amount in Words");
   });
 
   it("keeps receipt height flexible and uses compact density for many members", () => {
