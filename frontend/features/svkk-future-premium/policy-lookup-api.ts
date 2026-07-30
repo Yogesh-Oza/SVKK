@@ -23,7 +23,6 @@ import {
 } from "./future-premium-engine";
 import type { CsvRowObject, FuturePremiumResult } from "./future-premium-types";
 import {
-  buildFuturePremiumListQuery,
   buildLookupListQuery,
   buildLookupSearchTerms,
   lookupRowMatchesToken,
@@ -367,83 +366,67 @@ export type PolicyListPagedResponse = {
   totalPages: number;
 };
 
-/** Load one page of future premium results from live policy records (not export CSV). */
-export async function fetchFuturePremiumPageFromApi(
-  filterQuery: string,
-  page: number,
-  pageSize: number,
-  yearOffset: string,
-  premiumState: PremiumState,
-  options: FutureGenerationOptions = {},
-): Promise<PolicyListPagedResponse & { results: FuturePremiumResult[] }> {
-  const res = await svkkJson<PolicyListPagedResponse>(
-    `/policies?${buildFuturePremiumListQuery(filterQuery, page, pageSize)}`,
-  );
+type FuturePremiumBulkDetailsResponse = {
+  items: Array<{
+    id: string;
+    periodYearText: string | null;
+    detail: SvkkPolicyDetailForForm;
+  }>;
+  total: number;
+  truncated?: boolean;
+};
 
-  const items = res.items ?? [];
-  const results = (
-    await Promise.all(
-      items.map(async (item) => {
-        const yearLabel = listItemYearLabel(item);
-        if (!yearLabel) return null;
-        const detail = await svkkJson<SvkkPolicyDetailForForm>(`/policies/${item.id}`);
-        return policyDetailToLookupResult(detail, yearLabel, yearOffset, premiumState, options);
-      }),
-    )
-  ).filter((r): r is FuturePremiumResult => r != null);
+const FUTURE_PREMIUM_COMPUTE_CHUNK = 100;
 
-  return {
-    items,
-    total: res.total ?? items.length,
-    page: res.page ?? page,
-    pageSize: res.pageSize ?? pageSize,
-    totalPages: res.totalPages ?? Math.max(1, Math.ceil((res.total ?? items.length) / pageSize)),
-    results,
-  };
-}
-
-const FUTURE_PREMIUM_FETCH_PAGE_SIZE = 50;
-
-/** Load every filtered policy page so MIS and distribution charts cover the full dataset. */
-export async function fetchAllFuturePremiumResultsFromApi(
+/**
+ * One API call loads all filtered policy details; premium/MIS is computed in the browser.
+ */
+export async function fetchFuturePremiumResultsFromBulkApi(
   filterQuery: string,
   yearOffset: string,
   premiumState: PremiumState,
   options: FutureGenerationOptions = {},
   callbacks?: {
-    onProgress?: (loaded: number, total: number) => void;
+    onProgress?: (done: number, total: number) => void;
     shouldCancel?: () => boolean;
   },
-): Promise<{ results: FuturePremiumResult[]; total: number }> {
-  const first = await fetchFuturePremiumPageFromApi(
-    filterQuery,
-    1,
-    FUTURE_PREMIUM_FETCH_PAGE_SIZE,
-    yearOffset,
-    premiumState,
-    options,
+): Promise<{ results: FuturePremiumResult[]; total: number; truncated: boolean }> {
+  const params = new URLSearchParams(filterQuery);
+  params.set("sort", "periodYearText_desc");
+  const res = await svkkJson<FuturePremiumBulkDetailsResponse>(
+    `/policies/future-premium/details?${params}`,
   );
-  const all = [...first.results];
-  const total = first.total ?? all.length;
-  callbacks?.onProgress?.(all.length, total);
 
-  for (let page = 2; page <= first.totalPages; page += 1) {
+  const items = res.items ?? [];
+  const results: FuturePremiumResult[] = [];
+  callbacks?.onProgress?.(0, items.length);
+
+  for (let i = 0; i < items.length; i += FUTURE_PREMIUM_COMPUTE_CHUNK) {
     if (callbacks?.shouldCancel?.()) {
-      return { results: all, total };
+      return { results, total: res.total ?? results.length, truncated: Boolean(res.truncated) };
     }
-    const pageData = await fetchFuturePremiumPageFromApi(
-      filterQuery,
-      page,
-      FUTURE_PREMIUM_FETCH_PAGE_SIZE,
-      yearOffset,
-      premiumState,
-      options,
-    );
-    all.push(...pageData.results);
-    callbacks?.onProgress?.(all.length, total);
+    const chunk = items.slice(i, i + FUTURE_PREMIUM_COMPUTE_CHUNK);
+    for (const item of chunk) {
+      const yearLabel = item.periodYearText?.trim() || item.detail.periodYearText?.trim() || "";
+      if (!yearLabel) continue;
+      const result = policyDetailToLookupResult(
+        item.detail,
+        yearLabel,
+        yearOffset,
+        premiumState,
+        options,
+      );
+      if (result) results.push(result);
+    }
+    callbacks?.onProgress?.(Math.min(i + chunk.length, items.length), items.length);
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  return { results: all, total };
+  return {
+    results,
+    total: res.total ?? results.length,
+    truncated: Boolean(res.truncated),
+  };
 }
 
 export async function resolveLookupFromPolicyApi(

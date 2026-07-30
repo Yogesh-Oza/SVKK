@@ -67,6 +67,12 @@ import {
   queryArchivedPolicies,
   restoreArchivedPolicy,
 } from "./policy-archive.js";
+import {
+  policyDetailForFormInclude,
+  serializePolicyDetailForApi,
+  stripCommissionFromPolicyYears,
+} from "./policy-detail-read.js";
+import { queryFuturePremiumPolicyDetails } from "./future-premium-policies.js";
 
 const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
 const POLICY_ARCHIVE_PERMISSIONS = ["policy:delete", "policy:restore", "policy:purge"] as const;
@@ -855,46 +861,43 @@ export function createPolicyRouter(env: Env) {
     },
   );
 
+  r.get(
+    "/future-premium/details",
+    requirePermission("future:read"),
+    async (req, res, next) => {
+      try {
+        const q = policyListFiltersSchema.parse(req.query);
+        const listFilter = listFilterFromQuery(q);
+        if (!listFilter.sort) {
+          listFilter.sort = "periodYearText_desc";
+        }
+        const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
+        const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+        const result = await queryFuturePremiumPolicyDetails(
+          where,
+          listFilter.sort,
+          req.permissions!,
+        );
+        res.json(result);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
   r.get("/:id", requireAnyPermission([...POLICY_READ_PERMISSIONS]), async (req, res, next) => {
     try {
       const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
       const row = await prisma.policy.findFirst({
         where: { id: String(req.params.id), deletedAt: null },
-        include: {
-          insuredParty: true,
-          policyType: true,
-          category: true,
-          years: {
-            where: { deletedAt: null },
-            orderBy: { yearLabel: "desc" },
-            include: {
-              members: { where: { deletedAt: null } },
-              policyChart: true,
-              payments: policyYearPaymentsInclude,
-              receipts: {
-                orderBy: { createdAt: "asc" },
-                take: 1,
-                select: { receiptNo: true, policyDate: true, createdAt: true },
-              },
-            },
-          },
-        },
+        include: policyDetailForFormInclude,
       });
       if (!row) throw new AppError("NOT_FOUND", "Policy not found", 404);
       assertPolicyReadable(row, req.userId!, req.permissions!, scope);
-      if (!hasPermissionInSet(req.permissions!, "policy:commission")) {
-        for (const y of row.years) {
-          (y as unknown as { commissionAmount?: null }).commissionAmount = null;
-          (y as unknown as { vkkCommission?: null }).vkkCommission = null;
-        }
-      }
+      stripCommissionFromPolicyYears(row, req.permissions!);
       const categoryByKey = await loadCategoryByKeyMap();
       const category = resolveCategoryRef(row.category, row.categoryText, categoryByKey);
-      res.json({
-        ...row,
-        category,
-        insuredParty: maskPolicyInsuredParty(req.permissions!, row),
-      });
+      res.json(serializePolicyDetailForApi(row, req.permissions!, category));
     } catch (e) {
       next(e);
     }

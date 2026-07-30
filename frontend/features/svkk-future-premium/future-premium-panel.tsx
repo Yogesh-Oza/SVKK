@@ -54,7 +54,7 @@ import {
 import { FuturePremiumIssueDialog } from "./future-premium-issue-dialog";
 import { FuturePremiumListPagination } from "./future-premium-list-pagination";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
-import { fetchAllFuturePremiumResultsFromApi } from "./policy-lookup-api";
+import { fetchFuturePremiumResultsFromBulkApi } from "./policy-lookup-api";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
 function StatCard({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
@@ -266,14 +266,18 @@ export function FuturePremiumPanel() {
     cancelGenerationRef.current = false;
     setProgressText("Loading policies...");
     try {
-      const { results: next, total } = await fetchAllFuturePremiumResultsFromApi(
+      const { results: next, total, truncated } = await fetchFuturePremiumResultsFromBulkApi(
         policyFilters.filterQuery,
         yearOffset,
         premiumState,
         futureGenerationOptions,
         {
-          onProgress: (loaded, policyTotal) => {
-            setProgressText(`Loaded ${loaded.toLocaleString("en-IN")} / ${policyTotal.toLocaleString("en-IN")} policies...`);
+          onProgress: (done, policyTotal) => {
+            setProgressText(
+              done === 0
+                ? "Loading policies..."
+                : `Computing ${done.toLocaleString("en-IN")} / ${policyTotal.toLocaleString("en-IN")} policies...`,
+            );
           },
           shouldCancel: () => cancelGenerationRef.current,
         },
@@ -293,7 +297,9 @@ export function FuturePremiumPanel() {
       setGenerated(true);
       setPage(1);
       showMessage(
-        `Generated ${next.length.toLocaleString("en-IN")} record(s) for ${yearOffsetLabel(yearOffset)} from policy list.`,
+        truncated
+          ? `Generated ${next.length.toLocaleString("en-IN")} of ${total.toLocaleString("en-IN")} matching policies (list capped at server limit).`
+          : `Generated ${next.length.toLocaleString("en-IN")} record(s) for ${yearOffsetLabel(yearOffset)} from policy list.`,
       );
     } catch (e) {
       setResults([]);
