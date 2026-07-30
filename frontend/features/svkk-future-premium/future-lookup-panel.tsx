@@ -10,11 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import {
   Table,
@@ -40,8 +36,9 @@ import { resolveLookupFromPolicyApi } from "./policy-lookup-api";
 import { fetchApiLookupSuggestions } from "./policy-lookup-suggestions";
 import type { LookupSuggestion } from "./policy-lookup-csv-search";
 import { lookupMinQueryLength } from "./policy-lookup-search";
-import { FuturePremiumPolicyFilters, useFuturePremiumPolicyFilters } from "./future-premium-policy-filters";
+import { FutureControlSelect, FuturePremiumPolicyFilters, useFuturePremiumPolicyFilters } from "./future-premium-policy-filters";
 import { useFuturePremiumData } from "./use-future-premium-data";
+import { cn } from "@/lib/utils";
 
 function LookupField({ label, value }: { label: string; value: string }) {
   return (
@@ -271,165 +268,157 @@ export function FutureLookupPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2 md:col-span-2 xl:col-span-1">
-              <Label>Policy / SVKK / Customer No.</Label>
-              <Input
-                value={lookupNo}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
-                  setSuppressSuggestions(false);
-                  setLookupNo(nextValue);
-                  setResult(null);
-                  setSearched(false);
-                  if (nextValue.trim().length < lookupMinQueryLength(nextValue)) {
-                    setSuggestions([]);
-                    setActiveSuggestionIndex(-1);
-                  }
-                }}
-                onKeyDown={handleSuggestionKeyDown}
-                placeholder="Type holder name, SVKK ID, policy or customer no."
-                autoComplete="off"
-              />
-              <LookupSuggestionsList
-                suggestions={suggestions}
-                busy={suggestBusy}
-                activeIndex={activeSuggestionIndex}
-                onSelect={selectSuggestion}
-                open={!suppressSuggestions && lookupNo.trim().length >= lookupMinQueryLength(lookupNo)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Future Year</Label>
-              <Select value={yearOffset} onValueChange={setYearOffset}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_YEAR_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Actions</Label>
-              <Button onClick={handleGenerate} disabled={busy || loadingCharts || !lookupNo.trim()}>
-                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
-                Generate
-              </Button>
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Future Sum Insured</Label>
-              <Select value={futureSiMode} onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
-                  <SelectItem value="change">Change Sum Insured</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future SI Value</Label>
-              <Select value={futureSi} onValueChange={setFutureSi} disabled={futureSiMode !== "change"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_SI_OPTIONS.map((si) => (
-                    <SelectItem key={si} value={String(si)}>
-                      ₹{rs(si)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future Product</Label>
-              <Select value={futurePolicyMode} onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Keep Existing Product</SelectItem>
-                  <SelectItem value="change">Change Product</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future Product Type</Label>
-              <Select value={futurePolicyType} onValueChange={setFuturePolicyType} disabled={futurePolicyMode !== "change"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
-                    <SelectItem key={policy} value={policy}>
-                      {formatPolicyName(policy)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Discount Mode</Label>
-              <Select value={discountMode} onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Use Existing Discount</SelectItem>
-                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
-                  <SelectItem value="custom">Custom Discount %</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Custom Discount %</Label>
-              <Select value={customDiscountPct} onValueChange={setCustomDiscountPct} disabled={discountMode !== "custom"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
-                    <SelectItem key={pct} value={String(pct)}>
-                      {pct}%
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Recent Lookups</Label>
-              <div className="flex flex-wrap gap-2 rounded-md border p-2">
-                {lookupHistory.length ? (
-                  lookupHistory.map((item) => (
-                    <Button key={item} variant="outline" size="sm" onClick={() => void runLookup(item)}>
-                      {item}
-                    </Button>
-                  ))
-                ) : (
-                  <span className="text-muted-foreground text-xs">No recent lookups</span>
-                )}
-              </div>
-            </div>
-          </div>
-
           <FuturePremiumPolicyFilters
             filters={filters}
             onChange={setFilters}
             options={filterOptions}
             activeCount={activeCount}
             onReset={resetFilters}
+            scenarioControls={
+              <>
+                <div
+                  className={cn(
+                    "rounded-xl border-2 bg-gradient-to-br p-3 shadow-sm transition-shadow hover:shadow-md sm:col-span-2",
+                    "border-slate-200/90 from-slate-50/95 to-card dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card",
+                  )}
+                >
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
+                    Policy / SVKK / Customer No.
+                  </Label>
+                  <Input
+                    value={lookupNo}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setSuppressSuggestions(false);
+                      setLookupNo(nextValue);
+                      setResult(null);
+                      setSearched(false);
+                      if (nextValue.trim().length < lookupMinQueryLength(nextValue)) {
+                        setSuggestions([]);
+                        setActiveSuggestionIndex(-1);
+                      }
+                    }}
+                    onKeyDown={handleSuggestionKeyDown}
+                    placeholder="Type holder name, SVKK ID, policy or customer no."
+                    autoComplete="off"
+                    className="border-input/80 bg-background/90 h-10 font-bold shadow-sm"
+                  />
+                  <LookupSuggestionsList
+                    suggestions={suggestions}
+                    busy={suggestBusy}
+                    activeIndex={activeSuggestionIndex}
+                    onSelect={selectSuggestion}
+                    open={!suppressSuggestions && lookupNo.trim().length >= lookupMinQueryLength(lookupNo)}
+                  />
+                </div>
+                <FutureControlSelect
+                  label="Future Year"
+                  value={yearOffset}
+                  onValueChange={setYearOffset}
+                  accentClassName="border-cyan-200/90 from-cyan-50/95 to-card dark:border-cyan-900/50 dark:from-cyan-950/35 dark:to-card"
+                >
+                  {FUTURE_YEAR_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Sum Insured"
+                  value={futureSiMode}
+                  onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}
+                  accentClassName="border-lime-200/90 from-lime-50/95 to-card dark:border-lime-900/50 dark:from-lime-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
+                  <SelectItem value="change">Change Sum Insured</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future SI Value"
+                  value={futureSi}
+                  onValueChange={setFutureSi}
+                  disabled={futureSiMode !== "change"}
+                  accentClassName="border-yellow-200/90 from-yellow-50/95 to-card dark:border-yellow-900/50 dark:from-yellow-950/35 dark:to-card"
+                >
+                  {FUTURE_SI_OPTIONS.map((si) => (
+                    <SelectItem key={si} value={String(si)}>
+                      ₹{rs(si)}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Product"
+                  value={futurePolicyMode}
+                  onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}
+                  accentClassName="border-pink-200/90 from-pink-50/95 to-card dark:border-pink-900/50 dark:from-pink-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Keep Existing Product</SelectItem>
+                  <SelectItem value="change">Change Product</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Product Type"
+                  value={futurePolicyType}
+                  onValueChange={setFuturePolicyType}
+                  disabled={futurePolicyMode !== "change"}
+                  accentClassName="border-purple-200/90 from-purple-50/95 to-card dark:border-purple-900/50 dark:from-purple-950/35 dark:to-card"
+                >
+                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
+                    <SelectItem key={policy} value={policy}>
+                      {formatPolicyName(policy)}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Discount Mode"
+                  value={discountMode}
+                  onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}
+                  accentClassName="border-blue-200/90 from-blue-50/95 to-card dark:border-blue-900/50 dark:from-blue-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Use Existing Discount</SelectItem>
+                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
+                  <SelectItem value="custom">Custom Discount %</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Custom Discount %"
+                  value={customDiscountPct}
+                  onValueChange={setCustomDiscountPct}
+                  disabled={discountMode !== "custom"}
+                  accentClassName="border-stone-200/90 from-stone-50/95 to-card dark:border-stone-800/50 dark:from-stone-950/35 dark:to-card"
+                >
+                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
+                    <SelectItem key={pct} value={String(pct)}>
+                      {pct}%
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <div
+                  className={cn(
+                    "rounded-xl border-2 bg-gradient-to-br p-3 shadow-sm transition-shadow hover:shadow-md sm:col-span-2 lg:col-span-2",
+                    "border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card",
+                  )}
+                >
+                  <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
+                    Recent Lookups
+                  </Label>
+                  <div className="flex min-h-10 flex-wrap gap-2">
+                    {lookupHistory.length ? (
+                      lookupHistory.map((item) => (
+                        <Button key={item} variant="outline" size="sm" onClick={() => void runLookup(item)}>
+                          {item}
+                        </Button>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground self-center text-xs font-medium">No recent lookups</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            }
           />
+
+          <p className="text-muted-foreground text-xs">
+            Data is fetched from the policy database only. Type at least 2 characters to see suggestions, then click
+            Generate.
+          </p>
 
           <p
             className={
@@ -442,6 +431,13 @@ export function FutureLookupPanel() {
           >
             {status.text}
           </p>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleGenerate} disabled={busy || loadingCharts || !lookupNo.trim()}>
+              {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
+              Generate
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
