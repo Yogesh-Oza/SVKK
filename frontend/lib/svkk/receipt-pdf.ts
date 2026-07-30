@@ -49,8 +49,13 @@ export async function downloadReceiptPreviewAsPdf(
 async function captureReceiptCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
   const html2canvas = (await import("html2canvas")).default;
 
-  const width = Math.ceil(target.offsetWidth || target.scrollWidth || 794);
-  const height = Math.ceil(target.offsetHeight || target.scrollHeight || 1123);
+  // Prefer full scroll size so taller receipts (many members) are not cropped.
+  const width = Math.ceil(
+    Math.max(target.scrollWidth, target.offsetWidth, target.clientWidth) || 794,
+  );
+  const height = Math.ceil(
+    Math.max(target.scrollHeight, target.offsetHeight, target.clientHeight) || 1123,
+  );
 
   return html2canvas(target, {
     scale: 2,
@@ -66,6 +71,17 @@ async function captureReceiptCanvas(target: HTMLElement): Promise<HTMLCanvasElem
     windowHeight: height,
     onclone: (clonedDoc) => {
       stripUnsupportedColorFunctions(clonedDoc);
+      const sheet = clonedDoc.querySelector<HTMLElement>(".receipt-a4-sheet");
+      if (sheet) {
+        sheet.style.height = "auto";
+        sheet.style.maxHeight = "none";
+        sheet.style.overflow = "visible";
+      }
+      const main = clonedDoc.querySelector<HTMLElement>(".receipt-a4-main");
+      if (main) {
+        main.style.overflow = "visible";
+        main.style.flex = "1 0 auto";
+      }
     },
   });
 }
@@ -144,7 +160,7 @@ async function mountReceiptCaptureIframe(html: string): Promise<HTMLIFrameElemen
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "Receipt PDF Capture");
   iframe.style.cssText =
-    "position:fixed;left:-99999px;top:0;width:794px;height:1200px;border:0;visibility:hidden;";
+    "position:fixed;left:-99999px;top:0;width:794px;height:2400px;border:0;visibility:hidden;";
   document.body.appendChild(iframe);
 
   await new Promise<void>((resolve, reject) => {

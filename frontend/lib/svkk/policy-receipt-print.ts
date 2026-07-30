@@ -440,9 +440,12 @@ export function buildReceiptDocumentHtml(
   const bodyClass = embedded ? "receipt-root receipt-embedded" : "receipt-root";
   const headerImg = options?.headerImageUrl || DEFAULT_HEADER_IMAGE;
   const footerImg = options?.footerImageUrl || DEFAULT_FOOTER_IMAGE;
+  /** More members → denser spacing so fields above are not squeezed/clipped. */
+  const densityClass =
+    members.length >= 5 ? "receipt-density-tight" : members.length >= 3 ? "receipt-density-compact" : "";
 
   const inner = `
-    <div class="receipt-body receipt-a4-sheet">
+    <div class="receipt-body receipt-a4-sheet${densityClass ? ` ${densityClass}` : ""}">
       <header class="receipt-a4-header">
         <img src="${headerImg}" alt="Receipt Header" onerror="this.style.display='none'">
       </header>
@@ -511,7 +514,7 @@ export function buildReceiptDocumentHtml(
       background: #fff;
       border-radius: 28px;
       box-shadow: 0 20px 40px rgba(0,0,0,.12);
-      overflow: hidden;
+      overflow: visible;
       border: 1px solid #e5e7eb;
       display: flex;
       flex-direction: column;
@@ -532,10 +535,11 @@ export function buildReceiptDocumentHtml(
     .receipt-a4-sheet {
       display: flex;
       flex-direction: column;
-      height: var(--a4-h);
+      /* Grow with content so members never clip fields above or amount below. */
+      height: auto;
       min-height: var(--a4-h);
-      max-height: var(--a4-h);
-      overflow: hidden;
+      max-height: none;
+      overflow: visible;
     }
     .receipt-a4-header {
       flex: 0 0 var(--header-h);
@@ -558,18 +562,20 @@ export function buildReceiptDocumentHtml(
       object-position: center center;
     }
     .receipt-a4-main {
-      flex: 1 1 0;
+      flex: 1 0 auto;
       min-height: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       width: 100%;
       padding: 4px 10px 2px;
-      overflow: hidden;
+      overflow: visible;
+      gap: 0;
     }
     .receipt-a4-main > * {
       width: 100%;
       max-width: 100%;
+      flex-shrink: 0;
     }
     .receipt-title-wrap { flex: 0 0 auto; text-align: center; margin: 4px 0 6px; }
     .receipt-title {
@@ -588,8 +594,8 @@ export function buildReceiptDocumentHtml(
     .words-value { margin-top: 4px; font-weight: 700; font-size: 12px; line-height: 1.35; }
     .receipt-thanks { margin-top: 8px; font-size: 12px; }
     .receipt-grid {
-      flex: 1 1 0;
-      min-height: 0;
+      flex: 0 0 auto;
+      min-height: auto;
       display: grid;
       grid-template-columns: 1fr 1fr;
       border: 1px solid var(--line);
@@ -598,7 +604,8 @@ export function buildReceiptDocumentHtml(
     }
     .rcol { display: flex; flex-direction: column; min-height: 0; }
     .rrow {
-      flex: 1 1 0;
+      /* Natural row height — never squeeze text when members grow. */
+      flex: 0 0 auto;
       display: grid;
       grid-template-columns: minmax(96px, 38%) minmax(0, 1fr);
       padding: 7px 10px;
@@ -612,6 +619,7 @@ export function buildReceiptDocumentHtml(
     .rcol:first-child { border-right: 1px solid #e5e7eb; }
     .members-card,
     .member-empty {
+      flex: 0 0 auto;
       margin-top: 8px;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -645,12 +653,45 @@ export function buildReceiptDocumentHtml(
     }
     .receipt-tail {
       flex: 0 0 auto;
-      margin-top: auto;
+      margin-top: 8px;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     .receipt-signatures { display: flex; justify-content: flex-end; margin-top: 8px; break-inside: avoid; page-break-inside: avoid; }
     .sig-line { border-top: 2px solid #cbd5e1; padding-top: 8px; font-weight: 800; color: #475569; font-size: 12px; text-align: center; min-width: 180px; }
+
+    /* Compact when several insured members are listed */
+    .receipt-density-compact .receipt-title { font-size: 18px; padding: 4px 14px; }
+    .receipt-density-compact .receipt-title-wrap { margin: 2px 0 4px; }
+    .receipt-density-compact .rrow { padding: 5px 8px; font-size: 11px; }
+    .receipt-density-compact .member-card { padding: 7px 10px; }
+    .receipt-density-compact .member-title,
+    .receipt-density-compact .members-table { font-size: 11px; }
+    .receipt-density-compact .members-table th,
+    .receipt-density-compact .members-table td { padding: 5px 6px; }
+    .receipt-density-compact .words-label,
+    .receipt-density-compact .words-value,
+    .receipt-density-compact .receipt-thanks { font-size: 11px; }
+
+    .receipt-density-tight .receipt-a4-main { padding: 2px 8px 2px; }
+    .receipt-density-tight .receipt-title { font-size: 16px; padding: 3px 12px; }
+    .receipt-density-tight .receipt-title-wrap { margin: 1px 0 3px; }
+    .receipt-density-tight .rrow { padding: 3px 6px; font-size: 10px; }
+    .receipt-density-tight .member-card { padding: 5px 8px; border-radius: 10px; }
+    .receipt-density-tight .members-card,
+    .receipt-density-tight .member-empty { margin-top: 5px; }
+    .receipt-density-tight .member-title,
+    .receipt-density-tight .members-table { font-size: 10px; }
+    .receipt-density-tight .members-table th,
+    .receipt-density-tight .members-table td { padding: 3px 5px; }
+    .receipt-density-tight .receipt-words,
+    .receipt-density-tight .receipt-thanks { margin-top: 5px; }
+    .receipt-density-tight .words-label,
+    .receipt-density-tight .words-value,
+    .receipt-density-tight .receipt-thanks,
+    .receipt-density-tight .sig-line { font-size: 10px; }
+    .receipt-density-tight .receipt-signatures { margin-top: 5px; }
+    .receipt-density-tight .sig-line { padding-top: 5px; min-width: 140px; }
 
     @media (max-width: 700px) {
       .receipt-grid { grid-template-columns: 1fr; }
@@ -658,7 +699,7 @@ export function buildReceiptDocumentHtml(
     }
     @media print {
       @page { size: A4 portrait; margin: 10mm; }
-      html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; background: #fff !important; overflow: hidden; }
+      html, body { width: 210mm; min-height: 297mm; height: auto; margin: 0; padding: 0; background: #fff !important; overflow: visible; }
       .no-print { display: none !important; }
       .modal {
         box-shadow: none;
@@ -666,7 +707,7 @@ export function buildReceiptDocumentHtml(
         width: 210mm;
         max-width: 210mm;
         border: 0;
-        overflow: hidden;
+        overflow: visible;
         align-items: center;
       }
       .receipt-root {
@@ -685,19 +726,19 @@ export function buildReceiptDocumentHtml(
         padding: 0 !important;
       }
       .receipt-a4-sheet {
-        height: var(--a4-h);
+        height: auto;
         min-height: var(--a4-h);
-        max-height: var(--a4-h);
-        overflow: hidden;
-        page-break-after: avoid;
-        page-break-inside: avoid;
+        max-height: none;
+        overflow: visible;
+        page-break-inside: auto;
       }
       .receipt-a4-header { flex: 0 0 var(--header-h); height: var(--header-h); }
       .receipt-a4-footer { flex: 0 0 var(--footer-h); height: var(--footer-h); }
       .receipt-a4-header img,
       .receipt-a4-footer img { width: 100%; height: 100%; object-fit: fill; }
       .receipt-title { font-size: 18px; padding: 4px 14px; }
-      .rrow { font-size: 10.5px; padding: 5px 8px; }
+      .rrow { font-size: 10.5px; padding: 5px 8px; flex: 0 0 auto; }
+      .receipt-grid { flex: 0 0 auto; }
       .member-card { padding: 6px 10px; border-radius: 10px; }
       .member-title,
       .members-table { font-size: 10.5px; }

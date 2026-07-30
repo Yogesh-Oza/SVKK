@@ -66,4 +66,25 @@ describe("buildReceiptDocumentHtml", () => {
 
     expect(html).toContain("No members added.");
   });
+
+  it("keeps receipt height flexible and uses compact density for many members", () => {
+    const policy = basePolicy();
+    policy.years[0]!.members = [
+      { name: "A One", relationship: "Spouse", ageAtEntry: 40, gender: "F" },
+      { name: "B Two", relationship: "Daughter", ageAtEntry: 12, gender: "F" },
+      { name: "C Three", relationship: "Son", ageAtEntry: 10, gender: "M" },
+      { name: "D Four", relationship: "Father", ageAtEntry: 70, gender: "M" },
+    ];
+
+    const html = buildReceiptDocumentHtml(policy, { embedded: true });
+
+    expect(html).toContain("receipt-density-compact");
+    expect(html).toContain("height: auto");
+    expect(html).toContain("max-height: none");
+    expect(html).toContain("A One");
+    expect(html).toContain("D Four");
+    expect(html).toContain("Amount in Words");
+    // Rows must keep natural height so member growth cannot clip field labels.
+    expect(html).toMatch(/\.rrow\s*\{[^}]*flex:\s*0\s+0\s+auto/s);
+  });
 });
