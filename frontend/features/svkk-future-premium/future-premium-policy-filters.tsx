@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   PolicyFilterMulti,
   type PolicyFilterOption,
@@ -10,6 +18,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
+import { cn } from "@/lib/utils";
 
 import {
   buildFuturePolicyFilterQuery,
@@ -121,14 +130,14 @@ export function useFuturePremiumPolicyFilters() {
     () =>
       ddOptions.policyTypes
         .filter((t): t is typeof t & { id: string } => Boolean(t.id))
-        .map((t) => ({ value: t.id, label: t.label || t.value })),
+        .map((t) => ({ value: t.id!, label: t.label || t.value })),
     [ddOptions.policyTypes],
   );
 
   return {
     filters,
     setFilters,
-    resetFilters: () => setFilters(emptyFuturePolicyFilters()),
+    resetFilters: () => setFilters(emptyFuturePolicyFilters),
     activeCount: countActiveFuturePolicyFilters(filters),
     filterQuery,
     csvFilterContext,
@@ -145,18 +154,58 @@ export function useFuturePremiumPolicyFilters() {
   };
 }
 
+/** Single-select control matching PolicyFilterMulti card styling. */
+export function FutureControlSelect({
+  label,
+  value,
+  onValueChange,
+  disabled,
+  accentClassName,
+  children,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  disabled?: boolean;
+  accentClassName: string;
+  children: ReactNode;
+  placeholder?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border-2 bg-gradient-to-br p-3 shadow-sm transition-shadow hover:shadow-md",
+        accentClassName,
+        disabled && "opacity-60",
+      )}
+    >
+      <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">{label}</Label>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger className="border-input/80 bg-background/90 hover:bg-background h-10 w-full font-bold shadow-sm">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>{children}</SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function FuturePremiumPolicyFilters({
   filters,
   onChange,
   options,
   activeCount,
   onReset,
+  scenarioControls,
 }: {
   filters: FuturePolicyFilters;
   onChange: (next: FuturePolicyFilters) => void;
   activeCount: number;
   onReset: () => void;
   options: ReturnType<typeof useFuturePremiumPolicyFilters>["filterOptions"];
+  /** Source / future year / SI / product / discount — same card grid style. */
+  scenarioControls?: ReactNode;
 }) {
   const patch = (partial: Partial<FuturePolicyFilters>) => onChange({ ...filters, ...partial });
 
@@ -180,6 +229,7 @@ export function FuturePremiumPolicyFilters({
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {scenarioControls}
         <PolicyFilterMulti
           label="Year"
           placeholder="All years"

@@ -8,6 +8,7 @@ import { prisma } from "../../lib/prisma.js";
 import {
   buildPolicyListWhere,
   parsePolicyListOrderBy,
+  sumFilteredPolicyPremiums,
   type PolicyListArgs,
   type PolicyListQuery,
 } from "./policy.list.js";
@@ -287,9 +288,10 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
   const categoryByKey = await loadCategoryByKeyMap();
   if (args.usePage) {
     const skip = (args.page! - 1) * args.pageSize;
-    const [total, partyIds] = await Promise.all([
+    const [total, partyIds, premiumTotals] = await Promise.all([
       countInsuredPartiesWithPolicies(where),
       pageInsuredPartyIds(where, args.sort, skip, args.pageSize),
+      sumFilteredPolicyPremiums(where),
     ]);
     const policies = await fetchPoliciesForParties(where, partyIds);
     return {
@@ -298,6 +300,7 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
       page: args.page!,
       pageSize: args.pageSize,
       totalPages: Math.max(1, Math.ceil(total / args.pageSize)),
+      ...premiumTotals,
     };
   }
 

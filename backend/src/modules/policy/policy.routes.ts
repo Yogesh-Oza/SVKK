@@ -501,6 +501,12 @@ export function createPolicyRouter(env: Env) {
           page: out.page,
           pageSize: out.pageSize,
           totalPages: out.totalPages,
+          ...("sumVkkPremium" in out
+            ? {
+                sumVkkPremium: out.sumVkkPremium,
+                sumNetPremium: out.sumNetPremium,
+              }
+            : {}),
         });
       }
     } catch (e) {

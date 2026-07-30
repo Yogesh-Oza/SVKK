@@ -418,6 +418,55 @@ const listInclude = {
 /** Hard cap to bound memory/time for CSV export; adjust if deployments need more. */
 export const POLICY_LIST_EXPORT_MAX_ROWS = 100_000;
 
+export type PolicyListPremiumTotals = {
+  sumVkkPremium: number;
+  sumNetPremium: number;
+};
+
+function decimalToNumber(v: Prisma.Decimal | null | undefined): number {
+  if (v == null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Sum SVKK + Net premium for all policies matching the list filter (latest year per policy).
+ * Same field fallbacks as policy profile: svkkPremium ?? vkkPremium, expectedNetPremium ?? netPremium.
+ */
+export async function sumFilteredPolicyPremiums(
+  where: Prisma.PolicyWhereInput,
+): Promise<PolicyListPremiumTotals> {
+  const rows = await prisma.policy.findMany({
+    where,
+    select: {
+      listVkkPremium: true,
+      years: {
+        where: { deletedAt: null },
+        take: 1,
+        orderBy: { yearLabel: "desc" },
+        select: {
+          vkkPremium: true,
+          svkkPremium: true,
+          expectedNetPremium: true,
+          netPremium: true,
+        },
+      },
+    },
+  });
+
+  let sumVkkPremium = 0;
+  let sumNetPremium = 0;
+  for (const row of rows) {
+    const y = row.years[0];
+    sumVkkPremium += decimalToNumber(y?.svkkPremium ?? y?.vkkPremium ?? row.listVkkPremium);
+    sumNetPremium += decimalToNumber(y?.expectedNetPremium ?? y?.netPremium);
+  }
+  return {
+    sumVkkPremium: Math.round(sumVkkPremium * 100) / 100,
+    sumNetPremium: Math.round(sumNetPremium * 100) / 100,
+  };
+}
+
 export async function queryPolicyListAll(args: {
   where: Prisma.PolicyWhereInput;
   sort: string | undefined;
@@ -439,7 +488,7 @@ export async function queryPolicyList(args: PolicyListArgs) {
   const orderBy = parsePolicyListOrderBy(args.sort);
   if (args.usePage) {
     const skip = (args.page! - 1) * args.pageSize;
-    const [total, rows] = await prisma.$transaction([
+    const [total, rows, premiumTotals] = await Promise.all([
       prisma.policy.count({ where: args.where }),
       prisma.policy.findMany({
         where: args.where,
@@ -448,6 +497,7 @@ export async function queryPolicyList(args: PolicyListArgs) {
         take: args.pageSize,
         include: listInclude,
       }),
+      sumFilteredPolicyPremiums(args.where),
     ]);
     return {
       items: rows,
@@ -455,6 +505,7 @@ export async function queryPolicyList(args: PolicyListArgs) {
       page: args.page!,
       pageSize: args.pageSize,
       totalPages: Math.max(1, Math.ceil(total / args.pageSize)),
+      ...premiumTotals,
     };
   }
   const rows = await prisma.policy.findMany({

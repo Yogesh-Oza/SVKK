@@ -121,6 +121,7 @@ import {
   Shield,
   Trash2,
   Users,
+  IndianRupee,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -191,6 +192,8 @@ type PageListRes = {
   page: number;
   pageSize: number;
   totalPages: number;
+  sumVkkPremium?: number;
+  sumNetPremium?: number;
 };
 
 type FiltersMeta = {
@@ -290,6 +293,8 @@ export default function SvkkPoliciesPage() {
   const [rows, setRows] = useState<ListPolicy[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [sumVkkPremium, setSumVkkPremium] = useState(0);
+  const [sumNetPremium, setSumNetPremium] = useState(0);
   const [meta, setMeta] = useState<FiltersMeta | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -563,6 +568,8 @@ export default function SvkkPoliciesPage() {
         setRows(res.items as ListPolicy[]);
         setTotalPages(res.totalPages);
         setTotal(res.total);
+        setSumVkkPremium(0);
+        setSumNetPremium(0);
         setRowSelection({});
         return;
       }
@@ -571,6 +578,8 @@ export default function SvkkPoliciesPage() {
       setRows(res.items);
       setTotalPages(res.totalPages);
       setTotal(res.total);
+      setSumVkkPremium(Number(res.sumVkkPremium) || 0);
+      setSumNetPremium(Number(res.sumNetPremium) || 0);
       setRowSelection({});
     } catch (e) {
       if (generation !== listFetchGenerationRef.current) return;
@@ -582,6 +591,8 @@ export default function SvkkPoliciesPage() {
           setRows(res.items as ListPolicy[]);
           setTotalPages(res.totalPages);
           setTotal(res.total);
+          setSumVkkPremium(0);
+          setSumNetPremium(0);
           setRowSelection({});
           setErr(null);
           return;
@@ -1409,42 +1420,80 @@ export default function SvkkPoliciesPage() {
         </Collapsible>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="from-primary/8 border-primary/15 bg-linear-to-br to-card py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-primary/12 flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <Shield className="text-primary size-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">SVKK IDs (grouped)</p>
-              <p className="text-2xl font-bold tabular-nums tracking-tight">
-                {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <LayoutList className="text-muted-foreground size-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">On this page</p>
-              <p className="text-2xl font-bold tabular-nums">{rows.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 shadow-sm">
-          <CardContent className="flex items-center gap-3 px-4 py-4">
-            <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <Users className="text-muted-foreground size-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Selected</p>
-              <p className="text-2xl font-bold tabular-nums">{selectedCount}</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className="from-primary/8 border-primary/15 bg-linear-to-br to-card py-0 shadow-sm">
+            <CardContent className="flex items-center gap-3 px-4 py-4">
+              <div className="bg-primary/12 flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <Shield className="text-primary size-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">SVKK IDs (grouped)</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight">
+                  {loading ? <Skeleton className="mt-1 h-8 w-16" /> : total.toLocaleString()}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="py-0 shadow-sm">
+            <CardContent className="flex items-center gap-3 px-4 py-4">
+              <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <LayoutList className="text-muted-foreground size-5" />
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">On this page</p>
+                <p className="text-2xl font-bold tabular-nums">{rows.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="py-0 shadow-sm">
+            <CardContent className="flex items-center gap-3 px-4 py-4">
+              <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <Users className="text-muted-foreground size-5" />
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Selected</p>
+                <p className="text-2xl font-bold tabular-nums">{selectedCount}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card className="py-0 shadow-sm">
+            <CardContent className="flex items-center gap-3 px-4 py-4">
+              <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <IndianRupee className="text-muted-foreground size-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Total SVKK Premium</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight">
+                  {loading ? (
+                    <Skeleton className="mt-1 h-8 w-24" />
+                  ) : (
+                    formatInrRupee(sumVkkPremium) ?? "₹ 0"
+                  )}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="py-0 shadow-sm">
+            <CardContent className="flex items-center gap-3 px-4 py-4">
+              <div className="bg-muted flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <IndianRupee className="text-muted-foreground size-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Total Net Premium</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight">
+                  {loading ? (
+                    <Skeleton className="mt-1 h-8 w-24" />
+                  ) : (
+                    formatInrRupee(sumNetPremium) ?? "₹ 0"
+                  )}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {canDel && selectedCount > 0 ? (

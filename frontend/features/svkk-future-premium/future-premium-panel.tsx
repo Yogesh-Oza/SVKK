@@ -41,6 +41,7 @@ import {
 } from "./future-premium-engine";
 import { filterFutureCsvRows } from "./future-policy-filters";
 import {
+  FutureControlSelect,
   FuturePremiumPolicyFilters,
   useFuturePremiumPolicyFilters,
 } from "./future-premium-policy-filters";
@@ -430,208 +431,147 @@ export function FuturePremiumPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {source === "uploaded_csv_only" ? (
             <div className="space-y-2">
-              <Label>Source</Label>
-              <Select
-                value={source}
-                onValueChange={(v) => {
-                  setSource(v as FutureSourceKey);
-                  setPage(1);
-                  setResults([]);
-                  setGenerated(false);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_PREMIUM_SOURCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future Year</Label>
-              <Select value={yearOffset} onValueChange={setYearOffset}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_YEAR_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {source === "uploaded_csv_only" ? (
-              <div className="space-y-2">
-                <Label>Upload CSV</Label>
-                <Input
-                  ref={fileRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => void handleUpload(e.target.files?.[0])}
-                />
-                {uploadedRows.length > 0 ? (
-                  <p className="text-muted-foreground text-xs">
-                    {uploadedRows.length} row(s) loaded — ready to Generate.
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label>Data source</Label>
-                <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">
-                  Policies are loaded from live policy records (same data as Add Policy) using the filters below.
+              <Label>Upload CSV</Label>
+              <Input
+                ref={fileRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => void handleUpload(e.target.files?.[0])}
+              />
+              {uploadedRows.length > 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  {uploadedRows.length} row(s) loaded — ready to Generate.
                 </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Actions</Label>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void handleGenerate()} disabled={busy || loadingCharts}>
-                  {busy || loadingPolicies || loadingCharts ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 size-4" />
-                  )}
-                  Generate
-                </Button>
-                {source === "uploaded_csv_only" ? (
-                  <Button type="button" variant="outline" onClick={handleLoadSample}>
-                    Load sample
-                  </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  onClick={() => downloadCsv("future-premium-sample.csv", FUTURE_PREMIUM_SAMPLE_ROWS)}
-                >
-                  Download sample CSV
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!busy}
-                  onClick={() => {
-                    cancelGenerationRef.current = true;
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  Upload a CSV or load sample data, set options below, then Generate.
+                </p>
+              )}
             </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Future Sum Insured</Label>
-              <Select value={futureSiMode} onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
-                  <SelectItem value="change">Change Sum Insured</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future SI Value</Label>
-              <Select value={futureSiValue} onValueChange={setFutureSiValue} disabled={futureSiMode !== "change"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_SI_OPTIONS.map((si) => (
-                    <SelectItem key={si} value={String(si)}>
-                      ₹{rs(si)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Bulk SI Upgrade Rules</Label>
-              <Select value={bulkSiUpgrade ? "yes" : "no"} onValueChange={(v) => setBulkSiUpgrade(v === "yes")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="no">Disabled</SelectItem>
-                  <SelectItem value="yes">Enabled (1L→2L→3L→5L→10L)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future Policy Type</Label>
-              <Select value={futurePolicyMode} onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Keep Existing Product</SelectItem>
-                  <SelectItem value="change">Change Product</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Future Product Selection</Label>
-              <Select value={futurePolicyType} onValueChange={setFuturePolicyType} disabled={futurePolicyMode !== "change"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
-                    <SelectItem key={policy} value={policy}>
-                      {formatPolicyName(policy)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Future Discount</Label>
-              <Select value={discountMode} onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="existing">Use Existing Discount</SelectItem>
-                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
-                  <SelectItem value="custom">Custom Discount %</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Custom Discount %</Label>
-              <Select value={customDiscountPct} onValueChange={setCustomDiscountPct} disabled={discountMode !== "custom"}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
-                    <SelectItem key={pct} value={String(pct)}>
-                      {pct}%
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          ) : null}
           <FuturePremiumPolicyFilters
             filters={policyFilters.filters}
             onChange={policyFilters.setFilters}
             activeCount={policyFilters.activeCount}
             onReset={policyFilters.resetFilters}
             options={policyFilters.filterOptions}
+            scenarioControls={
+              <>
+                <FutureControlSelect
+                  label="Source"
+                  value={source}
+                  onValueChange={(v) => {
+                    setSource(v as FutureSourceKey);
+                    setPage(1);
+                    setResults([]);
+                    setGenerated(false);
+                  }}
+                  accentClassName="border-slate-200/90 from-slate-50/95 to-card dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card"
+                >
+                  {FUTURE_PREMIUM_SOURCE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Year"
+                  value={yearOffset}
+                  onValueChange={setYearOffset}
+                  accentClassName="border-cyan-200/90 from-cyan-50/95 to-card dark:border-cyan-900/50 dark:from-cyan-950/35 dark:to-card"
+                >
+                  {FUTURE_YEAR_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Sum Insured"
+                  value={futureSiMode}
+                  onValueChange={(v) => setFutureSiMode(v as "existing" | "change")}
+                  accentClassName="border-lime-200/90 from-lime-50/95 to-card dark:border-lime-900/50 dark:from-lime-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Keep Existing Sum Insured</SelectItem>
+                  <SelectItem value="change">Change Sum Insured</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future SI Value"
+                  value={futureSiValue}
+                  onValueChange={setFutureSiValue}
+                  disabled={futureSiMode !== "change"}
+                  accentClassName="border-yellow-200/90 from-yellow-50/95 to-card dark:border-yellow-900/50 dark:from-yellow-950/35 dark:to-card"
+                >
+                  {FUTURE_SI_OPTIONS.map((si) => (
+                    <SelectItem key={si} value={String(si)}>
+                      ₹{rs(si)}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Bulk SI Upgrade Rules"
+                  value={bulkSiUpgrade ? "yes" : "no"}
+                  onValueChange={(v) => setBulkSiUpgrade(v === "yes")}
+                  accentClassName="border-fuchsia-200/90 from-fuchsia-50/95 to-card dark:border-fuchsia-900/50 dark:from-fuchsia-950/35 dark:to-card"
+                >
+                  <SelectItem value="no">Disabled</SelectItem>
+                  <SelectItem value="yes">Enabled (1L→2L→3L→5L→10L)</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Policy Type"
+                  value={futurePolicyMode}
+                  onValueChange={(v) => setFuturePolicyMode(v as "existing" | "change")}
+                  accentClassName="border-pink-200/90 from-pink-50/95 to-card dark:border-pink-900/50 dark:from-pink-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Keep Existing Product</SelectItem>
+                  <SelectItem value="change">Change Product</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Product Selection"
+                  value={futurePolicyType}
+                  onValueChange={setFuturePolicyType}
+                  disabled={futurePolicyMode !== "change"}
+                  accentClassName="border-purple-200/90 from-purple-50/95 to-card dark:border-purple-900/50 dark:from-purple-950/35 dark:to-card"
+                >
+                  {FUTURE_POLICY_TYPE_OPTIONS.map((policy) => (
+                    <SelectItem key={policy} value={policy}>
+                      {formatPolicyName(policy)}
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Future Discount"
+                  value={discountMode}
+                  onValueChange={(v) => setDiscountMode(v as "existing" | "chart" | "custom")}
+                  accentClassName="border-blue-200/90 from-blue-50/95 to-card dark:border-blue-900/50 dark:from-blue-950/35 dark:to-card"
+                >
+                  <SelectItem value="existing">Use Existing Discount</SelectItem>
+                  <SelectItem value="chart">Apply Chart Discount</SelectItem>
+                  <SelectItem value="custom">Custom Discount %</SelectItem>
+                </FutureControlSelect>
+                <FutureControlSelect
+                  label="Custom Discount %"
+                  value={customDiscountPct}
+                  onValueChange={setCustomDiscountPct}
+                  disabled={discountMode !== "custom"}
+                  accentClassName="border-stone-200/90 from-stone-50/95 to-card dark:border-stone-800/50 dark:from-stone-950/35 dark:to-card"
+                >
+                  {FUTURE_DISCOUNT_OPTIONS.map((pct) => (
+                    <SelectItem key={pct} value={String(pct)}>
+                      {pct}%
+                    </SelectItem>
+                  ))}
+                </FutureControlSelect>
+              </>
+            }
           />
+          {isDbSource ? (
+            <p className="text-muted-foreground text-xs">
+              Policies are loaded from live policy records (same data as Add Policy) using the filters above.
+            </p>
+          ) : null}
           {chartsLoadError && !loadingCharts ? (
             <div className="space-y-2">
               <p className="text-destructive bg-destructive/10 rounded-md border border-destructive/30 px-3 py-2 text-sm">
@@ -652,6 +592,37 @@ export function FuturePremiumPanel() {
             {message}
           </p>
           {progressText ? <p className="text-muted-foreground text-sm">{progressText}</p> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void handleGenerate()} disabled={busy || loadingCharts}>
+              {busy || loadingPolicies || loadingCharts ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 size-4" />
+              )}
+              Generate
+            </Button>
+            {source === "uploaded_csv_only" ? (
+              <Button type="button" variant="outline" onClick={handleLoadSample}>
+                Load sample
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              onClick={() => downloadCsv("future-premium-sample.csv", FUTURE_PREMIUM_SAMPLE_ROWS)}
+            >
+              Download sample CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!busy}
+              onClick={() => {
+                cancelGenerationRef.current = true;
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
