@@ -43,6 +43,7 @@ const POLICY_MEMBER_COLUMNS: MisExportColumn[] = [
   { key: "age56_60", label: "Age 56-60" },
   { key: "age61_65", label: "Age 61-65" },
   { key: "age65p", label: "Age >65" },
+  { key: "totalAgeCount", label: "Total age count" },
 ];
 
 const CLAIM_REPORT_COLUMNS: MisExportColumn[] = [

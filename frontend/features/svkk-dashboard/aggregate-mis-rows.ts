@@ -25,6 +25,7 @@ export function aggregateMisRows(rows: PolicyMemberRow[]): PolicyMemberRow {
     age56_60: 0,
     age61_65: 0,
     age65p: 0,
+    totalAgeCount: 0,
   };
   for (const o of rows) {
     z.totalPolicies += o.totalPolicies;
@@ -49,6 +50,7 @@ export function aggregateMisRows(rows: PolicyMemberRow[]): PolicyMemberRow {
     z.age56_60 += o.age56_60;
     z.age61_65 += o.age61_65;
     z.age65p += o.age65p;
+    z.totalAgeCount += o.totalAgeCount;
   }
   return z;
 }

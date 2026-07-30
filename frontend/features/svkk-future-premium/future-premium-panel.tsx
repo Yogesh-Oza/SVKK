@@ -54,7 +54,7 @@ import {
 import { FuturePremiumIssueDialog } from "./future-premium-issue-dialog";
 import { FuturePremiumListPagination } from "./future-premium-list-pagination";
 import type { FuturePremiumResult, FutureSourceKey } from "./future-premium-types";
-import { fetchFuturePremiumPageFromApi } from "./policy-lookup-api";
+import { fetchAllFuturePremiumResultsFromApi } from "./policy-lookup-api";
 import { useFuturePremiumData } from "./use-future-premium-data";
 
 function StatCard({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
@@ -108,8 +108,6 @@ export function FuturePremiumPanel() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [listTotal, setListTotal] = useState(0);
-  const [listTotalPages, setListTotalPages] = useState(0);
   const [futureSiMode, setFutureSiMode] = useState<"existing" | "change">("existing");
   const [futureSiValue, setFutureSiValue] = useState(String(FUTURE_SI_OPTIONS[0]));
   const [bulkSiUpgrade, setBulkSiUpgrade] = useState(false);
@@ -132,14 +130,11 @@ export function FuturePremiumPanel() {
     return filtered;
   }, [results, search, policyFilter, siFilter, statusFilter, sortBy]);
   const tableRows = useMemo(() => {
-    if (isDbSource) return visibleRows;
     const start = (page - 1) * pageSize;
     return visibleRows.slice(start, start + pageSize);
-  }, [isDbSource, visibleRows, page, pageSize]);
-  const displayTotal = isDbSource ? listTotal : visibleRows.length;
-  const displayTotalPages = isDbSource
-    ? Math.max(1, listTotalPages)
-    : Math.max(1, Math.ceil(visibleRows.length / pageSize) || 1);
+  }, [visibleRows, page, pageSize]);
+  const displayTotal = visibleRows.length;
+  const displayTotalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize) || 1);
   const comparisonMetrics = useMemo(() => {
     const deltas = visibleRows.map((r) => r.premiumDiff);
     const totalIncrease = deltas.reduce((sum, d) => sum + d, 0);
@@ -237,7 +232,28 @@ export function FuturePremiumPanel() {
     );
   };
 
-  const loadPolicyPage = async (targetPage: number, size = pageSize) => {
+  const futureGenerationOptions = useMemo(
+    () => ({
+      futureSiMode,
+      selectedFutureSi: Number(futureSiValue || 0),
+      bulkSiUpgrade,
+      futurePolicyMode,
+      selectedFuturePolicy: futurePolicyType,
+      discountMode,
+      customDiscountPct: Number(customDiscountPct || 0),
+    }),
+    [
+      futureSiMode,
+      futureSiValue,
+      bulkSiUpgrade,
+      futurePolicyMode,
+      futurePolicyType,
+      discountMode,
+      customDiscountPct,
+    ],
+  );
+
+  const loadAllPolicyResults = async () => {
     if (!premiumState) {
       showMessage(
         chartsLoadError ??
@@ -247,40 +263,37 @@ export function FuturePremiumPanel() {
       return;
     }
     setBusy(true);
+    cancelGenerationRef.current = false;
+    setProgressText("Loading policies...");
     try {
-      const pageData = await fetchFuturePremiumPageFromApi(
+      const { results: next, total } = await fetchAllFuturePremiumResultsFromApi(
         policyFilters.filterQuery,
-        targetPage,
-        size,
         yearOffset,
         premiumState,
+        futureGenerationOptions,
         {
-          futureSiMode,
-          selectedFutureSi: Number(futureSiValue || 0),
-          bulkSiUpgrade,
-          futurePolicyMode,
-          selectedFuturePolicy: futurePolicyType,
-          discountMode,
-          customDiscountPct: Number(customDiscountPct || 0),
+          onProgress: (loaded, policyTotal) => {
+            setProgressText(`Loaded ${loaded.toLocaleString("en-IN")} / ${policyTotal.toLocaleString("en-IN")} policies...`);
+          },
+          shouldCancel: () => cancelGenerationRef.current,
         },
       );
-      if (!pageData.items.length) {
+      if (cancelGenerationRef.current) {
+        showMessage("Generation cancelled by user.", true);
+        return;
+      }
+      if (!next.length) {
         setResults([]);
         setGenerated(false);
         setPage(1);
-        setListTotal(0);
-        setListTotalPages(0);
         showMessage("No policies matched the selected filters in the database.", true);
         return;
       }
-      const next = pageData.results;
       setResults(next);
       setGenerated(true);
-      setPage(pageData.page);
-      setListTotal(pageData.total);
-      setListTotalPages(pageData.totalPages);
+      setPage(1);
       showMessage(
-        `Page ${pageData.page} of ${Math.max(1, pageData.totalPages)} — ${pageData.total.toLocaleString("en-IN")} policies total (${next.length} on this page) for ${yearOffsetLabel(yearOffset)}.`,
+        `Generated ${next.length.toLocaleString("en-IN")} record(s) for ${yearOffsetLabel(yearOffset)} from policy list.`,
       );
     } catch (e) {
       setResults([]);
@@ -288,6 +301,7 @@ export function FuturePremiumPanel() {
       showMessage(e instanceof Error ? e.message : "Failed to load policies. Please try again.", true);
     } finally {
       setBusy(false);
+      setProgressText("");
     }
   };
 
@@ -305,7 +319,7 @@ export function FuturePremiumPanel() {
       return;
     }
     if (isDbSource) {
-      await loadPolicyPage(1);
+      await loadAllPolicyResults();
       return;
     }
     setBusy(true);
@@ -321,8 +335,6 @@ export function FuturePremiumPanel() {
         setResults([]);
         setGenerated(false);
         setPage(1);
-        setListTotal(0);
-        setListTotalPages(0);
         showMessage(
           uploadedRows.length
             ? "No rows in the uploaded CSV matched the selected filters. Try Reset filters."
@@ -358,8 +370,6 @@ export function FuturePremiumPanel() {
       setResults(next);
       setGenerated(true);
       setPage(1);
-      setListTotal(raw.length);
-      setListTotalPages(Math.max(1, Math.ceil(raw.length / pageSize)));
       showMessage(
         `Generated ${next.length} record(s) for ${yearOffsetLabel(yearOffset)} using ${sourceLabel(source)}.`,
       );
@@ -374,14 +384,12 @@ export function FuturePremiumPanel() {
   };
 
   const handlePageChange = (nextPage: number) => {
-    if (isDbSource) void loadPolicyPage(nextPage);
-    else setPage(nextPage);
+    setPage(nextPage);
   };
 
   const handlePageSizeChange = (nextSize: number) => {
     setPageSize(nextSize);
-    if (isDbSource && generated) void loadPolicyPage(1, nextSize);
-    else setPage(1);
+    setPage(1);
   };
 
   const highestNet = (groups: Record<string, { net: number }>) =>
@@ -424,8 +432,6 @@ export function FuturePremiumPanel() {
                 onValueChange={(v) => {
                   setSource(v as FutureSourceKey);
                   setPage(1);
-                  setListTotal(0);
-                  setListTotalPages(0);
                   setResults([]);
                   setGenerated(false);
                 }}
@@ -657,13 +663,6 @@ export function FuturePremiumPanel() {
           <div><p className="text-muted-foreground text-xs">Chart Version</p><p className="font-semibold">Live Admin Chart</p></div>
         </CardContent>
       </Card>
-
-      {isDbSource && generated && listTotal > results.length ? (
-        <p className="text-muted-foreground text-sm">
-          MIS totals below reflect the current page only ({results.length} of{" "}
-          {listTotal.toLocaleString("en-IN")} policies). Use Export CSV for the full filtered list.
-        </p>
-      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Policies" value={mis.policies} />
@@ -999,7 +998,6 @@ export function FuturePremiumPanel() {
             >
               <Download className="mr-2 size-4" />
               Export Lump Sum CSV
-              {isDbSource && listTotal > results.length ? " (current page)" : ""}
             </Button>
             <Button
               variant="outline"
@@ -1008,7 +1006,6 @@ export function FuturePremiumPanel() {
             >
               <Download className="mr-2 size-4" />
               Export Individual CSV
-              {isDbSource && listTotal > results.length ? " (current page)" : ""}
             </Button>
           </div>
         </CardContent>

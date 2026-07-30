@@ -22,6 +22,7 @@ import {
   UNCATEGORIZED_CATEGORY_KEY,
   type PolicyMemberReportRow,
 } from "./mis.queries.js";
+import { sumPolicyMemberAgeBuckets } from "./mis.policy-member-age.js";
 import {
   buildClaimScopeSqlC,
   claimCategorySummaryRowToJson,
@@ -101,6 +102,16 @@ function toPolicyMemberJsonRow(r: PolicyMemberReportRow) {
     age56_60: Number(r.age56_60),
     age61_65: Number(r.age61_65),
     age65p: Number(r.age65p),
+    totalAgeCount: sumPolicyMemberAgeBuckets({
+      age0_18: Number(r.age0_18),
+      age19_35: Number(r.age19_35),
+      age36_45: Number(r.age36_45),
+      age46_50: Number(r.age46_50),
+      age51_55: Number(r.age51_55),
+      age56_60: Number(r.age56_60),
+      age61_65: Number(r.age61_65),
+      age65p: Number(r.age65p),
+    }),
   };
 }
 

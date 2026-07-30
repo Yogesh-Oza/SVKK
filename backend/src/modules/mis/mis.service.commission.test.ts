@@ -82,6 +82,7 @@ describe("MIS commission gating", () => {
     const permissions = new Set<string>(["mis:policy:read", "mis:policy:scope_all", "policy:commission"]);
     const out = await getPolicyMemberReport("u1", permissions, { kind: "full" }, baseInput);
     expect(out.rows[0]?.sumComm).toBe(123);
+    expect(out.rows[0]?.totalAgeCount).toBe(0);
   });
 });
 

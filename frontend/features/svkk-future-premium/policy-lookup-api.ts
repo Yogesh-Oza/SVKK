@@ -402,6 +402,50 @@ export async function fetchFuturePremiumPageFromApi(
   };
 }
 
+const FUTURE_PREMIUM_FETCH_PAGE_SIZE = 50;
+
+/** Load every filtered policy page so MIS and distribution charts cover the full dataset. */
+export async function fetchAllFuturePremiumResultsFromApi(
+  filterQuery: string,
+  yearOffset: string,
+  premiumState: PremiumState,
+  options: FutureGenerationOptions = {},
+  callbacks?: {
+    onProgress?: (loaded: number, total: number) => void;
+    shouldCancel?: () => boolean;
+  },
+): Promise<{ results: FuturePremiumResult[]; total: number }> {
+  const first = await fetchFuturePremiumPageFromApi(
+    filterQuery,
+    1,
+    FUTURE_PREMIUM_FETCH_PAGE_SIZE,
+    yearOffset,
+    premiumState,
+    options,
+  );
+  const all = [...first.results];
+  const total = first.total ?? all.length;
+  callbacks?.onProgress?.(all.length, total);
+
+  for (let page = 2; page <= first.totalPages; page += 1) {
+    if (callbacks?.shouldCancel?.()) {
+      return { results: all, total };
+    }
+    const pageData = await fetchFuturePremiumPageFromApi(
+      filterQuery,
+      page,
+      FUTURE_PREMIUM_FETCH_PAGE_SIZE,
+      yearOffset,
+      premiumState,
+      options,
+    );
+    all.push(...pageData.results);
+    callbacks?.onProgress?.(all.length, total);
+  }
+
+  return { results: all, total };
+}
+
 export async function resolveLookupFromPolicyApi(
   token: string,
   filterQuery: string,

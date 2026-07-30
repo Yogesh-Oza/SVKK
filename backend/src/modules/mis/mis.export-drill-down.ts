@@ -23,6 +23,7 @@ export const POLICY_MEMBER_REPORT_METRIC_COLS = [
   "age56_60",
   "age61_65",
   "age65p",
+  "totalAgeCount",
 ] as const;
 
 export type PolicyMemberReportMetricCol = (typeof POLICY_MEMBER_REPORT_METRIC_COLS)[number];
@@ -52,6 +53,7 @@ export const DRILL_CSV_COLUMNS: { key: PolicyMemberReportMetricCol; title: strin
   { key: "age56_60", title: "Age 56–60" },
   { key: "age61_65", title: "Age 61–65" },
   { key: "age65p", title: "Age >65" },
+  { key: "totalAgeCount", title: "Total age count" },
 ];
 
 const MONEY_KEYS = new Set<PolicyMemberReportMetricCol>([

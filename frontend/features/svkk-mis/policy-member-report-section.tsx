@@ -25,6 +25,10 @@ import {
 } from "@/features/svkk-policies/policy-filter-multi";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { formatInr } from "@/features/svkk-dashboard/currency";
+import {
+  ageCountMatchesMembersPlusPolicies,
+  withTotalAgeCount,
+} from "@/features/svkk-mis/policy-member-age-count";
 import { backendApi } from "@/lib/api/svkk-client";
 import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkApiBase } from "@/lib/svkk/config";
@@ -99,6 +103,7 @@ export const ROW_KEYS: (keyof PolicyMemberRow)[] = [
   "age56_60",
   "age61_65",
   "age65p",
+  "totalAgeCount",
 ];
 
 export type PolicyMemberRow = {
@@ -125,6 +130,7 @@ export type PolicyMemberRow = {
   age56_60: number;
   age61_65: number;
   age65p: number;
+  totalAgeCount: number;
 };
 
 type ReportResponse = {
@@ -205,12 +211,22 @@ export function sumPolicyMemberRows(rows: PolicyMemberRow[]): PolicyMemberRow {
     age56_60: 0,
     age61_65: 0,
     age65p: 0,
+    totalAgeCount: 0,
   };
   for (const row of rows) {
     for (const key of SUMMABLE_ROW_KEYS) {
       total[key] += row[key];
     }
   }
+  total.totalAgeCount =
+    total.age0_18 +
+    total.age19_35 +
+    total.age36_45 +
+    total.age46_50 +
+    total.age51_55 +
+    total.age56_60 +
+    total.age61_65 +
+    total.age65p;
   return total;
 }
 
@@ -295,6 +311,30 @@ function makeColumns(
     n("age56_60", "Age 56–60"),
     n("age61_65", "Age 61–65"),
     n("age65p", "Age >65"),
+    {
+      accessorKey: "totalAgeCount",
+      header: sortableHeader<PolicyMemberRow>("Total age count"),
+      cell: ({ row }) => {
+        const totalAge = row.original.totalAgeCount;
+        const mismatch = !ageCountMatchesMembersPlusPolicies(row.original);
+        return (
+          <span
+            className={
+              mismatch
+                ? "tabular-nums text-right block text-destructive font-semibold"
+                : "tabular-nums text-right block"
+            }
+            title={
+              mismatch
+                ? `Does not match Members + policies (${row.original.membersPlusPolicies.toLocaleString("en-IN")})`
+                : "Matches Members + policies"
+            }
+          >
+            {int(totalAge)}
+          </span>
+        );
+      },
+    },
   ];
   return base;
 }
@@ -534,7 +574,7 @@ export function PolicyMemberReportSection({ onError }: Props) {
             `/mis/policy-member-report?${reportQueryString}`,
           );
           if (generation !== reportFetchGenerationRef.current) return;
-          setData(res.rows);
+          setData(res.rows.map((row) => withTotalAgeCount(row)));
           setActiveGroup(res.groupBy);
         } catch (e) {
           if (generation !== reportFetchGenerationRef.current) return;

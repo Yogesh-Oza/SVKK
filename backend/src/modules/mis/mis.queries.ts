@@ -182,6 +182,7 @@ export async function queryMemberAgeBuckets(
   args: { scopeOnP: Prisma.Sql; asOfDate: Date },
 ): Promise<MemberAgeBucketRow[]> {
   const d = new Date(args.asOfDate);
+  const holderDob = holderDobSql();
   return prisma.$queryRaw<MemberAgeBucketRow[]>`
     SELECT
       bucketLabel,
@@ -198,6 +199,20 @@ export async function queryMemberAgeBuckets(
       INNER JOIN ${sqlTable("policyYear")} py ON m.policyYearId = py.id AND m.deletedAt IS NULL AND py.deletedAt IS NULL
       INNER JOIN ${sqlTable("policy")} p ON py.policyId = p.id AND p.deletedAt IS NULL
       WHERE (${args.scopeOnP})
+      UNION ALL
+      SELECT
+        CASE
+          WHEN TIMESTAMPDIFF(YEAR, ${holderDob}, ${d}) <= 18 THEN '0-18'
+          WHEN TIMESTAMPDIFF(YEAR, ${holderDob}, ${d}) BETWEEN 19 AND 35 THEN '19-35'
+          WHEN TIMESTAMPDIFF(YEAR, ${holderDob}, ${d}) BETWEEN 36 AND 45 THEN '36-45'
+          ELSE '46+'
+        END AS bucketLabel
+      FROM ${sqlTable("policy")} p
+      INNER JOIN ${sqlTable("insuredParty")} ip ON p.insuredPartyId = ip.id
+      INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id AND py.deletedAt IS NULL
+      WHERE p.deletedAt IS NULL
+        AND (${args.scopeOnP})
+        AND ${holderDob} IS NOT NULL
     ) t
     GROUP BY bucketLabel
     ORDER BY bucketLabel
@@ -254,20 +269,53 @@ type PolicyMemberReportParams = {
 };
 
 /** Member age band label — must match in SELECT and GROUP BY for ONLY_FULL_GROUP_BY. */
-function memberAgeBucketSql(d: Date): Prisma.Sql {
+function ageBucketLabelSql(dobExpr: Prisma.Sql, asOf: Date): Prisma.Sql {
   return Prisma.sql`(
     CASE
-      WHEN m.dob IS NULL OR TIMESTAMPDIFF(YEAR, m.dob, ${d}) < 0 THEN '—'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 18 THEN '0–18'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 35 THEN '19–35'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 45 THEN '36–45'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 50 THEN '46–50'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 55 THEN '51–55'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 60 THEN '56–60'
-      WHEN TIMESTAMPDIFF(YEAR, m.dob, ${d}) <= 65 THEN '61–65'
+      WHEN ${dobExpr} IS NULL OR TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) < 0 THEN '—'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 18 THEN '0–18'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 35 THEN '19–35'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 45 THEN '36–45'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 50 THEN '46–50'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 55 THEN '51–55'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 60 THEN '56–60'
+      WHEN TIMESTAMPDIFF(YEAR, ${dobExpr}, ${asOf}) <= 65 THEN '61–65'
       ELSE '65+'
     END
   )`;
+}
+
+function memberAgeBucketSql(d: Date): Prisma.Sql {
+  return ageBucketLabelSql(Prisma.sql`m.dob`, d);
+}
+
+/** Policy holder DOB snapshot, falling back to insured party. */
+function holderDobSql(): Prisma.Sql {
+  return Prisma.sql`COALESCE(p.holderDateOfBirth, ip.dateOfBirth)`;
+}
+
+/** Count members + policy holders in an age band (matches Members + policies semantics). */
+function ageBucketCountSql(d: Date, min: number, max: number | "gt65"): Prisma.Sql {
+  const memberAge = Prisma.sql`TIMESTAMPDIFF(YEAR, m.dob, ${d})`;
+  const holderAge = Prisma.sql`TIMESTAMPDIFF(YEAR, ${holderDobSql()}, ${d})`;
+  const holderDob = holderDobSql();
+  const memberRange =
+    max === "gt65"
+      ? Prisma.sql`m.id IS NOT NULL AND ${memberAge} > 65`
+      : Prisma.sql`m.id IS NOT NULL AND ${memberAge} BETWEEN ${min} AND ${max}`;
+  const holderRange =
+    max === "gt65"
+      ? Prisma.sql`${holderDob} IS NOT NULL AND ${holderAge} > 65`
+      : Prisma.sql`${holderDob} IS NOT NULL AND ${holderAge} BETWEEN ${min} AND ${max}`;
+  return Prisma.sql`(
+    COUNT(DISTINCT CASE WHEN ${memberRange} THEN m.id END)
+    + COUNT(DISTINCT CASE WHEN ${holderRange} THEN p.id END)
+  )`;
+}
+
+/** Age-band person key for grouped-by-age queries (member row or synthetic holder key). */
+function agePersonKeySql(): Prisma.Sql {
+  return Prisma.sql`COALESCE(x.mid, CONCAT('holder:', x.pid))`;
 }
 
 function groupDimExpr(
@@ -425,6 +473,7 @@ function baseFromClause(
   );
   return Prisma.sql`
     FROM ${sqlTable("policy")} p
+    INNER JOIN ${sqlTable("insuredParty")} ip ON p.insuredPartyId = ip.id
     LEFT JOIN ${sqlTable("category")} cat ON p.categoryId = cat.id
     INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id
       AND py.deletedAt IS NULL
@@ -524,6 +573,7 @@ export async function queryPolicyMemberReport(
   };
 
   const fromMember = baseFromClause(fArgs, filters, true, args.groupBy === "age");
+  const fromPolicies = baseFromClause(fArgs, filters, false, false);
 
   type FinRow = {
     label: string;
@@ -675,21 +725,29 @@ export async function queryPolicyMemberReport(
       x.label,
       COUNT(x.mid) AS totalMemberRows,
       (COUNT(DISTINCT x.mid) + COUNT(DISTINCT x.pid)) AS mpp,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 0 AND 18 THEN x.mid END) AS a0,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 19 AND 35 THEN x.mid END) AS a1,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 36 AND 45 THEN x.mid END) AS a2,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 46 AND 50 THEN x.mid END) AS a3,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 51 AND 55 THEN x.mid END) AS a4,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 56 AND 60 THEN x.mid END) AS a5,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears BETWEEN 61 AND 65 THEN x.mid END) AS a6,
-      COUNT(DISTINCT CASE WHEN x.mid IS NOT NULL AND x.ageYears > 65 THEN x.mid END) AS a7
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 0 AND 18 THEN ${agePersonKeySql()} END) AS a0,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 19 AND 35 THEN ${agePersonKeySql()} END) AS a1,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 36 AND 45 THEN ${agePersonKeySql()} END) AS a2,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 46 AND 50 THEN ${agePersonKeySql()} END) AS a3,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 51 AND 55 THEN ${agePersonKeySql()} END) AS a4,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 56 AND 60 THEN ${agePersonKeySql()} END) AS a5,
+      COUNT(DISTINCT CASE WHEN x.ageYears BETWEEN 61 AND 65 THEN ${agePersonKeySql()} END) AS a6,
+      COUNT(DISTINCT CASE WHEN x.ageYears > 65 THEN ${agePersonKeySql()} END) AS a7
     FROM (
       SELECT
-        ${dim} AS label,
+        ${memberAgeBucketSql(d)} AS label,
         m.id AS mid,
         p.id AS pid,
         TIMESTAMPDIFF(YEAR, m.dob, ${d}) AS ageYears
       ${fromMember}
+      UNION ALL
+      SELECT
+        ${ageBucketLabelSql(holderDobSql(), d)} AS label,
+        NULL AS mid,
+        p.id AS pid,
+        TIMESTAMPDIFF(YEAR, ${holderDobSql()}, ${d}) AS ageYears
+      ${fromPolicies}
+        AND ${holderDobSql()} IS NOT NULL
     ) x
     GROUP BY x.label
   `)
@@ -712,14 +770,14 @@ export async function queryPolicyMemberReport(
       ${dim} AS label,
       COUNT(m.id) AS totalMemberRows,
       (COUNT(DISTINCT m.id) + COUNT(DISTINCT p.id)) AS mpp,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 0 AND 18 THEN m.id END) AS a0,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 19 AND 35 THEN m.id END) AS a1,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 36 AND 45 THEN m.id END) AS a2,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 46 AND 50 THEN m.id END) AS a3,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 51 AND 55 THEN m.id END) AS a4,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 56 AND 60 THEN m.id END) AS a5,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) BETWEEN 61 AND 65 THEN m.id END) AS a6,
-      COUNT(DISTINCT CASE WHEN m.id IS NOT NULL AND TIMESTAMPDIFF(YEAR, m.dob, ${d}) > 65 THEN m.id END) AS a7
+      ${ageBucketCountSql(d, 0, 18)} AS a0,
+      ${ageBucketCountSql(d, 19, 35)} AS a1,
+      ${ageBucketCountSql(d, 36, 45)} AS a2,
+      ${ageBucketCountSql(d, 46, 50)} AS a3,
+      ${ageBucketCountSql(d, 51, 55)} AS a4,
+      ${ageBucketCountSql(d, 56, 60)} AS a5,
+      ${ageBucketCountSql(d, 61, 65)} AS a6,
+      ${ageBucketCountSql(d, 65, "gt65")} AS a7
     ${fromMember}
     GROUP BY ${dim}
   `);

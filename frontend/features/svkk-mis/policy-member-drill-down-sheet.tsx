@@ -22,6 +22,7 @@ import { svkkJson } from "@/lib/svkk/api";
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { MisCsvExportDialog } from "./mis-csv-export-dialog";
+import { ageCountMatchesMembersPlusPolicies } from "./policy-member-age-count";
 import {
   formatCell,
   type PolicyMemberRow,
@@ -64,6 +65,7 @@ const DRILL_HEADERS: { key: keyof PolicyMemberRow; title: string }[] = [
   { key: "age56_60", title: "Age 56–60" },
   { key: "age61_65", title: "Age 61–65" },
   { key: "age65p", title: "Age >65" },
+  { key: "totalAgeCount", title: "Total age count" },
 ];
 
 type Props = {
@@ -232,6 +234,16 @@ export function PolicyMemberDrillDownSheet({
                               <TableCell key={h.key} className="py-1.5 min-w-[5.5rem]">
                                 {h.key === "label" ? (
                                   <span className="font-medium uppercase">{row.label}</span>
+                                ) : h.key === "totalAgeCount" ? (
+                                  <span
+                                    className={
+                                      !ageCountMatchesMembersPlusPolicies(row)
+                                        ? "tabular-nums text-right block text-destructive font-semibold"
+                                        : "tabular-nums text-right block"
+                                    }
+                                  >
+                                    {formatCell(h.key, row[h.key] as number)}
+                                  </span>
                                 ) : (
                                   <span className="tabular-nums text-right block">
                                     {formatCell(h.key, row[h.key] as number)}

@@ -60,6 +60,7 @@ describe("buildPolicyMemberDrillDownCsv", () => {
               age56_60: 0,
               age61_65: 0,
               age65p: 0,
+              totalAgeCount: 2,
             },
             {
               label: "SVKK",
@@ -85,6 +86,7 @@ describe("buildPolicyMemberDrillDownCsv", () => {
               age56_60: 0,
               age61_65: 0,
               age65p: 0,
+              totalAgeCount: 0,
             },
           ],
         },
@@ -116,6 +118,7 @@ describe("buildPolicyMemberDrillDownCsv", () => {
               age56_60: 0,
               age61_65: 0,
               age65p: 0,
+              totalAgeCount: 0,
             },
           ],
         },
@@ -159,6 +162,7 @@ describe("sumPolicyMemberDrillRows", () => {
         age56_60: 6,
         age61_65: 7,
         age65p: 8,
+        totalAgeCount: 36,
       },
       {
         label: "SVKK",
@@ -184,6 +188,7 @@ describe("sumPolicyMemberDrillRows", () => {
         age56_60: 1,
         age61_65: 1,
         age65p: 1,
+        totalAgeCount: 8,
       },
     ];
 
@@ -192,6 +197,7 @@ describe("sumPolicyMemberDrillRows", () => {
     expect(total.totalPolicies).toBe(3);
     expect(total.sumVkk).toBe(150);
     expect(total.age65p).toBe(9);
+    expect(total.totalAgeCount).toBe(44);
   });
 });
 
