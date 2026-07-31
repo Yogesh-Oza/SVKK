@@ -434,8 +434,14 @@ export default function SvkkPoliciesPage() {
     if (searchApplied.trim()) q.set("search", searchApplied.trim());
     const dateFromParam = toIsoDateParam(dateFrom);
     const dateToParam = toIsoDateParam(dateTo);
-    if (dateFromParam) q.set("dateFrom", dateFromParam);
-    if (dateToParam) q.set("dateTo", dateToParam);
+    // When renewal status is set, dateTo is the policy-end as-of horizon only
+    // (backend skips createdAt bounds). Still send dateTo for the date picker UI.
+    if (!renewalFilter) {
+      if (dateFromParam) q.set("dateFrom", dateFromParam);
+      if (dateToParam) q.set("dateTo", dateToParam);
+    } else if (dateToParam) {
+      q.set("dateTo", dateToParam);
+    }
     villages.forEach((v) => q.append("villages", v));
     periodYears.forEach((y) => q.append("periodYearTexts", y));
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
@@ -540,6 +546,7 @@ export default function SvkkPoliciesPage() {
       const { loadOfflinePolicyListPage } = await import("@/lib/svkk/offline/policy-data");
       const dateFromParam = toIsoDateParam(dateFrom);
       const dateToParam = toIsoDateParam(dateTo);
+      const renewalFilterActive = Boolean(renewalFilter);
       return loadOfflinePolicyListPage({
         search: searchApplied,
         sort,
@@ -555,8 +562,12 @@ export default function SvkkPoliciesPage() {
           areas,
           sumInsureds,
           policyGroupings,
-          ...(dateFromParam ? { dateFrom: dateFromParam } : {}),
-          ...(dateToParam ? { dateTo: dateToParam } : {}),
+          ...(renewalFilter === "pending" ? { renewalPending: true } : {}),
+          ...(renewalFilter && renewalFilter !== "pending"
+            ? { renewalBucket: renewalFilter }
+            : {}),
+          ...(!renewalFilterActive && dateFromParam ? { dateFrom: dateFromParam } : {}),
+          ...(!renewalFilterActive && dateToParam ? { dateTo: dateToParam } : {}),
         },
       });
     };
@@ -623,6 +634,7 @@ export default function SvkkPoliciesPage() {
     areas,
     sumInsureds,
     policyGroupings,
+    renewalFilter,
   ]);
 
   const downloadCsvErrorReport = useCallback(async (jobId: string) => {
@@ -1286,7 +1298,8 @@ export default function SvkkPoliciesPage() {
                   />
                   {renewalFilter ? (
                     <p className="text-muted-foreground mt-1.5 text-[11px] leading-snug">
-                      Renewal filter uses policy end date on or before this date.
+                      Renewal filter uses policy end date on or before this date (not created
+                      date). Already-renewed SVKK IDs with later coverage are excluded.
                     </p>
                   ) : null}
                 </div>

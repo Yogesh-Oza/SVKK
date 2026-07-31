@@ -61,6 +61,9 @@ export type OfflineListFilters = {
   policyGroupings?: string[];
   dateFrom?: string;
   dateTo?: string;
+  /** When set, dateFrom/dateTo are not applied as createdAt bounds. */
+  renewalPending?: boolean;
+  renewalBucket?: string;
 };
 
 function compareYearLabelsDesc(a: string, b: string): number {
@@ -124,16 +127,19 @@ function rowMatchesFilters(row: OfflinePolicyListRow, filters: OfflineListFilter
     const g = row.policyGrouping?.trim();
     if (!g || !filters.policyGroupings.includes(g)) return false;
   }
-  if (filters.dateFrom) {
-    const d = new Date(row.createdAt || row.updatedAt);
-    const from = new Date(filters.dateFrom);
-    if (Number.isNaN(d.getTime()) || d < from) return false;
-  }
-  if (filters.dateTo) {
-    const d = new Date(row.createdAt || row.updatedAt);
-    const to = new Date(filters.dateTo);
-    to.setHours(23, 59, 59, 999);
-    if (Number.isNaN(d.getTime()) || d > to) return false;
+  const renewalFilterActive = Boolean(filters.renewalPending || filters.renewalBucket);
+  if (!renewalFilterActive) {
+    if (filters.dateFrom) {
+      const d = new Date(row.createdAt || row.updatedAt);
+      const from = new Date(filters.dateFrom);
+      if (Number.isNaN(d.getTime()) || d < from) return false;
+    }
+    if (filters.dateTo) {
+      const d = new Date(row.createdAt || row.updatedAt);
+      const to = new Date(filters.dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (Number.isNaN(d.getTime()) || d > to) return false;
+    }
   }
   return true;
 }

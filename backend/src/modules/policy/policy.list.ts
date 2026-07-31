@@ -355,11 +355,16 @@ export function buildPolicyListWhere(
   if (chequeFilter) extraParts.push(chequeFilter);
   if (monthFilter) extraParts.push(monthFilter);
 
-  const createdAtFilter = createdAtRangeFilter(q.dateFrom, q.dateTo);
-  if (createdAtFilter) extraParts.push(createdAtFilter);
-
   const renewalAsOf =
     q.renewalAsOf?.trim() || q.dateTo?.trim() || new Date().toISOString().slice(0, 10);
+  const renewalFilterActive = Boolean(q.renewalBucket || q.renewalPending);
+  // Renewal status uses dateTo/renewalAsOf as the policy-end horizon only.
+  // Do not also constrain Policy.createdAt — that hides older policies that ended in range.
+  if (!renewalFilterActive) {
+    const createdAtFilter = createdAtRangeFilter(q.dateFrom, q.dateTo);
+    if (createdAtFilter) extraParts.push(createdAtFilter);
+  }
+
   if (q.renewalBucket) {
     const bucketWhere = renewalBucketPolicyWhere(q.renewalBucket, renewalAsOf);
     if (bucketWhere) extraParts.push(bucketWhere);

@@ -19,3 +19,40 @@ describe("buildPolicyListWhere category filter", () => {
     expect(JSON.stringify(where)).toContain("svga");
   });
 });
+describe("buildPolicyListWhere renewal vs createdAt", () => {
+  const scope = { kind: "full" as const };
+  const perms = new Set(["policy:read", "policy:scope_all"]);
+
+  it("applies createdAt bounds when renewal filter is off", () => {
+    const where = buildPolicyListWhere(scope, "u1", perms, {
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    });
+    const s = JSON.stringify(where);
+    expect(s).toContain("createdAt");
+  });
+
+  it("skips createdAt bounds when renewalPending is on", () => {
+    const where = buildPolicyListWhere(scope, "u1", perms, {
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      renewalPending: true,
+      renewalAsOf: "2026-07-31",
+    });
+    const s = JSON.stringify(where);
+    expect(s).not.toContain("createdAt");
+    expect(s).toContain("policyEnd");
+  });
+
+  it("skips createdAt bounds when renewalBucket is on", () => {
+    const where = buildPolicyListWhere(scope, "u1", perms, {
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      renewalBucket: "expired",
+      renewalAsOf: "2026-07-31",
+    });
+    const s = JSON.stringify(where);
+    expect(s).not.toContain("createdAt");
+    expect(s).toContain("policyEnd");
+  });
+});

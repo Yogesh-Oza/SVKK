@@ -3,6 +3,7 @@ import {
   calendarMonthBoundsIso,
   fiscalLabelForCalendarMonth,
   misQueryFromPolicyStartMonth,
+  policiesPendingRenewalQuery,
 } from "./dashboard-navigation";
 
 describe("dashboard-navigation policy-start month", () => {
@@ -29,9 +30,36 @@ describe("dashboard-navigation policy-start month", () => {
       dateTo: "2025-06-30",
       policyStartYear: "2025",
       policyStartMonth: "6",
-      months: "6",
       fiscalLabels: "2025-26",
       groupBy: "village",
+    });
+  });
+});
+describe("policiesPendingRenewalQuery", () => {
+  it("uses to-date as renewal as-of and omits created-at dateFrom", () => {
+    expect(
+      policiesPendingRenewalQuery({
+        dateFrom: "2026-07-01",
+        dateTo: "2026-07-31",
+        label: "This month",
+      }),
+    ).toEqual({
+      renewalPending: "true",
+      renewalAsOf: "2026-07-31",
+      dateTo: "2026-07-31",
+    });
+  });
+
+  it("passes renewalBucket without dateFrom", () => {
+    expect(
+      policiesPendingRenewalQuery(
+        { dateFrom: "2026-07-01", dateTo: "2026-07-31", label: "This month" },
+        "expired",
+      ),
+    ).toEqual({
+      renewalBucket: "expired",
+      renewalAsOf: "2026-07-31",
+      dateTo: "2026-07-31",
     });
   });
 });

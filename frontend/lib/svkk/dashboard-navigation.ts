@@ -103,16 +103,19 @@ export function claimMisQueryFromRange(
   };
 }
 
-/** Policies list with pending-renewal filter (policy end on/before range to-date). */
+/**
+ * Policies list with pending-renewal filter (policy end on/before range to-date).
+ * Intentionally omits dateFrom/dateTo created-at bounds — to-date is renewal as-of only.
+ */
 export function policiesPendingRenewalQuery(
   range: DashboardDateRange,
   renewalBucket?: string,
 ): Record<string, string | string[] | undefined> {
-  const base = policiesQueryFromRange(range);
+  const asOf = range.dateTo;
   if (renewalBucket) {
-    return { ...base, renewalBucket, renewalAsOf: range.dateTo };
+    return { renewalBucket, renewalAsOf: asOf, dateTo: asOf };
   }
-  return { ...base, renewalPending: "true", renewalAsOf: range.dateTo };
+  return { renewalPending: "true", renewalAsOf: asOf, dateTo: asOf };
 }
 
 export function productVariantFromLabel(label: string): string | undefined {
