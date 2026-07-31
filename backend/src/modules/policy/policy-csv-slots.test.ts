@@ -6,6 +6,8 @@ import {
   collectPaymentsFromCsvMap,
   memberSlotHeader,
   paymentCsvHeader,
+  POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+  POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
 import { parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import { buildPoliciesExportCsv, type PolicyExportRow } from "./policy.export-csv.js";
@@ -65,15 +67,18 @@ describe("policy CSV slots", () => {
     expect(headers.indexOf("Member 2 Name")).toBeGreaterThan(headers.indexOf("Member 1 Name"));
   });
 
-  it("sample CSV uses export-aligned Payment 1 UPI headers", () => {
+  it("sample CSV matches import template headers including all payment field types", () => {
     const rows = parseCsv(buildPolicyCsvSample());
     const header = rows[0]!;
     const data = rows[1]!;
     const map = rowToHeaderMap(header, data);
+    expect(header).toEqual(
+      buildPolicyCsvHeaders(POLICY_CSV_SAMPLE_MEMBER_SLOTS, POLICY_CSV_SAMPLE_PAYMENT_SLOTS),
+    );
     expect(header).toContain("Payment 1 Mode of Payment");
     expect(header).toContain("Payment 1 Mobile Number");
+    expect(header).toContain("Payment 1 Bank Name");
     expect(header).not.toContain("mode of payment");
-    expect(header).not.toContain("Payment 1 Bank Name");
     expect(map.get("Payment 1 Mode of Payment")).toBe("UPI");
     expect(header).toContain("Member 1 Name");
     expect(data.join(",")).toContain("Demo Member One");

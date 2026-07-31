@@ -3,11 +3,17 @@ import { POLICY_CSV_FLAT_HEADERS } from "./policy-csv-flat-headers.js";
 import {
   buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
+  buildPolicyCsvImportTemplateHeaders,
+  buildPolicyCsvSampleHeaders,
   flatMember1FieldHeaders,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
 import { paymentCsvHeader } from "./policy-csv-payment-columns.js";
-import { memberSlotHeader } from "./policy-csv-slots.js";
+import {
+  memberSlotHeader,
+  POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+  POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
+} from "./policy-csv-slots.js";
 
 describe("resolveExportSlotCounts", () => {
   it("uses batch max members and payments", () => {
@@ -64,5 +70,23 @@ describe("buildPolicyCsvHeadersForExport", () => {
     for (const h of flatMember1FieldHeaders()) {
       expect(full).toContain(h);
     }
+  });
+});
+
+describe("buildPolicyCsvSampleHeaders", () => {
+  it("matches import template and includes all payment field types", () => {
+    const sample = buildPolicyCsvSampleHeaders();
+    const importTemplate = buildPolicyCsvImportTemplateHeaders(
+      POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+      POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
+    );
+    expect(sample).toEqual(importTemplate);
+    for (const h of POLICY_CSV_FLAT_HEADERS) {
+      expect(sample).toContain(h);
+    }
+    expect(sample).toContain(paymentCsvHeader(1, "bankName"));
+    expect(sample).toContain(paymentCsvHeader(1, "mobileNumber"));
+    expect(sample).not.toContain(paymentCsvHeader(2, "method"));
+    expect(sample).not.toContain(memberSlotHeader(2, "Name"));
   });
 });

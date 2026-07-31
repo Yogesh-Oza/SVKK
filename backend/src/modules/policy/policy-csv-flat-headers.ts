@@ -1,4 +1,11 @@
-/** Canonical v2 flat column block (~106 columns). */
+/**
+ * Single source of truth for the static v2 policy CSV column block.
+ *
+ * Import sample, upload parser mapping, validation, and export layout all
+ * compose from this list (plus dynamic Payment N / Member N slots built in
+ * `policy-csv-export-layout.ts`). Add or remove columns here only — never
+ * hardcode a parallel header list for sample vs import.
+ */
 export const POLICY_CSV_FLAT_HEADERS = [
   "year",
   "month",

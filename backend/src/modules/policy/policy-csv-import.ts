@@ -29,6 +29,7 @@ import {
 } from "./policy-csv-update-scope.js";
 import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
 import {
+  pickPolicyYearForCsvUpdate,
   policyTypeKeyToAdVariant,
   resolveImportPolicyChart,
   resolvePolicyForCsvImport,
@@ -195,6 +196,7 @@ async function updatePolicyCourierCsvRow(
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
+  const yearCsv = getCsvField(map, "year");
 
   validatePolicyCourierUpdateRow(map);
 
@@ -206,6 +208,7 @@ async function updatePolicyCourierCsvRow(
     refNo,
     svkkId,
     policyNo,
+    year: yearCsv,
   });
 
   if (conflict) throw new Error(conflict);
@@ -215,10 +218,7 @@ async function updatePolicyCourierCsvRow(
 
   assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
 
-  const yearLabel = getCsvField(map, "year") || policy.years[0]?.yearLabel;
-  const year = yearLabel
-    ? policy.years.find((y) => y.yearLabel === yearLabel) ?? policy.years[0]
-    : policy.years[0];
+  const year = pickPolicyYearForCsvUpdate(policy, yearCsv);
 
   const policyUpdate: Prisma.PolicyUpdateInput = {};
   const newPolicyNo = getCsvField(map, "policy no");
@@ -267,27 +267,25 @@ async function updatePolicyCsvRow(
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
+  const yearCsv = getCsvField(map, "year");
 
   const { match: policy, conflict } =
     ctx.importMode === "UPDATE_ONLY"
-      ? await resolvePolicyForCsvUpdate(tx, { refNo, svkkId, policyNo })
-      : await resolvePolicyForCsvImport(tx, { svkkId, policyNo, refNo });
+      ? await resolvePolicyForCsvUpdate(tx, { refNo, svkkId, policyNo, year: yearCsv })
+      : await resolvePolicyForCsvImport(tx, { svkkId, policyNo, refNo, year: yearCsv });
 
   if (conflict) throw new Error(conflict);
   if (!policy) {
     throw new Error(
       ctx.importMode === "UPDATE_ONLY"
         ? `Policy not found (UPDATE_ONLY mode; ref no=${refNo || "—"})`
-        : `Policy not found (SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"})`,
+        : `Policy not found (SVKK ID=${svkkId || "—"}, policy no=${policyNo || "—"}, ref no=${refNo || "—"}, year=${yearCsv || "—"})`,
     );
   }
 
   assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
 
-  const yearLabel = getCsvField(map, "year") || policy.years[0]?.yearLabel;
-  const year = yearLabel
-    ? policy.years.find((y) => y.yearLabel === yearLabel) ?? policy.years[0]
-    : policy.years[0];
+  const year = pickPolicyYearForCsvUpdate(policy, yearCsv);
 
   const partyUpdate: Prisma.InsuredPartyUpdateInput = {};
   const customerId = getCsvField(map, "Customer ID");
@@ -521,6 +519,7 @@ export async function processLegacyPolicyCsvRow(
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
+  const yearCsv = getCsvField(map, "year");
 
   if (isPolicyRefNoUpdateMode(ctx.importMode, ctx.updateMode)) {
     if (!ctx.permissions.has("policy:update")) {
@@ -537,6 +536,7 @@ export async function processLegacyPolicyCsvRow(
       refNo,
       svkkId,
       policyNo,
+      year: yearCsv,
     });
 
     if (conflict) throw new Error(conflict);
@@ -559,6 +559,7 @@ export async function processLegacyPolicyCsvRow(
     svkkId,
     policyNo,
     refNo,
+    year: yearCsv,
   });
 
   if (conflict) throw new Error(conflict);

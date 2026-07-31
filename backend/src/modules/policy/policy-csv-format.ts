@@ -7,9 +7,9 @@ import { parsePolicyUrls } from "../../services/notification/policy-url.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
   buildPolicyCsvExportLayout,
-  buildPolicyCsvFlatExportHeaders,
   buildPolicyCsvHeadersForExport,
   buildPolicyCsvImportTemplateHeaders,
+  buildPolicyCsvSampleHeaders,
   resolveExportSlotCounts,
 } from "./policy-csv-export-layout.js";
 import { buildAllPaymentCellsForExport } from "./policy-csv-payment-columns.js";
@@ -272,23 +272,15 @@ export function buildPolicyCsvHeaderLine(): string {
   return buildPolicyCsvExportHeaderLine();
 }
 
-/** Sample CSV: export-aligned headers + one demo row (no CSV_VERSION row). */
+export { buildPolicyCsvSampleHeaders };
+
+/**
+ * Sample CSV for download: same headers as the import template parser expects
+ * (see {@link buildPolicyCsvSampleHeaders}), plus one demo data row.
+ * No CSV_VERSION row.
+ */
 export function buildPolicyCsvSample(): string {
-  const demoYear = {
-    payments: [
-      {
-        method: "UPI" as const,
-        amount: { toString: () => "5000" },
-        accountNumber: "9876543210",
-        transactionNumber: "DEMO-UPI-001",
-        transactionDate: new Date("2026-05-01T00:00:00.000Z"),
-        status: "COMPLETED" as const,
-        createdAt: new Date("2026-06-01T10:00:00.000Z"),
-        id: "demo-pay",
-      },
-    ],
-  };
-  const sampleHeaders = buildPolicyCsvFlatExportHeaders([demoYear as PolicyExportRow["years"][number]]);
+  const sampleHeaders = buildPolicyCsvSampleHeaders();
   const demo = buildPolicyCsvSampleDemoRow();
   const headerLine = sampleHeaders.map(csvCell).join(",");
   const cells = sampleHeaders.map((h) => demo[h] ?? "");

@@ -144,6 +144,7 @@ export async function evaluatePolicyPreviewRow(
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
   const policyNo = getCsvField(map, "policy no");
+  const yearCsv = getCsvField(map, "year");
   const base: PolicyPreviewRow = {
     rowNumber,
     refNo,
@@ -161,6 +162,7 @@ export async function evaluatePolicyPreviewRow(
         refNo,
         svkkId,
         policyNo,
+        year: yearCsv,
       });
 
       if (conflict) {
@@ -190,6 +192,7 @@ export async function evaluatePolicyPreviewRow(
       svkkId,
       policyNo,
       refNo,
+      year: yearCsv,
     });
 
     if (conflict) {

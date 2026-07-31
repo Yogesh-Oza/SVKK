@@ -6,9 +6,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPolicyCsvSample } from "../src/modules/policy/policy-csv-format.js";
+import { buildPolicyCsvSample, buildPolicyCsvSampleHeaders } from "../src/modules/policy/policy-csv-format.js";
 import { parseCsv } from "../src/modules/policy/policy-csv-parse.js";
-import { POLICY_CSV_FLAT_HEADERS } from "../src/modules/policy/policy-csv-format.js";
 import { buildPolicyCsvSampleDemoRow } from "../src/modules/policy/policy-csv-slots.js";
 import { csvCell } from "../src/modules/policy/policy-csv-utils.js";
 
@@ -31,8 +30,9 @@ function buildUniqueTestCsv(): string {
   demo.whatsapp = demo["Primary Mobile Number"];
   demo.email = `csv.${suffix.toLowerCase()}@import-test.svkk.local`;
 
-  const headerLine = POLICY_CSV_FLAT_HEADERS.map(csvCell).join(",");
-  const cells = POLICY_CSV_FLAT_HEADERS.map((h) => demo[h] ?? "");
+  const headers = buildPolicyCsvSampleHeaders();
+  const headerLine = headers.map(csvCell).join(",");
+  const cells = headers.map((h) => demo[h] ?? "");
   return `\uFEFF${headerLine}\r\n${cells.map(csvCell).join(",")}\r\n`;
 }
 

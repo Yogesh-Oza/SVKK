@@ -10,6 +10,8 @@ import {
   memberSlotHeader,
   POLICY_CSV_MAX_MEMBER_SLOTS,
   POLICY_CSV_MAX_PAYMENT_SLOTS,
+  POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+  POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
 } from "./policy-csv-slots.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 
@@ -135,6 +137,18 @@ export function buildPolicyCsvImportTemplateHeaders(
   maxPayments: number,
 ): string[] {
   return buildPolicyCsvImportTemplateLayout(maxMembers, maxPayments).headers;
+}
+
+/**
+ * Sample / downloadable import template headers.
+ * Same schema as the CSV upload parser (widest payment fields), sized for one
+ * member + one payment slot so the file stays usable as a starter template.
+ */
+export function buildPolicyCsvSampleHeaders(): string[] {
+  return buildPolicyCsvImportTemplateHeaders(
+    POLICY_CSV_SAMPLE_MEMBER_SLOTS,
+    POLICY_CSV_SAMPLE_PAYMENT_SLOTS,
+  );
 }
 
 export function buildAllMemberHeaders(maxMembers: number): string[] {

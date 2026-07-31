@@ -6,6 +6,7 @@ import {
   buildLegacyPolicyCsvCells,
   buildPolicyCsvExportHeaderLine,
   buildPolicyCsvSample,
+  buildPolicyCsvSampleHeaders,
   detectFormatFromHeaders,
   formatPolicyUrlForCsvExport,
   parseCsvWithOptionalVersion,
@@ -46,11 +47,38 @@ describe("policy-csv-format v2", () => {
     expect(header?.indexOf("url")).toBeGreaterThan(header?.indexOf("Member 2 Name") ?? -1);
   });
 
-  it("sample CSV has header row only without CSV_VERSION row", () => {
+  it("sample CSV headers match import template (same schema as upload parser)", () => {
     const rows = parseCsv(buildPolicyCsvSample());
     expect(rows[0]?.[0]).toBe("year");
     expect(rows[0]).not.toContain("CSV_VERSION");
     expect(rows.length).toBe(2);
+    expect(rows[0]).toEqual(buildPolicyCsvSampleHeaders());
+    // Widest payment fields (not method-narrowed export columns)
+    expect(rows[0]).toContain("Payment 1 Bank Name");
+    expect(rows[0]).toContain("Payment 1 Mobile Number");
+    expect(rows[0]).toContain("nominee_dob");
+    expect(rows[0]).toContain("VKK commission");
+    expect(rows[0]).toContain("Courier Company");
+    expect(rows[0]).toContain("whatsapp");
+    expect(rows[0]).toContain("ref no");
+    expect(rows[0]).toContain("policy remarK");
+  });
+
+  it("sample CSV includes every CREATE required column", () => {
+    const header = parseCsv(buildPolicyCsvSample())[0]!;
+    for (const required of [
+      "Holder name",
+      "Village",
+      "Product Type",
+      "Sum insured",
+      "year",
+      "month",
+      "grouping",
+      "Primary Mobile Number",
+      "whatsapp",
+    ]) {
+      expect(header).toContain(required);
+    }
   });
 
   it("detects v2 from headers", () => {

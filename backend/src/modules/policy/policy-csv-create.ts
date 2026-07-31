@@ -47,6 +47,17 @@ function parseCsvPaymentMode(raw: string): CsvPaymentMode | undefined {
   return CSV_PAYMENT_MODES.find((m) => m === t);
 }
 
+/** Headers required (non-empty) for CREATE_ONLY policy CSV rows. */
+export const POLICY_CSV_CREATE_REQUIRED_HEADERS = [
+  "Holder name",
+  "Village",
+  "Product Type",
+  "Sum insured",
+  "year",
+  "month",
+  "grouping",
+] as const;
+
 function requireField(map: Map<string, string>, ...names: string[]): string {
   const v = getCsvField(map, ...names);
   if (!v.trim()) throw new Error(`${names[0]} is required for create`);
@@ -56,13 +67,9 @@ function requireField(map: Map<string, string>, ...names: string[]): string {
 /** Validate row has minimum fields for policy create. */
 export function validateCreateRequiredFields(header: string[], row: string[]): void {
   const map = rowToHeaderMap(header, row);
-  requireField(map, "Holder name");
-  requireField(map, "Village");
-  requireField(map, "Product Type");
-  requireField(map, "Sum insured");
-  requireField(map, "year");
-  requireField(map, "month");
-  requireField(map, "grouping");
+  for (const name of POLICY_CSV_CREATE_REQUIRED_HEADERS) {
+    requireField(map, name);
+  }
   const mobile = getCsvField(map, "Primary Mobile Number", "whatsapp");
   if (!mobile.trim()) throw new Error("Primary Mobile Number or whatsapp is required for create");
 }

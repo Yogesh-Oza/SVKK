@@ -7,7 +7,7 @@ import { getCsvField } from "./policy-csv-parse.js";
 export const POLICY_CSV_MAX_MEMBER_SLOTS = 12;
 export const POLICY_CSV_MAX_PAYMENT_SLOTS = 8;
 
-/** Sample CSV uses flat headers only (Member 1 in flat block). */
+/** Sample CSV uses import-template layout (Member 1 + Payment 1 widest fields). */
 export const POLICY_CSV_SAMPLE_MEMBER_SLOTS = 1;
 export const POLICY_CSV_SAMPLE_PAYMENT_SLOTS = 1;
 
