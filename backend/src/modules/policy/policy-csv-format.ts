@@ -7,7 +7,6 @@ import { parsePolicyUrls } from "../../services/notification/policy-url.js";
 import type { PolicyExportRow } from "./policy.export-csv.js";
 import {
   buildPolicyCsvExportLayout,
-  buildPolicyCsvHeadersForExport,
   buildPolicyCsvImportTemplateHeaders,
   buildPolicyCsvSampleHeaders,
   resolveExportSlotCounts,

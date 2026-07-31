@@ -93,7 +93,7 @@ const IMPORT_MODE_CONFIG: Record<
     updateMode: "FULL",
     label: "Update policy",
     badge: "Update",
-    subtitle: "Match by ref no — same columns as create sample",
+    subtitle: "Match by ref no — columns match Sample CSV",
   },
 };
 
