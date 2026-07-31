@@ -213,7 +213,9 @@ export async function applySyncedDetailToCache(
   detail: SvkkPolicyDetailForForm,
 ): Promise<void> {
   const db = getOfflineDb();
-  await db.policies_detail.put(detail);
+  // Always key by the synced policyId so a mismatched detail.id cannot overwrite
+  // another policy in the same SVKK group.
+  await db.policies_detail.put({ ...detail, id: policyId });
   await updateMeta({ lastSyncAt: new Date().toISOString() });
 }
 

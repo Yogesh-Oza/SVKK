@@ -14,6 +14,7 @@ import { PolicyProfileView } from "@/features/svkk-policies/policy-profile-view"
 import type { PolicyDetailViewRow } from "@/features/svkk-policies/policy-detail-view-body";
 import {
   fetchPolicyYearSiblings,
+  pickYearSiblingTab,
   singleRowYearSibling,
   type PolicyListYearSibling,
 } from "@/features/svkk-policies/policy-year-siblings";
@@ -140,15 +141,15 @@ export function PolicyDetailPageView({
         if (cancelled) return;
         setYearTabs(tabs);
 
-        const targetTab =
-          (selectedYearLabel ? tabs.find((t) => t.yearLabel === selectedYearLabel) : undefined) ??
-          tabs[0];
+        const targetTab = pickYearSiblingTab(tabs, id, selectedYearLabel);
         if (!targetTab) {
           setRow(initial);
           applyYearToDetail(initial, initial.periodYearText ?? initial.years[0]?.yearLabel ?? "");
           return;
         }
 
+        // Stay on the requested policy when possible. Only follow a sibling tab
+        // when the URL id is not among the SVKK year tabs (e.g. stale bookmark).
         const detail =
           targetTab.policyId === initial.id ? initial : await loadPolicyById(targetTab.policyId);
         if (cancelled) return;

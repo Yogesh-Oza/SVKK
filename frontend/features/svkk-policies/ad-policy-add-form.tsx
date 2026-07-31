@@ -628,15 +628,21 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             ? { policyId: fetchedPolicyForUpdate.id, detail: fetchedPolicyForUpdate }
             : null;
 
-      const submitValues = allowCommission
-        ? values
-        : {
-            ...values,
-            commission: "",
-            vkkCommission: "",
-          };
-
+      // Always submit calculated commission. `policy:commission` only gates UI
+      // visibility/editability — never whether commission is computed or saved.
       if (editCtx) {
+        // Guard against soft-nav races: URL policyId must match hydrated detail.
+        if (editCtx.detail.id !== editCtx.policyId) {
+          setApiErr("Policy data is out of sync with the URL. Reload this policy and try again.");
+          toast.error("Wrong policy loaded", {
+            description: "Another policy in this SVKK group was still in memory. Reload and save again.",
+          });
+          return;
+        }
+        if (isEdit && !editHydrated) {
+          setApiErr("Still loading policy data…");
+          return;
+        }
         const y = editCtx.detail.years.find((yy) => yy.yearLabel === editYearLabel) ?? editCtx.detail.years[0];
         if (!y) {
           setApiErr("This policy has no year row to update.");
@@ -645,7 +651,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         try {
           debugPolicyUpdate("edit submit", {
             policyId: editCtx.policyId,
-            adProduct: submitValues.adProduct,
+            detailId: editCtx.detail.id,
+            adProduct: values.adProduct,
             policyTypeId: policyTypeId || null,
             policyChartId: policyChartId || null,
             yearLabel: y.yearLabel,
@@ -661,13 +668,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           }
           const result = await submitAdPolicyPatchRequest({
             policyId: editCtx.policyId,
-            values: submitValues,
+            values,
             expectedUpdatedAt: editCtx.detail.updatedAt,
             yearLabel: y.yearLabel,
-            categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
+            categoryId: resolveCategoryIdByKey(values.cat, categoryItemsForSubmit),
             policyTypeId,
             policyChartId,
-            includeCommission: allowCommission,
           });
           if (result.offline) {
             toast.success("Saved offline", {
@@ -692,12 +698,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       }
       try {
         const id = await submitAdPolicyRequest({
-          values: submitValues,
+          values,
           policyTypeId,
           policyChartId,
           idemKey: idemKeyRef.current,
-          categoryId: resolveCategoryIdByKey(submitValues.cat, categoryItemsForSubmit),
-          includeCommission: allowCommission,
+          categoryId: resolveCategoryIdByKey(values.cat, categoryItemsForSubmit),
         });
         const offlineSave = typeof navigator !== "undefined" && !navigator.onLine;
         if (offlineSave) {
@@ -1678,7 +1683,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       setEditHydrated(true);
       return;
     }
+    // Drop stale detail immediately so we never hydrate/submit another
+    // policy from the same SVKK group while the next fetch is in flight.
     setEditHydrated(false);
+    setDetail(null);
+    setDetailErr(null);
     detailHydrationKeyRef.current = null;
   }, [isEdit, policyId]);
 
@@ -1686,19 +1695,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (missingUrl || !isEdit || !policyId) {
       return;
     }
+    let cancelled = false;
     void (async () => {
       setDetailErr(null);
       try {
         const row = await fetchPolicyDetail(policyId);
+        if (cancelled) return;
+        if (row.id !== policyId) {
+          setDetailErr("Loaded policy does not match the URL. Please reopen from the list.");
+          return;
+        }
         setDetail(row);
       } catch (e) {
-        setDetailErr(e instanceof Error ? e.message : "Failed to load policy");
+        if (!cancelled) {
+          setDetailErr(e instanceof Error ? e.message : "Failed to load policy");
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [missingUrl, isEdit, policyId]);
 
   useEffect(() => {
-    if (!isEdit || !detail) {
+    if (!isEdit || !detail || !policyId || detail.id !== policyId) {
       return;
     }
     if (detail.policyType?.id) {
@@ -1709,10 +1729,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (yearRow?.policyChart?.id) {
       setPolicyChartId(yearRow.policyChart.id);
     }
-  }, [isEdit, detail, editYearLabel, loadChartsForPolicyTypeId]);
+  }, [isEdit, detail, policyId, editYearLabel, loadChartsForPolicyTypeId]);
 
   useEffect(() => {
-    if (!isEdit || !detail) {
+    if (!isEdit || !detail || !policyId || detail.id !== policyId) {
       return;
     }
     const hydrationKey = `${detail.id}|${detail.updatedAt}|${editYearLabel}`;
@@ -1735,7 +1755,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         isHydratingRef.current = false;
       }
     })();
-  }, [isEdit, detail, editYearLabel, formik.resetForm]);
+  }, [isEdit, detail, policyId, editYearLabel, formik.resetForm]);
 
   useEffect(() => {
     // Lock auto-id only when we are updating an existing policy. After Carry
@@ -2089,7 +2109,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (detailErr) {
       return <p className="text-destructive text-sm">{detailErr}</p>;
     }
-    if (!detail || !editHydrated) {
+    if (!detail || !editHydrated || detail.id !== policyId) {
       return <p className="text-muted-foreground text-sm">Loading policy…</p>;
     }
   } else if (loadErr) {

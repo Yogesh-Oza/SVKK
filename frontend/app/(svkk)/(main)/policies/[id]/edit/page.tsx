@@ -8,5 +8,13 @@ export default function EditPolicyPage() {
   const searchParams = useSearchParams();
   const id = String(params.id ?? "");
   const editYearLabel = searchParams.get("year")?.trim() ?? "";
-  return <AdPolicyAddForm policyId={id} editYearLabel={editYearLabel} />;
+  // Remount when policy (or year) changes so soft navigation cannot reuse
+  // another grouped policy's Formik/detail state.
+  return (
+    <AdPolicyAddForm
+      key={`${id}|${editYearLabel}`}
+      policyId={id}
+      editYearLabel={editYearLabel}
+    />
+  );
 }

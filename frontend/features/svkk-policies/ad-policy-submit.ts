@@ -81,12 +81,11 @@ export type SubmitAdPolicyParams = {
   policyChartId: string;
   idemKey: string;
   categoryId?: string;
-  /** When false, omit commission fields so RBAC without policy:commission can still save. */
-  includeCommission?: boolean;
 };
 
 /**
  * Submits the AD policy create request. Assumes form validation already passed.
+ * Always includes calculated commission; `policy:commission` only gates UI, not persistence.
  * @throws Error with message on API failure
  */
 export async function submitAdPolicyRequest({
@@ -95,7 +94,6 @@ export async function submitAdPolicyRequest({
   policyChartId,
   idemKey,
   categoryId,
-  includeCommission = true,
 }: SubmitAdPolicyParams): Promise<string> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -217,12 +215,9 @@ export async function submitAdPolicyRequest({
         parseNum(m.age) != null ? Math.round(parseNum(m.age)!) : ageAtDate(m.dob, ageAnchor) ?? null,
     })),
     payments: mapPaymentTransactionsToApi(values),
+    vkkCommission: parseNum(values.vkkCommission) ?? null,
+    commissionAmount: parseNum(values.commission) ?? null,
   };
-
-  if (includeCommission) {
-    body.vkkCommission = parseNum(values.vkkCommission) ?? null;
-    body.commissionAmount = parseNum(values.commission) ?? null;
-  }
 
   applyPrimaryPaymentModeToBody(body, values);
   if (co != null) {
@@ -264,12 +259,11 @@ export type SubmitAdPolicyPatchParams = {
   categoryId?: string;
   policyTypeId?: string;
   policyChartId?: string;
-  /** When false, omit commission fields so RBAC without policy:commission can still save. */
-  includeCommission?: boolean;
 };
 
 /**
  * Full AD policy update via `PATCH /policies/:id` (same field set as create, plus optimistic concurrency).
+ * Always includes calculated commission; `policy:commission` only gates UI, not persistence.
  */
 export async function submitAdPolicyPatchRequest({
   policyId,
@@ -279,7 +273,6 @@ export async function submitAdPolicyPatchRequest({
   categoryId,
   policyTypeId,
   policyChartId,
-  includeCommission = true,
 }: SubmitAdPolicyPatchParams): Promise<{ offline: boolean }> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -400,12 +393,9 @@ export async function submitAdPolicyPatchRequest({
     excessShortAmount: parseNum(values.excessShort) ?? null,
     diffPaidByHolder: parseNum(values.diffAmt) ?? null,
     payments: apiPayments,
+    vkkCommission: parseNum(values.vkkCommission) ?? null,
+    commissionAmount: parseNum(values.commission) ?? null,
   };
-
-  if (includeCommission) {
-    body.vkkCommission = parseNum(values.vkkCommission) ?? null;
-    body.commissionAmount = parseNum(values.commission) ?? null;
-  }
 
   if (policyTypeId) {
     body.policyTypeId = policyTypeId;

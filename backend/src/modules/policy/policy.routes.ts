@@ -932,9 +932,9 @@ export function createPolicyRouter(env: Env) {
         },
         "policy patch request",
       );
-      // Align with CREATE: only forbid non-null commission values. Clients without
-      // policy:commission often still send null (cleared hidden fields); treat that as
-      // "leave existing commission unchanged" by stripping the keys before update.
+      // Align with CREATE: `policy:commission` is UI/read-only. Strip nulls from
+      // clients that clear hidden fields; accept/fill calculated commission so
+      // saves stay correct without the permission.
       assertOrStripCommissionFields(
         year,
         hasPermissionInSet(req.permissions!, "policy:commission"),

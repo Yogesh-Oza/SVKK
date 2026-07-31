@@ -22,7 +22,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   { key: "policy:restore", label: "Restore archived policies", group: "Policies", groupOrder: 20, sortOrder: 5, description: "Restore policies from the Recycle Bin." },
   { key: "policy:purge", label: "Permanently delete archived policies", group: "Policies", groupOrder: 20, sortOrder: 6, description: "Permanently delete policies from the Recycle Bin." },
   { key: "policy:export", label: "Export policies", group: "Policies", groupOrder: 20, sortOrder: 7, description: "Download policy exports and export metadata." },
-  { key: "policy:commission", label: "Commission fields", group: "Policies", groupOrder: 20, sortOrder: 8, description: "View/edit Commission and VKK Commission fields." },
+  { key: "policy:commission", label: "Commission fields", group: "Policies", groupOrder: 20, sortOrder: 8, description: "Show and edit Commission and VKK Commission fields. Commission is always calculated and saved; this only controls visibility and manual editing." },
   { key: "policy:scope_all", label: "All policies (scope)", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 1 },
   { key: "policy:scope_village", label: "Village-scoped policies", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 2 },
   { key: "policy:scope_own", label: "Own policies only", group: "Policy scope", groupOrder: 21, isScope: true, sortOrder: 3 },

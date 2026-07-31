@@ -67,6 +67,28 @@ export function singleRowYearSibling(row: PolicyListRowMinimal): PolicyListYearS
   ];
 }
 
+/**
+ * Prefer the tab for the URL policy id (and optional year). Never pick another
+ * SVKK sibling solely because it shares the same yearLabel.
+ */
+export function pickYearSiblingTab(
+  tabs: PolicyListYearSibling[],
+  policyId: string,
+  selectedYearLabel?: string,
+): PolicyListYearSibling | undefined {
+  if (!tabs.length) return undefined;
+  const year = selectedYearLabel?.trim() ?? "";
+  if (year) {
+    return (
+      tabs.find((t) => t.policyId === policyId && t.yearLabel === year) ??
+      tabs.find((t) => t.policyId === policyId) ??
+      tabs.find((t) => t.yearLabel === year) ??
+      tabs[0]
+    );
+  }
+  return tabs.find((t) => t.policyId === policyId) ?? tabs[0];
+}
+
 async function fetchPolicyYearSiblingsFromCache(
   svkkPublicId: string,
 ): Promise<PolicyListYearSibling[]> {

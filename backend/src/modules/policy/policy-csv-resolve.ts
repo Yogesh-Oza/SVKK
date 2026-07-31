@@ -130,7 +130,8 @@ export type CsvPolicyMatch = {
   matchedBy: "svkkId" | "policyNo" | "refNo";
 };
 
-type MatchInput = { svkkId: string; policyNo: string; refNo: string };
+/** CSV match keys. `year` scopes SVKK / policy-no lookups to one policy-year row. */
+export type MatchInput = { svkkId: string; policyNo: string; refNo: string; year?: string };
 
 const policyInclude = {
   insuredParty: true,
@@ -150,24 +151,72 @@ const policyInclude = {
 
 type PolicyWithRelations = Prisma.PolicyGetPayload<{ include: typeof policyInclude }>;
 
+/** True when the policy's period / year rows include `year`. */
+export function policyMatchesCsvYear(
+  policy: {
+    periodYearText?: string | null;
+    years: Array<{ yearLabel: string }>;
+  },
+  year: string,
+): boolean {
+  const y = year.trim();
+  if (!y) return true;
+  if (policy.periodYearText?.trim() === y) return true;
+  return policy.years.some((row) => row.yearLabel === y);
+}
+
+function yearScopeWhere(year: string): Prisma.PolicyWhereInput {
+  const y = year.trim();
+  return {
+    OR: [
+      { periodYearText: y },
+      { years: { some: { deletedAt: null, yearLabel: y } } },
+    ],
+  };
+}
+
 async function findBySvkkId(
   tx: Prisma.TransactionClient,
   svkkId: string,
-): Promise<PolicyWithRelations | null> {
-  return tx.policy.findFirst({
-    where: { deletedAt: null, insuredParty: { svkkPublicId: svkkId } },
+  year?: string,
+): Promise<{ policy: PolicyWithRelations | null; ambiguous: boolean }> {
+  const yearTrim = year?.trim();
+  const matches = await tx.policy.findMany({
+    where: {
+      deletedAt: null,
+      insuredParty: { svkkPublicId: svkkId },
+      ...(yearTrim ? yearScopeWhere(yearTrim) : {}),
+    },
     include: policyInclude,
+    orderBy: [{ periodYearText: "desc" }, { createdAt: "desc" }],
+    take: 2,
   });
+  if (matches.length > 1) {
+    return { policy: null, ambiguous: true };
+  }
+  return { policy: matches[0] ?? null, ambiguous: false };
 }
 
 async function findByPolicyNo(
   tx: Prisma.TransactionClient,
   policyNo: string,
-): Promise<PolicyWithRelations | null> {
-  return tx.policy.findFirst({
-    where: { deletedAt: null, policyNo },
+  year?: string,
+): Promise<{ policy: PolicyWithRelations | null; ambiguous: boolean }> {
+  const yearTrim = year?.trim();
+  const matches = await tx.policy.findMany({
+    where: {
+      deletedAt: null,
+      policyNo,
+      ...(yearTrim ? yearScopeWhere(yearTrim) : {}),
+    },
     include: policyInclude,
+    orderBy: [{ periodYearText: "desc" }, { createdAt: "desc" }],
+    take: 2,
   });
+  if (matches.length > 1) {
+    return { policy: null, ambiguous: true };
+  }
+  return { policy: matches[0] ?? null, ambiguous: false };
 }
 
 async function findByRefNo(
@@ -181,8 +230,8 @@ async function findByRefNo(
 }
 
 /**
- * Strict match priority: SVKK ID → Policy No → Ref No.
- * Returns null when no identifier present or no match.
+ * Match priority: Ref No → (SVKK ID + year) → (Policy No + year) → unique SVKK/Policy No.
+ * Year is required to disambiguate when multiple policies share an SVKK ID.
  */
 export async function resolvePolicyForCsvImport(
   tx: Prisma.TransactionClient,
@@ -191,6 +240,7 @@ export async function resolvePolicyForCsvImport(
   const svkkId = input.svkkId.trim();
   const policyNo = input.policyNo.trim();
   const refNo = input.refNo.trim();
+  const year = (input.year ?? "").trim();
 
   const ids = [
     svkkId ? ("svkkId" as const) : null,
@@ -203,17 +253,32 @@ export async function resolvePolicyForCsvImport(
   }
 
   const found = new Map<string, PolicyWithRelations>();
-  if (svkkId) {
-    const p = await findBySvkkId(tx, svkkId);
-    if (p) found.set(p.id, p);
-  }
-  if (policyNo) {
-    const p = await findByPolicyNo(tx, policyNo);
-    if (p) found.set(p.id, p);
-  }
+  const matchedById = new Map<string, CsvPolicyMatch["matchedBy"]>();
+  let svkkAmbiguous = false;
+  let policyNoAmbiguous = false;
+
   if (refNo) {
     const p = await findByRefNo(tx, refNo);
-    if (p) found.set(p.id, p);
+    if (p) {
+      found.set(p.id, p);
+      matchedById.set(p.id, "refNo");
+    }
+  }
+  if (svkkId) {
+    const { policy: p, ambiguous } = await findBySvkkId(tx, svkkId, year || undefined);
+    svkkAmbiguous = ambiguous;
+    if (p) {
+      found.set(p.id, p);
+      if (!matchedById.has(p.id)) matchedById.set(p.id, "svkkId");
+    }
+  }
+  if (policyNo) {
+    const { policy: p, ambiguous } = await findByPolicyNo(tx, policyNo, year || undefined);
+    policyNoAmbiguous = ambiguous;
+    if (p) {
+      found.set(p.id, p);
+      if (!matchedById.has(p.id)) matchedById.set(p.id, "policyNo");
+    }
   }
 
   if (found.size > 1) {
@@ -226,21 +291,45 @@ export async function resolvePolicyForCsvImport(
 
   if (found.size === 1) {
     const policy = [...found.values()][0]!;
-    let matchedBy: CsvPolicyMatch["matchedBy"] = "refNo";
-    if (svkkId && policy.insuredParty.svkkPublicId === svkkId) matchedBy = "svkkId";
-    else if (policyNo && policy.policyNo === policyNo) matchedBy = "policyNo";
-    else if (refNo && policy.referenceNo === refNo) matchedBy = "refNo";
+    if (year && !policyMatchesCsvYear(policy, year)) {
+      return {
+        match: null,
+        matchedBy: null,
+        conflict: `Year "${year}" does not match the policy found by identifiers`,
+      };
+    }
+    const matchedBy = matchedById.get(policy.id) ?? "refNo";
     return { match: policy, matchedBy };
+  }
+
+  if (svkkAmbiguous && !policyNo && !refNo) {
+    return {
+      match: null,
+      matchedBy: null,
+      conflict: year
+        ? `Multiple policies share SVKK ID and year "${year}"; provide ref no`
+        : "Multiple policies share this SVKK ID; provide year, policy no, or ref no",
+    };
+  }
+
+  if (policyNoAmbiguous && !refNo) {
+    return {
+      match: null,
+      matchedBy: null,
+      conflict: year
+        ? `Multiple policies share policy no and year "${year}"; provide ref no`
+        : "Multiple policies share this policy no; provide year or ref no",
+    };
   }
 
   return { match: null, matchedBy: null };
 }
 
-type CsvUpdateMatchInput = { refNo: string; svkkId?: string; policyNo?: string };
+type CsvUpdateMatchInput = { refNo: string; svkkId?: string; policyNo?: string; year?: string };
 
 /**
- * Ref-no-only lookup for POLICY_COURIER CSV updates.
- * Flags SVKK ID mismatch and policy-no collisions with other policies.
+ * Ref-no-only lookup for POLICY_COURIER / FULL CSV updates.
+ * Flags SVKK ID, year, and policy-no collisions with other policies.
  */
 export async function resolvePolicyForCsvUpdate(
   tx: Prisma.TransactionClient,
@@ -264,9 +353,17 @@ export async function resolvePolicyForCsvUpdate(
     };
   }
 
+  const year = (input.year ?? "").trim();
+  if (year && !policyMatchesCsvYear(policy, year)) {
+    return {
+      match: null,
+      conflict: `Year "${year}" does not match policy for ref no`,
+    };
+  }
+
   const policyNo = (input.policyNo ?? "").trim();
   if (policyNo && policy.policyNo !== policyNo) {
-    const other = await findByPolicyNo(tx, policyNo);
+    const { policy: other } = await findByPolicyNo(tx, policyNo, year || undefined);
     if (other && other.id !== policy.id) {
       return {
         match: null,
@@ -276,6 +373,32 @@ export async function resolvePolicyForCsvUpdate(
   }
 
   return { match: policy };
+}
+
+/**
+ * Resolve the PolicyYear row for a CSV update.
+ * When CSV includes `year`, require an exact yearLabel match (no silent fallback).
+ */
+export function pickPolicyYearForCsvUpdate<T extends { yearLabel: string }>(
+  policy: { periodYearText?: string | null; years: T[] },
+  csvYear: string,
+): T {
+  const label = csvYear.trim();
+  if (label) {
+    const year = policy.years.find((y) => y.yearLabel === label);
+    if (!year) {
+      throw new Error(
+        `Policy year "${label}" not found on matched policy` +
+          (policy.periodYearText ? ` (policy period year is ${policy.periodYearText})` : ""),
+      );
+    }
+    return year;
+  }
+  const fallback = policy.years[0];
+  if (!fallback) {
+    throw new Error("Matched policy has no policy year rows to update");
+  }
+  return fallback;
 }
 
 /** Pick latest chart for policy type (prefers COMBINED, then HOLDER). */

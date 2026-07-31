@@ -134,6 +134,7 @@ export function canExportPolicy(permissions: string[]) {
   return hasPermission(permissions, "policy:export");
 }
 
+/** View/edit Commission + VKK Commission fields in the UI (calculation always runs). */
 export function canSeeCommission(permissions: string[]) {
   return hasPermission(permissions, "policy:commission");
 }
