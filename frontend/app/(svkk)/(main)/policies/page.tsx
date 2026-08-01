@@ -53,6 +53,7 @@ import {
   policyTypeLabelForSnapshot,
 } from "@/features/svkk-policies/policy-list-snapshot";
 import { yearChipLabel, yearQuickActionsTitle } from "@/features/svkk-policies/policy-year-display";
+import { renewalStatusPresentation } from "@/lib/svkk/renewal-status";
 import { buildCategoryByKeyMap } from "@/lib/svkk/category-display";
 import {
   PolicyFilterMulti,
@@ -156,6 +157,7 @@ type ListPolicyYear = {
   policyNo: string | null;
   vkkPremium: unknown;
   sumInsured: unknown;
+  renewalStatus?: "renewed" | "expired" | "active" | "no_end_date";
 };
 
 type ListPolicy = {
@@ -1298,8 +1300,9 @@ export default function SvkkPoliciesPage() {
                   />
                   {renewalFilter ? (
                     <p className="text-muted-foreground mt-1.5 text-[11px] leading-snug">
-                      Renewal filter uses policy end date on or before this date (not created
-                      date). Already-renewed SVKK IDs with later coverage are excluded.
+                      Renewal filter evaluates only the latest policy under each SVKK
+                      (Policy End Date). Older years are Renewed. Blank end on the latest
+                      excludes that SVKK — no fallback to older years.
                     </p>
                   ) : null}
                 </div>
@@ -1675,6 +1678,15 @@ export default function SvkkPoliciesPage() {
                                   }}
                                 >
                                   {yearChipLabel(y)} · {formatInrRupee(y.vkkPremium) ?? "—"}
+                                  {y.renewalStatus ? (
+                                    <span
+                                      className={`ml-1.5 rounded border px-1 py-0.5 text-[10px] font-semibold ${
+                                        renewalStatusPresentation(y.renewalStatus).className
+                                      }`}
+                                    >
+                                      {renewalStatusPresentation(y.renewalStatus).label}
+                                    </span>
+                                  ) : null}
                                 </Button>
                               ))}
                             </div>

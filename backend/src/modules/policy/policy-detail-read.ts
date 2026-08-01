@@ -4,6 +4,7 @@ import { maskInsuredParty } from "../../domain/pii.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import { policyYearPaymentsInclude } from "./policy.service.js";
 import { overlayInsuredPartyWithPolicySnapshot } from "./policy-holder-snapshot.js";
+import type { PolicyRenewalStatus } from "./renewal-pending.js";
 
 export const policyDetailForFormInclude = {
   insuredParty: true,
@@ -61,10 +62,12 @@ export function serializePolicyDetailForApi(
   row: PolicyDetailForFormRow,
   permissions: Set<string>,
   category: CategoryRef | null,
+  renewalStatus?: PolicyRenewalStatus,
 ) {
   return {
     ...row,
     category,
     insuredParty: maskPolicyInsuredParty(permissions, row),
+    renewalStatus: renewalStatus ?? null,
   };
 }

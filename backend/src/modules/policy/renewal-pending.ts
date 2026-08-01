@@ -1,4 +1,41 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { sqlCol, sqlTable } from "../../lib/sql-tables.js";
+import { prisma } from "../../lib/prisma.js";
+
+/**
+ * SVKK Renewal Rule
+ *
+ * Renewal is evaluated ONLY against the latest policy belonging
+ * to an SVKK/member.
+ *
+ * Latest policy ordering:
+ *   1. Policy year DESC (numeric start year from periodYearText, then text)
+ *   2. createdAt DESC
+ *   3. id DESC
+ *
+ * "Same SVKK" means the same InsuredParty row: compare on
+ * Policy.insuredPartyId (stable FK), never on display svkkPublicId alone.
+ *
+ * All older policies are considered "renewed" because a newer
+ * policy exists under the same SVKK.
+ *
+ * Latest policy:
+ *   - policyEnd == null  => no_end_date; exclude SVKK from renewal filters
+ *   - policyEnd < asOf   => expired
+ *   - policyEnd >= asOf  => active / evaluate applicable renewal window
+ *
+ * IMPORTANT:
+ * - Never fall back to an older policy when the latest has no end date.
+ * - Never use previousEndDate for renewal.
+ *
+ * Exclusive bucket windows (days until end from asOf start):
+ *   expired  < 0
+ *   due_2    0..2
+ *   due_8    3..8
+ *   due_30   9..30
+ *   due_60   31..60
+ *   active   > 60
+ */
 
 /** UTC calendar-day bounds for an ISO date string (YYYY-MM-DD). */
 export function utcDayBoundsFromIsoDate(isoDate: string): { start: Date; end: Date } | undefined {
@@ -33,46 +70,125 @@ function utcDayEnd(d: Date): Date {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Same SVKK (insured party): exclude this policy from renewal-due filters when another
- * policy on the party has coverage ending after `horizonEnd` (e.g. carry-forward renewal).
- */
-function excludeWhenSvkkHasLaterCoverage(horizonEnd: Date): Prisma.PolicyWhereInput {
-  return {
-    NOT: {
-      insuredParty: {
-        policies: {
-          some: {
-            deletedAt: null,
-            years: {
-              some: {
-                deletedAt: null,
-                policyEnd: { not: null, gt: horizonEnd },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
+export type PolicyRenewalStatus = "renewed" | "expired" | "active" | "no_end_date";
+
+export type PolicyRecencyFields = {
+  id: string;
+  periodYearText?: string | null;
+  createdAt: Date;
+};
+
+/** Parse leading YYYY from period labels like `2025-26`, `2025-2026`, `2025/26`. */
+export function policyYearSortKey(periodYearText: string | null | undefined): {
+  startYear: number;
+  text: string;
+} {
+  const text = (periodYearText ?? "").trim();
+  const m = /^(\d{4})/.exec(text);
+  return { startYear: m ? Number(m[1]) : 0, text };
 }
 
-function withSvkkRenewalSupersession(
+/**
+ * Sort comparator: newer first (DESC by year → createdAt → id).
+ * Negative means `a` ranks newer than `b`.
+ */
+export function comparePolicyRecencyDesc(a: PolicyRecencyFields, b: PolicyRecencyFields): number {
+  const ka = policyYearSortKey(a.periodYearText);
+  const kb = policyYearSortKey(b.periodYearText);
+  if (ka.startYear !== kb.startYear) return kb.startYear - ka.startYear;
+  if (ka.text !== kb.text) return kb.text.localeCompare(ka.text);
+  const ct = b.createdAt.getTime() - a.createdAt.getTime();
+  if (ct !== 0) return ct;
+  if (a.id === b.id) return 0;
+  return a.id < b.id ? 1 : -1;
+}
+
+export function pickLatestPolicy<T extends PolicyRecencyFields>(policies: T[]): T | undefined {
+  if (!policies.length) return undefined;
+  return [...policies].sort(comparePolicyRecencyDesc)[0];
+}
+
+export function classifyPolicyRenewalStatus(opts: {
+  isLatest: boolean;
+  policyEnd: Date | null | undefined;
+  asOf: Date;
+}): PolicyRenewalStatus {
+  if (!opts.isLatest) return "renewed";
+  if (opts.policyEnd == null || Number.isNaN(opts.policyEnd.getTime())) return "no_end_date";
+  if (utcDayStart(opts.policyEnd).getTime() < utcDayStart(opts.asOf).getTime()) return "expired";
+  return "active";
+}
+
+/** SQL: numeric start year from periodYearText (leading 4 digits). */
+function sqlPeriodStartYear(alias: string): Prisma.Sql {
+  return Prisma.sql`COALESCE(CAST(SUBSTRING(COALESCE(${sqlCol(alias, "periodYearText")}, ''), 1, 4) AS UNSIGNED), 0)`;
+}
+
+/**
+ * Correlated predicate: no non-deleted sibling under the same insuredPartyId
+ * ranks newer by year → createdAt → id.
+ */
+export function sqlIsLatestPolicyUnderInsuredParty(alias = "p"): Prisma.Sql {
+  const newer = "newer";
+  return Prisma.sql`NOT EXISTS (
+    SELECT 1 FROM ${sqlTable("policy")} ${Prisma.raw(newer)}
+    WHERE ${sqlCol(newer, "insuredPartyId")} = ${sqlCol(alias, "insuredPartyId")}
+      AND ${sqlCol(newer, "deletedAt")} IS NULL
+      AND ${sqlCol(newer, "id")} <> ${sqlCol(alias, "id")}
+      AND (
+        ${sqlPeriodStartYear(newer)} > ${sqlPeriodStartYear(alias)}
+        OR (
+          ${sqlPeriodStartYear(newer)} = ${sqlPeriodStartYear(alias)}
+          AND COALESCE(${sqlCol(newer, "periodYearText")}, '') > COALESCE(${sqlCol(alias, "periodYearText")}, '')
+        )
+        OR (
+          COALESCE(${sqlCol(newer, "periodYearText")}, '') = COALESCE(${sqlCol(alias, "periodYearText")}, '')
+          AND ${sqlCol(newer, "createdAt")} > ${sqlCol(alias, "createdAt")}
+        )
+        OR (
+          COALESCE(${sqlCol(newer, "periodYearText")}, '') = COALESCE(${sqlCol(alias, "periodYearText")}, '')
+          AND ${sqlCol(newer, "createdAt")} = ${sqlCol(alias, "createdAt")}
+          AND ${sqlCol(newer, "id")} > ${sqlCol(alias, "id")}
+        )
+      )
+  )`;
+}
+
+/** All non-deleted policy IDs that are latest under their insuredPartyId. */
+export async function fetchLatestPolicyIdsUnderInsuredParty(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT ${sqlCol("p", "id")} AS id
+    FROM ${sqlTable("policy")} p
+    WHERE ${sqlCol("p", "deletedAt")} IS NULL
+      AND ${sqlIsLatestPolicyUnderInsuredParty("p")}
+  `);
+  return rows.map((r) => r.id);
+}
+
+/** Restrict where to latest-under-SVKK policies (empty set matches nothing). */
+export function whereLatestPolicyIds(ids: string[]): Prisma.PolicyWhereInput {
+  return { id: { in: ids } };
+}
+
+function withLatestOnly(
   base: Prisma.PolicyWhereInput,
-  horizonEnd: Date,
+  latestIds: string[],
 ): Prisma.PolicyWhereInput {
-  return { AND: [base, excludeWhenSvkkHasLaterCoverage(horizonEnd)] };
+  return { AND: [base, whereLatestPolicyIds(latestIds)] };
 }
 
 /**
- * Policy is pending renewal as-of a date when no policy year extends past that day
- * and at least one year has a known end date on or before that day.
+ * Policy is pending renewal as-of a date when it is the latest under its SVKK,
+ * has a known end date on or before that day, and no year extends past that day.
  */
-export function renewalPendingPolicyWhere(asOfIso: string): Prisma.PolicyWhereInput | undefined {
+export function renewalPendingPolicyWhere(
+  asOfIso: string,
+  latestIds: string[],
+): Prisma.PolicyWhereInput | undefined {
   const bounds = utcDayBoundsFromIsoDate(asOfIso);
   if (!bounds) return undefined;
   const asOfEnd = bounds.end;
-  return withSvkkRenewalSupersession(
+  return withLatestOnly(
     {
       AND: [
         {
@@ -95,7 +211,7 @@ export function renewalPendingPolicyWhere(asOfIso: string): Prisma.PolicyWhereIn
         },
       ],
     },
-    asOfEnd,
+    latestIds,
   );
 }
 
@@ -148,7 +264,7 @@ export function renewalBucketLabel(key: RenewalBucketKey): string {
   return BUCKET_LABELS[key];
 }
 
-/** Policies with no year ending after `asOf` and at least one year ending in [from, to]. */
+/** Policies with no year ending after `to` and at least one year ending in [from, to]. */
 function maxEndInRangeWhere(from: Date, to: Date): Prisma.PolicyWhereInput {
   return {
     AND: [
@@ -174,7 +290,7 @@ function maxEndInRangeWhere(from: Date, to: Date): Prisma.PolicyWhereInput {
   };
 }
 
-/** Policies where every year end is null or missing. */
+/** Latest policy where every year end is null or missing. */
 function noEndDateWhere(): Prisma.PolicyWhereInput {
   return {
     NOT: {
@@ -203,10 +319,12 @@ function activeAfterHorizonWhere(asOfStart: Date): Prisma.PolicyWhereInput {
 
 /**
  * Filter policies whose renewal bucket (by max policyEnd) matches `bucket` as-of `asOfIso`.
+ * Only latest-under-SVKK policies are eligible.
  */
 export function renewalBucketPolicyWhere(
   bucket: RenewalBucketKey,
   asOfIso: string,
+  latestIds: string[],
 ): Prisma.PolicyWhereInput | undefined {
   const bounds = utcDayBoundsFromIsoDate(asOfIso);
   if (!bounds) return undefined;
@@ -214,40 +332,40 @@ export function renewalBucketPolicyWhere(
 
   switch (bucket) {
     case "pending_all":
-      return renewalPendingPolicyWhere(asOfIso);
+      return renewalPendingPolicyWhere(asOfIso, latestIds);
     case "expired": {
       const expiredEnd = new Date(today.getTime() - 1);
-      return withSvkkRenewalSupersession(maxEndInRangeWhere(new Date(0), expiredEnd), expiredEnd);
+      return withLatestOnly(maxEndInRangeWhere(new Date(0), expiredEnd), latestIds);
     }
     case "due_2": {
       const horizon = utcDayEnd(addUtcDays(today, 2));
-      return withSvkkRenewalSupersession(maxEndInRangeWhere(today, horizon), horizon);
+      return withLatestOnly(maxEndInRangeWhere(today, horizon), latestIds);
     }
     case "due_8": {
       const horizon = utcDayEnd(addUtcDays(today, 8));
-      return withSvkkRenewalSupersession(
+      return withLatestOnly(
         maxEndInRangeWhere(utcDayStart(addUtcDays(today, 3)), horizon),
-        horizon,
+        latestIds,
       );
     }
     case "due_30": {
       const horizon = utcDayEnd(addUtcDays(today, 30));
-      return withSvkkRenewalSupersession(
+      return withLatestOnly(
         maxEndInRangeWhere(utcDayStart(addUtcDays(today, 9)), horizon),
-        horizon,
+        latestIds,
       );
     }
     case "due_60": {
       const horizon = utcDayEnd(addUtcDays(today, 60));
-      return withSvkkRenewalSupersession(
+      return withLatestOnly(
         maxEndInRangeWhere(utcDayStart(addUtcDays(today, 31)), horizon),
-        horizon,
+        latestIds,
       );
     }
     case "active":
-      return activeAfterHorizonWhere(today);
+      return withLatestOnly(activeAfterHorizonWhere(today), latestIds);
     case "no_end_date":
-      return noEndDateWhere();
+      return withLatestOnly(noEndDateWhere(), latestIds);
     default:
       return undefined;
   }

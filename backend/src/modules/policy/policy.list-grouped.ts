@@ -15,6 +15,13 @@ import {
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { applyDisplayYearLabels } from "./policy-year-display.js";
 import { resolvePolicyHolderName } from "./policy-holder-snapshot.js";
+import {
+  classifyPolicyRenewalStatus,
+  comparePolicyRecencyDesc,
+  pickLatestPolicy,
+  type PolicyRenewalStatus,
+  utcDayStart,
+} from "./renewal-pending.js";
 
 export type PolicyListYearEntry = {
   policyId: string;
@@ -25,6 +32,8 @@ export type PolicyListYearEntry = {
   policyNo: string | null;
   vkkPremium: Prisma.Decimal | null;
   sumInsured: Prisma.Decimal | null;
+  /** Backend source of truth for renewal tags. */
+  renewalStatus: PolicyRenewalStatus;
 };
 
 export type PolicyListGroupedItem = {
@@ -68,31 +77,33 @@ const policyInclude = {
       yearLabel: true,
       sumInsured: true,
       vkkPremium: true,
+      policyEnd: true,
     },
   },
 } satisfies Prisma.PolicyInclude;
 
 type PolicyRow = Prisma.PolicyGetPayload<{ include: typeof policyInclude }>;
 
+type PartyRecencyRow = {
+  id: string;
+  insuredPartyId: string;
+  periodYearText: string | null;
+  createdAt: Date;
+  years: Array<{ policyEnd: Date | null }>;
+};
+
 function yearLabelFromPolicy(p: PolicyRow): string {
   return p.periodYearText?.trim() || p.years[0]?.yearLabel?.trim() || "";
 }
 
-function compareYearLabelsDesc(a: string, b: string): number {
-  return b.localeCompare(a);
-}
-
 function pickPrimaryPolicy(policies: PolicyRow[]): PolicyRow {
-  return [...policies].sort((a, b) => {
-    const ya = yearLabelFromPolicy(a);
-    const yb = yearLabelFromPolicy(b);
-    const yc = compareYearLabelsDesc(ya, yb);
-    if (yc !== 0) return yc;
-    return b.createdAt.getTime() - a.createdAt.getTime();
-  })[0]!;
+  return pickLatestPolicy(policies)!;
 }
 
-function toYearEntry(p: PolicyRow): PolicyListYearEntry | null {
+function toYearEntry(
+  p: PolicyRow,
+  renewalStatus: PolicyRenewalStatus,
+): PolicyListYearEntry | null {
   const yearLabel = yearLabelFromPolicy(p);
   if (!yearLabel) return null;
   const y0 = p.years[0];
@@ -103,6 +114,7 @@ function toYearEntry(p: PolicyRow): PolicyListYearEntry | null {
     policyNo: p.policyNo,
     vkkPremium: y0?.vkkPremium ?? p.listVkkPremium,
     sumInsured: y0?.sumInsured ?? null,
+    renewalStatus,
   };
 }
 
@@ -110,15 +122,27 @@ function buildGroupedItem(
   partyId: string,
   policies: PolicyRow[],
   categoryByKey: Map<string, CategoryRef>,
+  partyRecency: PartyRecencyRow[],
+  asOf: Date,
 ): PolicyListGroupedItem | null {
   if (policies.length === 0) return null;
   const primary = pickPrimaryPolicy(policies);
   const party = primary.insuredParty;
+  const latestId = pickLatestPolicy(partyRecency)?.id;
   const years = applyDisplayYearLabels(
     policies
-      .map(toYearEntry)
+      .map((p) => {
+        const isLatest = p.id === latestId;
+        const policyEnd = p.years[0]?.policyEnd ?? null;
+        const renewalStatus = classifyPolicyRenewalStatus({ isLatest, policyEnd, asOf });
+        return toYearEntry(p, renewalStatus);
+      })
       .filter((y): y is PolicyListYearEntry => y != null)
-      .sort((a, b) => compareYearLabelsDesc(a.yearLabel, b.yearLabel)),
+      .sort((a, b) => {
+        const pa = policies.find((p) => p.id === a.policyId)!;
+        const pb = policies.find((p) => p.id === b.policyId)!;
+        return comparePolicyRecencyDesc(pa, pb);
+      }),
   );
   if (years.length === 0) return null;
 
@@ -253,7 +277,27 @@ async function fetchPoliciesForParties(
   return prisma.policy.findMany({
     where: { AND: [where, { insuredPartyId: { in: partyIds } }] },
     include: policyInclude,
-    orderBy: [{ periodYearText: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ periodYearText: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+  });
+}
+
+/** All non-deleted policies for parties — used to decide latest / Renewed status. */
+async function fetchPartyRecency(partyIds: string[]): Promise<PartyRecencyRow[]> {
+  if (partyIds.length === 0) return [];
+  return prisma.policy.findMany({
+    where: { deletedAt: null, insuredPartyId: { in: partyIds } },
+    select: {
+      id: true,
+      insuredPartyId: true,
+      periodYearText: true,
+      createdAt: true,
+      years: {
+        where: { deletedAt: null },
+        take: 1,
+        orderBy: { yearLabel: "desc" as const },
+        select: { policyEnd: true },
+      },
+    },
   });
 }
 
@@ -271,21 +315,40 @@ function assembleGroupedPage(
   partyIds: string[],
   policies: PolicyRow[],
   categoryByKey: Map<string, CategoryRef>,
+  recencyByParty: Map<string, PartyRecencyRow[]>,
+  asOf: Date,
 ): PolicyListGroupedItem[] {
   const byParty = groupPoliciesByParty(policies);
   const items: PolicyListGroupedItem[] = [];
   for (const partyId of partyIds) {
     const group = byParty.get(partyId);
     if (!group) continue;
-    const item = buildGroupedItem(partyId, group, categoryByKey);
+    const item = buildGroupedItem(
+      partyId,
+      group,
+      categoryByKey,
+      recencyByParty.get(partyId) ?? [],
+      asOf,
+    );
     if (item) items.push(item);
   }
   return items;
 }
 
+function groupRecencyByParty(rows: PartyRecencyRow[]): Map<string, PartyRecencyRow[]> {
+  const map = new Map<string, PartyRecencyRow[]>();
+  for (const r of rows) {
+    const list = map.get(r.insuredPartyId) ?? [];
+    list.push(r);
+    map.set(r.insuredPartyId, list);
+  }
+  return map;
+}
+
 export async function queryPolicyListGrouped(args: PolicyListArgs) {
   const where = args.where;
   const categoryByKey = await loadCategoryByKeyMap();
+  const asOf = utcDayStart(new Date());
   if (args.usePage) {
     const skip = (args.page! - 1) * args.pageSize;
     const [total, partyIds, premiumTotals] = await Promise.all([
@@ -293,9 +356,18 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
       pageInsuredPartyIds(where, args.sort, skip, args.pageSize),
       sumFilteredPolicyPremiums(where),
     ]);
-    const policies = await fetchPoliciesForParties(where, partyIds);
+    const [policies, recency] = await Promise.all([
+      fetchPoliciesForParties(where, partyIds),
+      fetchPartyRecency(partyIds),
+    ]);
     return {
-      items: assembleGroupedPage(partyIds, policies, categoryByKey),
+      items: assembleGroupedPage(
+        partyIds,
+        policies,
+        categoryByKey,
+        groupRecencyByParty(recency),
+        asOf,
+      ),
       total,
       page: args.page!,
       pageSize: args.pageSize,
@@ -308,14 +380,32 @@ export async function queryPolicyListGrouped(args: PolicyListArgs) {
   let nextCursor: string | undefined;
   if (partyIds.length > args.limit) {
     const lastPartyId = partyIds.pop()!;
-    const lastPolicies = await fetchPoliciesForParties(where, [lastPartyId]);
-    const lastGroup = buildGroupedItem(lastPartyId, lastPolicies, categoryByKey);
+    const [lastPolicies, lastRecency] = await Promise.all([
+      fetchPoliciesForParties(where, [lastPartyId]),
+      fetchPartyRecency([lastPartyId]),
+    ]);
+    const lastGroup = buildGroupedItem(
+      lastPartyId,
+      lastPolicies,
+      categoryByKey,
+      lastRecency,
+      asOf,
+    );
     nextCursor = lastGroup?.primaryPolicyId;
   }
   const pagePartyIds = partyIds.slice(0, args.limit);
-  const policies = await fetchPoliciesForParties(where, pagePartyIds);
+  const [policies, recency] = await Promise.all([
+    fetchPoliciesForParties(where, pagePartyIds),
+    fetchPartyRecency(pagePartyIds),
+  ]);
   return {
-    items: assembleGroupedPage(pagePartyIds, policies, categoryByKey),
+    items: assembleGroupedPage(
+      pagePartyIds,
+      policies,
+      categoryByKey,
+      groupRecencyByParty(recency),
+      asOf,
+    ),
     nextCursor,
   };
 }
@@ -327,6 +417,6 @@ export type GroupedListRouteContext = {
   query: PolicyListQuery;
 };
 
-export function groupedListWhere(ctx: GroupedListRouteContext): Prisma.PolicyWhereInput {
+export async function groupedListWhere(ctx: GroupedListRouteContext): Promise<Prisma.PolicyWhereInput> {
   return buildPolicyListWhere(ctx.scope, ctx.userId, ctx.permissions, ctx.query);
 }

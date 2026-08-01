@@ -7,6 +7,7 @@ import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { prisma } from "../../lib/prisma.js";
 import {
+  fetchLatestPolicyIdsUnderInsuredParty,
   renewalBucketPolicyWhere,
   renewalPendingPolicyWhere,
   type RenewalBucketKey,
@@ -148,12 +149,12 @@ export function expandPeriodMonthTextVariants(months: string[]): string[] {
   return [...out];
 }
 
-export function buildPolicyListWhere(
+export async function buildPolicyListWhere(
   scope: MisScope,
   userId: string,
   permissions: Set<string>,
   q: PolicyListQuery,
-): Prisma.PolicyWhereInput {
+): Promise<Prisma.PolicyWhereInput> {
   const scopeWhere = buildPolicyReadWhere(scope, q.village, userId, permissions, q.villages);
   const s = q.search?.trim();
   const searchWhere: Prisma.PolicyWhereInput | undefined = s
@@ -366,10 +367,12 @@ export function buildPolicyListWhere(
   }
 
   if (q.renewalBucket) {
-    const bucketWhere = renewalBucketPolicyWhere(q.renewalBucket, renewalAsOf);
+    const latestIds = await fetchLatestPolicyIdsUnderInsuredParty();
+    const bucketWhere = renewalBucketPolicyWhere(q.renewalBucket, renewalAsOf, latestIds);
     if (bucketWhere) extraParts.push(bucketWhere);
   } else if (q.renewalPending) {
-    const pendingWhere = renewalPendingPolicyWhere(renewalAsOf);
+    const latestIds = await fetchLatestPolicyIdsUnderInsuredParty();
+    const pendingWhere = renewalPendingPolicyWhere(renewalAsOf, latestIds);
     if (pendingWhere) extraParts.push(pendingWhere);
   }
 

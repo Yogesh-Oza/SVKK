@@ -1,30 +1,44 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("./renewal-pending.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./renewal-pending.js")>();
+  return {
+    ...actual,
+    fetchLatestPolicyIdsUnderInsuredParty: vi.fn(async () => ["latest-1"]),
+  };
+});
+
 import { buildPolicyListWhere } from "./policy.list.js";
 
 describe("buildPolicyListWhere category filter", () => {
   const scope = { kind: "full" as const };
   const perms = new Set(["policy:read", "policy:scope_all"]);
 
-  it("applies categoryId when categoryIds provided", () => {
-    const where = buildPolicyListWhere(scope, "u1", perms, {
+  it("applies categoryId when categoryIds provided", async () => {
+    const where = await buildPolicyListWhere(scope, "u1", perms, {
       categoryIds: ["cat-svga"],
     });
     expect(JSON.stringify(where)).toContain("cat-svga");
   });
 
-  it("applies category key when categoryKeys provided without ids", () => {
-    const where = buildPolicyListWhere(scope, "u1", perms, {
+  it("applies category key when categoryKeys provided without ids", async () => {
+    const where = await buildPolicyListWhere(scope, "u1", perms, {
       categoryKeys: ["svga"],
     });
     expect(JSON.stringify(where)).toContain("svga");
   });
 });
+
 describe("buildPolicyListWhere renewal vs createdAt", () => {
   const scope = { kind: "full" as const };
   const perms = new Set(["policy:read", "policy:scope_all"]);
 
-  it("applies createdAt bounds when renewal filter is off", () => {
-    const where = buildPolicyListWhere(scope, "u1", perms, {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("applies createdAt bounds when renewal filter is off", async () => {
+    const where = await buildPolicyListWhere(scope, "u1", perms, {
       dateFrom: "2026-07-01",
       dateTo: "2026-07-31",
     });
@@ -32,8 +46,8 @@ describe("buildPolicyListWhere renewal vs createdAt", () => {
     expect(s).toContain("createdAt");
   });
 
-  it("skips createdAt bounds when renewalPending is on", () => {
-    const where = buildPolicyListWhere(scope, "u1", perms, {
+  it("skips createdAt bounds when renewalPending is on", async () => {
+    const where = await buildPolicyListWhere(scope, "u1", perms, {
       dateFrom: "2026-07-01",
       dateTo: "2026-07-31",
       renewalPending: true,
@@ -42,10 +56,11 @@ describe("buildPolicyListWhere renewal vs createdAt", () => {
     const s = JSON.stringify(where);
     expect(s).not.toContain("createdAt");
     expect(s).toContain("policyEnd");
+    expect(s).toContain("latest-1");
   });
 
-  it("skips createdAt bounds when renewalBucket is on", () => {
-    const where = buildPolicyListWhere(scope, "u1", perms, {
+  it("skips createdAt bounds when renewalBucket is on", async () => {
+    const where = await buildPolicyListWhere(scope, "u1", perms, {
       dateFrom: "2026-07-01",
       dateTo: "2026-07-31",
       renewalBucket: "expired",
@@ -54,5 +69,6 @@ describe("buildPolicyListWhere renewal vs createdAt", () => {
     const s = JSON.stringify(where);
     expect(s).not.toContain("createdAt");
     expect(s).toContain("policyEnd");
+    expect(s).toContain("latest-1");
   });
 });

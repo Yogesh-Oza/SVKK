@@ -7,6 +7,7 @@ import { hasPermissionInSet } from "../../services/rbac.service.js";
 import {
   classifyPolicyRenewalBucket,
   DASHBOARD_RENEWAL_PIE_KEYS,
+  pickLatestPolicy,
   renewalBucketLabel,
   type RenewalBucketRow,
 } from "../policy/renewal-pending.js";
@@ -195,7 +196,7 @@ export async function getDashboardMetrics(
   };
 }
 
-/** Renewal KPI buckets by latest policy-year end date (for dashboard pie → policies list). */
+/** Renewal KPI buckets by latest policy under each SVKK (for dashboard pie → policies list). */
 export async function getDashboardRenewalBuckets(
   userId: string,
   permissions: Set<string>,
@@ -207,6 +208,10 @@ export async function getDashboardRenewalBuckets(
   const rows = await prisma.policy.findMany({
     where: pWhere,
     select: {
+      id: true,
+      insuredPartyId: true,
+      periodYearText: true,
+      createdAt: true,
       years: {
         where: { deletedAt: null },
         select: { policyEnd: true },
@@ -214,14 +219,23 @@ export async function getDashboardRenewalBuckets(
     },
   });
 
+  const byParty = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byParty.get(row.insuredPartyId) ?? [];
+    list.push(row);
+    byParty.set(row.insuredPartyId, list);
+  }
+
   const counts = new Map<string, number>();
   for (const key of DASHBOARD_RENEWAL_PIE_KEYS) {
     counts.set(key, 0);
   }
 
-  for (const row of rows) {
+  for (const partyPolicies of byParty.values()) {
+    const latest = pickLatestPolicy(partyPolicies);
+    if (!latest) continue;
     const key = classifyPolicyRenewalBucket(
-      row.years.map((y) => y.policyEnd),
+      latest.years.map((y) => y.policyEnd),
       asOfDate,
     );
     if (counts.has(key)) {

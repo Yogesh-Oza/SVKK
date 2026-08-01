@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+﻿import { createHash } from "node:crypto";
 import { DropdownType, PolicyChartKind, ChartMode, type Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { loadCategoryByKeyMap, resolveCategoryRef } from "../../lib/category-display.js";
@@ -299,7 +299,7 @@ export async function buildPolicyOfflineBundle(input: {
     extra = { AND: [extra, fiscalYearGteFilter(query.yearFrom.trim())] };
   }
 
-  const where = buildPolicyListWhere(scope, userId, permissions, listFilter);
+  const where = await buildPolicyListWhere(scope, userId, permissions, listFilter);
   const merged: Prisma.PolicyWhereInput = { AND: [scopeWhere, where, extra] };
 
   const totalAvailable = await prisma.policy.count({ where: merged });

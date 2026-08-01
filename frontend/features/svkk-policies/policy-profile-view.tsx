@@ -23,6 +23,7 @@ import {
   resolveCategoryDisplayLabel,
 } from "@/lib/svkk/category-display";
 import { canSeeCommission } from "@/lib/svkk/permissions";
+import { renewalStatusPresentation } from "@/lib/svkk/renewal-status";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { cn } from "@/lib/utils";
 import {
@@ -129,29 +130,6 @@ function holderInitials(name: string): string {
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("");
-}
-
-function policyStatus(y: PolicyDetailViewYear | undefined): {
-  label: string;
-  className: string;
-} {
-  if (!y?.policyEnd) {
-    return {
-      label: "Active Policy",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    };
-  }
-  const end = new Date(y.policyEnd);
-  if (!Number.isNaN(end.getTime()) && end >= new Date()) {
-    return {
-      label: "Active Policy",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    };
-  }
-  return {
-    label: "Expired",
-    className: "border-amber-200 bg-amber-50 text-amber-800",
-  };
 }
 
 function SummaryStatCard({
@@ -316,7 +294,7 @@ export function PolicyProfileView({
   const categoryLabel = resolveCategoryDisplayLabel(row.category, row.categoryText, categoryByKey);
   const { generalRemark, policyChangeRemark, categoryChangeRemark } = parseRemarks(row.remarks);
   const paymentDisplays = resolvePolicyPaymentDisplays(y, formatNumIn);
-  const status = policyStatus(y);
+  const status = renewalStatusPresentation(row.renewalStatus);
 
   const holderJoiningDisplay = row.holderJoiningDate
     ? formatPolicyDateDmy(row.holderJoiningDate)

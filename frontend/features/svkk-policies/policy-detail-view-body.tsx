@@ -39,6 +39,8 @@ export type PolicyDetailViewRow = {
   policyGrouping: string | null;
   policyUrl: string | null;
   policyUrl2: string | null;
+  /** Backend source of truth for renewal tag. */
+  renewalStatus?: "renewed" | "expired" | "active" | "no_end_date" | null;
   addressLine1: string | null;
   addressLine2: string | null;
   addressLine3: string | null;

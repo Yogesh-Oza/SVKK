@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
@@ -72,6 +72,7 @@ import {
   serializePolicyDetailForApi,
   stripCommissionFromPolicyYears,
 } from "./policy-detail-read.js";
+import { resolvePolicyRenewalStatus } from "./policy-renewal-status.js";
 import { queryFuturePremiumPolicyDetails } from "./future-premium-policies.js";
 
 const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
@@ -472,7 +473,7 @@ export function createPolicyRouter(env: Env) {
       const listFilter = listFilterFromQuery(q);
 
       const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
-      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+      const where = await buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const listArgs = {
         where,
         sort: listFilter.sort,
@@ -552,7 +553,7 @@ export function createPolicyRouter(env: Env) {
       const q = policyExportPagedQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
       const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
-      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+      const where = await buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const [total, rows] = await Promise.all([
         prisma.policy.count({ where }),
         queryPolicyListForExport({
@@ -596,7 +597,7 @@ export function createPolicyRouter(env: Env) {
       const q = policyExportQuerySchema.parse(req.query);
       const listFilter = listFilterFromQuery(q);
       const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
-      const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+      const where = await buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
       const rows = await queryPolicyListForExport({ where, sort: listFilter.sort });
       if (rows.length === POLICY_LIST_EXPORT_MAX_ROWS) {
         const totalMatching = await prisma.policy.count({ where });
@@ -878,7 +879,7 @@ export function createPolicyRouter(env: Env) {
           listFilter.sort = "periodYearText_desc";
         }
         const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
-        const where = buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
+        const where = await buildPolicyListWhere(scope, req.userId!, req.permissions!, listFilter);
         const result = await queryFuturePremiumPolicyDetails(
           where,
           listFilter.sort,
@@ -903,7 +904,8 @@ export function createPolicyRouter(env: Env) {
       stripCommissionFromPolicyYears(row, req.permissions!);
       const categoryByKey = await loadCategoryByKeyMap();
       const category = resolveCategoryRef(row.category, row.categoryText, categoryByKey);
-      res.json(serializePolicyDetailForApi(row, req.permissions!, category));
+      const renewalStatus = await resolvePolicyRenewalStatus(row);
+      res.json(serializePolicyDetailForApi(row, req.permissions!, category, renewalStatus));
     } catch (e) {
       next(e);
     }
