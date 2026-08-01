@@ -3,7 +3,7 @@ import { normPolicyKey } from "@/lib/svkk/premium/storage";
 import type { MemberInput, PolicyKey, PremiumState, Quote } from "@/lib/svkk/premium/types";
 import { normalizeCategoryKey } from "@/lib/svkk/category-display";
 import type { AdPolicyFormValues } from "./ad-policy-form-values";
-import { genderToQuoteInput, parseInrForCalc, resolveQuoteSumInsured } from "./ad-policy-auto-calc";
+import { genderToQuoteInput, parseInrForCalc } from "./ad-policy-auto-calc";
 
 /** Policy types that participate in the Category B/C base-premium helper. */
 export const CATEGORY_BC_HELPER_POLICY_TYPES = [
@@ -45,24 +45,29 @@ export type CategoryBcHelperEligibility = {
   actualSi: number;
   baseSi: number;
   triggerSi: number;
-  /** Stable key for dedupe: category|policyType|actualSi */
+  /**
+   * Trigger key for change detection (category|policyType|actualSi).
+   * Empty when not eligible. Used only to detect changes — not as a permanent suppress list.
+   */
   fingerprint: string;
 };
 
 /**
  * Whether the Category B/C base-premium helper should be offered for the current
  * Category + Policy Type + Sum Insured combination.
+ *
+ * Uses the policy-level Sum Insured field only (not member SI fallback), so member
+ * edits do not re-trigger the popup.
  */
 export function resolveCategoryBcBasePremiumEligibility(input: {
   category: string;
   policyType: string;
   sumInsured: string;
-  members?: ReadonlyArray<{ sumInsured?: string }>;
 }): CategoryBcHelperEligibility {
   const category = normalizeCategoryKey(input.category);
   const policyTypeRaw = normPolicyKey(input.policyType || "");
   const policyType = isCategoryBcHelperPolicyType(policyTypeRaw) ? policyTypeRaw : null;
-  const actualSi = resolveQuoteSumInsured(input.sumInsured, input.members ?? []);
+  const actualSi = parseInrForCalc(input.sumInsured);
 
   const empty: CategoryBcHelperEligibility = {
     eligible: false,
@@ -92,6 +97,26 @@ export function resolveCategoryBcBasePremiumEligibility(input: {
     triggerSi,
     fingerprint,
   };
+}
+
+/**
+ * Change-driven open decision: open whenever the eligibility trigger key changes
+ * to a new eligible combination — even if that combination was shown earlier.
+ * Unrelated field edits leave the key unchanged → do not open.
+ * Ineligible / empty key resets tracking so the next eligible change opens again.
+ */
+export function shouldOpenCategoryBcBasePremiumOnTriggerChange(input: {
+  eligible: boolean;
+  fingerprint: string;
+  previousFingerprint: string | null;
+}): { open: boolean; nextPreviousFingerprint: string | null } {
+  if (!input.eligible || !input.fingerprint) {
+    return { open: false, nextPreviousFingerprint: null };
+  }
+  if (input.fingerprint === input.previousFingerprint) {
+    return { open: false, nextPreviousFingerprint: input.previousFingerprint };
+  }
+  return { open: true, nextPreviousFingerprint: input.fingerprint };
 }
 
 /** Human label for the base SI slab used in the helper. */

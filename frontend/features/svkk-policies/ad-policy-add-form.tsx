@@ -103,6 +103,7 @@ import {
   formatCategoryBcHelperPremiumValue,
   quoteCategoryBcBasePremium,
   resolveCategoryBcBasePremiumEligibility,
+  shouldOpenCategoryBcBasePremiumOnTriggerChange,
 } from "./category-bc-base-premium-helper";
 
 export type { AdMemberRow } from "./ad-member-types";
@@ -772,7 +773,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const isHydratingRef = useRef(false);
   /** Category B/C base-premium helper (create/renew only). */
   const [bcBasePremiumOpen, setBcBasePremiumOpen] = useState(false);
-  const bcHelperShownFingerprintsRef = useRef(new Set<string>());
+  /** Last Category|Type|SI key we already opened for; cleared on ineligible so repeats reopen. */
+  const bcHelperLastTriggerKeyRef = useRef<string | null>(null);
+  /** Bumped after hydrate/carry-forward so the helper effect re-evaluates (refs alone do not). */
+  const [bcHelperEvalEpoch, setBcHelperEvalEpoch] = useState(0);
 
   const autoCalcContext = useMemo(
     () => ({ isEdit, fetchedForUpdate: Boolean(fetchedPolicyForUpdate) }),
@@ -1341,6 +1345,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             });
           } finally {
             isHydratingRef.current = false;
+            // Allow helper to open for the carried-forward eligible combo, then on later SI changes.
+            bcHelperLastTriggerKeyRef.current = null;
+            setBcHelperEvalEpoch((n) => n + 1);
             setCarryForwardBusy(false);
           }
         };
@@ -2095,9 +2102,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
         category: values.cat,
         policyType: values.adProduct,
         sumInsured: values.sumInsured,
-        members: values.members,
       }),
-    [values.cat, values.adProduct, values.sumInsured, values.members],
+    [values.cat, values.adProduct, values.sumInsured],
   );
 
   const bcBasePremiumQuote = useMemo(() => {
@@ -2116,16 +2122,16 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     if (autoCalcLocked || premiumCalcBlocked || isHydratingRef.current) {
       return;
     }
-    if (!bcBasePremiumEligibility.eligible || !bcBasePremiumEligibility.fingerprint) {
-      return;
+    const decision = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: bcBasePremiumEligibility.eligible,
+      fingerprint: bcBasePremiumEligibility.fingerprint,
+      previousFingerprint: bcHelperLastTriggerKeyRef.current,
+    });
+    bcHelperLastTriggerKeyRef.current = decision.nextPreviousFingerprint;
+    if (decision.open) {
+      setBcBasePremiumOpen(true);
     }
-    const fp = bcBasePremiumEligibility.fingerprint;
-    if (bcHelperShownFingerprintsRef.current.has(fp)) {
-      return;
-    }
-    bcHelperShownFingerprintsRef.current.add(fp);
-    setBcBasePremiumOpen(true);
-  }, [autoCalcLocked, premiumCalcBlocked, bcBasePremiumEligibility]);
+  }, [autoCalcLocked, premiumCalcBlocked, bcBasePremiumEligibility, bcHelperEvalEpoch]);
 
   const openBcBasePremiumHelper = useCallback(() => {
     if (!bcBasePremiumEligibility.eligible) {
@@ -2136,7 +2142,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       return;
     }
     if (bcBasePremiumEligibility.fingerprint) {
-      bcHelperShownFingerprintsRef.current.add(bcBasePremiumEligibility.fingerprint);
+      bcHelperLastTriggerKeyRef.current = bcBasePremiumEligibility.fingerprint;
     }
     setBcBasePremiumOpen(true);
   }, [bcBasePremiumEligibility]);

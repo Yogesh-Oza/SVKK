@@ -6,6 +6,7 @@ import {
   formatCategoryBcHelperPremiumValue,
   isCategoryBc,
   resolveCategoryBcBasePremiumEligibility,
+  shouldOpenCategoryBcBasePremiumOnTriggerChange,
 } from "./category-bc-base-premium-helper";
 
 describe("resolveCategoryBcBasePremiumEligibility", () => {
@@ -127,6 +128,84 @@ describe("resolveCategoryBcBasePremiumEligibility", () => {
     expect(r.eligible).toBe(true);
     expect(r.baseSi).toBe(100_000);
     expect(r.fingerprint).toBe("b|individual|1750000");
+  });
+});
+
+describe("shouldOpenCategoryBcBasePremiumOnTriggerChange", () => {
+  it("opens on each eligible SI change including returning to a prior SI", () => {
+    let prev: string | null = null;
+
+    let d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "b|asha_kiran|400000",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(true);
+    prev = d.nextPreviousFingerprint;
+
+    d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "b|asha_kiran|300000",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(true);
+    prev = d.nextPreviousFingerprint;
+
+    d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "b|asha_kiran|400000",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(true);
+    expect(d.nextPreviousFingerprint).toBe("b|asha_kiran|400000");
+  });
+
+  it("does not reopen while the same eligible combo stays selected", () => {
+    const d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "b|individual|200000",
+      previousFingerprint: "b|individual|200000",
+    });
+    expect(d.open).toBe(false);
+    expect(d.nextPreviousFingerprint).toBe("b|individual|200000");
+  });
+
+  it("resets tracking when crossing below threshold so later eligible SI opens again", () => {
+    let prev: string | null = "b|asha_kiran|400000";
+
+    let d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: false,
+      fingerprint: "",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(false);
+    expect(d.nextPreviousFingerprint).toBeNull();
+    prev = d.nextPreviousFingerprint;
+
+    d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "b|asha_kiran|400000",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(true);
+  });
+
+  it("opens when category returns to B/C while SI stays eligible", () => {
+    let prev: string | null = "b|family_floater|500000";
+
+    let d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: false,
+      fingerprint: "",
+      previousFingerprint: prev,
+    });
+    prev = d.nextPreviousFingerprint;
+
+    d = shouldOpenCategoryBcBasePremiumOnTriggerChange({
+      eligible: true,
+      fingerprint: "c|family_floater|500000",
+      previousFingerprint: prev,
+    });
+    expect(d.open).toBe(true);
   });
 });
 
