@@ -217,6 +217,12 @@ export function transformPolicyRow(row: LegacyPolicyRow): TransformedPolicy {
     periodYearText: row.year?.trim() || null,
     periodMonthText: row.month != null ? String(row.month).trim().slice(0, 20) : null,
     adProductVariant: variantFromPolicyType(row.policy_type),
+    holderName: row.policy_holder?.trim() || "Unknown",
+    holderDateOfBirth: holderDob,
+    holderPan: row.pan_no?.trim()?.slice(0, 20)?.toUpperCase() || null,
+    holderCustomerId: row.customer_id?.trim() || "",
+    holderEmail: row.email?.trim() || "",
+    holderMobile: mobile || "",
   };
 
   const chequeBits = [

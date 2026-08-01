@@ -287,22 +287,14 @@ async function updatePolicyCsvRow(
 
   const year = pickPolicyYearForCsvUpdate(policy, yearCsv);
 
-  const partyUpdate: Prisma.InsuredPartyUpdateInput = {};
-  const customerId = getCsvField(map, "Customer ID");
-  if (customerId) partyUpdate.customerId = customerId;
-  const email = getCsvField(map, "email");
-  if (email) partyUpdate.email = email;
-  const primaryMobile = getCsvField(map, "Primary Mobile Number");
-  if (primaryMobile) partyUpdate.mobile = normalizeMobile(primaryMobile);
-
-  if (Object.keys(partyUpdate).length) {
-    await tx.insuredParty.update({
-      where: { id: policy.insuredPartyId },
-      data: partyUpdate,
-    });
-  }
-
   const policyUpdate: Prisma.PolicyUpdateInput = {};
+  // Customer ID / Email / Mobile are policy snapshots — do not mutate shared InsuredParty.
+  const holderCustomerId = getCsvField(map, "Customer ID");
+  if (holderCustomerId) policyUpdate.holderCustomerId = holderCustomerId;
+  const email = getCsvField(map, "email");
+  if (email) policyUpdate.holderEmail = email;
+  const primaryMobile = getCsvField(map, "Primary Mobile Number");
+  if (primaryMobile) policyUpdate.holderMobile = normalizeMobile(primaryMobile);
   const holderName = getCsvField(map, "Holder name");
   if (holderName) policyUpdate.holderName = holderName;
   const pan = getCsvField(map, "Holder PAN");

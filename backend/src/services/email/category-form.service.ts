@@ -8,7 +8,7 @@ import { writeEmailActivityLog } from "./email-activity-log.service.js";
 import { extractEmailBody, wrapEmailBodyForTemplate } from "./email-layout.js";
 import { isEmailConfigured, sendEmail } from "./email.service.js";
 import { EMAIL_TEMPLATE_SAMPLE_VARS } from "./email-template-sample-vars.js";
-import { templateVarsFromPolicy, type PolicyBundle } from "./policy-template-vars.js";
+import { templateVarsFromPolicy, holderEmailFromBundle, holderNameFromBundle, type PolicyBundle } from "./policy-template-vars.js";
 
 export const CATEGORY_FORM_TEMPLATE_ID = "category_form";
 
@@ -196,6 +196,8 @@ async function loadPoliciesForCategories(categoryIds: string[]): Promise<Categor
       village: true,
       policyUrl: true,
       policyUrl2: true,
+      holderName: true,
+      holderEmail: true,
       insuredParty: { select: { name: true, email: true, svkkPublicId: true } },
       years: {
         where: { deletedAt: null },
@@ -217,7 +219,7 @@ export async function previewCategoryFormRecipients(
   const policies = await loadPoliciesForCategories(uniqueIds);
   let emailableCount = 0;
   for (const p of policies) {
-    if (isEmailableHolderEmail(p.insuredParty.email)) emailableCount += 1;
+    if (isEmailableHolderEmail(holderEmailFromBundle(p))) emailableCount += 1;
   }
   return {
     policyCount: policies.length,
@@ -374,7 +376,7 @@ export async function sendCategoryFormToCategories(
   let failed = 0;
 
   for (const policy of policies) {
-    const to = policy.insuredParty.email;
+    const to = holderEmailFromBundle(policy);
     if (!isEmailableHolderEmail(to)) {
       skipped += 1;
       const rendered = renderCategoryFormDraft(input.subject, input.body, templateVarsFromPolicy(env, policy));
@@ -385,7 +387,7 @@ export async function sendCategoryFormToCategories(
           source: "category_form_send",
           entityType: "Policy",
           entityId: policy.id,
-          holderName: policy.insuredParty.name,
+          holderName: holderNameFromBundle(policy),
           policyNo: policy.policyNo ?? "—",
           referenceNo: policy.referenceNo ?? "—",
           svkkPublicId: policy.insuredParty.svkkPublicId,

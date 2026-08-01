@@ -80,13 +80,12 @@ async function updateInsuredParty(
   t: InsuredPartyResolveInput,
   migrationRunId: string,
 ): Promise<InsuredParty> {
+  // Do not overwrite shared party contact fields — each policy row carries its own
+  // holderCustomerId / holderEmail / holderMobile snapshots on Policy.
   await tx.insuredParty.update({
     where: { id: party.id },
     data: {
       name: t.partyName,
-      email: t.email ?? undefined,
-      mobile: t.mobile,
-      customerId: t.customerId ?? party.customerId ?? undefined,
       pan: t.pan ?? party.pan,
       dateOfBirth: t.holderDob ?? party.dateOfBirth,
       migratedRunId: migrationRunId,

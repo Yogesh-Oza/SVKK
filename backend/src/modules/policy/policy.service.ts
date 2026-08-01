@@ -19,7 +19,6 @@ import {
   rethrowInsuredPartyUniqueConflict,
   svkkPublicIdsEqual,
 } from "./insured-party-identity.js";
-import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
 import { resolveInsuredPartyForPolicyCreate } from "./policy-create-insured-party.js";
 import { allocateCounter, formatSvkkId } from "../../services/counter.service.js";
 import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../services/receipt.service.js";
@@ -154,6 +153,8 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         ? customSvkk
         : generatedSvkkPublicId || formatSvkkId(period, await allocateCounter(CounterType.SVKK_PUBLIC_ID, period, tx));
       try {
+        // Seed InsuredParty master on first create only. Later policies snapshot
+        // customerId/email/mobile on Policy so edits stay year-isolated.
         party = await tx.insuredParty.create({
           data: {
             mobile,
@@ -169,19 +170,12 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       } catch (e) {
         rethrowInsuredPartyUniqueConflict(e);
       }
-    } else {
-      const partyUpdate: Prisma.InsuredPartyUpdateInput = {
-        email: input.email ?? undefined,
-        customerId: customerId ?? party.customerId ?? undefined,
-        ...(customSvkk ? { svkkPublicId: customSvkk } : {}),
-      };
-      const hasPartyUpdate = Object.values(partyUpdate).some((v) => v !== undefined);
-      if (hasPartyUpdate) {
-        party = await tx.insuredParty.update({
-          where: { id: party.id },
-          data: partyUpdate,
-        });
-      }
+    } else if (customSvkk && !svkkPublicIdsEqual(customSvkk, party.svkkPublicId)) {
+      // SVKK ID is shared identity — allow rename on the party row only.
+      party = await tx.insuredParty.update({
+        where: { id: party.id },
+        data: { svkkPublicId: customSvkk },
+      });
     }
 
     const holderSnapshot = holderSnapshotFromInput({
@@ -189,6 +183,9 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       dateOfBirth: input.dateOfBirth ?? null,
       pan: input.pan ?? null,
       aadhaarNo: input.aadhaarNo ?? null,
+      customerId,
+      email: input.email ?? null,
+      mobile,
     });
 
     const expected =
@@ -253,6 +250,9 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           holderDateOfBirth: holderSnapshot.holderDateOfBirth ?? undefined,
           holderPan: holderSnapshot.holderPan ?? undefined,
           holderAadhaarNo: holderSnapshot.holderAadhaarNo ?? undefined,
+          holderCustomerId: holderSnapshot.holderCustomerId ?? undefined,
+          holderEmail: holderSnapshot.holderEmail ?? undefined,
+          holderMobile: holderSnapshot.holderMobile ?? undefined,
           holderAge: input.holderAge ?? holderAgeAtExpiry ?? undefined,
           personsInsuredCount: personsCount,
           area: input.area ?? undefined,
@@ -576,6 +576,9 @@ export type PolicySectionPatch = {
   holderDateOfBirth?: Date | null;
   holderPan?: string | null;
   holderAadhaarNo?: string | null;
+  holderCustomerId?: string | null;
+  holderEmail?: string | null;
+  holderMobile?: string | null;
   holderAge?: number | null;
   holderJoiningDate?: Date | null;
   holderAddOns?: number | null;
@@ -661,23 +664,13 @@ async function applyInsuredPartyPatch(
 ): Promise<boolean> {
   const slim = slimInsuredPartyPatch(patch);
   const data: Prisma.InsuredPartyUpdateInput = {};
-  if (slim.partyName !== undefined) data.name = slim.partyName;
-  if (slim.email !== undefined) data.email = slim.email === "" ? null : slim.email;
-  if (slim.pan !== undefined) data.pan = slim.pan;
-  if (slim.aadhaarNo !== undefined) data.aadhaarNo = slim.aadhaarNo;
-  if (slim.dateOfBirth !== undefined) data.dateOfBirth = slim.dateOfBirth;
-  if (slim.customerId !== undefined) {
-    data.customerId = slim.customerId;
-  }
+  // Contact fields (customerId/email/mobile) and holder identity (name/DOB/PAN/Aadhaar)
+  // are routed to Policy snapshots — never mutate shared party from policy edit.
   if (slim.svkkPublicId !== undefined && slim.svkkPublicId != null) {
     data.svkkPublicId = normalizeSvkkPublicIdInput(slim.svkkPublicId) ?? slim.svkkPublicId;
   }
-  if (slim.mobile !== undefined) {
-    data.mobile = normalizeMobile(slim.mobile);
-  }
 
-  const hasMobilePatch = slim.mobile !== undefined;
-  if (Object.keys(data).length === 0 && !hasMobilePatch) {
+  if (Object.keys(data).length === 0) {
     return false;
   }
 
@@ -692,13 +685,6 @@ async function applyInsuredPartyPatch(
     currentMobile: current.mobile,
   });
 
-  if (hasMobilePatch) {
-    await reconcileInsuredPartyMobile(tx, current, slim.mobile!);
-    delete data.mobile;
-  }
-  if (Object.keys(data).length === 0) {
-    return true;
-  }
   if (
     incomingSvkk != null &&
     !svkkPublicIdsEqual(incomingSvkk, current.svkkPublicId)

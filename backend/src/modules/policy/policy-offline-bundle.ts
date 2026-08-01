@@ -6,7 +6,7 @@ import type { MisScope } from "../../services/mis-scope.service.js";
 import { buildPolicyReadWhere } from "../../services/mis-scope.service.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import { maskInsuredParty } from "../../domain/pii.js";
-import { overlayInsuredPartyWithPolicySnapshot, resolvePolicyHolderName } from "./policy-holder-snapshot.js";
+import { overlayInsuredPartyWithPolicySnapshot, resolvePolicyHolderName, resolvePolicyHolderCustomerId, resolvePolicyHolderEmail, resolvePolicyHolderMobile } from "./policy-holder-snapshot.js";
 import {
   buildPolicyListWhere,
   parsePolicyListOrderBy,
@@ -75,6 +75,9 @@ function maskParty(
     holderDateOfBirth?: Date | null;
     holderPan?: string | null;
     holderAadhaarNo?: string | null;
+    holderCustomerId?: string | null;
+    holderEmail?: string | null;
+    holderMobile?: string | null;
   },
 ) {
   return maskInsuredParty(
@@ -114,20 +117,21 @@ function toListRow(
   const y0 = r.years[0];
   const category = resolveCategoryRef(r.category, r.categoryText, categoryByKey);
   const party = r.insuredParty;
+  const overlaid = overlayInsuredPartyWithPolicySnapshot(party, r) ?? party;
   return {
     id: r.id,
     policyNo: r.policyNo,
     holderName: resolvePolicyHolderName(r, party),
     svkkId: party.svkkPublicId,
-    mobile: party.mobile ?? null,
-    email: party.email ?? null,
-    pan: party.pan ?? null,
+    mobile: resolvePolicyHolderMobile(r, party),
+    email: resolvePolicyHolderEmail(r, party),
+    pan: overlaid.pan ?? null,
     village: r.village,
     area: r.area,
     yearLabel,
     periodMonthText: r.periodMonthText,
     periodYearText: r.periodYearText,
-    customerId: party.customerId,
+    customerId: resolvePolicyHolderCustomerId(r, party),
     previousPolicyNo: r.previousPolicyNo,
     referenceNo: r.referenceNo,
     vkkPremium: decimalStr(y0?.vkkPremium ?? r.listVkkPremium),
@@ -151,11 +155,11 @@ function toListRow(
     categoryText: r.categoryText,
     insuredParty: {
       svkkPublicId: party.svkkPublicId,
-      name: party.name,
-      mobile: party.mobile,
-      email: party.email,
-      customerId: party.customerId,
-      pan: party.pan,
+      name: resolvePolicyHolderName(r, party),
+      mobile: resolvePolicyHolderMobile(r, party) ?? party.mobile,
+      email: resolvePolicyHolderEmail(r, party),
+      customerId: resolvePolicyHolderCustomerId(r, party),
+      pan: overlaid.pan ?? null,
     },
     years: r.years.map((y) => ({
       yearLabel: y.yearLabel,

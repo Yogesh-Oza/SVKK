@@ -4,7 +4,6 @@ import {
   findInsuredPartyBySvkkPublicId,
   normalizeSvkkPublicIdInput,
 } from "./insured-party-identity.js";
-import { reconcileInsuredPartyMobile } from "./insured-party-mobile.js";
 
 export type ResolveInsuredPartyInput = {
   customSvkk: string | null;
@@ -15,6 +14,9 @@ export type ResolveInsuredPartyInput = {
  * Find an existing insured party for policy create.
  * Matches by SVKK ID only (carry-forward / renewal).
  * Mobile and customer ID are not unique and must not merge holders.
+ *
+ * Does NOT mutate party mobile/email/customerId — those are stored as
+ * per-policy snapshots on the new Policy row.
  */
 export async function resolveInsuredPartyForPolicyCreate(
   tx: Prisma.TransactionClient,
@@ -33,9 +35,5 @@ export async function resolveInsuredPartyForPolicyCreate(
     matchedSvkkId: party?.svkkPublicId ?? null,
   });
 
-  if (!party) {
-    return null;
-  }
-
-  return reconcileInsuredPartyMobile(tx, party, input.mobile);
+  return party;
 }

@@ -14,7 +14,7 @@ import {
 } from "./policy.list.js";
 import type { MisScope } from "../../services/mis-scope.service.js";
 import { applyDisplayYearLabels } from "./policy-year-display.js";
-import { resolvePolicyHolderName } from "./policy-holder-snapshot.js";
+import { resolvePolicyHolderName, resolvePolicyHolderCustomerId, resolvePolicyHolderEmail, resolvePolicyHolderMobile } from "./policy-holder-snapshot.js";
 import {
   classifyPolicyRenewalStatus,
   comparePolicyRecencyDesc,
@@ -152,9 +152,9 @@ function buildGroupedItem(
       id: party.id,
       svkkPublicId: party.svkkPublicId,
       name: resolvePolicyHolderName(primary, party),
-      mobile: party.mobile,
-      email: party.email,
-      customerId: party.customerId,
+      mobile: resolvePolicyHolderMobile(primary, party) ?? party.mobile,
+      email: resolvePolicyHolderEmail(primary, party),
+      customerId: resolvePolicyHolderCustomerId(primary, party),
       pan: party.pan,
     },
     primaryPolicyId: primary.id,
@@ -190,25 +190,12 @@ type PartyPageOrder = Prisma.InsuredPartyOrderByWithRelationInput;
 
 function partyOrderFromSort(sort: string | undefined): PartyPageOrder {
   switch (sort) {
-    case "name":
-      return { name: "asc" };
-    case "-name":
-    case "name_desc":
-      return { name: "desc" };
     case "svkkId":
       return { svkkPublicId: "asc" };
     case "svkkId_desc":
       return { svkkPublicId: "desc" };
-    case "customerId":
-      return { customerId: "asc" };
-    case "customerId_desc":
-      return { customerId: "desc" };
-    case "mobile":
-      return { mobile: "asc" };
-    case "mobile_desc":
-      return { mobile: "desc" };
     default:
-      return { name: "asc" };
+      return { svkkPublicId: "asc" };
   }
 }
 
@@ -229,15 +216,9 @@ async function pageInsuredPartyIdsByPartySort(
 }
 
 const PARTY_SORT_KEYS = new Set([
-  "name",
-  "-name",
-  "name_desc",
+  // Only identity fields that live on InsuredParty (not policy contact snapshots).
   "svkkId",
   "svkkId_desc",
-  "customerId",
-  "customerId_desc",
-  "mobile",
-  "mobile_desc",
 ]);
 
 async function pageInsuredPartyIdsByDistinctPolicy(

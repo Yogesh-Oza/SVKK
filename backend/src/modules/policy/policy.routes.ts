@@ -349,11 +349,22 @@ function patchBodyToInput(
 function maskPolicyInsuredParty(
   permissions: Set<string>,
   policy: {
-    insuredParty: { name: string; dateOfBirth?: Date | null; pan?: string | null; aadhaarNo?: string | null };
+    insuredParty: {
+      name: string;
+      dateOfBirth?: Date | null;
+      pan?: string | null;
+      aadhaarNo?: string | null;
+      customerId?: string | null;
+      email?: string | null;
+      mobile?: string | null;
+    };
     holderName?: string | null;
     holderDateOfBirth?: Date | null;
     holderPan?: string | null;
     holderAadhaarNo?: string | null;
+    holderCustomerId?: string | null;
+    holderEmail?: string | null;
+    holderMobile?: string | null;
   },
 ) {
   return maskInsuredParty(

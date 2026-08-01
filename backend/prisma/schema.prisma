@@ -335,6 +335,10 @@ model Policy {
   holderDateOfBirth   DateTime?
   holderPan           String?           @db.VarChar(20)
   holderAadhaarNo     String?           @db.VarChar(12)
+  /// Contact/identity snapshots — policy-local; fall back to InsuredParty when null.
+  holderCustomerId    String?           @db.VarChar(64)
+  holderEmail         String?
+  holderMobile        String?           @db.VarChar(20)
   holderAge           Int?
   holderJoiningDate   DateTime?
   holderAddOns        Decimal?          @db.Decimal(14, 2)

@@ -13,6 +13,9 @@ import { AppError } from "../../errors/app-error.js";
 import { assertPolicyReadable, loadMisScope } from "../../services/mis-scope.service.js";
 import {
   resolvePolicyHolderAadhaar,
+  resolvePolicyHolderCustomerId,
+  resolvePolicyHolderEmail,
+  resolvePolicyHolderMobile,
   resolvePolicyHolderName,
   resolvePolicyHolderPan,
 } from "../policy/policy-holder-snapshot.js";
@@ -103,13 +106,19 @@ export function createReceiptRouter(env: Env) {
             : "",
           svkkId: policy.insuredParty?.svkkPublicId ?? "",
           policyType: policy.adProductVariant?.replaceAll("_", "-") || policy.policyType?.name || "",
-          customerId: policy.insuredParty?.customerId ?? "",
+          customerId: policy.insuredParty
+            ? resolvePolicyHolderCustomerId(policy, policy.insuredParty) ?? ""
+            : "",
           panNo: policy.insuredParty ? resolvePolicyHolderPan(policy, policy.insuredParty) ?? "" : "",
           aadhaarNo: policy.insuredParty
             ? resolvePolicyHolderAadhaar(policy, policy.insuredParty) ?? ""
             : "",
-          phoneNo: policy.insuredParty?.mobile ?? "",
-          emailId: policy.insuredParty?.email ?? "",
+          phoneNo: policy.insuredParty
+            ? resolvePolicyHolderMobile(policy, policy.insuredParty) ?? ""
+            : "",
+          emailId: policy.insuredParty
+            ? resolvePolicyHolderEmail(policy, policy.insuredParty) ?? ""
+            : "",
           area: policy.area ?? "",
           village: policy.village ?? "",
           personCount: policy.personsInsuredCount,

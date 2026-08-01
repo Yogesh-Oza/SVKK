@@ -36,10 +36,6 @@ function mockTx(overrides: {
   };
 }
 
-vi.mock("./insured-party-mobile.js", () => ({
-  reconcileInsuredPartyMobile: vi.fn(async (_tx, party: InsuredParty) => party),
-}));
-
 describe("resolveInsuredPartyForPolicyCreate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,13 +63,14 @@ describe("resolveInsuredPartyForPolicyCreate", () => {
     });
   });
 
-  it("matches by svkk id only", async () => {
+  it("matches by svkk id only without mutating party mobile", async () => {
     const tx = mockTx({ bySvkk: partyA });
     const out = await resolveInsuredPartyForPolicyCreate(tx as never, {
       customSvkk: "RTYMAY3042",
-      mobile: partyA.mobile,
+      mobile: "+919111222333",
     });
     expect(out).toEqual(partyA);
+    expect(tx.insuredParty.update).not.toHaveBeenCalled();
     expect(tx.insuredParty.findUnique).toHaveBeenCalledWith({
       where: { svkkPublicId: "RTYMAY3042" },
     });

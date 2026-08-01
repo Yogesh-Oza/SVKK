@@ -40,7 +40,10 @@ describe("policy CSV export column groups", () => {
     const name = members?.columns.find((c) => c.label === "Name");
     expect(name?.expandsTo).toContain("Member 1 Name");
     expect(name?.expandsTo).toContain("Member 12 Name");
-    expect(allPolicyCsvExportUiKeys(groups).length).toBeLessThan(100);
+    // UI keys grow as payment/member field groups expand; keep a soft ceiling so the
+    // picker stays one-row-per-logical-field (not one key per Payment N / Member N slot).
+    expect(allPolicyCsvExportUiKeys(groups).length).toBeLessThan(120);
+    expect(allPolicyCsvExportUiKeys(groups).length).toBeGreaterThan(40);
   });
 
   it("serializePolicyCsvExportColumnGroups omits expandsTo for the client", () => {

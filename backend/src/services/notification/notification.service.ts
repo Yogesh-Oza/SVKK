@@ -7,7 +7,7 @@ import { writeEmailActivityLog } from "../email/email-activity-log.service.js";
 import { renderEmailTemplate } from "../email/email-template.service.js";
 import type { EmailTemplateId } from "../email/email-template-catalog.js";
 import { buildReceiptFieldsHtml } from "../email/email-receipt-fields.js";
-import { loadPolicyBundle, templateVarsFromPolicy } from "../email/policy-template-vars.js";
+import { loadPolicyBundle, templateVarsFromPolicy, holderEmailFromBundle, holderNameFromBundle } from "../email/policy-template-vars.js";
 import { parseRemarks } from "../../modules/policy/policy-csv-utils.js";
 import { formatDateDmy } from "./policy-url.js";
 
@@ -33,11 +33,17 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
       area: true,
       contactPhone: true,
       remarks: true,
+      holderCustomerId: true,
+      holderEmail: true,
+      holderMobile: true,
+      holderName: true,
       insuredParty: {
         select: {
+          name: true,
           svkkPublicId: true,
           customerId: true,
           email: true,
+          mobile: true,
           pan: true,
           aadhaarNo: true,
         },
@@ -49,18 +55,23 @@ async function receiptFieldsHtmlForPolicy(policyId: string, holderName: string):
   });
 
   const ip = policy?.insuredParty;
+  const { resolvePolicyHolderCustomerId, resolvePolicyHolderEmail, resolvePolicyHolderMobile, resolvePolicyHolderName } =
+    await import("../../modules/policy/policy-holder-snapshot.js");
   const remarkParts = parseRemarks(policy?.remarks);
   return buildReceiptFieldsHtml({
     receiptNo: receipt.receiptNo,
     receiptDate: formatDateDmy(receipt.policyDate),
     svkkId: ip?.svkkPublicId ?? "",
-    customerId: ip?.customerId ?? "",
-    policyHolderName: holderName,
+    customerId: policy && ip ? resolvePolicyHolderCustomerId(policy, ip) ?? "" : "",
+    policyHolderName: policy && ip ? resolvePolicyHolderName(policy, ip) : holderName,
     policyNo: policy?.policyNo ?? "",
     previousPolicyNo: policy?.previousPolicyNo ?? "",
     area: policy?.area ?? "",
-    phoneNo: policy?.contactPhone ?? "",
-    emailId: ip?.email ?? "",
+    phoneNo:
+      (policy && ip ? resolvePolicyHolderMobile(policy, ip) : null) ??
+      policy?.contactPhone ??
+      "",
+    emailId: policy && ip ? resolvePolicyHolderEmail(policy, ip) ?? "" : "",
     village: policy?.village ?? "",
     personCount: policy?.personsInsuredCount != null ? String(policy.personsInsuredCount) : "",
     category: policy?.category?.name ?? "",
@@ -149,14 +160,17 @@ export async function notifyPolicyCreated(
   const p = await loadPolicyBundle(input.policyId);
   if (!p) return;
 
-  const receiptFields = await receiptFieldsHtmlForPolicy(p.id, p.insuredParty.name);
+  const holderEmail = holderEmailFromBundle(p);
+  const holderName = holderNameFromBundle(p);
+
+  const receiptFields = await receiptFieldsHtmlForPolicy(p.id, holderName);
   const vars = { ...templateVarsFromPolicy(env, p), receiptFields };
   const { staffLinkUrl } = resolveNotificationLinks(env, p);
   const emailSent = await emailHolderIfPossible(
     env,
     log,
     "mediclaim_new_policy_ack",
-    p.insuredParty.email,
+    holderEmail,
     vars,
     { userId: input.actorUserId, policyId: p.id, source: "policy_created" },
   );
@@ -165,12 +179,12 @@ export async function notifyPolicyCreated(
     policyId: p.id,
     type: NotificationType.POLICY_CREATED,
     title: "Policy created",
-    body: `${p.insuredParty.name} — ${p.referenceNo ?? p.insuredParty.svkkPublicId}${
+    body: `${holderName} — ${p.referenceNo ?? p.insuredParty.svkkPublicId}${
       emailSent ? " (email sent)" : isEmailConfigured(env) ? "" : " (email not configured)"
     }`,
     linkUrl: staffLinkUrl,
     actorUserId: input.actorUserId,
-    emailTo: p.insuredParty.email,
+    emailTo: holderEmail,
     emailSent,
   });
 }
@@ -190,13 +204,16 @@ export async function notifyPolicyNumberOrDocumentUpdated(
   const p = await loadPolicyBundle(input.policyId);
   if (!p) return;
 
+  const holderEmail = holderEmailFromBundle(p);
+  const holderName = holderNameFromBundle(p);
+
   const vars = templateVarsFromPolicy(env, p);
   const { staffLinkUrl } = resolveNotificationLinks(env, p);
   const emailSent = await emailHolderIfPossible(
     env,
     log,
     "policy_number_updated",
-    p.insuredParty.email,
+    holderEmail,
     vars,
     { userId: input.actorUserId, policyId: p.id, source: "policy_number_updated" },
   );
@@ -209,10 +226,10 @@ export async function notifyPolicyNumberOrDocumentUpdated(
     policyId: p.id,
     type: NotificationType.POLICY_NUMBER_UPDATED,
     title: "Policy number / document updated",
-    body: `${p.insuredParty.name} — ${parts.join("; ")}`,
+    body: `${holderName} — ${parts.join("; ")}`,
     linkUrl: staffLinkUrl,
     actorUserId: input.actorUserId,
-    emailTo: p.insuredParty.email,
+    emailTo: holderEmail,
     emailSent,
   });
 }

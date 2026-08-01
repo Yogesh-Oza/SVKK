@@ -6,7 +6,7 @@ import {
   buildPolicyReadWhere,
   type GeoScope,
 } from "../../services/mis-scope.service.js";
-import { resolvePolicyHolderName } from "./policy-holder-snapshot.js";
+import { resolvePolicyHolderName, resolvePolicyHolderCustomerId } from "./policy-holder-snapshot.js";
 
 const archivedPolicy: Prisma.PolicyWhereInput = { deletedAt: { not: null } };
 
@@ -83,9 +83,14 @@ export async function queryArchivedPolicies(args: {
               { archivedReferenceNo: { contains: search } },
               { village: { contains: search } },
               { holderName: { contains: search } },
+              { holderCustomerId: { contains: search } },
+              { holderEmail: { contains: search } },
+              { holderMobile: { contains: search } },
               { insuredParty: { name: { contains: search } } },
               { insuredParty: { svkkPublicId: { contains: search } } },
               { insuredParty: { customerId: { contains: search } } },
+              { insuredParty: { email: { contains: search } } },
+              { insuredParty: { mobile: { contains: search } } },
             ],
           },
         ],
@@ -111,6 +116,7 @@ export async function queryArchivedPolicies(args: {
         village: true,
         area: true,
         holderName: true,
+        holderCustomerId: true,
         periodYearText: true,
         policyType: { select: { id: true, key: true, name: true } },
         insuredParty: {
@@ -136,8 +142,12 @@ export async function queryArchivedPolicies(args: {
       periodYearText: r.periodYearText,
       yearLabel: r.periodYearText?.trim() || r.years[0]?.yearLabel || null,
       policyType: r.policyType,
-      insuredParty: r.insuredParty,
-      holderName: r.holderName,
+      insuredParty: {
+        ...r.insuredParty,
+        name: resolvePolicyHolderName(r, r.insuredParty) || r.insuredParty.name,
+        customerId: resolvePolicyHolderCustomerId(r, r.insuredParty),
+      },
+      holderName: resolvePolicyHolderName(r, r.insuredParty) || r.holderName,
     })),
     total,
     page,

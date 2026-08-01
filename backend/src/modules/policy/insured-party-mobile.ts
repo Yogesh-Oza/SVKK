@@ -5,6 +5,10 @@ import { debugInsuredPartyIdentity, rethrowInsuredPartyUniqueConflict } from "./
 /**
  * Updates an insured party's mobile when the normalized number changed.
  * Mobile is not unique — the same number may exist on other holders.
+ *
+ * Policy create/edit/CSV must NOT call this for historical isolation —
+ * primary mobile is stored on Policy.holderMobile. Kept for admin/tools
+ * that intentionally update the party master seed only.
  */
 export async function reconcileInsuredPartyMobile(
   tx: Prisma.TransactionClient,

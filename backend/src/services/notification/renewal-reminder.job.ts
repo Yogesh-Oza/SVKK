@@ -52,18 +52,22 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
       include: {
         policy: {
           include: {
-            insuredParty: { select: { name: true, email: true, svkkPublicId: true } },
+            insuredParty: { select: { name: true, email: true, svkkPublicId: true, mobile: true } },
           },
         },
       },
     });
 
+    const { resolvePolicyHolderEmail, resolvePolicyHolderName } = await import(
+      "../../modules/policy/policy-holder-snapshot.js"
+    );
+
     for (const py of years) {
       const p = py.policy;
-      const email = p.insuredParty.email?.trim();
+      const email = resolvePolicyHolderEmail(p, p.insuredParty)?.trim();
       const links = resolveNotificationLinks(env, p);
       const vars = {
-        holderName: p.insuredParty.name,
+        holderName: resolvePolicyHolderName(p, p.insuredParty),
         policyNo: p.policyNo ?? "—",
         yearLabel: py.yearLabel,
         policyEndDate: formatDateDmy(py.policyEnd),
@@ -87,7 +91,7 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
             source: "renewal_reminder",
             entityType: "Policy",
             entityId: p.id,
-            holderName: p.insuredParty.name,
+            holderName: resolvePolicyHolderName(p, p.insuredParty),
             policyNo: p.policyNo ?? undefined,
             referenceNo: p.referenceNo ?? undefined,
             svkkPublicId: p.insuredParty.svkkPublicId,
@@ -102,7 +106,7 @@ export async function runRenewalReminderJob(env: Env, log: AppLogger): Promise<v
             source: "renewal_reminder",
             entityType: "Policy",
             entityId: p.id,
-            holderName: p.insuredParty.name,
+            holderName: resolvePolicyHolderName(p, p.insuredParty),
             policyNo: p.policyNo ?? undefined,
             referenceNo: p.referenceNo ?? undefined,
             svkkPublicId: p.insuredParty.svkkPublicId,
