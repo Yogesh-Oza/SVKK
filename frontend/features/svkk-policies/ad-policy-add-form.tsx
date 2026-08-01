@@ -97,7 +97,7 @@ import {
 } from "./ad-policy-auto-calc";
 import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
 import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
-import { canAutoFillDobFromAge, dobFromAgeUsingToday, shouldApplyDobFromAge } from "./age-dob-reverse";
+import { dobFromAgeUsingToday, shouldApplyDobFromAge } from "./age-dob-reverse";
 import { CategoryBcBasePremiumDialog } from "./category-bc-base-premium-dialog";
 import {
   categoryBcHelperFieldHint,
