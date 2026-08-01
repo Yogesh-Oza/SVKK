@@ -42,9 +42,6 @@ function resolvePolicyGrouping(values: AdPolicyFormValues): string | null {
 }
 
 function mapLoanRepaymentFields(values: AdPolicyFormValues) {
-  if (values.loanStatus !== "YES") {
-    return { loanRepaymentAmount: null, loanPendingAmount: null };
-  }
   return {
     loanRepaymentAmount: parseNum(values.loanRepayment) ?? null,
     loanPendingAmount: parseNum(values.loanPendingAmount) ?? null,

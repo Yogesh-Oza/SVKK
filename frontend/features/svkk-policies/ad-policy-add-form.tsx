@@ -97,6 +97,13 @@ import {
 } from "./ad-policy-auto-calc";
 import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
 import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
+import { CategoryBcBasePremiumDialog } from "./category-bc-base-premium-dialog";
+import {
+  categoryBcHelperFieldHint,
+  formatCategoryBcHelperPremiumValue,
+  quoteCategoryBcBasePremium,
+  resolveCategoryBcBasePremiumEligibility,
+} from "./category-bc-base-premium-helper";
 
 export type { AdMemberRow } from "./ad-member-types";
 
@@ -763,6 +770,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   /** After fetch/edit hydrate: summary ages match DB until user edits age-anchor fields. */
   const [useStoredSummaryAges, setUseStoredSummaryAges] = useState(true);
   const isHydratingRef = useRef(false);
+  /** Category B/C base-premium helper (create/renew only). */
+  const [bcBasePremiumOpen, setBcBasePremiumOpen] = useState(false);
+  const bcHelperShownFingerprintsRef = useRef(new Set<string>());
 
   const autoCalcContext = useMemo(
     () => ({ isEdit, fetchedForUpdate: Boolean(fetchedPolicyForUpdate) }),
@@ -2079,6 +2089,81 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     setAutoField("diffAmt", differenceAmountPaidByHolder);
   }, [autoCalcLocked, premiumCalcBlocked, premiumManual, liveQuote, setFieldValue, values]);
 
+  const bcBasePremiumEligibility = useMemo(
+    () =>
+      resolveCategoryBcBasePremiumEligibility({
+        category: values.cat,
+        policyType: values.adProduct,
+        sumInsured: values.sumInsured,
+        members: values.members,
+      }),
+    [values.cat, values.adProduct, values.sumInsured, values.members],
+  );
+
+  const bcBasePremiumQuote = useMemo(() => {
+    if (!bcBasePremiumEligibility.eligible || !bcBasePremiumEligibility.policyType) {
+      return null;
+    }
+    return quoteCategoryBcBasePremium({
+      values,
+      premiumState,
+      baseSi: bcBasePremiumEligibility.baseSi,
+      policyType: bcBasePremiumEligibility.policyType,
+    });
+  }, [bcBasePremiumEligibility, premiumState, values]);
+
+  useEffect(() => {
+    if (autoCalcLocked || premiumCalcBlocked || isHydratingRef.current) {
+      return;
+    }
+    if (!bcBasePremiumEligibility.eligible || !bcBasePremiumEligibility.fingerprint) {
+      return;
+    }
+    const fp = bcBasePremiumEligibility.fingerprint;
+    if (bcHelperShownFingerprintsRef.current.has(fp)) {
+      return;
+    }
+    bcHelperShownFingerprintsRef.current.add(fp);
+    setBcBasePremiumOpen(true);
+  }, [autoCalcLocked, premiumCalcBlocked, bcBasePremiumEligibility]);
+
+  const openBcBasePremiumHelper = useCallback(() => {
+    if (!bcBasePremiumEligibility.eligible) {
+      toast.message("Base premium helper", {
+        description:
+          "Available for Category B/C when Sum Insured meets the threshold for this policy type.",
+      });
+      return;
+    }
+    if (bcBasePremiumEligibility.fingerprint) {
+      bcHelperShownFingerprintsRef.current.add(bcBasePremiumEligibility.fingerprint);
+    }
+    setBcBasePremiumOpen(true);
+  }, [bcBasePremiumEligibility]);
+
+  const applyBcBasePremium = useCallback(
+    (premiumValue: string) => {
+      const next = formatCategoryBcHelperPremiumValue(Number(premiumValue));
+      setPremiumManual((prev) => {
+        const cleared: Record<string, boolean> = { ...prev, twoLakhF: true };
+        delete cleared.policyHolderPremium;
+        delete cleared.contribution;
+        delete cleared.gaamMahajan;
+        delete cleared.differenceAmountPaidByHolder;
+        delete cleared.diffAmt;
+        return cleared;
+      });
+      void setFieldValue("twoLakhF", next);
+      setBcBasePremiumOpen(false);
+      toast.success("Base premium applied", {
+        description: bcBasePremiumEligibility.policyType
+          ? categoryBcHelperFieldHint(bcBasePremiumEligibility.policyType)
+          : undefined,
+      });
+    },
+    [bcBasePremiumEligibility.policyType, setFieldValue],
+  );
+
   const adProductSelectValue = useMemo(() => {
     const raw = (values.adProduct || editMappedValues?.adProduct || "").trim();
     if (!raw) {
@@ -3394,13 +3479,33 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               />
             </div>
             <div className="space-y-2">
-              <Label>Premium (1 Lakh Individual / 2 Lakh Floater)</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Premium (1 Lakh Individual / 2 Lakh Floater)</Label>
+                {!autoCalcLocked ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={openBcBasePremiumHelper}
+                    disabled={premiumCalcBlocked}
+                  >
+                    Recalculate Base Premium
+                  </Button>
+                ) : null}
+              </div>
               <Input
                 name="twoLakhF"
                 value={values.twoLakhF}
                 onChange={handlePremiumInput("twoLakhF")}
                 onBlur={handleBlur}
               />
+              {!autoCalcLocked && bcBasePremiumEligibility.eligible && bcBasePremiumEligibility.policyType ? (
+                <p className="text-muted-foreground text-xs">
+                  Helper uses {categoryBcHelperFieldHint(bcBasePremiumEligibility.policyType)} for Category{" "}
+                  {normalizeCategoryKey(values.cat).toUpperCase()}.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Contribution (Gaam Mahajan / VKK)</Label>
@@ -3454,13 +3559,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Label>Loan Taken (Yes/No)</Label>
               <DropdownCombobox
                 value={values.loanStatus}
-                onChange={(v) => {
-                  void setFieldValue("loanStatus", v);
-                  if (v !== "YES") {
-                    void setFieldValue("loanRepayment", "");
-                    void setFieldValue("loanPendingAmount", "");
-                  }
-                }}
+                onChange={(v) => void setFieldValue("loanStatus", v)}
                 options={yesNoOptions}
                 placeholder="—"
                 searchPlaceholder="Search"
@@ -3470,34 +3569,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Label>Loan Amount</Label>
               <Input name="loanAmt" value={values.loanAmt} onChange={handleChange} onBlur={handleBlur} />
             </div>
-            {values.loanStatus === "YES" ? (
-              <>
-                <div className="space-y-2">
-                  <Label>Repayment</Label>
-                  <Input
-                    name="loanRepayment"
-                    value={values.loanRepayment}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  {touched.loanRepayment && errors.loanRepayment ? (
-                    <p className="text-destructive text-xs">{String(errors.loanRepayment)}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <Label>Pending Amount</Label>
-                  <Input
-                    name="loanPendingAmount"
-                    value={values.loanPendingAmount}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
-                  {touched.loanPendingAmount && errors.loanPendingAmount ? (
-                    <p className="text-destructive text-xs">{String(errors.loanPendingAmount)}</p>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
+            <div className="space-y-2">
+              <Label>Repayment</Label>
+              <Input
+                name="loanRepayment"
+                value={values.loanRepayment}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+              {touched.loanRepayment && errors.loanRepayment ? (
+                <p className="text-destructive text-xs">{String(errors.loanRepayment)}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label>Pending Amount</Label>
+              <Input
+                name="loanPendingAmount"
+                value={values.loanPendingAmount}
+                onChange={handleChange}
+                onBlur={handleBlur}
+              />
+              {touched.loanPendingAmount && errors.loanPendingAmount ? (
+                <p className="text-destructive text-xs">{String(errors.loanPendingAmount)}</p>
+              ) : null}
+            </div>
 
             <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
               CD
@@ -3898,6 +3993,19 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           </Button>
         </div>
       </form>
+      {bcBasePremiumEligibility.policyType ? (
+        <CategoryBcBasePremiumDialog
+          open={bcBasePremiumOpen}
+          onOpenChange={setBcBasePremiumOpen}
+          policyTypeLabel={policyTypeDisplayLabel}
+          policyType={bcBasePremiumEligibility.policyType}
+          categoryLabel={normalizeCategoryKey(values.cat) || "—"}
+          actualSi={bcBasePremiumEligibility.actualSi}
+          baseSi={bcBasePremiumEligibility.baseSi}
+          quote={bcBasePremiumQuote}
+          onApply={applyBcBasePremium}
+        />
+      ) : null}
       <Dialog
         open={memberAgeAlertOpen}
         onOpenChange={(open) => {

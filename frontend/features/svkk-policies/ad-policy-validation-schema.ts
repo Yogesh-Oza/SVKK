@@ -188,16 +188,8 @@ export const adPolicyValidationSchema = yup.object({
   loanStatus: yup.string().optional(),
   loanNo: yup.string().optional(),
   loanAmt: yup.string().optional(),
-  loanRepayment: optionalDecimalString.when("loanStatus", {
-    is: "YES",
-    then: (s) => s.required("Repayment is required when loan is taken"),
-    otherwise: (s) => s.optional(),
-  }),
-  loanPendingAmount: optionalDecimalString.when("loanStatus", {
-    is: "YES",
-    then: (s) => s.required("Pending amount is required when loan is taken"),
-    otherwise: (s) => s.optional(),
-  }),
+  loanRepayment: optionalDecimalString,
+  loanPendingAmount: optionalDecimalString,
   previousPolicyNo: yup.string().optional(),
   previousEndDate: yup.string().optional(),
   holderJoiningDate: yup.string().optional(),

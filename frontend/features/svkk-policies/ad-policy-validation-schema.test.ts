@@ -57,7 +57,7 @@ describe("adPolicyValidationSchema", () => {
     ).resolves.toBeDefined();
   });
 
-  it("requires loan repayment and pending amount when loan is YES", async () => {
+  it("allows blank repayment and pending amount regardless of loan status", async () => {
     await expect(
       adPolicyValidationSchema.validate({
         ...validBase(),
@@ -65,23 +65,23 @@ describe("adPolicyValidationSchema", () => {
         loanRepayment: "",
         loanPendingAmount: "",
       }),
-    ).rejects.toThrow(/Repayment is required|Pending amount is required/);
+    ).resolves.toBeDefined();
 
     await expect(
       adPolicyValidationSchema.validate({
         ...validBase(),
-        loanStatus: "YES",
+        loanStatus: "",
         loanRepayment: "1000",
         loanPendingAmount: "500",
       }),
     ).resolves.toBeDefined();
   });
 
-  it("accepts zero repayment and pending amount when loan is YES", async () => {
+  it("accepts zero repayment and pending amount", async () => {
     await expect(
       adPolicyValidationSchema.validate({
         ...validBase(),
-        loanStatus: "YES",
+        loanStatus: "NO",
         loanRepayment: "0",
         loanPendingAmount: "0",
       }),
