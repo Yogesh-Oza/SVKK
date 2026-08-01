@@ -97,6 +97,7 @@ import {
 } from "./ad-policy-auto-calc";
 import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
 import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
+import { canAutoFillDobFromAge, dobFromAgeUsingToday, shouldApplyDobFromAge } from "./age-dob-reverse";
 import { CategoryBcBasePremiumDialog } from "./category-bc-base-premium-dialog";
 import {
   categoryBcHelperFieldHint,
@@ -777,6 +778,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const bcHelperLastTriggerKeyRef = useRef<string | null>(null);
   /** Bumped after hydrate/carry-forward so the helper effect re-evaluates (refs alone do not). */
   const [bcHelperEvalEpoch, setBcHelperEvalEpoch] = useState(0);
+  /** DOB fields auto-filled from Age (allows typing 6→60 without locking the first digit's DOB). */
+  const dobAutoFilledFromAgeRef = useRef<Record<string, boolean>>({});
+
 
   const autoCalcContext = useMemo(
     () => ({ isEdit, fetchedForUpdate: Boolean(fetchedPolicyForUpdate) }),
@@ -828,6 +832,31 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
 
   const markAgeManual = useCallback((field: string) => {
     setAgeManual((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }, []);
+
+  /** Age → DOB (today − age years) only when DOB is blank or was last set by this reverse fill. */
+  const maybeFillDobFromManualAge = useCallback(
+    (dobField: string, currentDob: string, ageRaw: string) => {
+      if (!shouldApplyDobFromAge(currentDob, Boolean(dobAutoFilledFromAgeRef.current[dobField]))) {
+        return;
+      }
+      const nextDob = dobFromAgeUsingToday(ageRaw);
+      if (!nextDob) {
+        return;
+      }
+      dobAutoFilledFromAgeRef.current[dobField] = true;
+      void setFieldValueWithUnlock(dobField, nextDob);
+    },
+    [setFieldValueWithUnlock],
+  );
+
+  const markDobEditedManually = useCallback((dobField: string, nextDob: string) => {
+    if (!String(nextDob ?? "").trim()) {
+      // Cleared — allow Age → DOB again.
+      delete dobAutoFilledFromAgeRef.current[dobField];
+      return;
+    }
+    dobAutoFilledFromAgeRef.current[dobField] = false;
   }, []);
 
   const handlePremiumInput = useCallback(
@@ -2929,7 +2958,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       id={`${idPrefix}-dob`}
                       name="dob"
                       value={values.dob}
-                      onValueChange={(v) => void setFieldValueWithUnlock("dob", v)}
+                      onValueChange={(v) => {
+                        markDobEditedManually("dob", v);
+                        void setFieldValueWithUnlock("dob", v);
+                      }}
                       onBlur={handleBlur}
                     />
                     <FormikError name="dob" errors={errors} touched={touched} submitCount={submitCount} />
@@ -2942,6 +2974,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       onChange={(e) => {
                         markAgeManual("age");
                         handleChange(e);
+                        maybeFillDobFromManualAge("dob", values.dob, e.target.value);
                       }}
                       onBlur={handleBlur}
                       inputMode="numeric"
@@ -3097,6 +3130,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       name={`members[${i}].dob`}
                       value={m.dob}
                       onValueChange={(d) => {
+                        markDobEditedManually(`members[${i}].dob`, d);
                         void setFieldValueWithUnlock(`members[${i}].dob`, d);
                         if (!autoCalcLocked && !ageManual[`members[${i}].age`]) {
                           void setFieldValue(`members[${i}].age`, ageFromDobOnAnchor(d, ageAnchorDate));
@@ -3113,6 +3147,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                       onChange={(e) => {
                         markAgeManual(`members[${i}].age`);
                         handleChange(e);
+                        maybeFillDobFromManualAge(`members[${i}].dob`, m.dob, e.target.value);
                       }}
                       onBlur={handleBlur}
                       inputMode="numeric"
