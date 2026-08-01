@@ -22,11 +22,13 @@ function parseOptionalDate(raw: string): Date | undefined {
   return parseCsvDate(raw);
 }
 
-function parseOptionalDecimal(raw: string): number | undefined {
+/** Optional monetary parse for CSV create. Empty → undefined; 0 allowed; negatives rejected. */
+export function parseOptionalDecimal(raw: string): number | undefined {
   const t = raw.trim();
   if (!t) return undefined;
   const n = Number(t);
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`invalid number: ${raw}`);
+  // Allow 0 (e.g. loan pending fully repaid); reject negatives only.
+  if (!Number.isFinite(n) || n < 0) throw new Error(`invalid number: ${raw}`);
   return n;
 }
 

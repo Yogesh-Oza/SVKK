@@ -77,6 +77,17 @@ describe("adPolicyValidationSchema", () => {
     ).resolves.toBeDefined();
   });
 
+  it("accepts zero repayment and pending amount when loan is YES", async () => {
+    await expect(
+      adPolicyValidationSchema.validate({
+        ...validBase(),
+        loanStatus: "YES",
+        loanRepayment: "0",
+        loanPendingAmount: "0",
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("accepts optional nominee date of birth in the past (DD-MM-YYYY)", async () => {
     await expect(
       adPolicyValidationSchema.validate({

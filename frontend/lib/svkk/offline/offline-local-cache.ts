@@ -172,6 +172,8 @@ function emptyDetailShell(id: string): SvkkPolicyDetailForForm {
     mobileSecondary: null,
     loanStatus: null,
     loanAmount: null,
+    loanRepaymentAmount: null,
+    loanPendingAmount: null,
     previousPolicyNo: null,
     previousEndDate: null,
     policyGroup: null,

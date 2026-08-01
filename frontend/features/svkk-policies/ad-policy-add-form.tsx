@@ -1292,6 +1292,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               ...paymentDetails,
               loanStatus: "",
               loanAmt: "",
+              loanRepayment: "",
+              loanPendingAmount: "",
               loanNo: "",
               cdAccountStatus: "",
               cdAmount: "",
