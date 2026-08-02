@@ -12,7 +12,7 @@ import {
   buildMisVillageWhere,
   loadMisScope,
 } from "../../services/mis-scope.service.js";
-import { buildSampleClaimCsv } from "./claim-csv-format.js";
+import { buildSampleClaimCsv, claimExportFilename } from "./claim-csv-format.js";
 import {
   buildClaimListWhere,
   CLAIM_LIST_EXPORT_MAX_ROWS,
@@ -79,6 +79,8 @@ const claimListFiltersSchema = z.object({
   insuranceCompanies: stringArrayQuery,
   areas: stringArrayQuery,
   statusTexts: stringArrayQuery,
+  treatmentTypes: stringArrayQuery,
+  diseaseCategories: stringArrayQuery,
   sort: z.string().optional(),
 });
 
@@ -121,6 +123,8 @@ function listFilterFromQuery(
     insuranceCompanies: q.insuranceCompanies,
     areas: q.areas,
     statusTexts: q.statusTexts,
+    treatmentTypes: q.treatmentTypes,
+    diseaseCategories: q.diseaseCategories,
     sort: q.sort,
     page: q.page,
     pageSize: q.pageSize,
@@ -135,7 +139,10 @@ export function createClaimRouter(env: Env) {
 
   r.get("/export-sample.csv", requirePermission("claim:import"), (_req, res) => {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="claim-import-sample.csv"');
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="SVKK_Claim_Sample_Template.csv"',
+    );
     res.send(buildSampleClaimCsv());
   });
 
@@ -175,7 +182,10 @@ export function createClaimRouter(env: Env) {
         res.setHeader("X-Export-Truncated", "true");
       }
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", 'attachment; filename="claims-export.csv"');
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${claimExportFilename()}"`,
+      );
       res.send(buildClaimsExportCsv(rows));
     } catch (e) {
       next(e);

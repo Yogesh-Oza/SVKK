@@ -40,6 +40,8 @@ type PreviewRow = {
   claimNo: string;
   policyNo: string;
   matchStatus: MatchStatus;
+  matchReason?: string;
+  alreadyExists?: boolean;
   verificationWarnings?: string[];
   policyHolderName?: string;
   claimAmount?: number | null;
@@ -68,14 +70,17 @@ type ImportResult = {
   errorReportUrl?: string;
 };
 
-function matchBadge(status: MatchStatus): { label: string; className: string } {
+function matchBadge(status: MatchStatus, alreadyExists?: boolean): { label: string; className: string } {
+  if (alreadyExists) {
+    return { label: "Already exists", className: "text-amber-700" };
+  }
   if (status === "MATCHED_EXACT") {
     return { label: "Matched", className: "text-emerald-600" };
   }
   if (status === "CONFLICT") {
-    return { label: "Conflict", className: "text-amber-600" };
+    return { label: "Ambiguous", className: "text-amber-600" };
   }
-  return { label: "Not found", className: "text-destructive" };
+  return { label: "Unlinked", className: "text-destructive" };
 }
 
 function formatImportTimestamp(iso: string): string {
@@ -115,7 +120,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "claim-import-sample.csv";
+      a.download = "SVKK_Claim_Sample_Template.csv";
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -310,17 +315,23 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
                   <TableHead>Claim #</TableHead>
                   <TableHead>Policy #</TableHead>
                   <TableHead>Match</TableHead>
+                  <TableHead>Reason</TableHead>
                   <TableHead>Warnings</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {previewRows.map((row) => {
-                  const badge = matchBadge(row.matchStatus);
+                  const badge = matchBadge(row.matchStatus, row.alreadyExists);
                   return (
                     <TableRow key={row.rowNumber}>
                       <TableCell className="font-mono text-xs">{row.claimNo}</TableCell>
                       <TableCell className="font-mono text-xs">{row.policyNo || "—"}</TableCell>
                       <TableCell className={badge.className}>{badge.label}</TableCell>
+                      <TableCell className="max-w-[280px] text-xs text-muted-foreground">
+                        {row.alreadyExists
+                          ? "Claim already exists (CREATE_ONLY) — will not import"
+                          : row.matchReason || "—"}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {row.verificationWarnings?.length
                           ? row.verificationWarnings.join(", ")

@@ -21,6 +21,8 @@ export type ClaimListQuery = {
   insuranceCompanies?: string[];
   areas?: string[];
   statusTexts?: string[];
+  treatmentTypes?: string[];
+  diseaseCategories?: string[];
   page?: number;
   pageSize?: number;
   sort?: string;
@@ -39,6 +41,8 @@ export type ClaimFiltersMeta = {
   insuranceCompanies: string[];
   areas: string[];
   statusTexts: string[];
+  treatmentTypes: string[];
+  diseaseCategories: string[];
 };
 
 const SORTS: Record<string, Prisma.ClaimOrderByWithRelationInput> = {
@@ -139,15 +143,31 @@ export function buildClaimListWhere(scope: GeoScope, q: ClaimListQuery): Prisma.
     parts.push({ statusText: { in: q.statusTexts } });
   }
   if (q.policyGroupings?.length) {
-    parts.push({ policy: { policyGrouping: { in: q.policyGroupings }, deletedAt: null } });
+    parts.push({
+      OR: [
+        { policyGroupingText: { in: q.policyGroupings } },
+        { policy: { policyGrouping: { in: q.policyGroupings }, deletedAt: null } },
+      ],
+    });
   }
   if (q.categoryKeys?.length) {
     parts.push({
-      policy: {
-        deletedAt: null,
-        category: { key: { in: q.categoryKeys } },
-      },
+      OR: [
+        { categoryText: { in: q.categoryKeys } },
+        {
+          policy: {
+            deletedAt: null,
+            category: { key: { in: q.categoryKeys } },
+          },
+        },
+      ],
     });
+  }
+  if (q.treatmentTypes?.length) {
+    parts.push({ treatmentType: { in: q.treatmentTypes } });
+  }
+  if (q.diseaseCategories?.length) {
+    parts.push({ diseaseCategory: { in: q.diseaseCategories } });
   }
 
   const receivedRange = dateFieldRange("claimReceivedDate", q.dateFrom, q.dateTo);
@@ -169,6 +189,9 @@ export function buildClaimListWhere(scope: GeoScope, q: ClaimListQuery): Prisma.
         { patientName: { contains: search } },
         { policyHolderName: { contains: search } },
         { hospitalName: { contains: search } },
+        { mdId: { contains: search } },
+        { insuranceCompany: { contains: search } },
+        { policyNoText: { contains: search } },
         { policy: { policyNo: { contains: search } } },
       ],
     });
@@ -222,6 +245,8 @@ export const claimListSelect = {
   networkType: true,
   policyHolderName: true,
   policyTypeText: true,
+  policyNoText: true,
+  policyGroupingText: true,
   policyStartDate: true,
   policyEndDate: true,
   sumInsured: true,
@@ -236,11 +261,19 @@ export const claimListSelect = {
   lodgeDate: true,
   claimReceivedDate: true,
   matchStatus: true,
+  policyYearRow: {
+    select: {
+      policyStart: true,
+      policyEnd: true,
+      yearLabel: true,
+    },
+  },
   policy: {
     select: {
       policyNo: true,
       policyGrouping: true,
       category: { select: { key: true } },
+      insuredParty: { select: { svkkPublicId: true } },
     },
   },
 } satisfies Prisma.ClaimSelect;
@@ -304,7 +337,11 @@ type ScalarFilterField =
   | "policyTypeText"
   | "insuranceCompany"
   | "hospitalArea"
-  | "statusText";
+  | "statusText"
+  | "treatmentType"
+  | "diseaseCategory"
+  | "categoryText"
+  | "policyGroupingText";
 
 function nonEmptyFieldFilter(field: ScalarFilterField): Prisma.ClaimWhereInput {
   if (field === "policyYear" || field === "svkkPublicId") {
@@ -331,32 +368,40 @@ async function distinctScalar(
 }
 
 async function distinctPolicyGroupings(where: Prisma.ClaimWhereInput): Promise<string[]> {
-  const rows = await prisma.claim.findMany({
-    where: {
-      AND: [where, { policy: { policyGrouping: { not: null }, deletedAt: null } }],
-    },
-    distinct: ["policyId"],
-    select: { policy: { select: { policyGrouping: true } } },
-    take: FILTER_META_LIMIT,
-  });
-  const values = rows
-    .map((r) => r.policy?.policyGrouping)
-    .filter((v): v is string => Boolean(v?.trim()));
+  const [fromPolicy, fromSnapshot] = await Promise.all([
+    prisma.claim.findMany({
+      where: {
+        AND: [where, { policy: { policyGrouping: { not: null }, deletedAt: null } }],
+      },
+      distinct: ["policyId"],
+      select: { policy: { select: { policyGrouping: true } } },
+      take: FILTER_META_LIMIT,
+    }),
+    distinctScalar(where, "policyGroupingText" as ScalarFilterField),
+  ]);
+  const values = [
+    ...fromPolicy.map((r) => r.policy?.policyGrouping),
+    ...fromSnapshot,
+  ].filter((v): v is string => Boolean(v?.trim()));
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
 async function distinctCategoryKeys(where: Prisma.ClaimWhereInput): Promise<string[]> {
-  const rows = await prisma.claim.findMany({
-    where: {
-      AND: [where, { policy: { categoryId: { not: null }, deletedAt: null } }],
-    },
-    distinct: ["policyId"],
-    select: { policy: { select: { category: { select: { key: true } } } } },
-    take: FILTER_META_LIMIT,
-  });
-  const values = rows
-    .map((r) => r.policy?.category?.key)
-    .filter((v): v is string => Boolean(v?.trim()));
+  const [fromPolicy, fromText] = await Promise.all([
+    prisma.claim.findMany({
+      where: {
+        AND: [where, { policy: { categoryId: { not: null }, deletedAt: null } }],
+      },
+      distinct: ["policyId"],
+      select: { policy: { select: { category: { select: { key: true } } } } },
+      take: FILTER_META_LIMIT,
+    }),
+    distinctScalar(where, "categoryText" as ScalarFilterField),
+  ]);
+  const values = [
+    ...fromPolicy.map((r) => r.policy?.category?.key),
+    ...fromText,
+  ].filter((v): v is string => Boolean(v?.trim()));
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
@@ -372,6 +417,8 @@ export async function distinctClaimFilterOptions(scopeWhere: Prisma.ClaimWhereIn
     statusTexts,
     policyGroupings,
     categoryKeys,
+    treatmentTypes,
+    diseaseCategories,
   ] = await Promise.all([
     distinctScalar(scopeWhere, "village"),
     distinctScalar(scopeWhere, "policyYear"),
@@ -383,6 +430,8 @@ export async function distinctClaimFilterOptions(scopeWhere: Prisma.ClaimWhereIn
     distinctScalar(scopeWhere, "statusText"),
     distinctPolicyGroupings(scopeWhere),
     distinctCategoryKeys(scopeWhere),
+    distinctScalar(scopeWhere, "treatmentType"),
+    distinctScalar(scopeWhere, "diseaseCategory"),
   ]);
   return {
     villages,
@@ -395,5 +444,7 @@ export async function distinctClaimFilterOptions(scopeWhere: Prisma.ClaimWhereIn
     insuranceCompanies,
     areas,
     statusTexts,
+    treatmentTypes,
+    diseaseCategories,
   };
 }

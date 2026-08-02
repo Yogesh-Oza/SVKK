@@ -122,11 +122,19 @@ async function loadParsedRows(
   return { header, parsedRows };
 }
 
-function buildPreviewRows(
+async function buildPreviewRows(
   parsedRows: ReturnType<typeof parseClaimRow>[],
   matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
 ) {
   const limit = Math.min(CLAIM_PREVIEW_ROW_LIMIT, parsedRows.length);
+  const claimNos = parsedRows.slice(0, limit).map((r) => r.claimNo).filter(Boolean);
+  const existing = claimNos.length
+    ? await prisma.claim.findMany({
+        where: { claimNo: { in: claimNos } },
+        select: { claimNo: true },
+      })
+    : [];
+  const existingSet = new Set(existing.map((c) => c.claimNo));
   const previewRows = [];
   for (let i = 0; i < limit; i++) {
     const row = parsedRows[i]!;
@@ -136,9 +144,11 @@ function buildPreviewRows(
       claimNo: row.claimNo,
       policyNo: row.policyNo,
       matchStatus: match.matchStatus,
+      matchReason: match.matchReason,
       verificationWarnings: match.verificationWarnings,
       policyHolderName: row.policyHolderName,
       claimAmount: row.claimAmount,
+      alreadyExists: existingSet.has(row.claimNo),
     });
   }
   return previewRows;
@@ -369,7 +379,7 @@ export function createClaimUploadRouter(env: Env) {
 
         res.json({
           previewToken,
-          previewRows: buildPreviewRows(parsedRows, matches),
+          previewRows: await buildPreviewRows(parsedRows, matches),
           summary: stats,
           duplicateImport: duplicateImportPayload(env, prior),
         });

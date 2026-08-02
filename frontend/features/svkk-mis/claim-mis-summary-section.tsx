@@ -52,6 +52,7 @@ type CategoryRow = {
   totalNo: number;
   totalLodge: number;
   totalSettled: number;
+  totalDeduction?: number;
 };
 
 type CategorySummaryRes = {
@@ -74,6 +75,7 @@ type FieldReportCard = {
 
 type FieldReportsRes = {
   recordCount: number;
+  totalInScope?: number;
   cards: FieldReportCard[];
 };
 
@@ -107,6 +109,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
   const [categoryTotals, setCategoryTotals] = useState<CategoryRow | null>(null);
   const [fieldCards, setFieldCards] = useState<FieldReportCard[]>([]);
   const [recordCount, setRecordCount] = useState(0);
+  const [totalInScope, setTotalInScope] = useState(0);
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
@@ -179,6 +182,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
       setCategoryTotals(cat.totals);
       setFieldCards(fields.cards);
       setRecordCount(fields.recordCount);
+      setTotalInScope(fields.totalInScope ?? fields.recordCount);
       onError?.(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load MIS report";
@@ -187,6 +191,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
       setCategoryTotals(null);
       setFieldCards([]);
       setRecordCount(0);
+      setTotalInScope(0);
     } finally {
       setLoading(false);
     }
@@ -214,7 +219,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
       totalClaims: categoryTotals.totalNo,
       totalLodge: categoryTotals.totalLodge,
       totalSettled: categoryTotals.totalSettled,
-      totalDeduction: 0,
+      totalDeduction: categoryTotals.totalDeduction ?? 0,
       cashless,
       reim,
       cashDenied,
@@ -277,7 +282,9 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
               ? "Loading…"
               : recordCount
                 ? `${recordCount.toLocaleString()} records · based on current filters`
-                : "No claims in range — widen dates or import via Claims → CSV"}
+                : totalInScope > 0
+                  ? "No claims match these filters or date range — widen dates or clear filters."
+                  : "No claims in the database yet — import via Claims → CSV."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -327,6 +334,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
           { label: "Total claims", value: summaryCards?.totalClaims, sub: "all categories combined" },
           { label: "Total lodge amount", value: formatInrCompact(summaryCards?.totalLodge), sub: "sum of lodge amts" },
           { label: "Total settled amount", value: formatInrCompact(summaryCards?.totalSettled), sub: "sum of paid amts" },
+          { label: "Total deductions", value: formatInrCompact(summaryCards?.totalDeduction), sub: "sum of deductions" },
           { label: "Cashless claims", value: summaryCards?.cashless, sub: "no. of cashless" },
           { label: "Reimbursement claims", value: summaryCards?.reim, sub: "no. of reimbursement" },
           { label: "Cash denied", value: summaryCards?.cashDenied, sub: "cashless denied count" },
@@ -429,7 +437,9 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
               ) : (
                 <TableRow>
                   <TableCell colSpan={14} className="text-muted-foreground h-24 text-center text-sm">
-                    No records — widen date filters or import claims from the Claim Register.
+                    {totalInScope > 0
+                      ? "No records match these filters — widen dates or clear filters."
+                      : "No claims in the database yet — import via Claims → CSV."}
                   </TableCell>
                 </TableRow>
               )}

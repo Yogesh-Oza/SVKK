@@ -57,33 +57,20 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const REPORT_FIELDS = [
-  "svkkPublicId",
-  "policyTypeText",
-  "policyHolderName",
-  "patientName",
-  "patientGender",
-  "categoryText",
-  "village",
   "insuranceCompany",
   "hospitalName",
   "hospitalArea",
-  "illness",
   "diseaseCategory",
   "treatmentType",
+  "statusText",
   "claimType",
   "actualLodgeType",
-  "statusText",
-  "policyYear",
-  "networkType",
-  "roomCategory",
+  "policyTypeText",
+  "categoryText",
+  "svkkPublicId",
   "claimAmount",
-  "reportedLodgeAmount",
   "approvedAmount",
   "deductionAmount",
-  "discountAmount",
-  "claimReceivedDate",
-  "admissionDate",
-  "dischargeDate",
 ] as const;
 
 function classifyField(field: string, uniqueCount: number, nonEmpty: number): FieldReportKind {

@@ -1,4 +1,5 @@
 import { csvCell } from "../policy/policy-csv-utils.js";
+import { CLAIM_CSV_PUBLIC_HEADERS } from "./claim-csv-format.js";
 import type { ClaimListRow } from "./claim.list.js";
 
 function fmtDate(d: Date | null | undefined): string {
@@ -14,105 +15,65 @@ function fmtDecimal(v: unknown): string {
   return String(v);
 }
 
-function fmtBool(v: boolean | null | undefined): string {
-  if (v === true) return "Y";
-  if (v === false) return "N";
+function firstNonEmpty(...vals: Array<string | null | undefined>): string {
+  for (const v of vals) {
+    if (v != null && String(v).trim() !== "") return String(v);
+  }
   return "";
 }
 
+/** Build 39-column public CSV; linked claims prefer Policy / InsuredParty / PolicyYear over snapshots. */
 export function buildClaimsExportCsv(rows: ClaimListRow[]): string {
-  const headers = [
-    "Category",
-    "SVKK ID",
-    "Policy Type",
-    "Policy Grouping",
-    "Policy Number",
-    "Policy Holder Name",
-    "MD ID",
-    "Patient Name",
-    "Age",
-    "Sex",
-    "Relation",
-    "Village",
-    "Insurance Company name",
-    "Claim Number",
-    "Hospital Name",
-    "Area",
-    "Treatment Type",
-    "Treatment Procedure",
-    "Disease Category",
-    "Date Of Admission",
-    "Date Of Discharge",
-    "DIAGNOSIS",
-    "Claim Lodge Date",
-    "Claim LodgeType",
-    "Actual Lodge Type",
-    "Claim Amount",
-    "Reported Lodge Amt",
-    "Deduction Amount",
-    "Discount Amt",
-    "Paid Amount",
-    "Payment In Favour Of",
-    "PRS/CRS Date",
-    "Payment Detail",
-    "Payment Date",
-    "Status",
-    "Deduction Details",
-    "Remark",
-    "Policy Year",
-    "Match Status",
-    "Claim Received Date",
-    "Sum Insured",
-    "Network Type",
-    "Hospital In PPN",
-  ];
-  const lines = [headers.map(csvCell).join(",")];
+  const lines = [CLAIM_CSV_PUBLIC_HEADERS.map(csvCell).join(",")];
   for (const r of rows) {
+    const policyNo = firstNonEmpty(r.policy?.policyNo, r.policyNoText);
+    const svkk = firstNonEmpty(r.policy?.insuredParty?.svkkPublicId, r.svkkPublicId);
+    const grouping = firstNonEmpty(r.policy?.policyGrouping, r.policyGroupingText);
+    const policyStart = r.policyYearRow?.policyStart ?? r.policyStartDate;
+    const policyEnd = r.policyYearRow?.policyEnd ?? r.policyEndDate;
+    const category = firstNonEmpty(r.categoryText, r.policy?.category?.key);
+
     lines.push(
       [
-        r.categoryText ?? r.policy?.category?.key ?? "",
-        r.svkkPublicId,
+        category,
+        svkk,
         r.policyTypeText ?? "",
-        r.policy?.policyGrouping ?? "",
-        r.policy?.policyNo ?? "",
+        grouping,
+        r.insuranceCompany ?? "",
+        policyNo,
+        fmtDate(policyStart),
+        fmtDate(policyEnd),
         r.policyHolderName ?? "",
         r.mdId ?? "",
         r.patientName ?? "",
         r.patientAge != null ? String(r.patientAge) : "",
         r.patientGender ?? "",
         r.patientRelation ?? "",
-        r.village ?? "",
-        r.insuranceCompany ?? "",
+        fmtDecimal(r.sumInsured),
         r.claimNo,
         r.hospitalName ?? "",
         r.hospitalArea ?? "",
         r.treatmentType ?? "",
-        r.treatmentProcedure ?? "",
+        r.illness ?? "",
         r.diseaseCategory ?? "",
         fmtDate(r.admissionDate),
         fmtDate(r.dischargeDate),
-        r.illness ?? "",
+        fmtDecimal(r.claimAmount),
         fmtDate(r.lodgeDate),
         r.claimType ?? "",
         r.actualLodgeType ?? "",
-        fmtDecimal(r.claimAmount),
-        fmtDecimal(r.reportedLodgeAmount),
         fmtDecimal(r.deductionAmount),
         fmtDecimal(r.discountAmount),
+        r.deductionDetails ?? "",
+        r.remark ?? "",
         fmtDecimal(r.approvedAmount),
         r.paymentInFavourOf ?? "",
         fmtDate(r.prsCrsDate),
         r.paymentDetails ?? "",
         fmtDate(r.paymentDate),
+        r.treatmentProcedure ?? "",
         r.statusText ?? r.status,
-        r.deductionDetails ?? "",
-        r.remark ?? "",
-        r.policyYear,
-        r.matchStatus ?? "",
-        fmtDate(r.claimReceivedDate),
-        fmtDecimal(r.sumInsured),
-        r.networkType ?? "",
-        fmtBool(r.hospitalInPpn),
+        fmtDecimal(r.reportedLodgeAmount),
       ]
         .map(csvCell)
         .join(","),

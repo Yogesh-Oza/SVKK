@@ -757,6 +757,7 @@ export async function getClaimCategorySummary(
       totalNo: t.totalNo + r.totalNo,
       totalLodge: t.totalLodge + r.totalLodge,
       totalSettled: t.totalSettled + r.totalSettled,
+      totalDeduction: t.totalDeduction + r.totalDeduction,
     }),
     {
       category: "Total",
@@ -773,6 +774,7 @@ export async function getClaimCategorySummary(
       totalNo: 0,
       totalLodge: 0,
       totalSettled: 0,
+      totalDeduction: 0,
     },
   );
   return {
@@ -790,12 +792,28 @@ export async function getClaimFieldReports(
   input: ClaimReportFilters,
 ) {
   const scopeSql = buildClaimScopeSqlC(permissions, scope, input.villages);
-  const rows = await queryClaimsForFieldReports(prisma, { scopeSql, filters: input });
+  const emptyFilters: ClaimReportFilters = {
+    ...input,
+    dateFrom: null,
+    dateTo: null,
+    categoryKeys: [],
+    policyGroupings: [],
+    areas: [],
+    sumInsureds: [],
+    periodMonthTexts: [],
+    fiscalLabels: [],
+    matchStatus: undefined,
+  };
+  const [rows, unfilteredRows] = await Promise.all([
+    queryClaimsForFieldReports(prisma, { scopeSql, filters: input }),
+    queryClaimsForFieldReports(prisma, { scopeSql, filters: emptyFilters }),
+  ]);
   const cards = buildClaimFieldReports(rows);
   return {
     dateFrom: input.dateFrom?.toISOString() ?? null,
     dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
     recordCount: rows.length,
+    totalInScope: unfilteredRows.length,
     cards,
   };
 }

@@ -13,4 +13,17 @@ describe("buildClaimListWhere received-date filter", () => {
     const where = buildClaimListWhere(fullScope, { dateTo: "2026-06-01" });
     expect(JSON.stringify(where)).toContain("claimReceivedDate");
   });
+
+  it("category filter matches categoryText or policy category", () => {
+    const where = buildClaimListWhere(fullScope, { categoryKeys: ["A"] });
+    expect(JSON.stringify(where)).toContain("categoryText");
+  });
+
+  it("search includes mdId, insuranceCompany, and policyNoText", () => {
+    const where = buildClaimListWhere(fullScope, { search: "MD-1" });
+    const s = JSON.stringify(where);
+    expect(s).toContain("mdId");
+    expect(s).toContain("insuranceCompany");
+    expect(s).toContain("policyNoText");
+  });
 });

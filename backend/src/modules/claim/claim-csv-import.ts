@@ -24,6 +24,7 @@ import { matchPolicyForClaim, type ClaimMatchInput } from "./claim-policy-match.
 import { mapStatusTextToEnum } from "./claim-status-map.js";
 import type { ClaimCsvRowError } from "./claim-csv-errors.js";
 import type { ClaimImportMatchStats } from "./claim-csv-preview.js";
+import { shouldRejectDuplicateClaim } from "./claim-duplicate.js";
 
 export type ParsedClaimRow = {
   rowNumber: number;
@@ -34,6 +35,9 @@ export type ParsedClaimRow = {
   policyNo: string;
   policyHolderName: string;
   policyTypeText: string;
+  policyGroupingText: string | null;
+  /** CSV SVKK ID snapshot (used for matching + unlinked persistence). */
+  svkkPublicIdCsv: string;
   policyStartDate: Date | null;
   policyEndDate: Date | null;
   patientName: string | null;
@@ -99,17 +103,26 @@ export function parseClaimRow(
   const policyNo = getClaimField(map, "Policy Number");
   const policyHolderName = getClaimField(map, "Policy Holder Name");
   const policyTypeText = getClaimField(map, "Policy Type");
+  const policyGroupingText = getClaimField(map, "Policy Grouping") || null;
+  const svkkFromCsv = getClaimField(map, "SVKK ID");
   const sumInsured = parseClaimDecimal(getClaimField(map, "Sum_Insured", "Sum Insured"));
+  const insuranceCompany =
+    getClaimField(map, "Insurance_Company", "Insurance Company name") || null;
+  const admissionDate = parseClaimDate(getClaimField(map, "Date Of Admission"));
+  const lodgeDate = parseClaimDate(getClaimField(map, "Claim Lodge Date"));
+  const claimReceivedDate = parseClaimDate(getClaimField(map, "Claim Received Date"));
 
   return {
     rowNumber,
     claimNo,
     tpaName: getClaimField(map, "TPA Name") || null,
-    insuranceCompany: getClaimField(map, "Insurance_Company") || null,
+    insuranceCompany,
     doBranch: getClaimField(map, "D.O. Branch") || null,
     policyNo,
     policyHolderName,
     policyTypeText,
+    policyGroupingText,
+    svkkPublicIdCsv: svkkFromCsv,
     policyStartDate,
     policyEndDate,
     patientName: getClaimField(map, "Patient Name") || null,
@@ -125,16 +138,16 @@ export function parseClaimRow(
     diseaseCategory: getClaimField(map, "Disease Category") || null,
     statusText,
     status: mapStatusTextToEnum(statusText ?? "", statusMap),
-    claimReceivedDate: parseClaimDate(getClaimField(map, "Claim Received Date")),
+    claimReceivedDate,
     informationRaisedDate: parseClaimDate(getClaimField(map, "Information Raised Date")),
     informationReceivedDate: parseClaimDate(getClaimField(map, "Information Received Date")),
     hospitalName: getClaimField(map, "Hospital Name") || null,
     hospitalArea: getClaimField(map, "Area") || null,
     networkType: getClaimField(map, "NETWORK/NON-NETWORK") || null,
     hospitalInPpn: parseYesNo(getClaimField(map, "HOSPITAL IS IN PPN Y/N")),
-    admissionDate: parseClaimDate(getClaimField(map, "Date Of Admission")),
+    admissionDate,
     dischargeDate: parseClaimDate(getClaimField(map, "Date Of discharge", "Date Of Discharge")),
-    lodgeDate: parseClaimDate(getClaimField(map, "Claim Lodge Date")),
+    lodgeDate,
     claimAmount: parseClaimDecimal(getClaimField(map, "Claim Amount")),
     reportedLodgeAmount: parseClaimDecimal(getClaimField(map, "Reported Lodge Amt")),
     approvedAmount: parseClaimDecimal(getClaimField(map, "Approved Amt", "Approved Amount")),
@@ -153,11 +166,16 @@ export function parseClaimRow(
     prsCrsDate: parseClaimDate(getClaimField(map, "PRS/CRS Date")),
     matchInput: {
       policyNo,
+      svkkPublicId: svkkFromCsv,
       policyHolderName,
       policyTypeText,
       policyStartDate,
       policyEndDate,
       sumInsured,
+      insuranceCompany,
+      admissionDate,
+      lodgeDate,
+      claimReceivedDate,
     },
   };
 }
@@ -180,7 +198,8 @@ function claimDataFromRow(
 
   return {
     claimNo: row.claimNo,
-    svkkPublicId: match.svkkPublicId ?? "",
+    // Linked: party SVKK; unlinked: preserve CSV SVKK snapshot (never invent a link).
+    svkkPublicId: match.svkkPublicId ?? row.svkkPublicIdCsv.trim() ?? "",
     policyYear,
     patientName: row.patientName,
     patientAge: row.patientAge,
@@ -209,6 +228,8 @@ function claimDataFromRow(
     doBranch: row.doBranch,
     policyHolderName: row.policyHolderName,
     policyTypeText: row.policyTypeText,
+    policyNoText: row.policyNo.trim() || null,
+    policyGroupingText: row.policyGroupingText,
     policyStartDate: row.policyStartDate,
     policyEndDate: row.policyEndDate,
     sumInsured: row.sumInsured,
@@ -255,12 +276,14 @@ function shouldRejectMatch(
 
 function matchErrorMessage(
   matchStatus: ClaimPolicyMatchStatus,
+  matchReason?: string,
   detail?: string,
 ): string {
+  if (matchReason) return matchReason;
   if (matchStatus === ClaimPolicyMatchStatus.CONFLICT) {
-    return detail ?? "Multiple policies match primary keys";
+    return detail ?? "Multiple policy years match this claim";
   }
-  return "No policy match for primary keys (Policy No, Type, Start, End dates)";
+  return "No policy match for Policy Number / SVKK / dates";
 }
 
 /** Evaluate match for preview without DB writes. */
@@ -317,7 +340,7 @@ export async function importClaimRow(
       verificationWarnings: match.verificationWarnings,
       error: {
         row: row.rowNumber,
-        error: matchErrorMessage(match.matchStatus, match.conflictDetail),
+        error: matchErrorMessage(match.matchStatus, match.matchReason, match.conflictDetail),
         claimNo: row.claimNo,
         policyNo: row.policyNo,
         matchStatus: match.matchStatus,
@@ -334,7 +357,7 @@ export async function importClaimRow(
   );
 
   const existing = await prisma.claim.findUnique({ where: { claimNo: row.claimNo } });
-  if (opts.importMode === CsvImportMode.CREATE_ONLY && existing) {
+  if (shouldRejectDuplicateClaim(opts.importMode, existing?.claimNo ?? null)) {
     return {
       result: "failed",
       error: {

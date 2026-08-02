@@ -145,11 +145,19 @@ function matchStatusFilter(filters: ClaimReportFilters): Prisma.Sql {
 function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
   if (!categoryKeys.length) return Prisma.empty;
   if (categoryKeys.length === 1 && categoryKeys[0] === UNCATEGORIZED_CATEGORY_KEY) {
-    return Prisma.sql` AND (${sqlCol("p", "categoryId")} IS NULL OR cat.id IS NULL)`;
+    return Prisma.sql` AND (
+      (${sqlCol("p", "categoryId")} IS NULL OR cat.id IS NULL)
+      AND (c.\`categoryText\` IS NULL OR TRIM(c.\`categoryText\`) = '')
+    )`;
   }
-  return Prisma.sql` AND LOWER(${sqlAliasCol("cat", "key")}) IN (${Prisma.join(
-    categoryKeys.map((k) => Prisma.sql`LOWER(${sqlParamUtf8(k)})`),
-  )})`;
+  return Prisma.sql` AND (
+    LOWER(${sqlAliasCol("cat", "key")}) IN (${Prisma.join(
+      categoryKeys.map((k) => Prisma.sql`LOWER(${sqlParamUtf8(k)})`),
+    )})
+    OR LOWER(${sqlAliasCol("c", "categoryText")}) IN (${Prisma.join(
+      categoryKeys.map((k) => Prisma.sql`LOWER(${sqlParamUtf8(k)})`),
+    )})
+  )`;
 }
 
 function policyGroupingsFilterSql(groupings: string[]): Prisma.Sql {
@@ -383,7 +391,11 @@ function isDeniedSql(): Prisma.Sql {
 }
 
 function categoryLabelSql(): Prisma.Sql {
-  return Prisma.sql`UPPER(COALESCE(${sqlAliasCol("cat", "key")}, ${sqlParamUtf8("OTHER")}))`;
+  return Prisma.sql`UPPER(COALESCE(
+    NULLIF(TRIM(${sqlAliasCol("c", "categoryText")}), ''),
+    ${sqlAliasCol("cat", "key")},
+    ${sqlParamUtf8("OTHER")}
+  ))`;
 }
 
 export type ClaimCategorySummaryRow = {
@@ -401,6 +413,7 @@ export type ClaimCategorySummaryRow = {
   totalNo: bigint;
   totalLodge: string | null;
   totalSettled: string | null;
+  totalDeduction: string | null;
 };
 
 /** Category A/B/C/D matrix with cashless/reimbursement/denied breakdown. */
@@ -429,7 +442,8 @@ export async function queryClaimCategorySummary(
       COALESCE(SUM(CASE WHEN NOT (${cash}) AND ${denied} THEN ${sqlCol("c", "claimAmount")} ELSE 0 END), 0) AS remDeniedLodge,
       COUNT(${sqlCol("c", "id")}) AS totalNo,
       COALESCE(SUM(${sqlCol("c", "claimAmount")}), 0) AS totalLodge,
-      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS totalSettled
+      COALESCE(SUM(${sqlCol("c", "approvedAmount")}), 0) AS totalSettled,
+      COALESCE(SUM(${sqlCol("c", "deductionAmount")}), 0) AS totalDeduction
     FROM ${sqlTable("claim")} c
     LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
     LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
@@ -459,6 +473,7 @@ export function claimCategorySummaryRowToJson(r: ClaimCategorySummaryRow) {
     totalNo: Number(r.totalNo),
     totalLodge: Number(r.totalLodge ?? 0),
     totalSettled: Number(r.totalSettled ?? 0),
+    totalDeduction: Number(r.totalDeduction ?? 0),
   };
 }
 

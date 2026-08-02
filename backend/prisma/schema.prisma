@@ -859,6 +859,10 @@ model Claim {
   doBranch                String?                 @db.VarChar(200)
   policyHolderName        String?                 @db.VarChar(200)
   policyTypeText          String?                 @db.VarChar(200)
+  /// CSV snapshot only — not a substitute for policyId.
+  policyNoText            String?                 @db.VarChar(120)
+  /// CSV snapshot only — not a substitute for Policy.policyGrouping.
+  policyGroupingText      String?                 @db.VarChar(64)
   policyStartDate         DateTime?
   policyEndDate           DateTime?
   sumInsured              Decimal?                @db.Decimal(14, 2)

@@ -69,6 +69,7 @@ const CLAIM_CATEGORY_SUMMARY_COLUMNS: MisExportColumn[] = [
   { key: "totalNo", label: "Total" },
   { key: "totalLodge", label: "Total Lodge" },
   { key: "totalSettled", label: "Total Settled" },
+  { key: "totalDeduction", label: "Total Deduction" },
 ];
 
 const MIS_EXPORT_COLUMN_GROUPS: Record<MisExportReport, MisExportColumnGroup[]> = {

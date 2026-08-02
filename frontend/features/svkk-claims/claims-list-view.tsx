@@ -153,6 +153,8 @@ type FiltersMeta = {
   insuranceCompanies: string[];
   areas: string[];
   statusTexts: string[];
+  treatmentTypes: string[];
+  diseaseCategories: string[];
 };
 
 type SummaryRes = {
@@ -298,6 +300,8 @@ export function ClaimsListView() {
   const [insuranceCompanies, setInsuranceCompanies] = useState<string[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
   const [statusTexts, setStatusTexts] = useState<string[]>([]);
+  const [treatmentTypes, setTreatmentTypes] = useState<string[]>([]);
+  const [diseaseCategories, setDiseaseCategories] = useState<string[]>([]);
   const [sort, setSort] = useState("createdAt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -349,6 +353,8 @@ export function ClaimsListView() {
         insuranceCompanies,
         areas,
         statusTexts,
+        treatmentTypes,
+        diseaseCategories,
       }),
     [
       dateFrom,
@@ -367,6 +373,8 @@ export function ClaimsListView() {
       insuranceCompanies,
       areas,
       statusTexts,
+      treatmentTypes,
+      diseaseCategories,
     ],
   );
   const prevFiltersKey = useRef(filtersKey);
@@ -396,7 +404,9 @@ export function ClaimsListView() {
       policyGroupings.length +
       insuranceCompanies.length +
       areas.length +
-      statusTexts.length;
+      statusTexts.length +
+      treatmentTypes.length +
+      diseaseCategories.length;
     return n;
   }, [
     searchApplied,
@@ -416,6 +426,8 @@ export function ClaimsListView() {
     insuranceCompanies,
     areas,
     statusTexts,
+    treatmentTypes,
+    diseaseCategories,
   ]);
 
   const filterQueryString = useMemo(() => {
@@ -441,6 +453,8 @@ export function ClaimsListView() {
     insuranceCompanies.forEach((i) => q.append("insuranceCompanies", i));
     areas.forEach((a) => q.append("areas", a));
     statusTexts.forEach((s) => q.append("statusTexts", s));
+    treatmentTypes.forEach((t) => q.append("treatmentTypes", t));
+    diseaseCategories.forEach((d) => q.append("diseaseCategories", d));
     return q.toString();
   }, [
     searchApplied,
@@ -460,6 +474,8 @@ export function ClaimsListView() {
     insuranceCompanies,
     areas,
     statusTexts,
+    treatmentTypes,
+    diseaseCategories,
   ]);
 
   const queryString = useMemo(() => {
@@ -526,6 +542,8 @@ export function ClaimsListView() {
           insuranceCompanies: [],
           areas: [],
           statusTexts: [],
+          treatmentTypes: [],
+          diseaseCategories: [],
         }),
       );
   }, [missingUrl]);
@@ -543,6 +561,14 @@ export function ClaimsListView() {
   );
   const areaOptions = useMemo(() => toOptions(meta?.areas ?? []), [meta?.areas]);
   const statusTextOptions = useMemo(() => toOptions(meta?.statusTexts ?? []), [meta?.statusTexts]);
+  const treatmentTypeOptions = useMemo(
+    () => toOptions(meta?.treatmentTypes ?? []),
+    [meta?.treatmentTypes],
+  );
+  const diseaseCategoryOptions = useMemo(
+    () => toOptions(meta?.diseaseCategories ?? []),
+    [meta?.diseaseCategories],
+  );
 
   const exportClaimsCsv = useCallback(async () => {
     setExportBusy(true);
@@ -557,7 +583,7 @@ export function ClaimsListView() {
       a.href = url;
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      a.download = `claims-export-${stamp}.csv`;
+      a.download = `SVKK_Claims_${stamp}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       if (truncated) {
@@ -620,6 +646,8 @@ export function ClaimsListView() {
     setInsuranceCompanies([]);
     setAreas([]);
     setStatusTexts([]);
+    setTreatmentTypes([]);
+    setDiseaseCategories([]);
     setSort("createdAt");
     setPage(1);
   }
@@ -702,7 +730,7 @@ export function ClaimsListView() {
                   <div className="relative">
                     <Search className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
                     <Input
-                      placeholder="Claim #, SVKK ID, patient, holder, hospital, policy no…"
+                      placeholder="Claim #, SVKK ID, MD ID, patient, holder, hospital, policy no, insurer…"
                       value={searchDraft}
                       onChange={(e) => setSearchDraft(e.target.value)}
                       className="h-10 border-dashed pl-9 font-bold shadow-none"
@@ -833,6 +861,22 @@ export function ClaimsListView() {
                   accentClassName="border-slate-200/90 from-slate-50/95 to-card dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card"
                 />
                 <PolicyFilterMulti
+                  label="Treatment type"
+                  placeholder="All treatments"
+                  options={treatmentTypeOptions}
+                  selected={treatmentTypes}
+                  onChange={setTreatmentTypes}
+                  accentClassName="border-lime-200/90 from-lime-50/95 to-card dark:border-lime-900/50 dark:from-lime-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
+                  label="Disease category"
+                  placeholder="All disease categories"
+                  options={diseaseCategoryOptions}
+                  selected={diseaseCategories}
+                  onChange={setDiseaseCategories}
+                  accentClassName="border-fuchsia-200/90 from-fuchsia-50/95 to-card dark:border-fuchsia-900/50 dark:from-fuchsia-950/35 dark:to-card"
+                />
+                <PolicyFilterMulti
                   label="Match"
                   placeholder="All match states"
                   options={MATCH_OPTIONS}
@@ -851,7 +895,7 @@ export function ClaimsListView() {
                   onClick={() => void exportClaimsCsv()}
                 >
                   <Download className="size-3.5" />
-                  {exportBusy ? "Exporting…" : "Export CSV"}
+                  {exportBusy ? "Exporting…" : "Export filtered CSV"}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={resetFilters}>
                   <RotateCcw className="size-3.5" />
@@ -1077,11 +1121,21 @@ export function ClaimsListView() {
                   <TableCell colSpan={colCount} className="h-32 text-center">
                     <div className="text-muted-foreground flex flex-col items-center gap-2 py-6">
                       <Search className="size-8 opacity-40" />
-                      <p className="text-sm font-medium">No claims match these filters</p>
-                      <p className="text-xs">Import claims via CSV or widen your date filters.</p>
-                      <Button type="button" variant="link" size="sm" onClick={resetFilters}>
-                        Clear filters and try again
-                      </Button>
+                      <p className="text-sm font-medium">
+                        {activeFilterCount > 0
+                          ? "No claims match these filters"
+                          : "No claims in the register yet"}
+                      </p>
+                      <p className="text-xs">
+                        {activeFilterCount > 0
+                          ? "Claims exist but none match the selected search/filters — widen dates or clear filters."
+                          : "Import claims via CSV to get started."}
+                      </p>
+                      {activeFilterCount > 0 ? (
+                        <Button type="button" variant="link" size="sm" onClick={resetFilters}>
+                          Clear filters and try again
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>

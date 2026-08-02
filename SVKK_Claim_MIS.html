@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVKK Mediclaim MIS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f0f4f8;--surface:#fff;--surface2:#f8fafc;--border:#dde3ec;--border-soft:#eef1f6;
+  --accent:#1a56a4;--accent-light:#e8f0fb;--text:#1e2a3b;--muted:#6b7a99;--light:#9aa3b8;
+  --green:#10b981;--green-bg:#ecfdf5;--red:#ef4444;--red-bg:#fef2f2;
+  --yellow:#f59e0b;--yellow-bg:#fffbeb;--blue-bg:#eff6ff;
+  --shadow:0 1px 3px rgba(0,0,0,.07);--r:10px;--rs:6px;
+  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:13.5px}
+
+/* HEADER */
+.hdr{background:var(--accent);color:#fff;padding:12px 24px;display:flex;align-items:center;
+  justify-content:space-between;box-shadow:0 2px 8px rgba(26,86,164,.3);position:sticky;top:0;z-index:300}
+.hdr-brand{display:flex;align-items:center;gap:10px}
+.hdr-logo{width:34px;height:34px;background:#fff;border-radius:7px;display:grid;place-items:center;
+  font-weight:800;color:var(--accent);font-size:11px}
+.hdr h1{font-size:15px;font-weight:600}
+.hdr p{font-size:11px;opacity:.7;margin-top:1px}
+.hdr-info{font-size:11.5px;opacity:.8}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:2px solid var(--border);
+  padding:0 24px;position:sticky;top:58px;z-index:200;box-shadow:var(--shadow)}
+.tab{padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;
+  color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;
+  display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+
+/* LAYOUT */
+.main{padding:16px 24px;max-width:1920px;margin:0 auto}
+.pg{display:none}.pg.on{display:block}
+
+/* UPLOAD ZONE */
+.upload-box{background:var(--surface);border:2px dashed var(--border);border-radius:var(--r);
+  padding:20px 22px;margin-bottom:14px;display:grid;grid-template-columns:1.2fr 1fr 0.8fr;gap:18px;
+  align-items:start;transition:border-color .2s}
+.upload-box.drag{border-color:var(--accent);background:var(--accent-light)}
+.sec-lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.upload-row{display:flex;align-items:center;gap:8px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px}
+.upload-row label{background:var(--accent);color:#fff;padding:6px 13px;border-radius:var(--rs);
+  cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;flex-shrink:0}
+#fileInput{display:none}
+#fileName{color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.up-note{font-size:10.5px;color:var(--light);margin-top:5px}
+.up-note b{background:var(--accent-light);color:var(--accent);padding:1px 5px;border-radius:3px;font-size:10px;margin-right:2px}
+
+/* SAMPLE CSV */
+.sample-box{background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;
+  border-radius:var(--r);padding:16px 18px}
+.sample-box h4{font-size:12px;font-weight:700;color:#0369a1;margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.sample-box p{font-size:11px;color:#0c4a6e;line-height:1.5;margin-bottom:10px}
+
+/* SEARCH */
+.srch-wrap{position:relative}
+.srch-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--light)}
+#searchInput{width:100%;padding:9px 11px 9px 32px;border:1px solid var(--border);
+  border-radius:var(--rs);font-size:12.5px;font-family:var(--font);background:var(--surface2);
+  outline:none;transition:border-color .15s}
+#searchInput:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(26,86,164,.1)}
+#searchInput::placeholder{color:var(--light)}
+
+/* FILTER PANEL */
+.fp{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.fg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px;margin-bottom:11px}
+.fg label{display:block;font-size:10.5px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.fg select,.fg input[type=date]{
+  width:100%;padding:7px 24px 7px 8px;border:1px solid var(--border);border-radius:var(--rs);
+  font-size:12px;font-family:var(--font);color:var(--text);background:var(--surface2);
+  outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%236b7a99' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center}
+.fg input[type=date]{background-image:none;padding-right:8px}
+.fg select:focus,.fg input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(26,86,164,.1)}
+.fa{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:var(--rs);
+  font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--font)}
+.btn-p{background:var(--accent);color:#fff}.btn-p:hover{background:#154a8a}
+.btn-o{background:var(--surface);color:var(--text);border:1px solid var(--border)}.btn-o:hover{background:var(--surface2)}
+.btn-g{background:var(--green);color:#fff}.btn-g:hover{background:#059669}
+.btn-y{background:#f59e0b;color:#fff}.btn-y:hover{background:#d97706}
+.btn-b{background:#0ea5e9;color:#fff}.btn-b:hover{background:#0284c7}
+.btn-r{background:#ef4444;color:#fff}.btn-r:hover{background:#dc2626}
+/* row action buttons */
+.act-cell{white-space:nowrap;text-align:center}
+.act-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+  border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;
+  margin:0 2px;transition:all .15s;vertical-align:middle}
+.act-btn.edit{color:var(--accent)}
+.act-btn.edit:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.act-btn.del{color:var(--red)}
+.act-btn.del:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.btn svg{flex-shrink:0}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:14px}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:11px 14px;box-shadow:var(--shadow);display:flex;align-items:center;gap:9px}
+.si{width:34px;height:34px;border-radius:7px;display:grid;place-items:center;font-size:16px;flex-shrink:0}
+.si.b{background:var(--blue-bg)}.si.g{background:var(--green-bg)}.si.y{background:var(--yellow-bg)}.si.r{background:var(--red-bg)}
+.sv{font-size:19px;font-weight:700;line-height:1}
+.sl{font-size:10px;color:var(--muted);margin-top:2px;font-weight:500}
+
+/* CLAIM TABLE */
+.ts{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.th{padding:11px 16px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.th h3{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.th h3 em{font-size:10px;font-weight:600;background:var(--accent-light);color:var(--accent);
+  padding:2px 7px;border-radius:20px;font-style:normal}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--surface2);border-bottom:2px solid var(--border)}
+th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;cursor:pointer;user-select:none;
+  position:sticky;top:0;background:var(--surface2);z-index:10}
+th:hover{color:var(--accent)}
+.si2{margin-left:3px;opacity:.35;font-size:9px}
+th.srt .si2{opacity:1;color:var(--accent)}
+td{padding:7px 10px;border-bottom:1px solid var(--border-soft);vertical-align:top;max-width:200px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--accent-light)}
+.ct{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.bk{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.bk-g{background:var(--green-bg);color:#065f46}
+.bk-r{background:var(--red-bg);color:#991b1b}
+.bk-y{background:var(--yellow-bg);color:#92400e}
+.bk-b{background:var(--blue-bg);color:#1e40af}
+.bk-x{background:#f1f5f9;color:#475569}
+
+/* PAGINATION */
+.pg2{padding:11px 16px;border-top:1px solid var(--border-soft);display:flex;
+  align-items:center;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.pc{display:flex;gap:4px;align-items:center}
+.pb{padding:4px 10px;border:1px solid var(--border);border-radius:var(--rs);
+  background:var(--surface);cursor:pointer;font-size:11.5px;color:var(--text);transition:all .15s}
+.pb:hover:not(:disabled){background:var(--accent-light);border-color:var(--accent);color:var(--accent)}
+.pb:disabled{opacity:.4;cursor:not-allowed}
+.pb.act{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pps{padding:4px 22px 4px 7px;border:1px solid var(--border);border-radius:var(--rs);
+  background:var(--surface);font-size:11.5px;cursor:pointer;font-family:var(--font);
+  appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' fill='%236b7a99' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 6px center}
+
+/* EMPTY / LOADING */
+.es{text-align:center;padding:50px 20px;color:var(--muted)}
+.es .ei{font-size:42px;margin-bottom:9px}
+.es h3{font-size:14px;color:var(--text);margin-bottom:4px}
+.es p{font-size:12px}
+.lb{height:3px;background:var(--accent-light);position:relative;overflow:hidden;display:none}
+.lb::after{content:'';position:absolute;left:-40%;width:40%;height:100%;
+  background:var(--accent);animation:ld 1s infinite}
+@keyframes ld{to{left:100%}}
+
+/* ════════════════ MIS PAGE ════════════════ */
+.mis-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.mis-hdr h2{font-size:16px;font-weight:700}
+.mis-hdr p{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* Mini summary cards */
+.mc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:10px;margin-bottom:16px}
+.mc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:13px 15px;box-shadow:var(--shadow)}
+.mc-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.mc-val{font-size:21px;font-weight:800;margin:4px 0 2px}
+.mc-sub{font-size:10.5px;color:var(--light)}
+.mc.acc-b .mc-val{color:var(--accent)}
+.mc.acc-g .mc-val{color:#059669}
+.mc.acc-r .mc-val{color:var(--red)}
+.mc.acc-y .mc-val{color:#b45309}
+
+/* THE BIG CATEGORY TABLE */
+.ctw{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.ct-title{padding:12px 16px;border-bottom:1px solid var(--border-soft);font-size:13.5px;font-weight:600;
+  display:flex;align-items:center;justify-content:space-between}
+.ct-title span{font-size:10.5px;color:var(--muted);font-weight:400}
+.cat-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.cat-tbl th,.cat-tbl td{border:1px solid #d1d9e8;padding:8px 11px;text-align:center}
+/* header rows */
+.cat-tbl thead tr:first-child th{font-size:12px;font-weight:700;letter-spacing:.2px}
+.cat-tbl thead tr:nth-child(2) th{font-size:11px;font-weight:600}
+.h-main{background:#1a56a4;color:#fff}
+.h-cash{background:#1d4ed8;color:#fff}
+.h-reim{background:#6d28d9;color:#fff}
+.h-cashd{background:#b91c1c;color:#fff}
+.h-remd{background:#b45309;color:#fff}
+.h-tot{background:#374151;color:#fff}
+.h-settled{background:#065f46;color:#fff}
+/* data cells */
+.cat-tbl tbody td:first-child{font-weight:700;background:#f8fafc;font-size:14px;min-width:65px}
+.cat-tbl tbody tr:last-child td{font-weight:700;background:#fef3c7;color:#78350f}
+.cat-tbl tbody tr:last-child td:first-child{background:#f59e0b;color:#fff;font-size:15px}
+.n-cash{color:#1d4ed8;font-weight:700}
+.n-reim{color:#6d28d9;font-weight:700}
+.a-cash{color:#1e40af}
+.a-reim{color:#5b21b6}
+.a-set{color:#065f46;font-weight:700}
+.n-den{color:#991b1b;font-weight:700}
+.a-den{color:#b91c1c}
+.n-rem{color:#b45309;font-weight:700}
+.a-rem{color:#92400e}
+.a-tot{color:#374151;font-weight:700}
+.a-lodge{color:#1e2a3b;font-weight:600}
+.hl-g{background:#dcfce7}
+.hl-y{background:#fef9c3}
+.nil{color:#d1d5db}
+
+/* Breakdown tables (village, hospital, etc.) */
+.bd-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.bd-blk{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.bd-title{padding:10px 14px;border-bottom:1px solid var(--border-soft);font-size:12.5px;font-weight:600;
+  background:var(--surface2);display:flex;align-items:center;gap:5px}
+.bd-scroll{overflow-x:auto;max-height:300px;overflow-y:auto}
+.bd-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.bd-tbl th{padding:7px 11px;background:#f0f4f8;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left;position:sticky;top:0}
+.bd-tbl td{padding:6px 11px;border-bottom:1px solid var(--border-soft)}
+.bd-tbl tr:last-child td{border-bottom:none}
+.bd-tbl tr:hover td{background:var(--accent-light)}
+.bd-tbl .num{text-align:right}
+.bd-tbl .amt{text-align:right;color:#065f46;font-weight:600}
+.bd-tbl .pct{text-align:right;color:var(--muted)}
+
+/* Dynamic field-report cards */
+.fr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-bottom:16px}
+.fr-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.fr-card-title{padding:10px 14px;border-bottom:1px solid var(--border-soft);font-size:12.5px;font-weight:700;
+  background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:6px}
+.fr-card-title small{font-size:9.5px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  background:var(--accent-light);color:var(--accent);padding:2px 6px;border-radius:10px}
+.fr-stats{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.fr-stat{padding:11px 14px;border-right:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft)}
+.fr-stat:nth-child(even){border-right:none}
+.fr-stat-lbl{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.fr-stat-val{font-size:15px;font-weight:700;margin-top:2px}
+.fr-scroll{max-height:260px;overflow-y:auto}
+.fr-tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+.fr-tbl th{padding:6px 10px;background:#f0f4f8;font-size:9.5px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left;position:sticky;top:0}
+.fr-tbl td{padding:5px 10px;border-bottom:1px solid var(--border-soft)}
+.fr-tbl tr:last-child td{border-bottom:none}
+.fr-tbl tr:hover td{background:var(--accent-light)}
+.fr-tbl .num{text-align:right}
+.fr-tbl .amt{text-align:right;color:#065f46;font-weight:600}
+.fr-more{padding:7px 14px;font-size:10.5px;color:var(--light);text-align:center;border-top:1px solid var(--border-soft)}
+.fr-dist-hdr{padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.4px;border-top:1px solid var(--border-soft);background:var(--surface2)}
+
+/* Manual entry modal */
+.modal-ov{position:fixed;inset:0;background:rgba(15,30,55,.5);z-index:500;display:none;
+  align-items:flex-start;justify-content:center;padding:30px 16px;overflow-y:auto}
+.modal-ov.on{display:flex}
+.modal{background:var(--surface);border-radius:12px;width:100%;max-width:900px;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;animation:slideIn .2s ease}
+@keyframes slideIn{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-hd{background:var(--accent);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between}
+.modal-hd h3{font-size:16px;font-weight:600}
+.modal-hd p{font-size:11.5px;opacity:.8;margin-top:2px}
+.modal-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:7px;
+  cursor:pointer;font-size:18px;line-height:1;display:grid;place-items:center;transition:background .15s}
+.modal-x:hover{background:rgba(255,255,255,.3)}
+.modal-bd{padding:20px 22px;max-height:65vh;overflow-y:auto}
+.mform-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.mfg label{display:block;font-size:10.5px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
+.mfg label .req{color:var(--red);margin-left:2px}
+.mfg input,.mfg select,.mfg textarea{width:100%;padding:8px 10px;border:1px solid var(--border);
+  border-radius:var(--rs);font-size:12.5px;font-family:var(--font);color:var(--text);
+  background:var(--surface2);outline:none;transition:border-color .15s}
+.mfg input:focus,.mfg select:focus,.mfg textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(26,86,164,.1)}
+.mfg textarea{resize:vertical;min-height:38px}
+.mform-sec{grid-column:1/-1;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;
+  letter-spacing:.4px;margin-top:6px;padding-bottom:4px;border-bottom:1px solid var(--border-soft)}
+.mform-sec:first-child{margin-top:0}
+.modal-ft{padding:14px 22px;border-top:1px solid var(--border-soft);display:flex;
+  align-items:center;justify-content:space-between;gap:10px;background:var(--surface2)}
+.modal-ft .hint{font-size:11px;color:var(--muted)}
+.fr-empty{padding:16px;text-align:center;color:var(--light);font-size:11.5px}
+.fr-card.hidden{display:none}
+/* small per-report download button */
+.dl-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:5px;
+  font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);
+  background:var(--surface);color:var(--accent);transition:all .15s;font-family:var(--font);white-space:nowrap}
+.dl-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.dl-btn svg{flex-shrink:0}
+.fr-card-title small{margin-left:auto}
+.fr-card-title .dl-btn{margin-left:8px}
+
+@media(max-width:900px){
+  .upload-box{grid-template-columns:1fr}
+  .bd-grid{grid-template-columns:1fr}
+  .fg-grid{grid-template-columns:1fr 1fr}
+  .stats{grid-template-columns:1fr 1fr}
+  .hdr h1{font-size:13px}.hdr p{display:none}
+  .tab{padding:8px 12px;font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-logo">SVKK</div>
+    <div>
+      <h1>Mediclaim MIS — Claim Register</h1>
+      <p>Management Information System · SVKK Group</p>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="saveBadge" style="font-size:11px;background:rgba(255,255,255,.2);padding:3px 9px;border-radius:12px;opacity:0;transition:opacity .3s">✓ Auto-saved</span>
+    <div class="hdr-info" id="hdrInfo">No file loaded</div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab on" onclick="goTab('reg')" id="tab-reg">📋 Claim Register</button>
+  <button class="tab" onclick="goTab('mis')" id="tab-mis">📊 MIS Summary</button>
+</div>
+
+<div class="main">
+
+<!-- ══════════════ CLAIM REGISTER PAGE ══════════════ -->
+<div class="pg on" id="pg-reg">
+
+  <!-- Upload + Search + Sample CSV -->
+  <div class="upload-box" id="upBox">
+    <div>
+      <div class="sec-lbl">📂 Upload File</div>
+      <div class="upload-row">
+        <label for="fileInput">Choose File</label>
+        <input type="file" id="fileInput" accept=".xlsx,.xlsb,.xls,.csv">
+        <span id="fileName">No file chosen</span>
+      </div>
+      <p class="up-note"><b>XLSX</b><b>XLSB</b><b>XLS</b><b>CSV</b> All Excel formats supported · Drag &amp; drop here</p>
+    </div>
+    <div>
+      <div class="sec-lbl">🔍 Search</div>
+      <div class="srch-wrap">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="Claim #, SVKK ID, patient, holder, hospital, policy no…" autocomplete="off">
+      </div>
+    </div>
+    <div>
+      <div class="sample-box">
+        <h4>📥 Sample CSV Template</h4>
+        <p>Download the sample CSV to see all columns, or add claims manually. Your data is <b>auto-saved in this browser</b> — no need to re-upload each time.</p>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button class="btn btn-b" onclick="downloadSample()">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Sample CSV
+          </button>
+          <button class="btn btn-g" onclick="openEntry()">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Entry
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="fp">
+    <div class="fg-grid">
+      <div class="fg"><label>From Date (Admission)</label><input type="date" id="fDateFrom"></div>
+      <div class="fg"><label>To Date (Admission)</label><input type="date" id="fDateTo"></div>
+      <div class="fg"><label>Category (A/B/C/D)</label><select id="fCat"><option value="">All categories</option></select></div>
+      <div class="fg"><label>SVKK ID</label><select id="fSVKK"><option value="">All SVKK IDs</option></select></div>
+      <div class="fg"><label>Policy Type</label><select id="fPolType"><option value="">All policy types</option></select></div>
+      <div class="fg"><label>Policy Grouping</label><select id="fPolGroup"><option value="">All groupings</option></select></div>
+      <div class="fg"><label>Status</label><select id="fStatus"><option value="">All statuses</option></select></div>
+      <div class="fg"><label>Claim Lodge Type</label><select id="fLodge"><option value="">All types</option></select></div>
+      <div class="fg"><label>Village</label><select id="fVillage"><option value="">All villages</option></select></div>
+      <div class="fg"><label>Insurance Company</label><select id="fInsurance"><option value="">All companies</option></select></div>
+      <div class="fg"><label>Policy Year</label><select id="fPolYear"><option value="">All years</option></select></div>
+      <div class="fg"><label>Treatment Type</label><select id="fTreat"><option value="">All types</option></select></div>
+      <div class="fg"><label>Disease Category</label><select id="fDisease"><option value="">All categories</option></select></div>
+      <div class="fg"><label>Area / City</label><select id="fArea"><option value="">All areas</option></select></div>
+    </div>
+    <div class="fa">
+      <button class="btn btn-p" onclick="applyF()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>Apply Filters</button>
+      <button class="btn btn-o" onclick="resetF()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg>Reset</button>
+      <button class="btn btn-g" onclick="exportCSV()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export CSV</button>
+      <button class="btn btn-y" onclick="goTab('mis')">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>View MIS Report</button>
+      <button class="btn btn-r" onclick="clearAll()" style="margin-left:auto">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Clear All Data</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="sc"><div class="si b">📋</div><div><div class="sv" id="sTotal">0</div><div class="sl">Total Claims</div></div></div>
+    <div class="sc"><div class="si g">✅</div><div><div class="sv" id="sPaid">0</div><div class="sl">Paid / Settled</div></div></div>
+    <div class="sc"><div class="si y">⏳</div><div><div class="sv" id="sPending">0</div><div class="sl">Under Process</div></div></div>
+    <div class="sc"><div class="si b">💰</div><div><div class="sv" id="sLodge">₹0</div><div class="sl">Total Lodge Amt</div></div></div>
+    <div class="sc"><div class="si g">💵</div><div><div class="sv" id="sPaidAmt">₹0</div><div class="sl">Total Paid Amt</div></div></div>
+    <div class="sc"><div class="si r">✂️</div><div><div class="sv" id="sDeduct">₹0</div><div class="sl">Deductions</div></div></div>
+    <div class="sc"><div class="si y">📄</div><div><div class="sv" id="sOnPage">0</div><div class="sl">On This Page</div></div></div>
+    <div class="sc"><div class="si b">🔽</div><div><div class="sv" id="sFilters">0</div><div class="sl">Active Filters</div></div></div>
+  </div>
+
+  <!-- Claim Table -->
+  <div class="ts">
+    <div class="th">
+      <h3>Claim Register <em id="tCount">0 records</em></h3>
+      <select class="pps" id="perPage" onchange="chgPP()">
+        <option value="25">25/page</option><option value="50" selected>50/page</option>
+        <option value="100">100/page</option><option value="200">200/page</option><option value="500">500/page</option>
+      </select>
+    </div>
+    <div class="lb" id="lb"></div>
+    <div class="tw">
+      <table><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
+      <div class="es" id="es">
+        <div class="ei">📂</div>
+        <h3>No Data Loaded</h3>
+        <p>Upload your Claim register Excel / CSV file above.<br>Or download the Sample CSV template to get started.</p>
+      </div>
+    </div>
+    <div class="pg2" id="pgBar" style="display:none">
+      <span id="pgInfo"></span>
+      <div class="pc" id="pgBtns"></div>
+    </div>
+  </div>
+
+</div><!-- /pg-reg -->
+
+
+<!-- ══════════════ MIS PAGE ══════════════ -->
+<div class="pg" id="pg-mis">
+
+  <div class="mis-hdr">
+    <div>
+      <h2>📊 MIS Summary Report</h2>
+      <p id="misInfo">Load a file from the Claim Register tab to generate the MIS</p>
+    </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <button class="btn btn-g" onclick="exportMIS()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export MIS CSV</button>
+      <button class="btn btn-o" onclick="goTab('reg')">← Back to Register</button>
+    </div>
+  </div>
+
+  <!-- Mini cards -->
+  <div class="mc-grid">
+    <div class="mc acc-b"><div class="mc-lbl">Total Claims</div><div class="mc-val" id="mc1">—</div><div class="mc-sub">all categories combined</div></div>
+    <div class="mc acc-b"><div class="mc-lbl">Total Lodge Amount</div><div class="mc-val" id="mc2">—</div><div class="mc-sub">sum of all lodge amts</div></div>
+    <div class="mc acc-g"><div class="mc-lbl">Total Settled Amount</div><div class="mc-val" id="mc3">—</div><div class="mc-sub">sum of all paid amts</div></div>
+    <div class="mc acc-r"><div class="mc-lbl">Total Deductions</div><div class="mc-val" id="mc4">—</div><div class="mc-sub">sum of deduction amts</div></div>
+    <div class="mc acc-y"><div class="mc-lbl">Cashless Claims</div><div class="mc-val" id="mc5">—</div><div class="mc-sub">no. of cashless</div></div>
+    <div class="mc acc-y"><div class="mc-lbl">Reimbursement Claims</div><div class="mc-val" id="mc6">—</div><div class="mc-sub">no. of reimbursement</div></div>
+    <div class="mc acc-r"><div class="mc-lbl">Cash Denied</div><div class="mc-val" id="mc7">—</div><div class="mc-sub">cashless denied count</div></div>
+    <div class="mc acc-r"><div class="mc-lbl">REM Denied</div><div class="mc-val" id="mc8">—</div><div class="mc-sub">reimbursement denied</div></div>
+  </div>
+
+  <!-- THE MAIN A/B/C/D TABLE -->
+  <div class="ctw">
+    <div class="ct-title">
+      <span style="display:flex;flex-direction:column;gap:2px">
+        <span style="font-size:13.5px;font-weight:600;color:var(--text)">Category-wise Claim Summary</span>
+        <span>Cashless + Reimbursement breakdown by Category A / B / C / D</span>
+      </span>
+      <button class="dl-btn" onclick="dlCategoryTable()">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download CSV
+      </button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="cat-tbl" id="catTbl">
+        <thead>
+          <tr>
+            <th rowspan="2" class="h-main" style="min-width:70px">Category</th>
+            <th colspan="3" class="h-cash">Cashless</th>
+            <th colspan="3" class="h-reim">Reimbursement</th>
+            <th colspan="2" class="h-cashd">Cash Denied</th>
+            <th colspan="2" class="h-remd">REM Denied</th>
+            <th rowspan="2" class="h-tot" style="min-width:55px">Total</th>
+            <th rowspan="2" class="h-tot" style="min-width:105px">Lodge AMT.</th>
+            <th rowspan="2" class="h-settled" style="min-width:105px">Settled AMT</th>
+          </tr>
+          <tr>
+            <th class="h-cash">No.</th><th class="h-cash">Lodge</th><th class="h-cash">Settled</th>
+            <th class="h-reim">No.</th><th class="h-reim">Lodge</th><th class="h-reim">Settle</th>
+            <th class="h-cashd">No.</th><th class="h-cashd">Lodge Amt</th>
+            <th class="h-remd">No.</th><th class="h-remd">Lodge Amt</th>
+          </tr>
+        </thead>
+        <tbody id="catBody">
+          <tr><td colspan="14" style="text-align:center;padding:28px;color:var(--light)">Load data to generate this report</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Field scan controls -->
+  <div class="fp" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div class="sec-lbl" style="margin-bottom:3px">🔎 Field-wise Detailed Reports</div>
+        <p style="font-size:11.5px;color:var(--muted)">Every column in your uploaded file is scanned automatically — categorical fields get a full breakdown, amount fields get sum/avg/min/max, date fields get range &amp; count.</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="srch-wrap" style="min-width:200px">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="fieldSearchInput" placeholder="Filter fields by name…" oninput="filterFieldCards()">
+        </div>
+        <button class="btn btn-g" onclick="dlAllFieldReports()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download All Reports
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamically generated per-field report cards -->
+  <div class="fr-grid" id="fieldReportsGrid">
+    <div class="bd-blk" style="grid-column:1/-1">
+      <div style="text-align:center;padding:24px;color:var(--light)">Load data from the Claim Register tab to generate field-wise reports</div>
+    </div>
+  </div>
+
+</div><!-- /pg-mis -->
+</div><!-- /main -->
+
+<!-- ══════════════ MANUAL ENTRY MODAL ══════════════ -->
+<div class="modal-ov" id="entryModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h3 id="entryTitle">➕ Add New Claim Entry</h3>
+        <p>Fill in the claim details below. Fields marked <span style="color:#fca5a5">*</span> are recommended.</p>
+      </div>
+      <button class="modal-x" onclick="closeEntry()">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="mform-grid" id="entryForm"></div>
+    </div>
+    <div class="modal-ft">
+      <span class="hint" id="entryHint">New entries are added to the current data in memory. Use Export CSV to save permanently.</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-o" onclick="closeEntry()">Cancel</button>
+        <button class="btn btn-g" onclick="saveEntry()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save Entry
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+let RAW=[], HDR=[], FILT=[], pg=1, pp=50, sCol=null, sAsc=true;
+let ROW_SEQ=1;              // incrementing id for each claim row
+let EDIT_ID=null;           // when editing, holds the __id of the row being edited
+const LS_KEY='svkk_mis_data_v1';   // localStorage key
+
+// Assign a stable unique id to a row if it doesn't have one
+function ensureId(row){ if(!row.__id) row.__id='r'+(ROW_SEQ++); return row; }
+
+// ── Browser storage (auto-save so no manual backup needed) ──
+function saveToStorage(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({hdr:HDR, raw:RAW, seq:ROW_SEQ, fileName:document.getElementById('fileName').textContent}));
+    flashSaved();
+  }catch(e){ console.warn('Storage save failed:',e); }
+}
+function loadFromStorage(){
+  try{
+    const s=localStorage.getItem(LS_KEY);
+    if(!s)return false;
+    const d=JSON.parse(s);
+    if(!d.raw||!d.raw.length)return false;
+    HDR=d.hdr||[]; RAW=d.raw||[]; ROW_SEQ=d.seq||(RAW.length+1);
+    RAW.forEach(ensureId);
+    if(d.fileName)document.getElementById('fileName').textContent=d.fileName;
+    document.getElementById('hdrInfo').textContent=(d.fileName&&d.fileName!=='No file chosen'?d.fileName:'Saved data')+` · ${RAW.length.toLocaleString()} rows`;
+    return true;
+  }catch(e){ console.warn('Storage load failed:',e); return false; }
+}
+function clearStorage(){ try{ localStorage.removeItem(LS_KEY); }catch(e){} }
+
+let _flashTimer=null;
+function flashSaved(){
+  const el=document.getElementById('saveBadge');
+  if(!el)return;
+  el.style.opacity='1';
+  clearTimeout(_flashTimer);
+  _flashTimer=setTimeout(()=>{el.style.opacity='0';},1400);
+}
+
+// ═══════════════════════════════════════════════
+// COLUMN ALIASES
+// Every field from the Excel + new fields
+// ═══════════════════════════════════════════════
+const C={
+  category:    ['Category','CATEGORY','category','Cat','CAT'],
+  svkk:        ['SVKK ID','SVKK_ID','svkk id','SVKKID','Svkk Id','SVKK No','SVKK'],
+  polType:     ['Policy Type','policy type','POLICY TYPE','PolicyType','Policy  Type'],
+  polGroup:    ['Policy Grouping','Policy Group','policy grouping','policy group','POLICY GROUP','PolicyGroup'],
+  polNo:       ['Policy Number','policy number','POLICY NUMBER'],
+  holderName:  ['Policy Holder Name','Holder Name','holder name'],
+  mdId:        ['MD ID','md id','MDID','MD_ID'],
+  patName:     ['Patient Name','patient name'],
+  age:         ['Age','AGE','age'],
+  sex:         ['Sex','SEX','sex','Gender'],
+  relation:    ['Relation','RELATION','relation'],
+  sumInsured:  ['Sum Insured','sum insured','SUM INSURED','SumInsured'],
+  village:     ['Village','VILLAGE','village'],
+  insurance:   ['Insurance Company name','Insurance Company Name','insurance company name','Insurance Company'],
+  claimNo:     ['Claim  No. ( CCN)','Claim No','CCN','claim no'],
+  hospital:    ['Hospital Name','hospital name','HOSPITAL NAME'],
+  area:        ['Area','AREA','area','City'],
+  dateAdmit:   ['Date Of Admission','date of admission','DATE OF ADMISSION','Admission Date'],
+  dateDisch:   ['Date Of Discharge','date of discharge','Discharge Date'],
+  diagnosis:   ['DIAGNOSIS','Diagnosis','diagnosis'],
+  disease:     ['Disease Category','disease category','DISEASE CATEGORY'],
+  treatment:   ['Treatment Type','Treatment  Type','treatment type'],
+  lodgeType:   ['Claim LodgeType','Claim Lodge Type','claim lodgetype','Lodge Type'],
+  actualType:  ['Actual Lodge Type','actual lodge type'],
+  lodgeAmt:    [' Claim Lodge Amt','Claim Lodge Amt','Lodge Amt','lodge amt','Claim Lodge Amount'],
+  lodgeDate:   ['Claim Lodge Date','claim lodge date','Lodge Date'],
+  reportedAmt: ['Reported_LodgeAmt','Reported LodgeAmt','reported_lodgeamt'],
+  deductAmt:   ['Deduction Amount','deduction amount','DEDUCTION AMOUNT'],
+  discountAmt: ['Discount Amt','discount amt','Discount Amount'],
+  paidAmt:     ['Paid Amount','paid amount','PAID AMOUNT','Settled Amount','settled amount'],
+  payDate:     ['Payment Date','payment date'],
+  payFavor:    ['Payment In Faver Of','Payment In Favour Of','payment in faver of'],
+  prsDate:     ['PRSDate/CRS Date','PRSDate','CRS Date','prsdate/crs date'],
+  payDetail:   ['Payment Detail','payment detail'],
+  status:      ['Status','STATUS','status','Claim Status'],
+  deductNote:  ['Deduction/Claim Rejection /Close','Deduction Note','deduction/claim rejection /close'],
+  remark:      ['Remark','REMARK','remark','Remarks'],
+  polStart:    ['Policy Start Date','policy start date'],
+  polEnd:      ['Policy End Date','policy end date'],
+};
+
+// TABLE display column order
+const TCOLS=[
+  'Category','SVKK ID','Policy Type','Policy Grouping','Insurance Company name',
+  'Policy Number','Policy Start Date','Policy End Date','Policy Holder Name','MD ID',
+  'Patient Name','Age','Sex','Relation','Sum Insured',
+  'Claim  No. ( CCN)','Hospital Name','Area',
+  'Treatment Type','DIAGNOSIS','Disease Category',
+  'Date Of Admission','Date Of Discharge',
+  ' Claim Lodge Amt','Claim Lodge Date','Claim LodgeType','Actual Lodge Type',
+  'Deduction Amount','Discount Amt','Deduction/Claim Rejection /Close','Remark',
+  'Paid Amount','Payment In Faver Of','PRSDate/CRS Date','Payment Detail','Payment Date',
+  'Treatment  Type','Status','Reported_LodgeAmt',
+];
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+function rc(aliases){
+  if(!HDR.length)return null;
+  for(const a of aliases){const f=HDR.find(h=>h.trim().toLowerCase()===a.trim().toLowerCase());if(f)return f;}
+  for(const a of aliases){const f=HDR.find(h=>h.toLowerCase().includes(a.toLowerCase()));if(f)return f;}
+  return null;
+}
+function gv(row,aliases){const c=rc(aliases);return c?(row[c]||'').toString().trim():'';}
+function pa(v){if(!v)return 0;const n=parseFloat(v.toString().replace(/[₹,\s]/g,''));return isNaN(n)?0:n;}
+function fa(n){if(n===0)return '₹0';if(n>=10000000)return '₹'+(n/10000000).toFixed(2)+'Cr';if(n>=100000)return '₹'+(n/100000).toFixed(2)+'L';return '₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0});}
+function ff(n){return '₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0});}
+function eh(s){return(s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function pd(v){
+  if(!v)return null;const s=v.toString().trim();
+  let m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  const d=new Date(s);return isNaN(d)?null:d;
+}
+function isCash(row){const lt=gv(row,C.lodgeType).toLowerCase();return lt.includes('cashless')||lt.includes('cash less');}
+function isDenied(row){const st=gv(row,C.status).toLowerCase();return st.includes('denied')||st.includes('reject')||st.includes('repudiat')||st.includes('close');}
+
+// ═══════════════════════════════════════════════
+// SAMPLE CSV DOWNLOAD
+// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// STANDARD CLAIM COLUMNS (used by sample CSV + manual entry form)
+// grouped into sections with input type hints
+// ═══════════════════════════════════════════════
+const ENTRY_FIELDS=[
+  {sec:'Identity & Policy'},
+  {col:'Category',type:'select',opts:['A','B','C','D'],eg:'A'},
+  {col:'SVKK ID',eg:'SVKK001'},
+  {col:'Policy Type',eg:'Floater'},
+  {col:'Policy Grouping',eg:'Group A'},
+  {col:'Insurance Company name',eg:'The New India Assurance Company Limited'},
+  {col:'Policy Number',eg:'MDI123456/24/00001'},
+  {col:'Policy Start Date',type:'date',eg:'01-04-2024'},
+  {col:'Policy End Date',type:'date',eg:'31-03-2025'},
+  {col:'Policy Holder Name',eg:'Ramesh Patel'},
+  {col:'MD ID',eg:'M001'},
+
+  {sec:'Patient Details'},
+  {col:'Patient Name',eg:'Ramesh Patel'},
+  {col:'Age',type:'number',eg:'45'},
+  {col:'Sex',type:'select',opts:['M','F','Other'],eg:'M'},
+  {col:'Relation',eg:'Self'},
+  {col:'Sum Insured',type:'number',eg:'500000'},
+
+  {sec:'Claim & Hospital'},
+  {col:'Claim  No. ( CCN)',eg:'CCN2024001'},
+  {col:'Hospital Name',eg:'Shree Hospital'},
+  {col:'Area',eg:'Anand'},
+  {col:'Treatment Type',eg:'In-Patient'},
+  {col:'DIAGNOSIS',eg:'Appendicitis'},
+  {col:'Disease Category',eg:'Diseases of the digestive system'},
+  {col:'Date Of Admission',type:'date',eg:'15-04-2024'},
+  {col:'Date Of Discharge',type:'date',eg:'20-04-2024'},
+
+  {sec:'Lodge & Amounts'},
+  {col:' Claim Lodge Amt',type:'number',eg:'85000'},
+  {col:'Claim Lodge Date',type:'date',eg:'22-04-2024'},
+  {col:'Claim LodgeType',type:'select',opts:['Cashless','Reimbursement','Non Cashless'],eg:'Cashless'},
+  {col:'Actual Lodge Type',eg:'Cashless'},
+  {col:'Deduction Amount',type:'number',eg:'5000'},
+  {col:'Discount Amt',type:'number',eg:'0'},
+  {col:'Deduction/Claim Rejection /Close',type:'textarea',eg:''},
+  {col:'Remark',type:'textarea',eg:''},
+
+  {sec:'Payment & Status'},
+  {col:'Paid Amount',type:'number',eg:'80000'},
+  {col:'Payment In Faver Of',eg:'The New India Assurance Company Limited'},
+  {col:'PRSDate/CRS Date',type:'date',eg:'24-04-2024'},
+  {col:'Payment Detail',eg:'NEFT/123456'},
+  {col:'Payment Date',type:'date',eg:'25-04-2024'},
+  {col:'Treatment  Type',eg:'In-Patient'},
+  {col:'Status',type:'select',opts:['Paid','Settled','Under Process','AL Issued','Received','Denied','Rejected','Closed'],eg:'Paid'},
+  {col:'Reported_LodgeAmt',type:'number',eg:'85000'},
+];
+// Flat list of just the column names in order
+const STD_COLS=ENTRY_FIELDS.filter(f=>f.col).map(f=>f.col);
+
+function downloadSample(){
+  const cols=STD_COLS;
+  const eg=ENTRY_FIELDS.filter(f=>f.col).map(f=>f.eg||'');
+  const rows=[cols.join(','),eg.map(v=>`"${v}"`).join(',')];
+  const blob=new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='SVKK_Claim_Sample_Template.csv';a.click();
+}
+
+// ═══════════════════════════════════════════════
+// MANUAL ENTRY
+// ═══════════════════════════════════════════════
+function openEntry(editEntry){
+  EDIT_ID = editEntry ? editEntry.__id : null;
+  const grid=document.getElementById('entryForm');
+  let html='';
+
+  if(!HDR.length){
+    // No data yet — grouped standard fields with sections
+    ENTRY_FIELDS.forEach(f=>{
+      if(f.sec){html+=`<div class="mform-sec">${f.sec}</div>`;return;}
+      html+=fieldInput(f.col,f,editEntry);
+    });
+  }else{
+    html+=`<div class="mform-sec">Claim Entry — ${HDR.filter(h=>h!=='__id').length} fields</div>`;
+    HDR.filter(h=>h!=='__id').forEach(col=>{
+      const def=ENTRY_FIELDS.find(f=>f.col && f.col.trim().toLowerCase()===col.trim().toLowerCase());
+      html+=fieldInput(col,def||{},editEntry);
+    });
+  }
+  grid.innerHTML=html;
+  document.getElementById('entryModal').classList.add('on');
+  document.getElementById('entryTitle').textContent = EDIT_ID ? '✏️ Edit Claim Entry' : '➕ Add New Claim Entry';
+  document.getElementById('entryHint').textContent = EDIT_ID
+    ? 'Editing an existing claim. Changes are saved to browser storage automatically.'
+    : (HDR.length
+      ? `New entry will be added to your ${RAW.length.toLocaleString()} rows and auto-saved.`
+      : 'No file loaded — this starts a new dataset, auto-saved to browser storage.');
+}
+
+function fieldInput(col,f,editEntry){
+  const id='ent_'+col.replace(/[^a-z0-9]+/gi,'_');
+  const lbl=col.trim();
+  const cur = editEntry ? (editEntry[col]||'') : '';
+  let input='';
+  if(f.type==='select' && f.opts){
+    input=`<select id="${id}"><option value="">— select —</option>`+
+      f.opts.map(o=>`<option value="${eh(o)}" ${cur===o?'selected':''}>${eh(o)}</option>`).join('')+`</select>`;
+  }else if(f.type==='textarea'){
+    input=`<textarea id="${id}" placeholder="${eh(f.eg||'')}">${eh(cur)}</textarea>`;
+  }else if(f.type==='date'){
+    input=`<input type="text" id="${id}" placeholder="DD-MM-YYYY" value="${eh(cur)}">`;
+  }else if(f.type==='number'){
+    input=`<input type="number" id="${id}" placeholder="${eh(f.eg||'0')}" step="any" value="${eh(cur)}">`;
+  }else{
+    input=`<input type="text" id="${id}" placeholder="${eh(f.eg||'')}" value="${eh(cur)}">`;
+  }
+  return `<div class="mfg"><label>${eh(lbl)}</label>${input}</div>`;
+}
+
+function closeEntry(){ document.getElementById('entryModal').classList.remove('on'); EDIT_ID=null; }
+
+function saveEntry(){
+  const cols = (HDR.length ? HDR : STD_COLS).filter(h=>h!=='__id');
+  const entry={};
+  let hasValue=false;
+  cols.forEach(col=>{
+    const id='ent_'+col.replace(/[^a-z0-9]+/gi,'_');
+    const el=document.getElementById(id);
+    const val=el?el.value.trim():'';
+    entry[col]=val;
+    if(val)hasValue=true;
+  });
+  if(!hasValue){alert('Please fill in at least one field before saving.');return;}
+
+  if(EDIT_ID){
+    // Update existing row in place
+    const idx=RAW.findIndex(r=>r.__id===EDIT_ID);
+    if(idx>=0){ entry.__id=EDIT_ID; RAW[idx]=entry; }
+  }else{
+    // First entry with no data → initialise headers
+    if(!HDR.length){ HDR=[...STD_COLS]; RAW=[]; }
+    ensureId(entry);
+    RAW.push(entry);
+  }
+
+  const fn=document.getElementById('fileName').textContent;
+  document.getElementById('hdrInfo').textContent=
+    (fn!=='No file chosen'?fn:'Saved data')+` · ${RAW.length.toLocaleString()} rows`;
+
+  saveToStorage();
+  closeEntry();
+  populateFilters();
+  applyF();
+}
+
+// Edit / Delete row handlers (called from action buttons in the table)
+function editRow(id){
+  const row=RAW.find(r=>r.__id===id);
+  if(!row){alert('Row not found.');return;}
+  openEntry(row);
+}
+function deleteRow(id){
+  const row=RAW.find(r=>r.__id===id);
+  if(!row)return;
+  const name=gv(row,C.patName)||gv(row,C.svkk)||gv(row,C.claimNo)||'this claim';
+  if(!confirm(`Delete "${name}"?\n\nThis permanently removes the row from browser storage and cannot be undone.`))return;
+  RAW=RAW.filter(r=>r.__id!==id);
+  const fn=document.getElementById('fileName').textContent;
+  document.getElementById('hdrInfo').textContent=
+    (RAW.length? (fn!=='No file chosen'?fn:'Saved data') : 'No file loaded')+` · ${RAW.length.toLocaleString()} rows`;
+  if(!RAW.length){ HDR=[]; clearStorage(); document.getElementById('fileName').textContent='No file chosen'; }
+  else saveToStorage();
+  populateFilters();
+  applyF();
+}
+
+// Clear ALL data (with confirmation)
+function clearAll(){
+  if(!RAW.length){alert('There is no data to clear.');return;}
+  if(!confirm(`⚠️ Delete ALL ${RAW.length.toLocaleString()} rows?\n\nThis clears everything from browser storage and cannot be undone. Export a CSV first if you want a backup.`))return;
+  RAW=[];HDR=[];FILT=[];clearStorage();
+  document.getElementById('fileName').textContent='No file chosen';
+  document.getElementById('hdrInfo').textContent='No file loaded';
+  populateFilters();applyF();
+}
+
+// ═══════════════════════════════════════════════
+// FILE UPLOAD
+// ═══════════════════════════════════════════════
+document.getElementById('fileInput').addEventListener('change',handleFile);
+const ub=document.getElementById('upBox');
+ub.addEventListener('dragover',e=>{e.preventDefault();ub.classList.add('drag')});
+ub.addEventListener('dragleave',()=>ub.classList.remove('drag'));
+ub.addEventListener('drop',e=>{
+  e.preventDefault();ub.classList.remove('drag');
+  const f=e.dataTransfer.files[0];if(!f)return;
+  document.getElementById('fileInput').files=e.dataTransfer.files;
+  handleFile({target:{files:[f]}});
+});
+
+function handleFile(e){
+  const file=e.target.files[0];if(!file)return;
+  document.getElementById('fileName').textContent=file.name;
+  document.getElementById('lb').style.display='block';
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      const data=ev.target.result;
+      let wb;
+      if(file.name.endsWith('.csv')){
+        wb=XLSX.read(new TextDecoder('utf-8').decode(new Uint8Array(data)),{type:'string'});
+      }else{
+        wb=XLSX.read(data,{type:'array',cellDates:true,dateNF:'dd-mm-yyyy'});
+      }
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});
+      if(!json.length){alert('No data found in file.');return;}
+
+      // If existing data present, ask whether to replace or append
+      let mode='replace';
+      if(RAW.length){
+        mode=confirm(`You already have ${RAW.length.toLocaleString()} rows saved.\n\nOK = ADD these ${json.length.toLocaleString()} rows to existing data\nCancel = REPLACE all existing data`)
+          ?'append':'replace';
+      }
+      const newHdr=Object.keys(json[0]);
+      json.forEach(ensureId);
+      if(mode==='append'){
+        // Union headers (keep existing order, add any new ones)
+        newHdr.forEach(h=>{ if(!HDR.some(x=>x.trim().toLowerCase()===h.trim().toLowerCase()))HDR.push(h); });
+        RAW=RAW.concat(json);
+      }else{
+        HDR=newHdr; RAW=json;
+      }
+      document.getElementById('hdrInfo').textContent=`${file.name} · ${RAW.length.toLocaleString()} rows`;
+      saveToStorage();
+      populateFilters();applyF();
+    }catch(err){console.error(err);alert('Could not read file.\n'+err.message);}
+    document.getElementById('lb').style.display='none';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ═══════════════════════════════════════════════
+// POPULATE FILTERS
+// ═══════════════════════════════════════════════
+function populateFilters(){
+  const map={
+    fCat:C.category,fSVKK:C.svkk,fPolType:C.polType,fPolGroup:C.polGroup,
+    fStatus:C.status,fLodge:C.lodgeType,fVillage:C.village,fInsurance:C.insurance,
+    fTreat:C.treatment,fDisease:C.disease,fArea:C.area,
+  };
+  for(const [id,aliases] of Object.entries(map)){
+    const col=rc(aliases);const sel=document.getElementById(id);
+    const ph=sel.options[0].text;sel.innerHTML=`<option value="">${ph}</option>`;
+    if(!col)continue;
+    const vals=[...new Set(RAW.map(r=>(r[col]||'').toString().trim()).filter(Boolean))].sort();
+    vals.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v.length>58?v.slice(0,58)+'…':v;sel.appendChild(o);});
+  }
+  // Policy year
+  const sc=rc(C.polStart);const ys=document.getElementById('fPolYear');
+  ys.innerHTML='<option value="">All years</option>';
+  if(sc){
+    const yrs=[...new Set(RAW.map(r=>{const m=(r[sc]||'').toString().match(/(\d{4})/);return m?m[1]:'';}).filter(Boolean))].sort();
+    yrs.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;ys.appendChild(o);});
+  }
+}
+
+// ═══════════════════════════════════════════════
+// APPLY FILTERS
+// ═══════════════════════════════════════════════
+document.getElementById('searchInput').addEventListener('input',applyF);
+
+function applyF(){
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  const v={
+    cat:document.getElementById('fCat').value,
+    svkk:document.getElementById('fSVKK').value,
+    pt:document.getElementById('fPolType').value,
+    pg:document.getElementById('fPolGroup').value,
+    st:document.getElementById('fStatus').value,
+    lt:document.getElementById('fLodge').value,
+    vil:document.getElementById('fVillage').value,
+    ins:document.getElementById('fInsurance').value,
+    tr:document.getElementById('fTreat').value,
+    dis:document.getElementById('fDisease').value,
+    ar:document.getElementById('fArea').value,
+    py:document.getElementById('fPolYear').value,
+    df:document.getElementById('fDateFrom').value,
+    dt:document.getElementById('fDateTo').value,
+  };
+  let af=Object.values(v).filter(Boolean).length;
+  const adm=rc(C.dateAdmit),sc2=rc(C.polStart);
+
+  FILT=RAW.filter(row=>{
+    if(q){const h=Object.values(row).join('|').toLowerCase();if(!h.includes(q))return false;}
+    if(v.cat&&gv(row,C.category)!==v.cat)return false;
+    if(v.svkk&&gv(row,C.svkk)!==v.svkk)return false;
+    if(v.pt&&gv(row,C.polType)!==v.pt)return false;
+    if(v.pg&&gv(row,C.polGroup)!==v.pg)return false;
+    if(v.st&&gv(row,C.status)!==v.st)return false;
+    if(v.lt&&gv(row,C.lodgeType)!==v.lt)return false;
+    if(v.vil&&gv(row,C.village)!==v.vil)return false;
+    if(v.ins&&gv(row,C.insurance)!==v.ins)return false;
+    if(v.tr&&gv(row,C.treatment)!==v.tr)return false;
+    if(v.dis&&gv(row,C.disease)!==v.dis)return false;
+    if(v.ar&&gv(row,C.area)!==v.ar)return false;
+    if(v.py&&sc2&&!(row[sc2]||'').toString().includes(v.py))return false;
+    if((v.df||v.dt)&&adm){
+      const d=pd(row[adm]);
+      if(d){if(v.df&&d<new Date(v.df))return false;if(v.dt&&d>new Date(v.dt+'T23:59:59'))return false;}
+    }
+    return true;
+  });
+
+  if(sCol){
+    FILT.sort((a,b)=>{
+      const av=(a[sCol]||'').toString().toLowerCase(),bv=(b[sCol]||'').toString().toLowerCase();
+      const n1=parseFloat(av.replace(/,/g,'')),n2=parseFloat(bv.replace(/,/g,''));
+      if(!isNaN(n1)&&!isNaN(n2))return sAsc?n1-n2:n2-n1;
+      return sAsc?av.localeCompare(bv):bv.localeCompare(av);
+    });
+  }
+  pg=1;updateStats(af);renderTable();
+  if(document.getElementById('pg-mis').classList.contains('on'))renderMIS();
+}
+
+function resetF(){
+  document.getElementById('searchInput').value='';
+  ['fCat','fSVKK','fPolType','fPolGroup','fStatus','fLodge','fVillage',
+   'fInsurance','fTreat','fDisease','fArea','fPolYear'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fDateFrom').value='';document.getElementById('fDateTo').value='';
+  applyF();
+}
+
+// ═══════════════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════════════
+function updateStats(af){
+  document.getElementById('sTotal').textContent=FILT.length.toLocaleString();
+  document.getElementById('sFilters').textContent=af;
+  let paid=0,pend=0,lodge=0,paidA=0,ded=0;
+  for(const r of FILT){
+    const st=gv(r,C.status).toLowerCase();
+    if(st.includes('paid')||st.includes('settled'))paid++;
+    else if(st.includes('process')||st.includes('pending')||st.includes('under'))pend++;
+    lodge+=pa(gv(r,C.lodgeAmt));paidA+=pa(gv(r,C.paidAmt));ded+=pa(gv(r,C.deductAmt));
+  }
+  document.getElementById('sPaid').textContent=paid.toLocaleString();
+  document.getElementById('sPending').textContent=pend.toLocaleString();
+  document.getElementById('sLodge').textContent=fa(lodge);
+  document.getElementById('sPaidAmt').textContent=fa(paidA);
+  document.getElementById('sDeduct').textContent=fa(ded);
+}
+
+// ═══════════════════════════════════════════════
+// RENDER CLAIM TABLE
+// ═══════════════════════════════════════════════
+function renderTable(){
+  const thead=document.getElementById('tHead'),tbody=document.getElementById('tBody'),es=document.getElementById('es');
+  let dcols=RAW.length>0?TCOLS.filter(c=>HDR.some(h=>h.trim().toLowerCase()===c.trim().toLowerCase())):[];
+  if(dcols.length===0&&HDR.length)dcols=HDR.filter(h=>h!=='__id');
+  dcols=dcols.filter(h=>h!=='__id');
+
+  if(!FILT.length){
+    tbody.innerHTML='';thead.innerHTML='';es.style.display='block';
+    es.innerHTML=RAW.length===0
+      ?'<div class="ei">📂</div><h3>No Data Loaded</h3><p>Upload your Excel/CSV or download the Sample CSV template.</p>'
+      :'<div class="ei">🔍</div><h3>No Results Found</h3><p>No claims match your filters. Try resetting.</p>';
+    document.getElementById('pgBar').style.display='none';
+    document.getElementById('tCount').textContent='0 records';
+    document.getElementById('sOnPage').textContent='0';
+    return;
+  }
+  es.style.display='none';
+
+  thead.innerHTML='<tr>'+dcols.map(c=>
+    `<th onclick="sortBy('${eh(c)}')" class="${sCol===c?'srt':''}">
+      ${eh(c.trim())}<span class="si2">${sCol===c?(sAsc?'▲':'▼'):'⇅'}</span></th>`
+  ).join('')+'<th style="text-align:center;cursor:default">Actions</th></tr>';
+
+  const total=FILT.length,totPg=Math.ceil(total/pp),st=(pg-1)*pp;
+  const pdata=FILT.slice(st,st+pp);
+
+  tbody.innerHTML=pdata.map(row=>{
+    ensureId(row);
+    const cells=dcols.map(c=>{
+      const rc2=HDR.find(h=>h.trim().toLowerCase()===c.trim().toLowerCase())||c;
+      const val=(row[rc2]||'').toString().trim();
+      return `<td><span class="ct" title="${eh(val)}">${renderCell(c,val)}</span></td>`;
+    }).join('');
+    const actions=`<td class="act-cell">
+      <button class="act-btn edit" title="Edit" onclick="editRow('${row.__id}')">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="act-btn del" title="Delete" onclick="deleteRow('${row.__id}')">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button></td>`;
+    return `<tr>${cells}${actions}</tr>`;
+  }).join('');
+
+  document.getElementById('pgBar').style.display='flex';
+  document.getElementById('pgInfo').textContent=`Showing ${(st+1).toLocaleString()}–${Math.min(st+pp,total).toLocaleString()} of ${total.toLocaleString()} records`;
+  document.getElementById('tCount').textContent=`${total.toLocaleString()} records`;
+  document.getElementById('sOnPage').textContent=pdata.length.toLocaleString();
+  renderPagination(totPg);
+}
+
+function renderCell(col,val){
+  if(!val)return '<span style="color:#d1d9e6">—</span>';
+  const lo=val.toLowerCase(),c=col.toLowerCase().trim();
+  if(c==='status'||c==='claim status'){
+    if(lo.includes('paid')||lo.includes('settled'))return `<span class="bk bk-g">${eh(val)}</span>`;
+    if(lo.includes('reject')||lo.includes('close')||lo.includes('repudiat')||lo.includes('denied'))return `<span class="bk bk-r">${eh(val)}</span>`;
+    if(lo.includes('process')||lo.includes('pending')||lo.includes('under'))return `<span class="bk bk-y">${eh(val)}</span>`;
+    if(lo.includes('received')||lo.includes('issued')||lo.includes('intimat'))return `<span class="bk bk-b">${eh(val)}</span>`;
+    return `<span class="bk bk-x">${eh(val)}</span>`;
+  }
+  if(c.includes('amt')||c.includes('amount')){
+    const n=pa(val);if(n>0)return `<b style="color:#065f46">₹${n.toLocaleString('en-IN')}</b>`;
+  }
+  if(c.includes('lodgetype')||c.includes('lodge type')){
+    if(lo.includes('cashless')||lo.includes('cash less'))return `<span class="bk bk-b">${eh(val)}</span>`;
+    return `<span class="bk bk-x">${eh(val)}</span>`;
+  }
+  if(c==='category'||c==='cat'){
+    const m={'a':'bk-g','b':'bk-b','c':'bk-y','d':'bk-r'};
+    return `<span class="bk ${m[val.trim().toLowerCase()]||'bk-x'}">${eh(val)}</span>`;
+  }
+  return eh(val);
+}
+
+function renderPagination(totPg){
+  const pc=document.getElementById('pgBtns');pc.innerHTML='';
+  const prev=document.createElement('button');
+  prev.className='pb';prev.textContent='← Prev';prev.disabled=pg===1;
+  prev.onclick=()=>{pg--;renderTable()};pc.appendChild(prev);
+  let pages=totPg<=7?Array.from({length:totPg},(_,i)=>i+1):[1];
+  if(totPg>7){
+    if(pg>3)pages.push('...');
+    for(let i=Math.max(2,pg-1);i<=Math.min(totPg-1,pg+1);i++)pages.push(i);
+    if(pg<totPg-2)pages.push('...');
+    pages.push(totPg);
+  }
+  pages.forEach(p=>{
+    if(p==='...'){const s=document.createElement('span');s.textContent='…';s.style.padding='4px 2px';pc.appendChild(s);return;}
+    const b=document.createElement('button');
+    b.className='pb'+(p===pg?' act':'');b.textContent=p;
+    b.onclick=()=>{pg=p;renderTable()};pc.appendChild(b);
+  });
+  const next=document.createElement('button');
+  next.className='pb';next.textContent='Next →';next.disabled=pg===totPg;
+  next.onclick=()=>{pg++;renderTable()};pc.appendChild(next);
+}
+
+function sortBy(col){if(sCol===col)sAsc=!sAsc;else{sCol=col;sAsc=true;}applyF();}
+function chgPP(){pp=+document.getElementById('perPage').value;pg=1;renderTable();}
+
+// ═══════════════════════════════════════════════
+// EXPORT CSV
+// ═══════════════════════════════════════════════
+function exportCSV(){
+  if(!FILT.length){alert('No data to export.');return;}
+  const cols=HDR.filter(c=>c!=='__id');
+  const rows=[cols.join(',')];
+  FILT.forEach(r=>rows.push(cols.map(c=>`"${(r[c]||'').toString().replace(/"/g,'""')}"`).join(',')));
+  dl('\ufeff'+rows.join('\n'),`SVKK_Claims_${now()}.csv`,'text/csv;charset=utf-8;');
+}
+function dl(content,name,type){
+  const blob=new Blob([content],{type});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+}
+function now(){return new Date().toISOString().slice(0,10);}
+
+// ═══════════════════════════════════════════════
+// TAB
+// ═══════════════════════════════════════════════
+function goTab(t){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+  document.getElementById('pg-'+t).classList.add('on');
+  document.getElementById('tab-'+t).classList.add('on');
+  if(t==='mis')renderMIS();
+}
+
+// ═══════════════════════════════════════════════
+// MIS RENDER
+// ═══════════════════════════════════════════════
+function renderMIS(){
+  const data=FILT;
+  document.getElementById('misInfo').textContent=
+    data.length?`${data.length.toLocaleString()} records · based on current filters`:'Load a file from the Claim Register tab';
+  if(!data.length){clearMIS();return;}
+
+  // ── Aggregate ─────────────────────────────────
+  const CATS=['A','B','C','D'];
+  const cs={};
+  CATS.forEach(c=>cs[c]={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0});
+  let gLodge=0,gPaid=0,gDed=0,gCash=0,gReim=0,gCashD=0,gRemD=0;
+
+  data.forEach(row=>{
+    const cat=(gv(row,C.category).toUpperCase().trim())||'?';
+    if(!cs[cat])cs[cat]={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0};
+    const s=cs[cat];
+    const la=pa(gv(row,C.lodgeAmt)),pia=pa(gv(row,C.paidAmt)),da=pa(gv(row,C.deductAmt));
+    const cash=isCash(row),denied=isDenied(row);
+    gLodge+=la;gPaid+=pia;gDed+=da;
+    s.tot++;s.tLodge+=la;s.tSet+=pia;
+
+    if(cash){
+      gCash++;
+      if(denied){s.cdNo++;s.cdLodge+=la;gCashD++;}
+      else{s.cNo++;s.cLodge+=la;s.cSet+=pia;}
+    }else{
+      gReim++;
+      if(denied){s.rdNo++;s.rdLodge+=la;gRemD++;}
+      else{s.rNo++;s.rLodge+=la;s.rSet+=pia;}
+    }
+  });
+
+  // Mini cards
+  document.getElementById('mc1').textContent=data.length.toLocaleString();
+  document.getElementById('mc2').textContent=fa(gLodge);
+  document.getElementById('mc3').textContent=fa(gPaid);
+  document.getElementById('mc4').textContent=fa(gDed);
+  document.getElementById('mc5').textContent=gCash.toLocaleString();
+  document.getElementById('mc6').textContent=gReim.toLocaleString();
+  document.getElementById('mc7').textContent=gCashD.toLocaleString();
+  document.getElementById('mc8').textContent=gRemD.toLocaleString();
+
+  // ── Category Table ────────────────────────────
+  function n(v){return v===0?'<span class="nil">0</span>':v.toLocaleString();}
+  function a(v){return v===0?'<span class="nil">—</span>':ff(v);}
+
+  const activeCats=CATS.filter(c=>cs[c]&&cs[c].tot>0);
+  const extraCats=Object.keys(cs).filter(c=>!CATS.includes(c)&&cs[c].tot>0);
+  const allCats=[...activeCats,...extraCats];
+
+  // Totals
+  const T={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0};
+  allCats.forEach(c=>{const s=cs[c];for(const k of Object.keys(T))T[k]+=(s[k]||0);});
+
+  let rows=allCats.map(cat=>{
+    const s=cs[cat];
+    return `<tr>
+      <td>${eh(cat)}</td>
+      <td class="n-cash">${n(s.cNo)}</td>
+      <td class="a-cash">${a(s.cLodge)}</td>
+      <td class="a-set hl-g">${a(s.cSet)}</td>
+      <td class="n-reim">${n(s.rNo)}</td>
+      <td class="a-reim">${a(s.rLodge)}</td>
+      <td class="a-set hl-g">${a(s.rSet)}</td>
+      <td class="n-den">${n(s.cdNo)}</td>
+      <td class="a-den">${a(s.cdLodge)}</td>
+      <td class="n-rem">${n(s.rdNo)}</td>
+      <td class="a-rem">${a(s.rdLodge)}</td>
+      <td class="a-tot">${n(s.tot)}</td>
+      <td class="a-lodge">${a(s.tLodge)}</td>
+      <td class="a-set hl-g">${a(s.tSet)}</td>
+    </tr>`;
+  });
+  rows.push(`<tr>
+    <td>Total</td>
+    <td class="n-cash">${n(T.cNo)}</td><td class="a-cash">${a(T.cLodge)}</td><td class="a-set hl-y">${a(T.cSet)}</td>
+    <td class="n-reim">${n(T.rNo)}</td><td class="a-reim">${a(T.rLodge)}</td><td class="a-set hl-y">${a(T.rSet)}</td>
+    <td class="n-den">${n(T.cdNo)}</td><td class="a-den">${a(T.cdLodge)}</td>
+    <td class="n-rem">${n(T.rdNo)}</td><td class="a-rem">${a(T.rdLodge)}</td>
+    <td class="a-tot">${n(T.tot)}</td><td class="a-lodge">${a(T.tLodge)}</td><td class="a-set hl-y">${a(T.tSet)}</td>
+  </tr>`);
+  document.getElementById('catBody').innerHTML=rows.join('');
+
+  // ── Breakdowns ────────────────────────────────
+  // ── Field-wise Detailed Reports (every column, auto-scanned) ──
+  renderFieldReports(data);
+}
+
+// ═══════════════════════════════════════════════
+// FIELD-WISE DETAILED REPORTS — scans EVERY column
+// ═══════════════════════════════════════════════
+const AMT_WORDS=['amt','amount'];
+const DATE_WORDS=['date'];
+const ID_WORDS=['policy number','ccn','claim  no','claim no','mdid','md id','svkk id','svkk_id'];
+
+function colKind(colName,uniqueCount,nonEmptyCount){
+  const lo=colName.toLowerCase();
+  if(AMT_WORDS.some(w=>lo.includes(w)))return 'amount';
+  if(DATE_WORDS.some(w=>lo.includes(w)))return 'date';
+  if(ID_WORDS.some(w=>lo.includes(w)))return 'id';
+  if(nonEmptyCount>0 && uniqueCount/nonEmptyCount>0.6 && uniqueCount>25)return 'id';
+  return 'category';
+}
+
+// Holds full computed data for every field report (for downloads)
+let FIELD_REPORTS={};
+
+// Value-distribution buckets for amount fields (INR ranges)
+function amtBuckets(){
+  return [
+    {lo:-Infinity,hi:1,      label:'₹0'},
+    {lo:1,        hi:10000,  label:'₹1 – ₹10K'},
+    {lo:10000,    hi:25000,  label:'₹10K – ₹25K'},
+    {lo:25000,    hi:50000,  label:'₹25K – ₹50K'},
+    {lo:50000,    hi:100000, label:'₹50K – ₹1L'},
+    {lo:100000,   hi:200000, label:'₹1L – ₹2L'},
+    {lo:200000,   hi:300000, label:'₹2L – ₹3L'},
+    {lo:300000,   hi:500000, label:'₹3L – ₹5L'},
+    {lo:500000,   hi:1000000,label:'₹5L – ₹10L'},
+    {lo:1000000,  hi:Infinity,label:'₹10L +'},
+  ];
+}
+
+// Key identifier columns to attach to each amount detail row
+function amtKeyCols(){
+  return [
+    {label:'SVKK ID',aliases:C.svkk},
+    {label:'Patient Name',aliases:C.patName},
+    {label:'Policy Number',aliases:C.polNo},
+    {label:'Claim No',aliases:C.claimNo},
+    {label:'Village',aliases:C.village},
+    {label:'Hospital',aliases:C.hospital},
+    {label:'Status',aliases:C.status},
+  ];
+}
+
+function renderFieldReports(data){
+  const grid=document.getElementById('fieldReportsGrid');
+  FIELD_REPORTS={};
+  if(!HDR.length||!data.length){
+    grid.innerHTML='<div class="bd-blk" style="grid-column:1/-1"><div class="fr-empty">No data — load a file from the Claim Register tab</div></div>';
+    return;
+  }
+  const lodgeCol=rc(C.lodgeAmt),paidCol=rc(C.paidAmt);
+  let html='';
+
+  HDR.forEach((col,idx)=>{
+    if(col==='__id')return;
+    const key='f'+idx;
+    const vals=data.map(r=>(r[col]||'').toString().trim());
+    const nonEmpty=vals.filter(Boolean);
+    const uniqueVals=[...new Set(nonEmpty)];
+    const kind=colKind(col,uniqueVals.length,nonEmpty.length);
+
+    if(kind==='amount'){
+      const numRows=[];
+      data.forEach(r=>{
+        const raw=(r[col]||'').toString().trim();
+        if(raw==='')return;
+        const n=pa(raw);
+        if(!isNaN(n))numRows.push({n,row:r});
+      });
+      if(!numRows.length){html+=frCardEmpty(col,'amount');return;}
+      const nums=numRows.map(x=>x.n);
+      const sum=nums.reduce((a,b)=>a+b,0),avg=sum/nums.length;
+      const max=Math.max(...nums),min=Math.min(...nums);
+
+      // Build value-distribution buckets
+      const buckets=amtBuckets();
+      buckets.forEach(b=>{b.count=0;b.total=0;});
+      nums.forEach(n=>{
+        for(const b of buckets){ if(n>=b.lo && n<b.hi){b.count++;b.total+=n;break;} }
+      });
+      const nz=nums.filter(n=>n>0).length;
+
+      // On-screen distribution rows (skip empty buckets)
+      const distRowsHtml=buckets.filter(b=>b.count>0).map(b=>
+        `<tr><td>${b.label}</td>
+         <td class="num">${b.count.toLocaleString()}</td>
+         <td class="num" style="color:var(--muted)">${((b.count/nums.length)*100).toFixed(1)}%</td>
+         <td class="amt">${b.total?ff(b.total):'—'}</td></tr>`
+      ).join('');
+
+      // Download data: (1) summary, (2) distribution, (3) full detail rows with key fields
+      const keyCols=amtKeyCols();
+      const detailHeader=['#',col,...keyCols.map(kc=>kc.label)];
+      const detailRows=numRows
+        .sort((a,b)=>b.n-a.n)
+        .map((x,i)=>[i+1, Math.round(x.n), ...keyCols.map(kc=>gv(x.row,kc.aliases))]);
+
+      FIELD_REPORTS[key]={col,kind:'amount',
+        summary:[['Metric','Value'],['Sum',Math.round(sum)],['Average',Math.round(avg)],
+          ['Maximum',max],['Minimum',min],['Non-zero Rows',nz],
+          ['Empty Rows',data.length-numRows.length],['Total Filled',numRows.length]],
+        distribution:[['Range','Count','Percent','Total Amount'],
+          ...buckets.map(b=>[b.label,b.count,((b.count/nums.length)*100).toFixed(1)+'%',Math.round(b.total)])],
+        detail:[detailHeader,...detailRows]
+      };
+
+      html+=`<div class="fr-card" data-field="${eh(col)}">
+        <div class="fr-card-title">💰 ${eh(col)}<small>Amount</small>${dlBtn(key)}</div>
+        <div class="fr-stats">
+          <div class="fr-stat"><div class="fr-stat-lbl">Sum</div><div class="fr-stat-val" style="color:#065f46">${ff(sum)}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Average</div><div class="fr-stat-val">${ff(avg)}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Maximum</div><div class="fr-stat-val">${ff(max)}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Minimum</div><div class="fr-stat-val">${ff(min)}</div></div>
+        </div>
+        <div class="fr-dist-hdr">Value Distribution</div>
+        <div class="fr-scroll"><table class="fr-tbl">
+          <thead><tr><th>Range</th><th class="num">Count</th><th class="num">%</th><th class="num">Total Amt</th></tr></thead>
+          <tbody>${distRowsHtml}</tbody></table></div>
+        <div class="fr-more">${numRows.length.toLocaleString()} claims · full row details included in download</div>
+      </div>`;
+      return;
+    }
+
+    if(kind==='date'){
+      const dates=nonEmpty.map(v=>pd(v)).filter(Boolean);
+      if(!dates.length){html+=frCardEmpty(col,'date');return;}
+      const min=new Date(Math.min(...dates)),max=new Date(Math.max(...dates));
+      const fmt=d=>d.toLocaleDateString('en-GB');
+      FIELD_REPORTS[key]={col,kind:'date',rows:[
+        ['Metric','Value'],
+        ['Earliest',fmt(min)],['Latest',fmt(max)],
+        ['Filled Rows',nonEmpty.length],['Empty Rows',data.length-nonEmpty.length],
+        ['Total Rows',data.length]
+      ]};
+      html+=`<div class="fr-card" data-field="${eh(col)}">
+        <div class="fr-card-title">📅 ${eh(col)}<small>Date</small>${dlBtn(key)}</div>
+        <div class="fr-stats">
+          <div class="fr-stat"><div class="fr-stat-lbl">Earliest</div><div class="fr-stat-val">${fmt(min)}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Latest</div><div class="fr-stat-val">${fmt(max)}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Filled Rows</div><div class="fr-stat-val">${nonEmpty.length.toLocaleString()}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Empty Rows</div><div class="fr-stat-val">${(data.length-nonEmpty.length).toLocaleString()}</div></div>
+        </div></div>`;
+      return;
+    }
+
+    if(kind==='id'){
+      FIELD_REPORTS[key]={col,kind:'id',rows:[
+        ['Metric','Value'],
+        ['Unique Values',uniqueVals.length],['Filled Rows',nonEmpty.length],
+        ['Empty Rows',data.length-nonEmpty.length],['Duplicates',nonEmpty.length-uniqueVals.length],
+        ['Total Rows',data.length]
+      ]};
+      html+=`<div class="fr-card" data-field="${eh(col)}">
+        <div class="fr-card-title">🔑 ${eh(col)}<small>Identifier</small>${dlBtn(key)}</div>
+        <div class="fr-stats">
+          <div class="fr-stat"><div class="fr-stat-lbl">Unique Values</div><div class="fr-stat-val">${uniqueVals.length.toLocaleString()}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Filled Rows</div><div class="fr-stat-val">${nonEmpty.length.toLocaleString()}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Empty Rows</div><div class="fr-stat-val">${(data.length-nonEmpty.length).toLocaleString()}</div></div>
+          <div class="fr-stat"><div class="fr-stat-lbl">Duplicates</div><div class="fr-stat-val">${(nonEmpty.length-uniqueVals.length).toLocaleString()}</div></div>
+        </div></div>`;
+      return;
+    }
+
+    // categorical breakdown
+    if(!uniqueVals.length){html+=frCardEmpty(col,'category');return;}
+    const acc={};
+    data.forEach(r=>{
+      const v=(r[col]||'').toString().trim()||'(blank)';
+      if(!acc[v])acc[v]={c:0,l:0,s:0};
+      acc[v].c++;
+      if(lodgeCol)acc[v].l+=pa(r[lodgeCol]);
+      if(paidCol)acc[v].s+=pa(r[paidCol]);
+    });
+    let sorted=Object.entries(acc).sort((a,b)=>b[1].c-a[1].c);
+    const totalRows=sorted.reduce((s,[,v])=>s+v.c,0);
+    const capped=sorted.slice(0,25);
+    const moreCount=sorted.length-capped.length;
+
+    // Store FULL data (all values, not just top 25) for download
+    const dlHeader=['Value','Count','Percent'];
+    if(lodgeCol)dlHeader.push('Lodge Amt');
+    if(paidCol)dlHeader.push('Settled Amt');
+    const dlRows=[dlHeader];
+    sorted.forEach(([k,v])=>{
+      const r=[k,v.c,((v.c/totalRows)*100).toFixed(1)+'%'];
+      if(lodgeCol)r.push(Math.round(v.l));
+      if(paidCol)r.push(Math.round(v.s));
+      dlRows.push(r);
+    });
+    FIELD_REPORTS[key]={col,kind:'category',rows:dlRows};
+
+    const rowsHtml=capped.map(([k,v])=>
+      `<tr><td class="ct" title="${eh(k)}" style="max-width:150px">${eh(k)}</td>
+       <td class="num">${v.c.toLocaleString()}</td>
+       <td class="num" style="color:var(--muted)">${((v.c/totalRows)*100).toFixed(1)}%</td>
+       ${lodgeCol?`<td class="num">${v.l?ff(v.l):'—'}</td>`:''}
+       ${paidCol?`<td class="amt">${v.s?ff(v.s):'—'}</td>`:''}
+       </tr>`
+    ).join('');
+
+    html+=`<div class="fr-card" data-field="${eh(col)}">
+      <div class="fr-card-title">📊 ${eh(col)}<small>${uniqueVals.length} values</small>${dlBtn(key)}</div>
+      <div class="fr-scroll"><table class="fr-tbl">
+        <thead><tr><th>Value</th><th class="num">Count</th><th class="num">%</th>
+        ${lodgeCol?'<th class="num">Lodge Amt</th>':''}${paidCol?'<th class="num">Settled Amt</th>':''}</tr></thead>
+        <tbody>${rowsHtml}</tbody></table></div>
+      ${moreCount>0?`<div class="fr-more">+ ${moreCount} more value${moreCount>1?'s':''} (all included in download)</div>`:''}
+      </div>`;
+  });
+
+  grid.innerHTML=html;
+}
+
+// Small download button markup for a field card
+function dlBtn(key){
+  return `<button class="dl-btn" onclick="dlFieldReport('${key}')">
+    <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV</button>`;
+}
+
+// Convert a 2D array to CSV text
+function toCSV(rows){
+  return rows.map(row=>row.map(c=>`"${(c===null||c===undefined?'':c).toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+}
+
+// Download a single field report as CSV
+function dlFieldReport(key){
+  const rep=FIELD_REPORTS[key];
+  if(!rep){alert('No data for this report.');return;}
+  let out=[];
+  if(rep.kind==='amount'){
+    // Amount reports: summary + distribution + full detail rows
+    out.push('SUMMARY');
+    out.push(toCSV(rep.summary));
+    out.push('');
+    out.push('VALUE DISTRIBUTION');
+    out.push(toCSV(rep.distribution));
+    out.push('');
+    out.push('CLAIM-WISE DETAIL (sorted high to low)');
+    out.push(toCSV(rep.detail));
+  }else{
+    out.push(toCSV(rep.rows));
+  }
+  const safeName=rep.col.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,40)||'field';
+  dl('\ufeff'+out.join('\n'),`SVKK_MIS_${safeName}_${now()}.csv`,'text/csv;charset=utf-8;');
+}
+
+function frCardEmpty(col,kind){
+  const icon=kind==='amount'?'💰':kind==='date'?'📅':'📊';
+  return `<div class="fr-card" data-field="${eh(col)}">
+    <div class="fr-card-title">${icon} ${eh(col)}<small>${kind}</small></div>
+    <div class="fr-empty">No data in this column</div></div>`;
+}
+
+function filterFieldCards(){
+  const q=document.getElementById('fieldSearchInput').value.trim().toLowerCase();
+  document.querySelectorAll('#fieldReportsGrid .fr-card').forEach(card=>{
+    const f=(card.getAttribute('data-field')||'').toLowerCase();
+    card.classList.toggle('hidden', q && !f.includes(q));
+  });
+}
+
+function clearMIS(){
+  document.getElementById('catBody').innerHTML='<tr><td colspan="14" style="text-align:center;padding:28px;color:var(--light)">Load data from the Claim Register tab to generate this report</td></tr>';
+  document.getElementById('fieldReportsGrid').innerHTML='<div class="bd-blk" style="grid-column:1/-1"><div class="fr-empty">No data — load a file from the Claim Register tab</div></div>';
+  ['mc1','mc2','mc3','mc4','mc5','mc6','mc7','mc8'].forEach(id=>document.getElementById(id).textContent='—');
+}
+
+// ═══════════════════════════════════════════════
+// EXPORT MIS CSV
+// ═══════════════════════════════════════════════
+function exportMIS(){
+  if(!FILT.length){alert('No data to export.');return;}
+  const CATS=['A','B','C','D'];
+  const cs={};
+  CATS.forEach(c=>cs[c]={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0});
+  FILT.forEach(row=>{
+    const cat=(gv(row,C.category).toUpperCase().trim())||'?';
+    if(!cs[cat])cs[cat]={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0};
+    const s=cs[cat];
+    const la=pa(gv(row,C.lodgeAmt)),pia=pa(gv(row,C.paidAmt));
+    const cash=isCash(row),denied=isDenied(row);
+    s.tot++;s.tLodge+=la;s.tSet+=pia;
+    if(cash){if(denied){s.cdNo++;s.cdLodge+=la;}else{s.cNo++;s.cLodge+=la;s.cSet+=pia;}}
+    else{if(denied){s.rdNo++;s.rdLodge+=la;}else{s.rNo++;s.rLodge+=la;s.rSet+=pia;}}
+  });
+  const hdr='Category,Cash No,Cash Lodge,Cash Settled,Reim No,Reim Lodge,Reim Settled,Cash Denied No,Cash Denied Lodge,REM Denied No,REM Denied Lodge,Total,Total Lodge,Total Settled';
+  const rows=[hdr];
+  const T={cNo:0,cLodge:0,cSet:0,rNo:0,rLodge:0,rSet:0,cdNo:0,cdLodge:0,rdNo:0,rdLodge:0,tot:0,tLodge:0,tSet:0};
+  CATS.filter(c=>cs[c]&&cs[c].tot>0).forEach(cat=>{
+    const s=cs[cat];for(const k of Object.keys(T))T[k]+=(s[k]||0);
+    rows.push([cat,s.cNo,s.cLodge,s.cSet,s.rNo,s.rLodge,s.rSet,s.cdNo,s.cdLodge,s.rdNo,s.rdLodge,s.tot,s.tLodge,s.tSet].join(','));
+  });
+  rows.push(['Total',T.cNo,T.cLodge,T.cSet,T.rNo,T.rLodge,T.rSet,T.cdNo,T.cdLodge,T.rdNo,T.rdLodge,T.tot,T.tLodge,T.tSet].join(','));
+  dl('\ufeff'+rows.join('\n'),`SVKK_MIS_Category_${now()}.csv`,'text/csv;charset=utf-8;');
+}
+// Category table download button uses the same export
+function dlCategoryTable(){ exportMIS(); }
+
+// ═══════════════════════════════════════════════
+// DOWNLOAD ALL FIELD REPORTS (one combined CSV)
+// ═══════════════════════════════════════════════
+function dlAllFieldReports(){
+  const keys=Object.keys(FIELD_REPORTS);
+  if(!keys.length){alert('No reports to download. Load a file first.');return;}
+  let out=[];
+  out.push('SVKK MEDICLAIM MIS — ALL FIELD REPORTS');
+  out.push('Generated: '+new Date().toLocaleString('en-GB'));
+  out.push('Records analysed: '+FILT.length);
+  out.push('');
+  keys.forEach(key=>{
+    const rep=FIELD_REPORTS[key];
+    out.push('==== '+rep.col+' ('+rep.kind+') ====');
+    if(rep.kind==='amount'){
+      out.push('-- Summary --');
+      out.push(toCSV(rep.summary));
+      out.push('-- Value Distribution --');
+      out.push(toCSV(rep.distribution));
+      out.push('-- Claim-wise Detail --');
+      out.push(toCSV(rep.detail));
+    }else{
+      out.push(toCSV(rep.rows));
+    }
+    out.push('');
+  });
+  dl('\ufeff'+out.join('\n'),`SVKK_MIS_AllFieldReports_${now()}.csv`,'text/csv;charset=utf-8;');
+}
+
+// Close modal when clicking the dark overlay (not the modal box)
+document.getElementById('entryModal').addEventListener('click',function(e){
+  if(e.target===this)closeEntry();
+});
+
+// Init — auto-load saved data from browser storage
+document.getElementById('tCount').textContent='0 records';
+if(loadFromStorage()){
+  populateFilters();
+  applyF();
+}
+</script>
+</body>
+</html>

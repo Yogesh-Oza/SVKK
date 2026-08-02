@@ -34,6 +34,8 @@ export const claimDetailSelect = {
   doBranch: true,
   policyHolderName: true,
   policyTypeText: true,
+  policyNoText: true,
+  policyGroupingText: true,
   policyStartDate: true,
   policyEndDate: true,
   sumInsured: true,
