@@ -28,6 +28,7 @@ import {
   buildClaimScopeSqlC,
   claimCategorySummaryRowToJson,
   claimReportRowToJson,
+  countClaimsForFieldReports,
   queryClaimCategorySummary,
   queryClaimReport,
   queryClaimsForFieldReports,
@@ -36,7 +37,9 @@ import {
   type ClaimReportFilters,
   type ClaimTrendPeriod,
 } from "./claim-mis.queries.js";
-import { buildClaimFieldReports } from "./claim-field-reports.js";
+import { CLAIM_FIELD_REPORT_MAX_ROWS } from "../claim/claim-csv-field-meta.js";
+import { buildClaimFieldReports, buildClaimFieldReportsCsv } from "./claim-field-reports.js";
+import { AppError } from "../../errors/app-error.js";
 
 async function loadSumInsuredLabelMap(): Promise<Map<string, string>> {
   const rows = await prisma.dropdownOption.findMany({
@@ -675,6 +678,11 @@ export async function getDashboardClaimMetrics(
     sumInsureds: [],
     periodMonthTexts: [],
     fiscalLabels: [],
+    insuranceCompanies: [],
+    statusTexts: [],
+    claimTypes: [],
+    treatmentTypes: [],
+    diseaseCategories: [],
   };
   const scopeSql = buildClaimScopeSqlC(permissions, scope, []);
   const [totals, byVillage, byPolicyType] = await Promise.all([
@@ -785,7 +793,7 @@ export async function getClaimCategorySummary(
   };
 }
 
-/** Field-wise detailed MIS reports. */
+/** Field-wise detailed MIS reports (all 39 canonical CSV fields). */
 export async function getClaimFieldReports(
   permissions: Set<string>,
   scope: MisScope,
@@ -803,17 +811,54 @@ export async function getClaimFieldReports(
     periodMonthTexts: [],
     fiscalLabels: [],
     matchStatus: undefined,
+    insuranceCompanies: [],
+    statusTexts: [],
+    claimTypes: [],
+    treatmentTypes: [],
+    diseaseCategories: [],
   };
-  const [rows, unfilteredRows] = await Promise.all([
-    queryClaimsForFieldReports(prisma, { scopeSql, filters: input }),
-    queryClaimsForFieldReports(prisma, { scopeSql, filters: emptyFilters }),
+
+  const [filteredCount, totalInScope] = await Promise.all([
+    countClaimsForFieldReports(prisma, { scopeSql, filters: input }),
+    countClaimsForFieldReports(prisma, { scopeSql, filters: emptyFilters }),
   ]);
+
+  if (filteredCount > CLAIM_FIELD_REPORT_MAX_ROWS) {
+    throw new AppError(
+      "CLAIM_FIELD_REPORT_TOO_LARGE",
+      `Field reports support at most ${CLAIM_FIELD_REPORT_MAX_ROWS.toLocaleString()} filtered claims (got ${filteredCount.toLocaleString()}). Narrow date range or filters.`,
+      400,
+    );
+  }
+
+  const rows = await queryClaimsForFieldReports(prisma, { scopeSql, filters: input });
+  // LIMIT is MAX+1; if we somehow still exceed, fail closed (no silent truncation).
+  if (rows.length > CLAIM_FIELD_REPORT_MAX_ROWS) {
+    throw new AppError(
+      "CLAIM_FIELD_REPORT_TOO_LARGE",
+      `Field reports support at most ${CLAIM_FIELD_REPORT_MAX_ROWS.toLocaleString()} filtered claims. Narrow date range or filters.`,
+      400,
+    );
+  }
+
   const cards = buildClaimFieldReports(rows);
   return {
     dateFrom: input.dateFrom?.toISOString() ?? null,
     dateTo: (input.dateTo ?? input.dateFrom ?? new Date()).toISOString(),
-    recordCount: rows.length,
-    totalInScope: unfilteredRows.length,
+    recordCount: filteredCount,
+    totalInScope,
+    maxRows: CLAIM_FIELD_REPORT_MAX_ROWS,
     cards,
   };
+}
+
+/** Sectioned CSV for one field or all field reports (same filters as MIS). */
+export async function exportClaimFieldReportsCsv(
+  permissions: Set<string>,
+  scope: MisScope,
+  input: ClaimReportFilters,
+  fieldKey?: string,
+) {
+  const report = await getClaimFieldReports(permissions, scope, input);
+  return buildClaimFieldReportsCsv(report.cards, { fieldKey });
 }

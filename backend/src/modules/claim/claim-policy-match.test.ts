@@ -106,6 +106,19 @@ describe("claimCoverageDate", () => {
     expect(claimCoverageDate(baseInput({ lodgeDate: lodge, claimReceivedDate: recv }))).toBe(lodge);
     expect(claimCoverageDate(baseInput({ claimReceivedDate: recv }))).toBe(recv);
   });
+
+  it("matching coverage order must stay distinct from MIS reporting date order", () => {
+    // Matching (claimCoverageDate): admission → lodge → received
+    // MIS (claimActivityDateExpr): claimReceivedDate → admissionDate → createdAt
+    // These must NOT share the same helper/order.
+    const matchingOrder = ["admissionDate", "lodgeDate", "claimReceivedDate"];
+    const misReportingOrder = ["claimReceivedDate", "admissionDate", "createdAt"];
+    expect(matchingOrder).not.toEqual(misReportingOrder);
+    expect(matchingOrder[0]).toBe("admissionDate");
+    expect(misReportingOrder[0]).toBe("claimReceivedDate");
+    expect(matchingOrder).toContain("lodgeDate");
+    expect(misReportingOrder).not.toContain("lodgeDate");
+  });
 });
 
 describe("policyYearContainsDate", () => {

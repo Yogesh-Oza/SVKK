@@ -22,6 +22,7 @@ export function getRequiredPermissionsForPath(pathname: string): string[] | unde
   if (pathname.startsWith("/category-form")) return ["categoryForm:read"];
   if (pathname.startsWith("/notifications")) return ["notifications:read"];
   if (pathname.startsWith("/claims")) return ["claim:read"];
+  if (pathname.startsWith("/wallet")) return ["wallet:read"];
   if (pathname.startsWith("/mis")) return ["mis:policy:read", "mis:claim:read"];
   if (pathname.startsWith("/future-premium/lookup")) return ["future:lookup"];
   if (pathname.startsWith("/future-premium")) return ["future:read"];

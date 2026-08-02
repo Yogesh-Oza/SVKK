@@ -12,6 +12,7 @@ import { createUploadRouter } from "./modules/upload/upload.routes.js";
 import { createLogsRouter } from "./modules/logs/logs.routes.js";
 import { createMisRouter } from "./modules/mis/mis.routes.js";
 import { createClaimRouter } from "./modules/claim/claim.routes.js";
+import { createWalletRouter } from "./modules/wallet/wallet.routes.js";
 import { createReceiptRouter } from "./modules/receipt/receipt.routes.js";
 import { createUsersRouter } from "./modules/users/users.routes.js";
 import { createFilesRouter } from "./modules/files/files.routes.js";
@@ -61,6 +62,7 @@ export function createApp(env: Env, rootLog: AppLogger) {
   v1.use("/logs", createLogsRouter(env));
   v1.use("/mis", createMisRouter(env));
   v1.use("/claims", createClaimRouter(env));
+  v1.use("/wallet", createWalletRouter(env));
   v1.use("/receipts", createReceiptRouter(env));
   v1.use("/users", createUsersRouter(env));
   v1.use("/rbac", createRbacRouter(env));

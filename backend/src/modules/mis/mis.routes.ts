@@ -32,7 +32,9 @@ import {
   getClaimTrend,
   getClaimCategorySummary,
   getClaimFieldReports,
+  exportClaimFieldReportsCsv,
 } from "./mis.service.js";
+import { claimCsvFieldMetaByKey } from "../claim/claim-csv-field-meta.js";
 
 function resolvePolicyMisScopeModule(permissions: Set<string>): "mis_policy" | "dashboard" {
   if (hasPermissionInSet(permissions, "mis:policy:read")) return "mis_policy";
@@ -560,6 +562,11 @@ export function createMisRouter(_env: Env) {
     sumInsureds: stringArrayQuery,
     periodMonthTexts: stringArrayQuery,
     fiscalLabels: stringArrayQuery,
+    insuranceCompanies: stringArrayQuery,
+    statusTexts: stringArrayQuery,
+    claimTypes: stringArrayQuery,
+    treatmentTypes: stringArrayQuery,
+    diseaseCategories: stringArrayQuery,
   });
 
   function normalizeClaimReportQuery(q: z.infer<typeof claimReportQuerySchema>) {
@@ -580,6 +587,11 @@ export function createMisRouter(_env: Env) {
       sumInsureds: [...new Set(q.sumInsureds ?? [])],
       periodMonthTexts: [...new Set(q.periodMonthTexts ?? [])],
       fiscalLabels: [...new Set(q.fiscalLabels ?? [])],
+      insuranceCompanies: [...new Set(q.insuranceCompanies ?? [])],
+      statusTexts: [...new Set(q.statusTexts ?? [])],
+      claimTypes: [...new Set(q.claimTypes ?? [])],
+      treatmentTypes: [...new Set(q.treatmentTypes ?? [])],
+      diseaseCategories: [...new Set(q.diseaseCategories ?? [])],
     };
   }
 
@@ -756,6 +768,42 @@ export function createMisRouter(_env: Env) {
         const scope = await loadMisScope(req.userId!, req.permissions!, module);
         const report = await getClaimFieldReports(req.permissions!, scope, normalized);
         res.json(report);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  r.get(
+    "/export/claim-field-reports.csv",
+    requirePermission("mis:claim:read"),
+    async (req, res, next) => {
+      try {
+        const q = claimReportQuerySchema
+          .extend({ field: z.string().optional() })
+          .parse(req.query);
+        const normalized = normalizeClaimReportQuery(q);
+        const fieldKey = q.field?.trim() || undefined;
+        if (fieldKey && !claimCsvFieldMetaByKey(fieldKey)) {
+          res.status(400).json({ success: false, message: `Unknown field key: ${fieldKey}` });
+          return;
+        }
+        const scope = await loadMisScope(req.userId!, req.permissions!, "mis_claim");
+        const csv = await exportClaimFieldReportsCsv(
+          req.permissions!,
+          scope,
+          normalized,
+          fieldKey,
+        );
+        const slug = fieldKey
+          ? fieldKey.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()
+          : "all";
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="claim-mis-field-${slug}.csv"`,
+        );
+        res.send(csv);
       } catch (e) {
         next(e);
       }

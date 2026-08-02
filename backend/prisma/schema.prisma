@@ -165,6 +165,19 @@ enum MigrationUnmatchedAction {
   created
 }
 
+enum WalletTxnType {
+  OPENING
+  TOP_UP
+  DEBIT
+}
+
+enum WalletTxnSource {
+  OPENING
+  TOPUP
+  MANUAL
+  CSV
+}
+
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
@@ -176,15 +189,16 @@ model User {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  sessions           UserSession[]
-  activityLogs       ActivityLog[]       @relation("ActivityActor")
-  csvJobs            CsvImportJob[]
-  claimsCreated      Claim[]             @relation("ClaimCreatedBy")
-  claimsApproved     Claim[]             @relation("ClaimApprovedBy")
-  userVillages       UserVillage[]
-  policiesCreated    Policy[]            @relation("PolicyCreatedBy")
-  idempotencyRecords IdempotencyRecord[]
-  notifications      Notification[]
+  sessions                 UserSession[]
+  activityLogs             ActivityLog[]       @relation("ActivityActor")
+  csvJobs                  CsvImportJob[]
+  claimsCreated            Claim[]             @relation("ClaimCreatedBy")
+  claimsApproved           Claim[]             @relation("ClaimApprovedBy")
+  userVillages             UserVillage[]
+  policiesCreated          Policy[]            @relation("PolicyCreatedBy")
+  idempotencyRecords       IdempotencyRecord[]
+  notifications            Notification[]
+  walletTransactionsCreated WalletTransaction[] @relation("WalletTxnCreatedBy")
 
   @@index([roleId])
   @@map("user")
@@ -1033,4 +1047,41 @@ model MigrationAudit {
   dropdownsCreated Int        @default(0)
   createdAt      DateTime     @default(now())
   @@map("migrationaudit")
+}
+
+/// Single shared org CD/wallet account (enforced via unique singletonKey).
+model Wallet {
+  id             String              @id @default(cuid())
+  singletonKey   String              @unique @default("default") @db.VarChar(32)
+  currentBalance Decimal             @default(0) @db.Decimal(14, 2)
+  lastUpdatedAt  DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  transactions   WalletTransaction[]
+
+  @@map("wallet")
+}
+
+model WalletTransaction {
+  id           String          @id @default(cuid())
+  walletId     String
+  wallet       Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  txnDate      DateTime
+  type         WalletTxnType
+  category     String?         @db.VarChar(32)
+  particulars  String?         @db.VarChar(500)
+  reference    String?         @db.VarChar(255)
+  amount       Decimal         @db.Decimal(14, 2)
+  balanceAfter Decimal         @db.Decimal(14, 2)
+  source       WalletTxnSource
+  createdById  String?
+  createdBy    User?           @relation("WalletTxnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([walletId, createdAt])
+  @@index([walletId, type])
+  @@index([walletId, category])
+  @@index([createdById])
+  @@map("wallettransaction")
 }

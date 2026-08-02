@@ -4,6 +4,7 @@ import { sqlCol, sqlTable } from "../../lib/sql-tables.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 import { hasPermissionInSet } from "../../services/rbac.service.js";
 import { expandPeriodMonthTextVariants } from "../policy/policy.list.js";
+import { CLAIM_FIELD_REPORT_MAX_ROWS } from "../claim/claim-csv-field-meta.js";
 import { UNCATEGORIZED_CATEGORY_KEY } from "./mis.queries.js";
 
 export type ClaimReportRow = {
@@ -25,6 +26,11 @@ export type ClaimReportFilters = {
   sumInsureds: string[];
   periodMonthTexts: string[];
   fiscalLabels: string[];
+  insuranceCompanies: string[];
+  statusTexts: string[];
+  claimTypes: string[];
+  treatmentTypes: string[];
+  diseaseCategories: string[];
 };
 
 const UTF8_COLLATE = "utf8mb4_unicode_ci";
@@ -162,12 +168,48 @@ function categoryKeysFilterSql(categoryKeys: string[]): Prisma.Sql {
 
 function policyGroupingsFilterSql(groupings: string[]): Prisma.Sql {
   if (!groupings.length) return Prisma.empty;
-  return Prisma.sql` AND ${sqlAliasCol("p", "policyGrouping")} IN (${sqlInListUtf8(groupings)})`;
+  // Match Register: linked Policy.policyGrouping OR unlinked claim snapshot.
+  return Prisma.sql` AND (
+    ${sqlAliasCol("p", "policyGrouping")} IN (${sqlInListUtf8(groupings)})
+    OR ${sqlAliasCol("c", "policyGroupingText")} IN (${sqlInListUtf8(groupings)})
+  )`;
 }
 
 function areasFilterSql(areas: string[]): Prisma.Sql {
   if (!areas.length) return Prisma.empty;
-  return Prisma.sql` AND ${sqlAliasCol("p", "area")} IN (${sqlInListUtf8(areas)})`;
+  // Policy area OR claim hospital area (Register/MIS parity).
+  return Prisma.sql` AND (
+    ${sqlAliasCol("p", "area")} IN (${sqlInListUtf8(areas)})
+    OR ${sqlAliasCol("c", "hospitalArea")} IN (${sqlInListUtf8(areas)})
+  )`;
+}
+
+function insuranceCompaniesFilterSql(values: string[]): Prisma.Sql {
+  if (!values.length) return Prisma.empty;
+  return Prisma.sql` AND ${sqlAliasCol("c", "insuranceCompany")} IN (${sqlInListUtf8(values)})`;
+}
+
+function statusTextsFilterSql(values: string[]): Prisma.Sql {
+  if (!values.length) return Prisma.empty;
+  return Prisma.sql` AND ${sqlAliasCol("c", "statusText")} IN (${sqlInListUtf8(values)})`;
+}
+
+function claimTypesFilterSql(values: string[]): Prisma.Sql {
+  if (!values.length) return Prisma.empty;
+  return Prisma.sql` AND (
+    ${sqlAliasCol("c", "claimType")} IN (${sqlInListUtf8(values)})
+    OR ${sqlAliasCol("c", "actualLodgeType")} IN (${sqlInListUtf8(values)})
+  )`;
+}
+
+function treatmentTypesFilterSql(values: string[]): Prisma.Sql {
+  if (!values.length) return Prisma.empty;
+  return Prisma.sql` AND ${sqlAliasCol("c", "treatmentType")} IN (${sqlInListUtf8(values)})`;
+}
+
+function diseaseCategoriesFilterSql(values: string[]): Prisma.Sql {
+  if (!values.length) return Prisma.empty;
+  return Prisma.sql` AND ${sqlAliasCol("c", "diseaseCategory")} IN (${sqlInListUtf8(values)})`;
 }
 
 function sumInsuredsFilterSql(sumInsureds: string[]): Prisma.Sql {
@@ -204,6 +246,11 @@ function policySideFiltersSql(filters: ClaimReportFilters): Prisma.Sql {
       sumInsuredsFilterSql(filters.sumInsureds),
       periodMonthTextsFilterSql(filters.periodMonthTexts),
       fiscalLabelsFilterSql(filters.fiscalLabels),
+      insuranceCompaniesFilterSql(filters.insuranceCompanies),
+      statusTextsFilterSql(filters.statusTexts),
+      claimTypesFilterSql(filters.claimTypes),
+      treatmentTypesFilterSql(filters.treatmentTypes),
+      diseaseCategoriesFilterSql(filters.diseaseCategories),
     ],
     "",
   );
@@ -478,38 +525,74 @@ export function claimCategorySummaryRowToJson(r: ClaimCategorySummaryRow) {
 }
 
 export type ClaimFieldReportRow = {
-  svkkPublicId: string;
-  policyTypeText: string | null;
-  policyHolderName: string | null;
-  patientName: string | null;
-  patientGender: string | null;
-  categoryText: string | null;
-  village: string | null;
+  category: string | null;
+  svkkId: string | null;
+  policyType: string | null;
+  policyGrouping: string | null;
   insuranceCompany: string | null;
+  policyNumber: string | null;
+  policyStartDate: Date | null;
+  policyEndDate: Date | null;
+  policyHolderName: string | null;
+  mdId: string | null;
+  patientName: string | null;
+  patientAge: string | null;
+  patientGender: string | null;
+  patientRelation: string | null;
+  sumInsured: string | null;
+  claimNo: string | null;
   hospitalName: string | null;
   hospitalArea: string | null;
+  treatmentType: string | null;
   illness: string | null;
   diseaseCategory: string | null;
-  treatmentType: string | null;
-  claimType: string | null;
-  actualLodgeType: string | null;
-  statusText: string | null;
-  policyYear: string;
-  networkType: string | null;
-  roomCategory: string | null;
-  claimAmount: string | null;
-  reportedLodgeAmount: string | null;
-  approvedAmount: string | null;
-  deductionAmount: string | null;
-  discountAmount: string | null;
-  claimReceivedDate: Date | null;
   admissionDate: Date | null;
   dischargeDate: Date | null;
+  claimAmount: string | null;
+  lodgeDate: Date | null;
+  claimType: string | null;
+  actualLodgeType: string | null;
+  deductionAmount: string | null;
+  discountAmount: string | null;
+  deductionDetails: string | null;
+  remark: string | null;
+  approvedAmount: string | null;
+  paymentInFavourOf: string | null;
+  prsCrsDate: Date | null;
+  paymentDetails: string | null;
+  paymentDate: Date | null;
+  treatmentProcedure: string | null;
+  statusText: string | null;
+  reportedLodgeAmount: string | null;
 };
 
-const FIELD_REPORT_MAX_ROWS = 50_000;
+/** Count claims matching scope + filters (no row materialization). */
+export async function countClaimsForFieldReports(
+  prisma: PrismaClient,
+  args: {
+    scopeSql: Prisma.Sql;
+    filters: ClaimReportFilters;
+  },
+): Promise<number> {
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(*) AS n
+    FROM ${sqlTable("claim")} c
+    LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
+    LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
+    WHERE ${args.scopeSql}
+    ${dateFilterSql(args.filters)}
+    ${matchStatusFilter(args.filters)}
+    ${policySideFiltersSql(args.filters)}
+  `;
+  return Number(rows[0]?.n ?? 0);
+}
 
-/** Fetch claim rows for field-wise MIS reports. */
+/**
+ * Fetch claim rows for field-wise MIS reports.
+ * Linked claims prefer Policy / InsuredParty / PolicyYear over snapshots (export parity).
+ * Caller must ensure filtered count ≤ CLAIM_FIELD_REPORT_MAX_ROWS (no silent truncation).
+ */
 export async function queryClaimsForFieldReports(
   prisma: PrismaClient,
   args: {
@@ -519,41 +602,55 @@ export async function queryClaimsForFieldReports(
 ): Promise<ClaimFieldReportRow[]> {
   return prisma.$queryRaw<ClaimFieldReportRow[]>`
     SELECT
-      c.svkkPublicId,
-      c.policyTypeText,
-      c.policyHolderName,
-      c.patientName,
-      c.patientGender,
-      c.categoryText,
-      c.village,
-      c.insuranceCompany,
-      c.hospitalName,
-      c.hospitalArea,
-      c.illness,
-      c.diseaseCategory,
-      c.treatmentType,
-      c.claimType,
-      c.actualLodgeType,
-      c.statusText,
-      c.policyYear,
-      c.networkType,
-      c.roomCategory,
+      c.categoryText AS category,
+      COALESCE(${sqlAliasCol("ip", "svkkPublicId")}, ${sqlAliasCol("c", "svkkPublicId")}) AS svkkId,
+      COALESCE(${sqlAliasCol("pt", "name")}, ${sqlAliasCol("c", "policyTypeText")}) AS policyType,
+      COALESCE(${sqlAliasCol("p", "policyGrouping")}, ${sqlAliasCol("c", "policyGroupingText")}) AS policyGrouping,
+      c.insuranceCompany AS insuranceCompany,
+      COALESCE(${sqlAliasCol("p", "policyNo")}, ${sqlAliasCol("c", "policyNoText")}) AS policyNumber,
+      COALESCE(${sqlCol("py", "policyStart")}, ${sqlCol("c", "policyStartDate")}) AS policyStartDate,
+      COALESCE(${sqlCol("py", "policyEnd")}, ${sqlCol("c", "policyEndDate")}) AS policyEndDate,
+      c.policyHolderName AS policyHolderName,
+      c.mdId AS mdId,
+      c.patientName AS patientName,
+      CAST(c.patientAge AS CHAR) AS patientAge,
+      c.patientGender AS patientGender,
+      c.patientRelation AS patientRelation,
+      CAST(COALESCE(${sqlCol("py", "sumInsured")}, ${sqlCol("c", "sumInsured")}) AS CHAR) AS sumInsured,
+      c.claimNo AS claimNo,
+      c.hospitalName AS hospitalName,
+      c.hospitalArea AS hospitalArea,
+      c.treatmentType AS treatmentType,
+      c.illness AS illness,
+      c.diseaseCategory AS diseaseCategory,
+      c.admissionDate AS admissionDate,
+      c.dischargeDate AS dischargeDate,
       CAST(c.claimAmount AS CHAR) AS claimAmount,
-      CAST(c.reportedLodgeAmount AS CHAR) AS reportedLodgeAmount,
-      CAST(c.approvedAmount AS CHAR) AS approvedAmount,
+      c.lodgeDate AS lodgeDate,
+      c.claimType AS claimType,
+      c.actualLodgeType AS actualLodgeType,
       CAST(c.deductionAmount AS CHAR) AS deductionAmount,
       CAST(c.discountAmount AS CHAR) AS discountAmount,
-      c.claimReceivedDate,
-      c.admissionDate,
-      c.dischargeDate
+      c.deductionDetails AS deductionDetails,
+      c.remark AS remark,
+      CAST(c.approvedAmount AS CHAR) AS approvedAmount,
+      c.paymentInFavourOf AS paymentInFavourOf,
+      c.prsCrsDate AS prsCrsDate,
+      c.paymentDetails AS paymentDetails,
+      c.paymentDate AS paymentDate,
+      c.treatmentProcedure AS treatmentProcedure,
+      c.statusText AS statusText,
+      CAST(c.reportedLodgeAmount AS CHAR) AS reportedLodgeAmount
     FROM ${sqlTable("claim")} c
     LEFT JOIN ${sqlTable("policy")} p ON ${sqlCol("c", "policyId")} = ${sqlCol("p", "id")} AND ${sqlCol("p", "deletedAt")} IS NULL
     LEFT JOIN ${sqlTable("policyYear")} py ON ${sqlCol("c", "policyYearId")} = ${sqlCol("py", "id")} AND ${sqlCol("py", "deletedAt")} IS NULL
     LEFT JOIN ${sqlTable("category")} cat ON ${sqlCol("p", "categoryId")} = cat.id
+    LEFT JOIN ${sqlTable("insuredParty")} ip ON ${sqlCol("c", "insuredPartyId")} = ${sqlCol("ip", "id")}
+    ${joinPolicyTypeSql()}
     WHERE ${args.scopeSql}
     ${dateFilterSql(args.filters)}
     ${matchStatusFilter(args.filters)}
     ${policySideFiltersSql(args.filters)}
-    LIMIT ${FIELD_REPORT_MAX_ROWS}
+    LIMIT ${CLAIM_FIELD_REPORT_MAX_ROWS + 1}
   `;
 }

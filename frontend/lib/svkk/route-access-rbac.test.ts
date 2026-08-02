@@ -50,11 +50,13 @@ describe("SVKK URL access rules", () => {
     expect(canAccessPath(supervisorPermissions, "/receipt-settings")).toBe(false);
   });
 
-  it("allows claim and MIS pages only for users with those route permissions", () => {
+  it("allows claim, wallet, and MIS pages only for users with those route permissions", () => {
     expect(canAccessPath(supervisorPermissions, "/claims")).toBe(true);
     expect(canAccessPath(supervisorPermissions, "/mis")).toBe(true);
+    expect(canAccessPath(["wallet:read"], "/wallet")).toBe(true);
     expect(canAccessPath(basicUserPermissions, "/claims")).toBe(false);
     expect(canAccessPath(basicUserPermissions, "/mis")).toBe(false);
+    expect(canAccessPath(basicUserPermissions, "/wallet")).toBe(false);
   });
 
   it("keeps policy list and policy create distinct", () => {

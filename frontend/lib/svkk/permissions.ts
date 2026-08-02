@@ -10,6 +10,7 @@ export type SvkkNavId =
   | "futurePremium"
   | "futureLookup"
   | "claims"
+  | "wallet"
   | "mis"
   | "notifications"
   | "admin"
@@ -57,6 +58,7 @@ const NAV: NavEntry[] = [
     permission: "future:lookup",
   },
   { id: "claims", href: "/claims", label: "Claims", permission: "claim:read" },
+  { id: "wallet", href: "/wallet", label: "Wallet / CD", permission: "wallet:read" },
   { id: "mis", href: "/mis", label: "MIS", permission: "mis:policy:read" },
   { id: "notifications", href: "/notifications", label: "Notifications", permission: "notifications:read" },
   { id: "admin", href: "/admin", label: "Dynamic Form Dropdowns", permission: "admin:dropdowns:read" },
@@ -189,6 +191,34 @@ export function canImportClaim(permissions: string[]) {
 
 export function canExportClaim(permissions: string[]) {
   return hasPermission(permissions, "claim:export");
+}
+
+export function canReadWallet(permissions: string[]) {
+  return hasPermission(permissions, "wallet:read");
+}
+
+export function canWalletOpening(permissions: string[]) {
+  return hasPermission(permissions, "wallet:opening");
+}
+
+export function canWalletTopup(permissions: string[]) {
+  return hasPermission(permissions, "wallet:topup");
+}
+
+export function canWalletDebit(permissions: string[]) {
+  return hasPermission(permissions, "wallet:debit");
+}
+
+export function canWalletImport(permissions: string[]) {
+  return hasPermission(permissions, "wallet:import");
+}
+
+export function canWalletExport(permissions: string[]) {
+  return hasPermission(permissions, "wallet:export");
+}
+
+export function canWalletClear(permissions: string[]) {
+  return hasPermission(permissions, "wallet:clear");
 }
 
 export function canReadUsers(permissions: string[]) {

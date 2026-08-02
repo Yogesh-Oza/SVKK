@@ -18,7 +18,7 @@ import {
   type PolicyFilterOption,
 } from "@/features/svkk-policies/policy-filter-multi";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
-import { formatInrCompact } from "@/features/svkk-claims/claim-register-badges";
+import { formatInrCompact, formatInrRupee } from "@/features/svkk-claims/claim-register-badges";
 import { ClaimMisDrillSheet } from "@/features/svkk-mis/claim-mis-drill-sheet";
 import { MisCsvExportDialog } from "@/features/svkk-mis/mis-csv-export-dialog";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
@@ -26,7 +26,7 @@ import { getSvkkApiBase } from "@/lib/svkk/config";
 import { todayFormDate, toIsoDateParam, formatDateForFormInput } from "@/lib/svkk/form-date";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
-import { ArrowLeft, Download, RotateCcw } from "lucide-react";
+import { ArrowLeft, Calendar, Download, Hash, Layers, RotateCcw, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -67,10 +67,19 @@ type FieldReportCard = {
   label: string;
   kind: "amount" | "date" | "category" | "id";
   summary?: { metric: string; value: string | number }[];
-  distribution?: { label: string; count: number; percent: number; totalAmount?: number }[];
+  distribution?: {
+    label: string;
+    count: number;
+    percent: number;
+    lodgeAmount?: number;
+    settledAmount?: number;
+    totalAmount?: number;
+  }[];
   uniqueCount?: number;
   filledRows?: number;
   emptyRows?: number;
+  truncated?: boolean;
+  emptyMessage?: string;
 };
 
 type FieldReportsRes = {
@@ -84,6 +93,15 @@ type FiltersMeta = {
   policyGroupings: string[];
   periodYearTexts: string[];
   periodMonthTexts: string[];
+};
+
+type ClaimFiltersMeta = {
+  insuranceCompanies: string[];
+  areas: string[];
+  statusTexts: string[];
+  claimTypes: string[];
+  treatmentTypes: string[];
+  diseaseCategories: string[];
 };
 
 type ClaimMisSummarySectionProps = {
@@ -103,6 +121,12 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
   const [policyGroupings, setPolicyGroupings] = useState<string[]>([]);
   const [periodMonths, setPeriodMonths] = useState<string[]>([]);
   const [fiscalYears, setFiscalYears] = useState<string[]>([]);
+  const [insuranceCompanies, setInsuranceCompanies] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
+  const [statusTexts, setStatusTexts] = useState<string[]>([]);
+  const [claimTypes, setClaimTypes] = useState<string[]>([]);
+  const [treatmentTypes, setTreatmentTypes] = useState<string[]>([]);
+  const [diseaseCategories, setDiseaseCategories] = useState<string[]>([]);
   const [fieldSearch, setFieldSearch] = useState("");
 
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);
@@ -113,6 +137,7 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
   const [filterMeta, setFilterMeta] = useState<FiltersMeta | null>(null);
+  const [claimFilterMeta, setClaimFilterMeta] = useState<ClaimFiltersMeta | null>(null);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillVillage, setDrillVillage] = useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -155,6 +180,31 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
     [filterMeta?.periodMonthTexts],
   );
 
+  const insuranceOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.insuranceCompanies ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.insuranceCompanies],
+  );
+  const areaOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.areas ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.areas],
+  );
+  const statusOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.statusTexts ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.statusTexts],
+  );
+  const lodgeTypeOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.claimTypes ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.claimTypes],
+  );
+  const treatmentOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.treatmentTypes ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.treatmentTypes],
+  );
+  const diseaseOptions = useMemo<PolicyFilterOption[]>(
+    () => (claimFilterMeta?.diseaseCategories ?? []).map((v) => ({ value: v, label: v })),
+    [claimFilterMeta?.diseaseCategories],
+  );
+
   const buildQuery = useCallback(() => {
     const q = new URLSearchParams();
     const dateFromParam = toIsoDateParam(dateFrom);
@@ -166,8 +216,28 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
     policyGroupings.forEach((g) => q.append("policyGroupings", g));
     periodMonths.forEach((m) => q.append("periodMonthTexts", m));
     fiscalYears.forEach((y) => q.append("fiscalLabels", y));
+    insuranceCompanies.forEach((v) => q.append("insuranceCompanies", v));
+    areas.forEach((v) => q.append("areas", v));
+    statusTexts.forEach((v) => q.append("statusTexts", v));
+    claimTypes.forEach((v) => q.append("claimTypes", v));
+    treatmentTypes.forEach((v) => q.append("treatmentTypes", v));
+    diseaseCategories.forEach((v) => q.append("diseaseCategories", v));
     return q;
-  }, [categoryKeys, dateFrom, dateTo, fiscalYears, periodMonths, policyGroupings, villages]);
+  }, [
+    areas,
+    categoryKeys,
+    claimTypes,
+    dateFrom,
+    dateTo,
+    diseaseCategories,
+    fiscalYears,
+    insuranceCompanies,
+    periodMonths,
+    policyGroupings,
+    statusTexts,
+    treatmentTypes,
+    villages,
+  ]);
 
   const loadReports = useCallback(async () => {
     if (missingUrl) return;
@@ -199,9 +269,18 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
 
   useEffect(() => {
     if (missingUrl) return;
-    void svkkJson<FiltersMeta>("/policies/filters")
-      .then(setFilterMeta)
-      .catch(() => setFilterMeta(null));
+    void Promise.all([
+      svkkJson<FiltersMeta>("/policies/filters"),
+      svkkJson<ClaimFiltersMeta>("/claims/filters"),
+    ])
+      .then(([policyMeta, claimMeta]) => {
+        setFilterMeta(policyMeta);
+        setClaimFilterMeta(claimMeta);
+      })
+      .catch(() => {
+        setFilterMeta(null);
+        setClaimFilterMeta(null);
+      });
   }, [missingUrl]);
 
   useEffect(() => {
@@ -251,6 +330,30 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
     }
   }
 
+  async function downloadFieldCsv(fieldKey?: string) {
+    setExportBusy(true);
+    try {
+      const q = buildQuery();
+      if (fieldKey) q.set("field", fieldKey);
+      const res = await backendApi.get(`/mis/export/claim-field-reports.csv?${q.toString()}`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const slug = fieldKey ? fieldKey.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() : "all";
+      a.download = `claim-mis-field-${slug}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(fieldKey ? "Field report downloaded" : "All field reports downloaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   function resetFilters() {
     setDateFrom("");
     setDateTo(todayFormDate());
@@ -259,6 +362,12 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
     setPolicyGroupings([]);
     setPeriodMonths([]);
     setFiscalYears([]);
+    setInsuranceCompanies([]);
+    setAreas([]);
+    setStatusTexts([]);
+    setClaimTypes([]);
+    setTreatmentTypes([]);
+    setDiseaseCategories([]);
   }
 
   const filteredFieldCards = useMemo(() => {
@@ -271,34 +380,50 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
 
   const fmt = (n: number) => (n === 0 ? "—" : formatInrCompact(n));
   const fmtN = (n: number) => (n === 0 ? "—" : n.toLocaleString());
+  /** HTML MIS ff() — always shows ₹0 for zero. */
+  const fmtInr = (n: number) => formatInrRupee(n).replace(/^₹\s*/, "₹");
+  /** Table cells: zero → — (HTML `v?ff(v):'—'`). */
+  const fmtAmt = (n: number | null | undefined) => {
+    if (n == null || n === 0) return "—";
+    return fmtInr(n);
+  };
+
+  function formatSummaryValue(kind: FieldReportCard["kind"], value: string | number) {
+    if (kind === "amount" && typeof value === "number") return fmtInr(value);
+    return value;
+  }
+
+  function kindLabel(kind: FieldReportCard["kind"], card: FieldReportCard): string {
+    if (kind === "id") return "Identifier";
+    if (kind === "date") return "Date";
+    if (kind === "amount") return "Amount";
+    if (card.uniqueCount != null && card.uniqueCount > 0) {
+      return `${card.uniqueCount} value${card.uniqueCount === 1 ? "" : "s"}`;
+    }
+    return "category";
+  }
+
+  function KindIcon({ kind }: { kind: FieldReportCard["kind"] }) {
+    const cls = "size-3.5 shrink-0 text-[#1a56a4]";
+    if (kind === "amount") return <Wallet className={cls} />;
+    if (kind === "date") return <Calendar className={cls} />;
+    if (kind === "id") return <Hash className={cls} />;
+    return <Layers className={cls} />;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-xl font-bold">MIS Summary Report</h2>
-          <p className="text-muted-foreground text-sm">
-            {loading
-              ? "Loading…"
-              : recordCount
-                ? `${recordCount.toLocaleString()} records · based on current filters`
-                : totalInScope > 0
-                  ? "No claims match these filters or date range — widen dates or clear filters."
-                  : "No claims in the database yet — import via Claims → CSV."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" className="gap-1.5" disabled={exportBusy} onClick={() => setExportDialogOpen(true)}>
-            <Download className="size-3.5" />
-            Export MIS CSV
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" asChild>
-            <Link href="/claims">
-              <ArrowLeft className="size-3.5" />
-              Back to register
-            </Link>
-          </Button>
-        </div>
+      <div className="space-y-1">
+        <h2 className="text-xl font-bold">MIS Summary Report</h2>
+        <p className="text-muted-foreground text-sm">
+          {loading
+            ? "Loading…"
+            : recordCount
+              ? `${recordCount.toLocaleString()} records · based on current filters`
+              : totalInScope > 0
+                ? "No claims match these filters or date range — widen dates or clear filters."
+                : "No claims in the database yet — import via Claims → CSV."}
+        </p>
       </div>
 
       <Card>
@@ -306,21 +431,39 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
           <CardTitle className="text-base">Filters</CardTitle>
           <CardDescription>Filters by claim received date (falls back to admission/created date).</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <Label className="text-xs">From date</Label>
-            <PolicyDateInput value={dateFrom} onValueChange={setDateFrom} className="mt-1" />
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <Label className="text-xs">From date</Label>
+              <PolicyDateInput value={dateFrom} onValueChange={setDateFrom} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">To date</Label>
+              <PolicyDateInput value={dateTo} onValueChange={setDateTo} className="mt-1" />
+            </div>
+            <PolicyFilterMulti label="Category" placeholder="All categories" options={categoryOptions} selected={categoryKeys} onChange={setCategoryKeys} accentClassName="border-violet-200/90 from-violet-50/95 to-card" />
+            <PolicyFilterMulti label="Village" placeholder="All villages" options={villageOptions} selected={villages} onChange={setVillages} accentClassName="border-emerald-200/90 from-emerald-50/95 to-card" />
+            <PolicyFilterMulti label="Policy grouping" placeholder="All groupings" options={groupingOptions} selected={policyGroupings} onChange={setPolicyGroupings} accentClassName="border-indigo-200/90 from-indigo-50/95 to-card" />
+            <PolicyFilterMulti label="Insurance company" placeholder="All insurers" options={insuranceOptions} selected={insuranceCompanies} onChange={setInsuranceCompanies} accentClassName="border-rose-200/90 from-rose-50/95 to-card" />
+            <PolicyFilterMulti label="Status" placeholder="All statuses" options={statusOptions} selected={statusTexts} onChange={setStatusTexts} accentClassName="border-teal-200/90 from-teal-50/95 to-card" />
+            <PolicyFilterMulti label="Claim lodge type" placeholder="All lodge types" options={lodgeTypeOptions} selected={claimTypes} onChange={setClaimTypes} accentClassName="border-cyan-200/90 from-cyan-50/95 to-card" />
+            <PolicyFilterMulti label="Treatment type" placeholder="All treatments" options={treatmentOptions} selected={treatmentTypes} onChange={setTreatmentTypes} accentClassName="border-lime-200/90 from-lime-50/95 to-card" />
+            <PolicyFilterMulti label="Disease category" placeholder="All diseases" options={diseaseOptions} selected={diseaseCategories} onChange={setDiseaseCategories} accentClassName="border-orange-200/90 from-orange-50/95 to-card" />
+            <PolicyFilterMulti label="Area" placeholder="All areas" options={areaOptions} selected={areas} onChange={setAreas} accentClassName="border-fuchsia-200/90 from-fuchsia-50/95 to-card" />
+            <PolicyFilterMulti label="Month" placeholder="All months" options={monthOptions} selected={periodMonths} onChange={setPeriodMonths} accentClassName="border-sky-200/90 from-sky-50/95 to-card" />
+            <PolicyFilterMulti label="Year" placeholder="All years" options={yearOptions} selected={fiscalYears} onChange={setFiscalYears} accentClassName="border-amber-200/90 from-amber-50/95 to-card" />
           </div>
-          <div>
-            <Label className="text-xs">To date</Label>
-            <PolicyDateInput value={dateTo} onValueChange={setDateTo} className="mt-1" />
-          </div>
-          <PolicyFilterMulti label="Category" placeholder="All categories" options={categoryOptions} selected={categoryKeys} onChange={setCategoryKeys} accentClassName="border-violet-200/90 from-violet-50/95 to-card" />
-          <PolicyFilterMulti label="Village" placeholder="All villages" options={villageOptions} selected={villages} onChange={setVillages} accentClassName="border-emerald-200/90 from-emerald-50/95 to-card" />
-          <PolicyFilterMulti label="Policy grouping" placeholder="All groupings" options={groupingOptions} selected={policyGroupings} onChange={setPolicyGroupings} accentClassName="border-indigo-200/90 from-indigo-50/95 to-card" />
-          <PolicyFilterMulti label="Month" placeholder="All months" options={monthOptions} selected={periodMonths} onChange={setPeriodMonths} accentClassName="border-sky-200/90 from-sky-50/95 to-card" />
-          <PolicyFilterMulti label="Year" placeholder="All years" options={yearOptions} selected={fiscalYears} onChange={setFiscalYears} accentClassName="border-amber-200/90 from-amber-50/95 to-card" />
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" className="gap-1.5" disabled={exportBusy} onClick={() => setExportDialogOpen(true)}>
+              <Download className="size-3.5" />
+              Export MIS CSV
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" asChild>
+              <Link href="/claims">
+                <ArrowLeft className="size-3.5" />
+                Back to register
+              </Link>
+            </Button>
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={resetFilters}>
               <RotateCcw className="size-3.5" />
               Reset filters
@@ -450,10 +593,27 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Field-wise detailed reports</CardTitle>
-          <CardDescription>
-            Breakdown by claim column — categorical fields show distribution with lodge/settled totals.
-          </CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Field-wise detailed reports</CardTitle>
+              <CardDescription>
+                Every canonical claim column (39) — categorical breakdowns, amount sum/avg/min/max,
+                date range &amp; count. Same structure as the Claim MIS HTML reference; data from live
+                Claims DB.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              disabled={exportBusy || !fieldCards.length}
+              onClick={() => void downloadFieldCsv()}
+            >
+              <Download className="size-3.5" />
+              Download All Reports
+            </Button>
+          </div>
           <div className="pt-2">
             <Input
               placeholder="Filter fields by name…"
@@ -467,44 +627,174 @@ export function ClaimMisSummarySection({ onError }: ClaimMisSummarySectionProps)
           {loading ? (
             <Skeleton className="h-32 w-full" />
           ) : filteredFieldCards.length ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3.5">
               {filteredFieldCards.map((card) => (
-                <Card key={card.field} className="overflow-hidden py-0">
-                  <CardHeader className="bg-muted/30 border-b py-3">
-                    <CardTitle className="text-sm font-semibold">{card.label}</CardTitle>
-                    <CardDescription className="text-xs capitalize">{card.kind}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2 py-3 text-sm">
-                    {card.summary?.map((s) => (
-                      <div key={s.metric} className="flex justify-between gap-2">
-                        <span className="text-muted-foreground text-xs">{s.metric}</span>
-                        <span className="font-medium tabular-nums">{s.value}</span>
-                      </div>
-                    ))}
-                    {card.distribution?.slice(0, 8).map((d) => (
-                      <div key={d.label} className="flex justify-between gap-2 text-xs">
-                        <span className="max-w-[55%] truncate" title={d.label}>
-                          {d.label}
-                          {card.field === "village" ? (
-                            <button
-                              type="button"
-                              className="text-primary ml-1 hover:underline"
-                              onClick={() => {
-                                setDrillVillage(d.label);
-                                setDrillOpen(true);
-                              }}
+                <div
+                  key={card.field}
+                  className="overflow-hidden rounded-[10px] border border-[#dde3ec] bg-white shadow-[0_1px_3px_rgba(0,0,0,.07)]"
+                  data-field={card.label}
+                >
+                  {/* Title bar — matches HTML .fr-card-title */}
+                  <div className="flex items-center gap-1.5 border-b border-[#eef1f6] bg-[#f8fafc] px-3.5 py-2.5 text-[12.5px] font-bold text-[#1e2a3b]">
+                    <KindIcon kind={card.kind} />
+                    <span className="min-w-0 truncate">{card.label}</span>
+                    <small className="ml-auto shrink-0 rounded-full bg-[#e8f0fb] px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-[#1a56a4]">
+                      {kindLabel(card.kind, card)}
+                    </small>
+                    <button
+                      type="button"
+                      disabled={exportBusy}
+                      onClick={() => void downloadFieldCsv(card.field)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[5px] border border-[#dde3ec] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#1a56a4] transition-colors hover:border-[#1a56a4] hover:bg-[#1a56a4] hover:text-white disabled:opacity-50"
+                    >
+                      <Download className="size-2.5" />
+                      CSV
+                    </button>
+                  </div>
+
+                  {card.emptyMessage ? (
+                    <p className="px-4 py-4 text-center text-[11.5px] text-[#9aa3b8]">{card.emptyMessage}</p>
+                  ) : null}
+
+                  {/* Amount — .fr-stats + distribution table */}
+                  {card.kind === "amount" && !card.emptyMessage ? (
+                    <>
+                      <div className="grid grid-cols-2">
+                        {card.summary?.map((s, i) => (
+                          <div
+                            key={s.metric}
+                            className={`border-b border-[#eef1f6] px-3.5 py-2.5 ${i % 2 === 0 ? "border-r border-[#eef1f6]" : ""}`}
+                          >
+                            <div className="text-[9.5px] font-bold uppercase tracking-[0.3px] text-[#6b7a99]">
+                              {s.metric}
+                            </div>
+                            <div
+                              className={`mt-0.5 text-[15px] font-bold tabular-nums ${s.metric === "Sum" ? "text-[#065f46]" : "text-[#1e2a3b]"}`}
                             >
-                              drill
-                            </button>
-                          ) : null}
-                        </span>
-                        <span className="tabular-nums">
-                          {d.count} ({d.percent.toFixed(1)}%)
-                        </span>
+                              {formatSummaryValue(card.kind, s.value)}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </CardContent>
-                </Card>
+                      {card.distribution && card.distribution.length > 0 ? (
+                        <>
+                          <div className="border-t border-[#eef1f6] bg-[#f8fafc] px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.4px] text-[#6b7a99]">
+                            Value Distribution
+                          </div>
+                          <div className="max-h-[260px] overflow-y-auto">
+                            <table className="w-full border-collapse text-[11.5px]">
+                              <thead>
+                                <tr>
+                                  {["Range", "Count", "%", "Total Amt"].map((h, hi) => (
+                                    <th
+                                      key={h}
+                                      className={`sticky top-0 border-b border-[#dde3ec] bg-[#f0f4f8] px-2.5 py-1.5 text-[9.5px] font-bold uppercase text-[#6b7a99] ${hi > 0 ? "text-right" : "text-left"}`}
+                                    >
+                                      {h}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {card.distribution.map((d) => (
+                                  <tr key={d.label} className="hover:bg-[#e8f0fb]">
+                                    <td className="border-b border-[#eef1f6] px-2.5 py-1.5 last:border-0">
+                                      {d.label}
+                                    </td>
+                                    <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right tabular-nums">
+                                      {d.count.toLocaleString()}
+                                    </td>
+                                    <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right tabular-nums text-[#6b7a99]">
+                                      {d.percent.toFixed(1)}%
+                                    </td>
+                                    <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right font-semibold tabular-nums text-[#065f46]">
+                                      {fmtAmt(d.lodgeAmount ?? d.totalAmount)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="border-t border-[#eef1f6] px-3.5 py-1.5 text-center text-[10.5px] text-[#9aa3b8]">
+                            {(card.filledRows ?? 0).toLocaleString()} claims · full row details included in
+                            download
+                          </div>
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {/* Identifier / Date — 2×2 stats grid */}
+                  {(card.kind === "id" || card.kind === "date") && !card.emptyMessage ? (
+                    <div className="grid grid-cols-2">
+                      {card.summary?.map((s, i) => (
+                        <div
+                          key={s.metric}
+                          className={`border-b border-[#eef1f6] px-3.5 py-2.5 ${i % 2 === 0 ? "border-r border-[#eef1f6]" : ""}`}
+                        >
+                          <div className="text-[9.5px] font-bold uppercase tracking-[0.3px] text-[#6b7a99]">
+                            {s.metric}
+                          </div>
+                          <div className="mt-0.5 text-[15px] font-bold tabular-nums text-[#1e2a3b]">
+                            {formatSummaryValue(card.kind, s.value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Category — scrollable Value/Count/%/Lodge/Settled table */}
+                  {card.kind === "category" && !card.emptyMessage ? (
+                    <>
+                      <div className="max-h-[260px] overflow-y-auto">
+                        <table className="w-full border-collapse text-[11.5px]">
+                          <thead>
+                            <tr>
+                              {["Value", "Count", "%", "Lodge Amt", "Settled Amt"].map((h, hi) => (
+                                <th
+                                  key={h}
+                                  className={`sticky top-0 border-b border-[#dde3ec] bg-[#f0f4f8] px-2.5 py-1.5 text-[9.5px] font-bold uppercase text-[#6b7a99] ${hi > 0 ? "text-right" : "text-left"}`}
+                                >
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {card.distribution?.map((d) => (
+                              <tr key={d.label} className="hover:bg-[#e8f0fb]">
+                                <td
+                                  className="max-w-[150px] truncate border-b border-[#eef1f6] px-2.5 py-1.5"
+                                  title={d.label}
+                                >
+                                  {d.label}
+                                </td>
+                                <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right tabular-nums">
+                                  {d.count.toLocaleString()}
+                                </td>
+                                <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right tabular-nums text-[#6b7a99]">
+                                  {d.percent.toFixed(1)}%
+                                </td>
+                                <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right tabular-nums">
+                                  {fmtAmt(d.lodgeAmount ?? d.totalAmount)}
+                                </td>
+                                <td className="border-b border-[#eef1f6] px-2.5 py-1.5 text-right font-semibold tabular-nums text-[#065f46]">
+                                  {fmtAmt(d.settledAmount)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {card.truncated && card.uniqueCount != null ? (
+                        <div className="border-t border-[#eef1f6] px-3.5 py-1.5 text-center text-[10.5px] text-[#9aa3b8]">
+                          + {(card.uniqueCount - (card.distribution?.length ?? 0)).toLocaleString()} more
+                          values (all included in download)
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
               ))}
             </div>
           ) : (

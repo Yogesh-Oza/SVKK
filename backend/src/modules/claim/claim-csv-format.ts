@@ -49,6 +49,13 @@ export const CLAIM_CSV_PUBLIC_HEADERS = [
 
 export type ClaimCsvPublicHeader = (typeof CLAIM_CSV_PUBLIC_HEADERS)[number];
 
+export {
+  CLAIM_CSV_FIELD_META,
+  CLAIM_CSV_FIELD_MAP,
+  type ClaimCsvFieldMeta,
+  type ClaimCsvReportKind,
+} from "./claim-csv-field-meta.js";
+
 /** @deprecated Prefer CLAIM_CSV_PUBLIC_HEADERS — kept as alias for older call sites. */
 export const CLAIM_CSV_HEADERS = CLAIM_CSV_PUBLIC_HEADERS;
 
@@ -251,46 +258,47 @@ export function canonicalClaimHeader(raw: string): string {
 /** Sample CSV: BOM + public headers + one example data row matching the reference template. */
 export function buildSampleClaimCsv(): string {
   const header = CLAIM_CSV_PUBLIC_HEADERS.map(csvCell).join(",");
+  // Example row aligned to real policy PO-14010061252800005144 / RTYFEB0042
   const example = [
-    "A",
-    "SVKK001",
-    "Floater",
-    "Group A",
-    "The New India Assurance Company Limited",
-    "MDI123456/24/00001",
-    "01-04-2024",
-    "31-03-2025",
-    "Ramesh Patel",
-    "M001",
-    "Ramesh Patel",
-    "45",
+    "D",
+    "RTYFEB0042",
+    "Family Floater",
+    "RTY",
+    "The New India Assurance Co. LTD.",
+    "PO-14010061252800005144",
+    "15-03-2026",
+    "14-03-2027",
+    "Nanji Megji Gala",
+    "MD-RTY0042",
+    "Nanji Megji Gala",
+    "76",
     "M",
     "Self",
     "500000",
-    "CCN2024001",
-    "Shree Hospital",
-    "Anand",
+    "CCN-RTYFEB0042-20260802",
+    "Kokilaben Hospital",
+    "Andheri-West",
     "In-Patient",
-    "Appendicitis",
+    "Acute gastritis",
     "Diseases of the digestive system",
-    "15-04-2024",
-    "20-04-2024",
-    "85000",
-    "22-04-2024",
+    "20-06-2026",
+    "25-06-2026",
+    "45000",
+    "26-06-2026",
     "Cashless",
     "Cashless",
-    "5000",
+    "2000",
     "0",
     "",
-    "",
-    "80000",
-    "The New India Assurance Company Limited",
-    "24-04-2024",
-    "NEFT/123456",
-    "25-04-2024",
+    "Linked to policy export 2026-08-02",
+    "43000",
+    "The New India Assurance Co. LTD.",
+    "27-06-2026",
+    "NEFT/RTY0042",
+    "28-06-2026",
     "In-Patient",
     "Paid",
-    "85000",
+    "45000",
   ];
   const row = example.map(csvCell).join(",");
   return `\uFEFF${header}\r\n${row}\r\n`;

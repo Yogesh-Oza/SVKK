@@ -44,6 +44,8 @@ import {
 
   IconStethoscope,
 
+  IconWallet,
+
   IconUsers,
 
 } from "@tabler/icons-react";
@@ -71,6 +73,8 @@ const ICON_BY_ID: Record<SvkkNavId, ComponentType<{ className?: string }>> = {
   futureLookup: IconSearch,
 
   claims: IconStethoscope,
+
+  wallet: IconWallet,
 
   mis: IconChartBar,
 
