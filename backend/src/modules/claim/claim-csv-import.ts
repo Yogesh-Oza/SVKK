@@ -58,6 +58,7 @@ export type ParsedClaimRow = {
   informationReceivedDate: Date | null;
   hospitalName: string | null;
   hospitalArea: string | null;
+  villageCsv: string | null;
   networkType: string | null;
   hospitalInPpn: boolean | null;
   admissionDate: Date | null;
@@ -143,6 +144,7 @@ export function parseClaimRow(
     informationReceivedDate: parseClaimDate(getClaimField(map, "Information Received Date")),
     hospitalName: getClaimField(map, "Hospital Name") || null,
     hospitalArea: getClaimField(map, "Area") || null,
+    villageCsv: getClaimField(map, "Village") || null,
     networkType: getClaimField(map, "NETWORK/NON-NETWORK") || null,
     hospitalInPpn: parseYesNo(getClaimField(map, "HOSPITAL IS IN PPN Y/N")),
     admissionDate,
@@ -186,13 +188,21 @@ export function validateClaimRow(row: ParsedClaimRow): string | null {
   return null;
 }
 
+/** Village: matched policy, then CSV Village column, then hospital Area. */
+export function resolveClaimVillage(
+  matchVillage: string | null | undefined,
+  row: Pick<ParsedClaimRow, "villageCsv" | "hospitalArea">,
+): string | null {
+  return matchVillage ?? row.villageCsv ?? row.hospitalArea;
+}
+
 function claimDataFromRow(
   row: ParsedClaimRow,
   match: Awaited<ReturnType<typeof matchPolicyForClaim>>,
   importJobId: string | undefined,
   createdById: string,
 ): Prisma.ClaimCreateInput {
-  const village = match.village ?? row.hospitalArea;
+  const village = resolveClaimVillage(match.village, row);
   const policyYear =
     match.yearLabel ?? yearLabelFromDate(row.policyStartDate);
 
@@ -349,7 +359,7 @@ export async function importClaimRow(
     };
   }
 
-  const village = match.village ?? row.hospitalArea;
+  const village = resolveClaimVillage(match.village, row);
   assertClaimInGeoScope(
     { village, policy: { area: match.policyArea ?? null } },
     opts.permissions,

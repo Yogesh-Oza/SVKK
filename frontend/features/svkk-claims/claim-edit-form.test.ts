@@ -1,0 +1,69 @@
+import { describe, expect, it } from "vitest";
+import {
+  claimDetailToForm,
+  emptyClaimEditForm,
+  formToClaimPatch,
+} from "./claim-edit-form";
+import type { ClaimDetail } from "./claim-detail-types";
+
+describe("formToClaimPatch", () => {
+  it("round-trips policy number and grouping snapshots", () => {
+    const form = emptyClaimEditForm();
+    form.svkkPublicId = "SVKK1";
+    form.policyYear = "2025-26";
+    form.policyNoText = "MDI123";
+    form.policyGroupingText = "Group A";
+    const parsed = formToClaimPatch(form);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.body.policyNoText).toBe("MDI123");
+    expect(parsed.body.policyGroupingText).toBe("Group A");
+  });
+
+  it("serializes empty snapshots as null", () => {
+    const parsed = formToClaimPatch(emptyClaimEditForm());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.body.policyNoText).toBeNull();
+    expect(parsed.body.policyGroupingText).toBeNull();
+  });
+
+  it("rejects over-long policy snapshot text", () => {
+    const form = emptyClaimEditForm();
+    form.policyNoText = "x".repeat(121);
+    const parsed = formToClaimPatch(form);
+    expect(parsed.ok).toBe(false);
+  });
+
+  it("fills default status text only when statusText is empty", () => {
+    const emptyText = emptyClaimEditForm();
+    emptyText.status = "APPROVED";
+    const withDefault = formToClaimPatch(emptyText);
+    expect(withDefault.ok).toBe(true);
+    if (withDefault.ok) expect(withDefault.body.statusText).toBe("APPROVED");
+
+    const custom = emptyClaimEditForm();
+    custom.status = "APPROVED";
+    custom.statusText = "Paid";
+    const withCustom = formToClaimPatch(custom);
+    expect(withCustom.ok).toBe(true);
+    if (withCustom.ok) expect(withCustom.body.statusText).toBe("Paid");
+  });
+});
+
+describe("claimDetailToForm", () => {
+  it("maps snapshot fields from detail", () => {
+    const detail: ClaimDetail = {
+      id: "c1",
+      claimNo: "CCN-1",
+      svkkPublicId: "SVKK1",
+      policyYear: "2025-26",
+      status: "PENDING",
+      policyNoText: "PO-99",
+      policyGroupingText: "RTY",
+    };
+    const form = claimDetailToForm(detail);
+    expect(form.policyNoText).toBe("PO-99");
+    expect(form.policyGroupingText).toBe("RTY");
+  });
+});

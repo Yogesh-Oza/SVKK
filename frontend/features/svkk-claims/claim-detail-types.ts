@@ -31,6 +31,8 @@ export type ClaimDetail = {
   doBranch?: string | null;
   policyHolderName?: string | null;
   policyTypeText?: string | null;
+  policyNoText?: string | null;
+  policyGroupingText?: string | null;
   policyStartDate?: string | null;
   policyEndDate?: string | null;
   sumInsured?: string | number | null;

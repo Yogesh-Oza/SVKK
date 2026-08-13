@@ -57,4 +57,27 @@ describe("claimUpdateBodySchema", () => {
     expect(() => claimUpdateBodySchema.parse({ discountAmount: -1 })).toThrow();
     expect(() => claimUpdateBodySchema.parse({ mdId: "x".repeat(101) })).toThrow();
   });
+
+  it("accepts policy number and grouping snapshots", () => {
+    const out = claimUpdateBodySchema.parse({
+      policyNoText: "MDI123",
+      policyGroupingText: "Group A",
+    });
+    expect(out.policyNoText).toBe("MDI123");
+    expect(out.policyGroupingText).toBe("Group A");
+  });
+
+  it("accepts null snapshot fields", () => {
+    const out = claimUpdateBodySchema.parse({
+      policyNoText: null,
+      policyGroupingText: null,
+    });
+    expect(out.policyNoText).toBeNull();
+    expect(out.policyGroupingText).toBeNull();
+  });
+
+  it("rejects over-long policy snapshot text", () => {
+    expect(() => claimUpdateBodySchema.parse({ policyNoText: "x".repeat(121) })).toThrow();
+    expect(() => claimUpdateBodySchema.parse({ policyGroupingText: "x".repeat(65) })).toThrow();
+  });
 });

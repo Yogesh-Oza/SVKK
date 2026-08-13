@@ -7,6 +7,8 @@ export type ClaimEditFormValues = {
   village: string;
   policyHolderName: string;
   policyTypeText: string;
+  policyNoText: string;
+  policyGroupingText: string;
   policyStartDate: string;
   policyEndDate: string;
   sumInsured: string;
@@ -75,6 +77,8 @@ export function emptyClaimEditForm(): ClaimEditFormValues {
     village: "",
     policyHolderName: "",
     policyTypeText: "",
+    policyNoText: "",
+    policyGroupingText: "",
     policyStartDate: "",
     policyEndDate: "",
     sumInsured: "",
@@ -129,6 +133,8 @@ export function claimDetailToForm(d: ClaimDetail): ClaimEditFormValues {
     village: d.village ?? "",
     policyHolderName: d.policyHolderName ?? "",
     policyTypeText: d.policyTypeText ?? "",
+    policyNoText: d.policyNoText ?? "",
+    policyGroupingText: d.policyGroupingText ?? "",
     policyStartDate: dateToForm(d.policyStartDate),
     policyEndDate: dateToForm(d.policyEndDate),
     sumInsured: amountToForm(d.sumInsured),
@@ -195,6 +201,13 @@ function optText(raw: string): string | null {
   return t || null;
 }
 
+function defaultStatusText(status: string): string | null {
+  if (status === "APPROVED") return "APPROVED";
+  if (status === "REJECTED") return "REJECTED";
+  if (status === "PENDING") return "PENDING";
+  return null;
+}
+
 /** Build PATCH body from form values. Returns error message or payload. */
 export function formToClaimPatch(
   form: ClaimEditFormValues,
@@ -217,6 +230,15 @@ export function formToClaimPatch(
   if (form.patientAge.trim() && parseOptionalInt(form.patientAge) === null) {
     return { ok: false, error: "Patient age must be a whole number or empty" };
   }
+  if (form.policyNoText.trim().length > 120) {
+    return { ok: false, error: "Policy number must be 120 characters or fewer" };
+  }
+  if (form.policyGroupingText.trim().length > 64) {
+    return { ok: false, error: "Policy grouping must be 64 characters or fewer" };
+  }
+
+  // Fill a default status label only when statusText is empty so CSV free-text is preserved.
+  const statusText = optText(form.statusText) ?? defaultStatusText(form.status);
 
   const body: Record<string, unknown> = {
     svkkPublicId: form.svkkPublicId.trim(),
@@ -224,6 +246,8 @@ export function formToClaimPatch(
     village: optText(form.village),
     policyHolderName: optText(form.policyHolderName),
     policyTypeText: optText(form.policyTypeText),
+    policyNoText: optText(form.policyNoText),
+    policyGroupingText: optText(form.policyGroupingText),
     policyStartDate: toApiDateIso(form.policyStartDate),
     policyEndDate: toApiDateIso(form.policyEndDate),
     sumInsured: parseOptionalAmount(form.sumInsured),
@@ -239,7 +263,7 @@ export function formToClaimPatch(
     treatmentProcedure: optText(form.treatmentProcedure),
     diseaseCategory: optText(form.diseaseCategory),
     status: form.status,
-    statusText: optText(form.statusText),
+    statusText,
     claimAmount: parseOptionalAmount(form.claimAmount),
     reportedLodgeAmount: parseOptionalAmount(form.reportedLodgeAmount),
     approvedAmount: parseOptionalAmount(form.approvedAmount),

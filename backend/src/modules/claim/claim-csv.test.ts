@@ -15,7 +15,7 @@ import {
 import { ClaimStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { canonicalClaimHeader } from "./claim-csv-format.js";
-import { parseClaimRow } from "./claim-csv-import.js";
+import { parseClaimRow, resolveClaimVillage } from "./claim-csv-import.js";
 
 describe("claim-csv-normalize", () => {
   it("parses ISO and DD-MM-YYYY dates", () => {
@@ -141,5 +141,33 @@ describe("claim CSV header aliases", () => {
     expect(row.paymentDate?.toISOString().slice(0, 10)).toBe("2025-02-05");
     expect(row.prsCrsDate?.toISOString().slice(0, 10)).toBe("2025-02-01");
     expect(row.status).toBe(ClaimStatus.PENDING);
+  });
+
+  it("parses the Village CSV column", () => {
+    const map = new Map<string, string>([
+      ["Claim Number", "V-1"],
+      ["Village", "Bharudia"],
+      ["Area", "Byculla"],
+    ]);
+    const row = parseClaimRow(2, map, {});
+    expect(row.villageCsv).toBe("Bharudia");
+    expect(row.hospitalArea).toBe("Byculla");
+  });
+});
+
+describe("resolveClaimVillage", () => {
+  it("prefers match village, then CSV Village, then Area", () => {
+    expect(
+      resolveClaimVillage("Matched", { villageCsv: "CsvVil", hospitalArea: "Area" }),
+    ).toBe("Matched");
+    expect(
+      resolveClaimVillage(null, { villageCsv: "CsvVil", hospitalArea: "Area" }),
+    ).toBe("CsvVil");
+    expect(
+      resolveClaimVillage(null, { villageCsv: null, hospitalArea: "Area" }),
+    ).toBe("Area");
+    expect(
+      resolveClaimVillage(undefined, { villageCsv: null, hospitalArea: null }),
+    ).toBeNull();
   });
 });

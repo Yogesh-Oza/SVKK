@@ -54,6 +54,10 @@ export const claimUpdateBodySchema = z.object({
   doBranch: optionalText(200),
   policyHolderName: optionalText(200),
   policyTypeText: optionalText(200),
+  // CSV snapshot only — does not rematch or change policyId.
+  policyNoText: optionalText(120),
+  // CSV snapshot only — not a substitute for Policy.policyGrouping.
+  policyGroupingText: optionalText(64),
   policyStartDate: optionalDate,
   policyEndDate: optionalDate,
   sumInsured: optionalAmount,
