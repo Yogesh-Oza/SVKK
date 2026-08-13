@@ -44,6 +44,7 @@ import {
 } from "@/features/svkk-policies/policy-filter-multi";
 import { todayFormDate } from "@/lib/svkk/form-date";
 import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
+import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { getSvkkErrorCode, getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { getSvkkApiBase } from "@/lib/svkk/config";
