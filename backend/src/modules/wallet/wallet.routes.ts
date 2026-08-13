@@ -7,7 +7,6 @@ import { requirePermission } from "../../middlewares/rbac.js";
 import { AppError } from "../../errors/app-error.js";
 import {
   adjustWallet,
-  clearWallet,
   getWalletSummary,
   manualDebit,
   restoreWalletFromBackup,
@@ -108,10 +107,6 @@ const adjustmentBody = z.object({
   allowNegative: z.boolean().optional(),
   snapshots: adjustmentSnapshotsBody.optional(),
   ...snapshotFields,
-});
-
-const clearBody = z.object({
-  confirm: z.literal(true),
 });
 
 const restoreBody = z.object({
@@ -306,16 +301,6 @@ export function createWalletRouter(_env: Env) {
           policyNumber: nested.policyNumber,
         }),
       });
-      res.json({ success: true, data });
-    } catch (e) {
-      next(e);
-    }
-  });
-
-  r.post("/clear", requirePermission("wallet:clear"), async (req, res, next) => {
-    try {
-      const body = clearBody.parse(req.body);
-      const data = await clearWallet(body.confirm, req.userId);
       res.json({ success: true, data });
     } catch (e) {
       next(e);

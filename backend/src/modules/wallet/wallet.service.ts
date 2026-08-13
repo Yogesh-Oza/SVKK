@@ -532,26 +532,6 @@ export async function adjustWallet(input: {
   });
 }
 
-export async function clearWallet(confirm: boolean, userId: string | undefined) {
-  if (!confirm) {
-    throw new AppError("VALIDATION_ERROR", "Clear requires confirm: true.", 400);
-  }
-  const now = new Date();
-  return prisma.$transaction(async (tx) => {
-    const wallet = await ensureAndLockWallet(tx);
-    await tx.walletTransaction.deleteMany({ where: { walletId: wallet.id } });
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { currentBalance: new Prisma.Decimal(0), lastUpdatedAt: now },
-    });
-    return {
-      currentBalance: "0.00",
-      lastUpdatedAt: now.toISOString(),
-      clearedBy: userId ?? null,
-    };
-  });
-}
-
 function asRecord(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as Record<string, unknown>;
@@ -750,6 +730,63 @@ export async function restoreWalletFromBackup(
     },
     { timeout: 120_000, maxWait: 10_000 },
   );
+}
+
+function isCreditLedgerTxn(
+  txn: { id: string; type: WalletTxnType; balanceAfter: Prisma.Decimal },
+  adjustmentDirections: Map<string, boolean>,
+): boolean {
+  if (txn.type === "DEBIT") return false;
+  if (txn.type === "OPENING" || txn.type === "TOP_UP" || txn.type === "CREDIT") return true;
+  if (txn.type === "ADJUSTMENT") {
+    const dir = adjustmentDirections.get(txn.id);
+    if (dir !== undefined) return dir;
+    return true;
+  }
+  return true;
+}
+
+/**
+ * Recompute balanceAfter for every row (chronological) and sync wallet.currentBalance.
+ * Call after in-place edits to policy CD debits or other amount changes.
+ */
+export async function recalculateWalletBalances(
+  tx: Prisma.TransactionClient,
+  walletId: string,
+): Promise<Prisma.Decimal> {
+  const txns = await tx.walletTransaction.findMany({
+    where: { walletId },
+    orderBy: [{ txnDate: "asc" }, { createdAt: "asc" }],
+  });
+
+  const adjustmentDirections = new Map<string, boolean>();
+  let walk = new Prisma.Decimal(0);
+  for (const t of txns) {
+    if (t.type === "ADJUSTMENT") {
+      adjustmentDirections.set(t.id, t.balanceAfter.gt(walk));
+    }
+    walk = t.balanceAfter;
+  }
+
+  let balance = new Prisma.Decimal(0);
+  const now = new Date();
+  for (const t of txns) {
+    const isCredit = isCreditLedgerTxn(t, adjustmentDirections);
+    balance = isCredit ? balance.plus(t.amount) : balance.minus(t.amount);
+    if (!t.balanceAfter.equals(balance)) {
+      await tx.walletTransaction.update({
+        where: { id: t.id },
+        data: { balanceAfter: balance },
+      });
+    }
+  }
+
+  await tx.wallet.update({
+    where: { id: walletId },
+    data: { currentBalance: balance, lastUpdatedAt: now },
+  });
+
+  return balance;
 }
 
 export function serializeTxn(txn: {

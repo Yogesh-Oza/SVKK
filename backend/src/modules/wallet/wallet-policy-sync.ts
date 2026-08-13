@@ -1,9 +1,11 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient, type WalletTxnSource } from "@prisma/client";
+import { AppError } from "../../errors/app-error.js";
 import {
   appendWalletTxn,
   decimalToString,
   ensureAndLockWallet,
   monthYearFromDate,
+  recalculateWalletBalances,
 } from "./wallet.service.js";
 
 export type PolicyWalletSnapshotSource = {
@@ -22,6 +24,8 @@ export type PolicyWalletSnapshotSource = {
   policyType?: { name?: string | null } | null;
   insuredParty?: { name?: string | null } | null;
 };
+
+const POLICY_CD_SOURCES: WalletTxnSource[] = ["POLICY", "RESTORE"];
 
 export function effectiveCdAmount(input: {
   cdAccountUsed?: boolean | null;
@@ -64,6 +68,12 @@ function resolvePolicyNumber(p: PolicyWalletSnapshotSource): string | null {
   return (p.policyNo || p.archivedPolicyNo || "").trim() || null;
 }
 
+function sliceOrNull(raw: string | null | undefined, max: number): string | null {
+  const t = (raw ?? "").trim();
+  if (!t) return null;
+  return t.slice(0, max);
+}
+
 export function buildPolicyWalletSnapshots(p: PolicyWalletSnapshotSource) {
   const dateOfSubmission = p.dateOfSubmission ?? null;
   const derived = monthYearFromDate(dateOfSubmission);
@@ -104,6 +114,59 @@ export async function netPostedForPolicy(
   return debitSum.minus(creditSum);
 }
 
+async function findPolicyCdDebitRows(tx: Prisma.TransactionClient, policyId: string) {
+  return tx.walletTransaction.findMany({
+    where: {
+      policyId,
+      type: "DEBIT",
+      source: { in: POLICY_CD_SOURCES },
+    },
+    orderBy: [{ createdAt: "asc" }],
+  });
+}
+
+/** Keep one policy CD debit row; remove legacy duplicate rows from older delta logic. */
+async function primaryPolicyCdDebit(
+  tx: Prisma.TransactionClient,
+  policyId: string,
+) {
+  const rows = await findPolicyCdDebitRows(tx, policyId);
+  if (rows.length <= 1) return rows[0] ?? null;
+  const [primary, ...extras] = rows;
+  await tx.walletTransaction.deleteMany({
+    where: { id: { in: extras.map((r) => r.id) } },
+  });
+  return primary;
+}
+
+function policyCdRemark(policyNumber: string | null, policyId: string): string {
+  return `Policy CD deduction (${policyNumber || policyId})`;
+}
+
+function snapshotUpdateData(
+  snapshots: ReturnType<typeof buildPolicyWalletSnapshots>,
+  amount: Prisma.Decimal,
+  remark: string,
+) {
+  return {
+    amount,
+    cdAmount: amount,
+    policyId: snapshots.policyId,
+    policyNumber: sliceOrNull(snapshots.policyNumber, 120),
+    dateOfSubmission: snapshots.dateOfSubmission,
+    monthText: sliceOrNull(snapshots.monthText, 20),
+    yearText: sliceOrNull(snapshots.yearText, 8),
+    holderName: sliceOrNull(snapshots.holderName, 200),
+    village: sliceOrNull(snapshots.village, 200),
+    category: sliceOrNull(snapshots.category, 32),
+    groupName: sliceOrNull(snapshots.groupName, 64),
+    policyTypeName: sliceOrNull(snapshots.policyTypeName, 120),
+    cdAccountUsed: sliceOrNull(snapshots.cdAccountUsed, 16),
+    remark,
+    particulars: remark,
+  };
+}
+
 export type SyncPolicyWalletResult = {
   posted: boolean;
   type: "DEBIT" | "CREDIT" | null;
@@ -113,8 +176,8 @@ export type SyncPolicyWalletResult = {
 };
 
 /**
- * Post debit/credit for a policy CD amount change inside an existing transaction.
- * previousEffective / nextEffective are absolute effective CD amounts.
+ * One wallet debit row per policy. Updates that row in place when CD changes;
+ * recalculates the full balance chain. No new row when CD amount is unchanged.
  */
 export async function syncPolicyWallet(
   tx: Prisma.TransactionClient,
@@ -128,37 +191,91 @@ export async function syncPolicyWallet(
     source?: "POLICY" | "RESTORE";
   },
 ): Promise<SyncPolicyWalletResult> {
-  const delta = cdDelta(input.previousEffective, input.nextEffective);
-  if (delta.eq(0)) {
-    return { posted: false, type: null, amount: null, txnId: null, balanceAfter: null };
-  }
-
-  const isCredit = delta.lt(0);
-  const type: "DEBIT" | "CREDIT" = isCredit ? "CREDIT" : "DEBIT";
-  const move = delta.abs();
+  const next = input.nextEffective;
+  const prev = input.previousEffective;
 
   const wallet = await ensureAndLockWallet(tx);
+  const existing = await primaryPolicyCdDebit(tx, input.policy.id);
+
+  if (next.lte(0)) {
+    if (!existing) {
+      return { posted: false, type: null, amount: null, txnId: null, balanceAfter: null };
+    }
+    await tx.walletTransaction.delete({ where: { id: existing.id } });
+    const balance = await recalculateWalletBalances(tx, wallet.id);
+    if (balance.lt(0) && !input.allowNegative) {
+      throw new AppError(
+        "WALLET_INSUFFICIENT",
+        "Amount is greater than wallet balance. Confirm to allow a negative balance.",
+        409,
+      );
+    }
+    return {
+      posted: true,
+      type: "CREDIT",
+      amount: decimalToString(existing.amount),
+      txnId: existing.id,
+      balanceAfter: decimalToString(balance),
+    };
+  }
+
   const snapshots = buildPolicyWalletSnapshots({
     ...input.policy,
-    cdAccountUsed: input.nextEffective.gt(0) ? true : input.policy.cdAccountUsed,
-    cdAmount: input.nextEffective.gt(0) ? input.nextEffective : input.policy.cdAmount,
+    cdAccountUsed: true,
+    cdAmount: next,
   });
   const remark =
-    input.remark ||
-    (type === "DEBIT"
-      ? `Policy CD deduction (${snapshots.policyNumber || snapshots.policyId})`
-      : `Policy CD refund/reversal (${snapshots.policyNumber || snapshots.policyId})`);
+    input.remark || policyCdRemark(snapshots.policyNumber, snapshots.policyId);
+
+  if (existing) {
+    const unchanged =
+      prev.eq(next) && existing.amount.eq(next);
+    if (unchanged) {
+      await tx.walletTransaction.update({
+        where: { id: existing.id },
+        data: snapshotUpdateData(snapshots, next, remark),
+      });
+      const balance = await recalculateWalletBalances(tx, wallet.id);
+      return {
+        posted: false,
+        type: null,
+        amount: decimalToString(next),
+        txnId: existing.id,
+        balanceAfter: decimalToString(balance),
+      };
+    }
+
+    await tx.walletTransaction.update({
+      where: { id: existing.id },
+      data: snapshotUpdateData(snapshots, next, remark),
+    });
+    const balance = await recalculateWalletBalances(tx, wallet.id);
+    if (balance.lt(0) && !input.allowNegative) {
+      throw new AppError(
+        "WALLET_INSUFFICIENT",
+        "Amount is greater than wallet balance. Confirm to allow a negative balance.",
+        409,
+      );
+    }
+    return {
+      posted: true,
+      type: "DEBIT",
+      amount: decimalToString(next),
+      txnId: existing.id,
+      balanceAfter: decimalToString(balance),
+    };
+  }
 
   const { txn, newBalance } = await appendWalletTxn(tx, wallet, {
-    type,
+    type: "DEBIT",
     source: input.source ?? "POLICY",
-    amount: move,
-    isCredit,
+    amount: next,
+    isCredit: false,
     allowNegative: input.allowNegative,
     userId: input.userId,
     snapshots: {
       ...snapshots,
-      cdAmount: move,
+      cdAmount: next,
       remark,
       particulars: remark,
     },
@@ -166,14 +283,14 @@ export async function syncPolicyWallet(
 
   return {
     posted: true,
-    type,
-    amount: decimalToString(move),
+    type: "DEBIT",
+    amount: decimalToString(next),
     txnId: txn.id,
     balanceAfter: decimalToString(newBalance),
   };
 }
 
-/** Soft-delete: credit back net posted for the policy. */
+/** Soft-delete: remove the policy CD debit row and recalculate balances. */
 export async function reversePolicyWalletOnDelete(
   tx: Prisma.TransactionClient,
   input: {
@@ -181,22 +298,24 @@ export async function reversePolicyWalletOnDelete(
     userId?: string | null;
   },
 ): Promise<SyncPolicyWalletResult> {
-  const net = await netPostedForPolicy(tx, input.policy.id);
-  if (net.lte(0)) {
+  const wallet = await ensureAndLockWallet(tx);
+  const existing = await primaryPolicyCdDebit(tx, input.policy.id);
+  if (!existing) {
     return { posted: false, type: null, amount: null, txnId: null, balanceAfter: null };
   }
-  return syncPolicyWallet(tx, {
-    policy: input.policy,
-    previousEffective: net,
-    nextEffective: new Prisma.Decimal(0),
-    allowNegative: true,
-    userId: input.userId,
-    source: "POLICY",
-    remark: `Policy delete CD reversal (${input.policy.policyNo || input.policy.archivedPolicyNo || input.policy.id})`,
-  });
+  const removedAmount = existing.amount;
+  await tx.walletTransaction.delete({ where: { id: existing.id } });
+  const balance = await recalculateWalletBalances(tx, wallet.id);
+  return {
+    posted: true,
+    type: "CREDIT",
+    amount: decimalToString(removedAmount),
+    txnId: existing.id,
+    balanceAfter: decimalToString(balance),
+  };
 }
 
-/** Restore archived policy: re-debit effective CD. */
+/** Restore archived policy: create or update the single CD debit row. */
 export async function redebitPolicyWalletOnRestore(
   tx: Prisma.TransactionClient,
   input: {
@@ -209,9 +328,11 @@ export async function redebitPolicyWalletOnRestore(
   if (next.lte(0)) {
     return { posted: false, type: null, amount: null, txnId: null, balanceAfter: null };
   }
+  const existing = await primaryPolicyCdDebit(tx, input.policy.id);
+  const previousEffective = existing?.amount ?? new Prisma.Decimal(0);
   return syncPolicyWallet(tx, {
     policy: input.policy,
-    previousEffective: new Prisma.Decimal(0),
+    previousEffective,
     nextEffective: next,
     allowNegative: input.allowNegative,
     userId: input.userId,
