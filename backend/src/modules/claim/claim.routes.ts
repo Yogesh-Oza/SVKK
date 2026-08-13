@@ -386,6 +386,33 @@ export function createClaimRouter(env: Env) {
     }
   });
 
+  r.post(
+    "/bulk-delete",
+    requirePermission("claim:delete"),
+    async (req, res, next) => {
+      try {
+        const body = z
+          .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
+          .parse(req.body);
+        const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
+        for (const id of body.ids) {
+          const found = await prisma.claim.findUnique({
+            where: { id },
+            select: { id: true, village: true, policy: { select: { area: true } } },
+          });
+          if (!found) {
+            throw new AppError("NOT_FOUND", `Claim not found: ${id}`, 404);
+          }
+          assertClaimInGeoScope(found, req.permissions!, scope);
+        }
+        await prisma.claim.deleteMany({ where: { id: { in: body.ids } } });
+        res.json({ ok: true, count: body.ids.length });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
   r.get("/:id", requirePermission("claim:read"), async (req, res, next) => {
     try {
       const scope = await loadMisScope(req.userId!, req.permissions!, "claim");

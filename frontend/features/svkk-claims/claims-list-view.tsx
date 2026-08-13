@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -83,6 +84,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -321,6 +323,14 @@ export function ClaimsListView() {
   const [editClaimNo, setEditClaimNo] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  const selectedIds = useMemo(
+    () => Object.entries(selected).filter(([, v]) => v).map(([id]) => id),
+    [selected],
+  );
+  const selectedCount = selectedIds.length;
 
   useEffect(() => {
     const t = setTimeout(() => setSearchApplied(searchDraft.trim()), 350);
@@ -494,6 +504,7 @@ export function ClaimsListView() {
       setTotal(res.total);
       setTotalPages(res.totalPages);
       setPage(res.page);
+      setSelected({});
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load claims");
@@ -626,6 +637,24 @@ export function ClaimsListView() {
     }
   }
 
+  async function bulkDeleteClaims() {
+    if (selectedIds.length === 0) return;
+    setDeleteBusy(true);
+    try {
+      await svkkJson("/claims/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      toast.success(`Deleted ${selectedIds.length} claim${selectedIds.length === 1 ? "" : "s"}`);
+      setBulkDeleteOpen(false);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bulk delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   function resetFilters() {
     setSearchDraft("");
     setSearchApplied("");
@@ -660,7 +689,8 @@ export function ClaimsListView() {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
   }
 
-  const colCount = 26 + (canU || canD ? 1 : 0);
+  const colCount = 26 + (canD ? 1 : 0) + (canU || canD ? 1 : 0);
+  const allSelected = rows.length > 0 && rows.every((r) => selected[r.id]);
 
   return (
     <motion.div
@@ -950,6 +980,29 @@ export function ClaimsListView() {
         </div>
       ) : null}
 
+      {canD && selectedCount > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border-destructive/25 bg-destructive/5 flex flex-col items-stretch justify-between gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center"
+        >
+          <p className="text-sm font-medium">
+            <span className="text-destructive font-semibold">{selectedCount}</span> claim
+            {selectedCount === 1 ? "" : "s"} selected
+          </p>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setBulkDeleteOpen(true)}
+          >
+            <Trash2 className="size-3.5" />
+            Delete selected
+          </Button>
+        </motion.div>
+      ) : null}
+
       <Card className="overflow-hidden py-0 shadow-md">
         <CardHeader className="bg-muted/15 space-y-4 border-b py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1000,6 +1053,20 @@ export function ClaimsListView() {
           <Table className="min-w-[2600px] font-sans text-sm antialiased">
             <TableHeader className="[&_tr]:bg-muted/80">
               <TableRow>
+                {canD ? (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={(v) => {
+                        const next = Boolean(v);
+                        const map: Record<string, boolean> = {};
+                        for (const r of rows) map[r.id] = next;
+                        setSelected(map);
+                      }}
+                      aria-label="Select all on this page"
+                    />
+                  </TableHead>
+                ) : null}
                 <TableHead className="text-xs">Category</TableHead>
                 <TableHead className="text-xs">SVKK ID</TableHead>
                 <TableHead className="text-xs">MD ID</TableHead>
@@ -1043,6 +1110,17 @@ export function ClaimsListView() {
               ) : rows.length ? (
                 rows.map((c) => (
                   <TableRow key={c.id}>
+                    {canD ? (
+                      <TableCell>
+                        <Checkbox
+                          checked={Boolean(selected[c.id])}
+                          onCheckedChange={(v) =>
+                            setSelected((prev) => ({ ...prev, [c.id]: Boolean(v) }))
+                          }
+                          aria-label={`Select claim ${c.claimNo}`}
+                        />
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <CategoryBadge value={c.categoryText ?? c.policy?.category?.key} />
                     </TableCell>
@@ -1210,6 +1288,31 @@ export function ClaimsListView() {
             </Button>
             <Button type="button" variant="destructive" disabled={deleteBusy} onClick={() => void removeClaim()}>
               {deleteBusy ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected claims?</DialogTitle>
+            <DialogDescription>
+              {selectedCount} claim{selectedCount === 1 ? "" : "s"} will be permanently deleted. This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteBusy || selectedCount === 0}
+              onClick={() => void bulkDeleteClaims()}
+            >
+              {deleteBusy ? "Deleting…" : `Delete ${selectedCount}`}
             </Button>
           </DialogFooter>
         </DialogContent>
