@@ -169,6 +169,8 @@ enum WalletTxnType {
   OPENING
   TOP_UP
   DEBIT
+  CREDIT
+  ADJUSTMENT
 }
 
 enum WalletTxnSource {
@@ -176,6 +178,8 @@ enum WalletTxnSource {
   TOPUP
   MANUAL
   CSV
+  POLICY
+  RESTORE
 }
 
 model User {
@@ -381,6 +385,8 @@ model Policy {
   policyGroup         String?           @db.VarChar(32)
   cdAccountUsed       Boolean?
   cdAmount            Decimal?          @db.Decimal(14, 2)
+  /// User-entered date for CD/wallet snapshots (not Policy Start).
+  dateOfSubmission    DateTime?
   courierStatus       String?           @db.VarChar(10)
   courierDate         DateTime?
   courierCompany      String?           @db.VarChar(200)
@@ -403,10 +409,11 @@ model Policy {
   /// Snapshot of referenceNo while archived (live referenceNo cleared for uniqueness release)
   archivedReferenceNo String?           @db.VarChar(255)
 
-  years         PolicyYear[]
-  claims        Claim[]
-  receipts      Receipt[]
-  notifications Notification[]
+  years              PolicyYear[]
+  claims             Claim[]
+  receipts           Receipt[]
+  notifications      Notification[]
+  walletTransactions WalletTransaction[]
 
   @@unique([policyNo, policyTypeId])
   @@index([migratedRunId])
@@ -873,7 +880,7 @@ model Claim {
   doBranch                String?                 @db.VarChar(200)
   policyHolderName        String?                 @db.VarChar(200)
   policyTypeText          String?                 @db.VarChar(200)
-  /// CSV snapshot only — not a substitute for policyId.
+  /// Snapshot/display Policy Number; Add/Edit rematch uses this to set policyId (same as CSV).
   policyNoText            String?                 @db.VarChar(120)
   /// CSV snapshot only — not a substitute for Policy.policyGrouping.
   policyGroupingText      String?                 @db.VarChar(64)
@@ -1063,25 +1070,39 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id           String          @id @default(cuid())
-  walletId     String
-  wallet       Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  txnDate      DateTime
-  type         WalletTxnType
-  category     String?         @db.VarChar(32)
-  particulars  String?         @db.VarChar(500)
-  reference    String?         @db.VarChar(255)
-  amount       Decimal         @db.Decimal(14, 2)
-  balanceAfter Decimal         @db.Decimal(14, 2)
-  source       WalletTxnSource
-  createdById  String?
-  createdBy    User?           @relation("WalletTxnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  walletId         String
+  wallet           Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  txnDate          DateTime
+  type             WalletTxnType
+  category         String?         @db.VarChar(32)
+  particulars      String?         @db.VarChar(500)
+  reference        String?         @db.VarChar(255)
+  amount           Decimal         @db.Decimal(14, 2)
+  balanceAfter     Decimal         @db.Decimal(14, 2)
+  source           WalletTxnSource
+  policyId         String?
+  policy           Policy?         @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  policyNumber     String?         @db.VarChar(120)
+  dateOfSubmission DateTime?
+  monthText        String?         @db.VarChar(20)
+  yearText         String?         @db.VarChar(8)
+  holderName       String?         @db.VarChar(200)
+  village          String?         @db.VarChar(200)
+  groupName        String?         @db.VarChar(64)
+  policyTypeName   String?         @db.VarChar(120)
+  cdAccountUsed    String?         @db.VarChar(16)
+  cdAmount         Decimal?        @db.Decimal(14, 2)
+  remark           String?         @db.VarChar(500)
+  createdById      String?
+  createdBy        User?           @relation("WalletTxnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([walletId, createdAt])
   @@index([walletId, type])
   @@index([walletId, category])
+  @@index([policyId])
   @@index([createdById])
   @@map("wallettransaction")
 }

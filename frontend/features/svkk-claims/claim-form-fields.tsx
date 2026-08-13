@@ -97,7 +97,7 @@ export function ClaimFormFields({
         <Field label="Policy type">
           <Input value={form.policyTypeText} onChange={(e) => set("policyTypeText")(e.target.value)} />
         </Field>
-        <Field label="Policy number" hint="CSV snapshot">
+        <Field label="Policy number" hint="auto-links policy">
           <Input value={form.policyNoText} onChange={(e) => set("policyNoText")(e.target.value)} />
         </Field>
         <Field label="Policy grouping" hint="CSV snapshot">

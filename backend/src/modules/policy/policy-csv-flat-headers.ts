@@ -53,6 +53,7 @@ export const POLICY_CSV_FLAT_HEADERS = [
   "loan_pending_amt",
   "cd_account_status",
   "cd_amount",
+  "date_of_submission",
   "Refund Cheque Amount",
   "Refund Cheque Number",
   "Refund Cheque Date",

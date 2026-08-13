@@ -6,9 +6,11 @@ import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { AppError } from "../../errors/app-error.js";
 import {
+  adjustWallet,
   clearWallet,
   getWalletSummary,
   manualDebit,
+  restoreWalletFromBackup,
   setOpeningBalance,
   topUpWallet,
 } from "./wallet.service.js";
@@ -17,6 +19,8 @@ import {
   buildWalletBackupJson,
   buildWalletMisExportCsv,
   exportWalletTransactionsCsv,
+  WALLET_MIS_DIMENSIONS,
+  walletMisExportFilename,
 } from "./wallet.export.js";
 import { buildWalletSampleCsv, walletSampleFilename } from "./wallet-csv-format.js";
 import { importWalletUsageCsv } from "./wallet-csv-import.js";
@@ -48,24 +52,140 @@ const topupBody = amountBody.extend({
   remark: z.string().max(500).optional(),
 });
 
+const optionalDate = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.date().optional(),
+);
+
+const optionalText = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.string().max(500).optional(),
+);
+
+const snapshotFields = {
+  dateOfSubmission: optionalDate,
+  month: optionalText,
+  year: optionalText,
+  holderName: z.string().max(200).optional(),
+  village: z.string().max(200).optional(),
+  group: z.string().max(64).optional(),
+  policyType: z.string().max(120).optional(),
+  cdAccountUsed: z.string().max(16).optional(),
+  cdAmount: z.union([z.string(), z.number()]).optional(),
+  remark: z.string().max(500).optional(),
+};
+
 const debitBody = z.object({
   category: z.string().min(1),
   amount: z.union([z.string(), z.number()]),
   particulars: z.string().max(500).optional(),
   reference: z.string().max(255).optional(),
   allowNegative: z.boolean().optional(),
+  ...snapshotFields,
+});
+
+const adjustmentSnapshotsBody = z.object({
+  dateOfSubmission: optionalDate,
+  month: optionalText,
+  year: optionalText,
+  holderName: z.string().max(200).optional(),
+  village: z.string().max(200).optional(),
+  group: z.string().max(64).optional(),
+  policyType: z.string().max(120).optional(),
+  cdAccountUsed: z.string().max(16).optional(),
+  cdAmount: z.union([z.string(), z.number()]).optional(),
+  remark: z.string().max(500).optional(),
+  policyId: z.string().max(64).optional(),
+  policyNumber: z.string().max(120).optional(),
+  particulars: z.string().max(500).optional(),
+  reference: z.string().max(255).optional(),
+});
+
+const adjustmentBody = z.object({
+  amount: z.union([z.string(), z.number()]),
+  direction: z.enum(["CREDIT", "DEBIT"]),
+  category: z.string().max(32).optional(),
+  allowNegative: z.boolean().optional(),
+  snapshots: adjustmentSnapshotsBody.optional(),
+  ...snapshotFields,
 });
 
 const clearBody = z.object({
   confirm: z.literal(true),
 });
 
+const restoreBody = z.object({
+  confirm: z.literal(true),
+  backup: z.object({
+    wallet_balance: z.unknown().optional(),
+    wallet_last_updated: z.unknown().optional(),
+    wallet_transactions: z.array(z.record(z.unknown())),
+  }),
+});
+
 const listQuerySchema = z.object({
   q: z.string().optional(),
   category: z.string().optional(),
+  type: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (!v?.trim()) return undefined;
+      const t = v.trim().toUpperCase().replace(/-/g, "_");
+      if (t === "TOPUP") return "TOP_UP";
+      return t;
+    })
+    .pipe(
+      z
+        .enum(["OPENING", "TOP_UP", "DEBIT", "CREDIT", "ADJUSTMENT"])
+        .optional(),
+    ),
+  village: z.string().optional(),
+  group: z.string().optional(),
+  month: z.string().optional(),
+  year: z.string().optional(),
+  policyId: z.string().optional(),
   page: z.coerce.number().min(1).optional(),
   pageSize: z.coerce.number().min(1).max(100).optional(),
 });
+
+const misExportQuerySchema = z.object({
+  dimension: z.enum(WALLET_MIS_DIMENSIONS).optional().default("category"),
+});
+
+function mapSnapshots(body: {
+  dateOfSubmission?: Date;
+  month?: string;
+  year?: string;
+  holderName?: string;
+  village?: string;
+  group?: string;
+  policyType?: string;
+  cdAccountUsed?: string;
+  cdAmount?: string | number;
+  remark?: string;
+  particulars?: string;
+  reference?: string;
+  policyId?: string;
+  policyNumber?: string;
+}) {
+  return {
+    dateOfSubmission: body.dateOfSubmission ?? null,
+    monthText: body.month,
+    yearText: body.year,
+    holderName: body.holderName,
+    village: body.village,
+    groupName: body.group,
+    policyTypeName: body.policyType,
+    cdAccountUsed: body.cdAccountUsed,
+    cdAmount: body.cdAmount != null ? String(body.cdAmount) : null,
+    remark: body.remark,
+    particulars: body.particulars ?? body.remark,
+    reference: body.reference,
+    policyId: body.policyId,
+    policyNumber: body.policyNumber,
+  };
+}
 
 export function createWalletRouter(_env: Env) {
   const r = Router();
@@ -116,10 +236,53 @@ export function createWalletRouter(_env: Env) {
       const data = await manualDebit({
         category: body.category,
         amount: body.amount,
-        particulars: body.particulars,
+        particulars: body.remark ?? body.particulars,
         reference: body.reference,
         allowNegative: body.allowNegative,
         userId: req.userId,
+        dateOfSubmission: body.dateOfSubmission ?? null,
+        monthText: body.month,
+        yearText: body.year,
+        holderName: body.holderName,
+        village: body.village,
+        groupName: body.group,
+        policyTypeName: body.policyType,
+        cdAccountUsed: body.cdAccountUsed,
+        cdAmount: body.cdAmount,
+      });
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post("/adjustment", requirePermission("wallet:debit"), async (req, res, next) => {
+    try {
+      const body = adjustmentBody.parse(req.body);
+      const nested = body.snapshots ?? {};
+      const data = await adjustWallet({
+        amount: body.amount,
+        direction: body.direction,
+        remark: body.remark ?? nested.remark,
+        category: body.category,
+        allowNegative: body.allowNegative,
+        userId: req.userId,
+        snapshots: mapSnapshots({
+          dateOfSubmission: nested.dateOfSubmission ?? body.dateOfSubmission,
+          month: nested.month ?? body.month,
+          year: nested.year ?? body.year,
+          holderName: nested.holderName ?? body.holderName,
+          village: nested.village ?? body.village,
+          group: nested.group ?? body.group,
+          policyType: nested.policyType ?? body.policyType,
+          cdAccountUsed: nested.cdAccountUsed ?? body.cdAccountUsed,
+          cdAmount: nested.cdAmount ?? body.cdAmount,
+          remark: nested.remark ?? body.remark,
+          particulars: nested.particulars,
+          reference: nested.reference,
+          policyId: nested.policyId,
+          policyNumber: nested.policyNumber,
+        }),
       });
       res.json({ success: true, data });
     } catch (e) {
@@ -131,6 +294,16 @@ export function createWalletRouter(_env: Env) {
     try {
       const body = clearBody.parse(req.body);
       const data = await clearWallet(body.confirm, req.userId);
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post("/restore", requirePermission("wallet:clear"), async (req, res, next) => {
+    try {
+      const body = restoreBody.parse(req.body);
+      const data = await restoreWalletFromBackup(body.confirm, body.backup, req.userId);
       res.json({ success: true, data });
     } catch (e) {
       next(e);
@@ -193,11 +366,15 @@ export function createWalletRouter(_env: Env) {
     }
   });
 
-  r.get("/mis/export.csv", requirePermission("wallet:export"), async (_req, res, next) => {
+  r.get("/mis/export.csv", requirePermission("wallet:export"), async (req, res, next) => {
     try {
-      const csv = await buildWalletMisExportCsv();
+      const { dimension } = misExportQuerySchema.parse(req.query);
+      const csv = await buildWalletMisExportCsv(dimension);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="wallet_category_mis.csv"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${walletMisExportFilename(dimension)}"`,
+      );
       res.send(csv);
     } catch (e) {
       next(e);

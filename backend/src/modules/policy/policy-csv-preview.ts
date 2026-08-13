@@ -1,10 +1,14 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { Prisma } from "@prisma/client";
 import type { Env } from "../../config/env.js";
 import { AppError } from "../../errors/app-error.js";
 import type { CsvImportMode, CsvUpdateMode } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { getOrCreateWallet } from "../wallet/wallet.service.js";
+import { effectiveCdAmount } from "../wallet/wallet-policy-sync.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
+  parseCdAccount,
   processLegacyPolicyCsvRow,
   type LegacyCsvRowContext,
 } from "./policy-csv-import.js";
@@ -44,6 +48,14 @@ export type PolicyPreviewSummary = {
   alreadyExists: number;
   errors: number;
   conflicts: number;
+};
+
+export type PolicyCsvWalletImpact = {
+  totalDebit: number;
+  totalCredit: number;
+  currentBalance: number;
+  resultingBalance: number;
+  wouldGoNegative: boolean;
 };
 
 export type PolicyPreviewRow = {
@@ -131,6 +143,57 @@ function recordSummary(summary: PolicyPreviewSummary, status: PolicyPreviewRowSt
   else summary.errors++;
 }
 
+type ExistingCd = { cdAccountUsed?: boolean | null; cdAmount?: unknown };
+
+function csvNextEffectiveCd(map: Map<string, string>, existing?: ExistingCd | null): Prisma.Decimal {
+  const usedRaw = getCsvField(map, "cd_account_status");
+  const amtRaw = getCsvField(map, "cd_amount");
+  const parsedUsed = parseCdAccount(usedRaw);
+  if (!existing) {
+    return effectiveCdAmount({
+      cdAccountUsed: parsedUsed,
+      cdAmount: amtRaw.trim() || null,
+    });
+  }
+  return effectiveCdAmount({
+    cdAccountUsed: parsedUsed !== undefined ? parsedUsed : existing.cdAccountUsed,
+    cdAmount: amtRaw.trim() ? amtRaw.trim() : existing.cdAmount,
+  });
+}
+
+function walletDeltaForRow(map: Map<string, string>, existing?: ExistingCd | null): Prisma.Decimal {
+  const next = csvNextEffectiveCd(map, existing);
+  const prev = existing
+    ? effectiveCdAmount({
+        cdAccountUsed: existing.cdAccountUsed,
+        cdAmount: existing.cdAmount,
+      })
+    : new Prisma.Decimal(0);
+  return next.minus(prev);
+}
+
+function money(d: Prisma.Decimal): number {
+  return Number(d.toFixed(2));
+}
+
+async function loadCurrentWalletBalance(): Promise<Prisma.Decimal | null> {
+  try {
+    const wallet = await getOrCreateWallet();
+    return new Prisma.Decimal(wallet.currentBalance);
+  } catch {
+    return null;
+  }
+}
+
+type PreviewEval = {
+  row: PolicyPreviewRow;
+  walletDelta: Prisma.Decimal;
+};
+
+function previewEval(row: PolicyPreviewRow, walletDelta = new Prisma.Decimal(0)): PreviewEval {
+  return { row, walletDelta: row.status === "READY" ? walletDelta : new Prisma.Decimal(0) };
+}
+
 /**
  * Dry-run evaluation for one legacy/v2 policy CSV row (CREATE_ONLY preview).
  */
@@ -140,6 +203,16 @@ export async function evaluatePolicyPreviewRow(
   rowNumber: number,
   ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
 ): Promise<PolicyPreviewRow> {
+  const evaluated = await evaluatePolicyPreviewRowInternal(header, row, rowNumber, ctx);
+  return evaluated.row;
+}
+
+async function evaluatePolicyPreviewRowInternal(
+  header: string[],
+  row: string[],
+  rowNumber: number,
+  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
+): Promise<PreviewEval> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
   const svkkId = getCsvField(map, "SVKK ID");
@@ -166,7 +239,7 @@ export async function evaluatePolicyPreviewRow(
       });
 
       if (conflict) {
-        return { ...base, status: "CONFLICT", errorMessage: conflict };
+        return previewEval({ ...base, status: "CONFLICT", errorMessage: conflict });
       }
 
       await processLegacyPolicyCsvRow(header, row, {
@@ -181,11 +254,14 @@ export async function evaluatePolicyPreviewRow(
         ? describePolicyCourierUpdateFields(map)
         : describeCsvRowUpdateFields(header, map);
 
-      return {
-        ...base,
-        detailMessage: detailMessage || undefined,
-        updateFields,
-      };
+      return previewEval(
+        {
+          ...base,
+          detailMessage: detailMessage || undefined,
+          updateFields,
+        },
+        walletDeltaForRow(map, match),
+      );
     }
 
     const { match, conflict } = await resolvePolicyForCsvImport(prisma, {
@@ -196,15 +272,15 @@ export async function evaluatePolicyPreviewRow(
     });
 
     if (conflict) {
-      return { ...base, status: "CONFLICT", errorMessage: conflict };
+      return previewEval({ ...base, status: "CONFLICT", errorMessage: conflict });
     }
 
     if (match && ctx.importMode === "CREATE_ONLY") {
-      return {
+      return previewEval({
         ...base,
         status: "EXISTS",
         errorMessage: "Policy already exists (CREATE_ONLY mode)",
-      };
+      });
     }
 
     await processLegacyPolicyCsvRow(header, row, {
@@ -212,10 +288,10 @@ export async function evaluatePolicyPreviewRow(
       dryRun: true,
     });
 
-    return base;
+    return previewEval(base, walletDeltaForRow(map, match));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { ...base, status: "ERROR", errorMessage: message };
+    return previewEval({ ...base, status: "ERROR", errorMessage: message });
   }
 }
 
@@ -225,19 +301,42 @@ export async function buildPolicyImportPreview(
   dataRows: string[][],
   headerOffset: number,
   ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
-): Promise<{ previewRows: PolicyPreviewRow[]; summary: PolicyPreviewSummary }> {
+): Promise<{
+  previewRows: PolicyPreviewRow[];
+  summary: PolicyPreviewSummary;
+  walletImpact?: PolicyCsvWalletImpact;
+}> {
   const summary = emptyPolicyPreviewSummary();
   summary.totalRows = dataRows.length;
   const all: PolicyPreviewRow[] = [];
+  let totalDebit = new Prisma.Decimal(0);
+  let totalCredit = new Prisma.Decimal(0);
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]!;
     const rowNumber = i + headerOffset;
-    const evaluated = await evaluatePolicyPreviewRow(header, row, rowNumber, ctx);
-    all.push(evaluated);
-    recordSummary(summary, evaluated.status);
+    const evaluated = await evaluatePolicyPreviewRowInternal(header, row, rowNumber, ctx);
+    all.push(evaluated.row);
+    recordSummary(summary, evaluated.row.status);
+    if (evaluated.walletDelta.gt(0)) totalDebit = totalDebit.plus(evaluated.walletDelta);
+    else if (evaluated.walletDelta.lt(0)) totalCredit = totalCredit.plus(evaluated.walletDelta.abs());
   }
 
   const limit = Math.min(POLICY_PREVIEW_ROW_LIMIT, all.length);
-  return { previewRows: all.slice(0, limit), summary };
+  const current = await loadCurrentWalletBalance();
+  const walletImpact =
+    current == null
+      ? undefined
+      : (() => {
+          const resulting = current.minus(totalDebit).plus(totalCredit);
+          return {
+            totalDebit: money(totalDebit),
+            totalCredit: money(totalCredit),
+            currentBalance: money(current),
+            resultingBalance: money(resulting),
+            wouldGoNegative: resulting.lt(0),
+          };
+        })();
+
+  return { previewRows: all.slice(0, limit), summary, walletImpact };
 }

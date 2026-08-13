@@ -155,6 +155,7 @@ const adPolicyExtraSchema = z.object({
   policyGroup: z.string().max(32).optional().nullable(),
   cdAccountUsed: z.boolean().optional().nullable(),
   cdAmount: z.number().nonnegative().nullish().optional(),
+  dateOfSubmission: z.coerce.date().nullish().optional(),
   courierStatus: z.string().max(10).optional().nullable(),
   courierDate: z.coerce.date().nullish().optional(),
   courierCompany: z.string().max(200).optional().nullable(),
@@ -211,6 +212,7 @@ export const createPolicyBodySchema = z
     area: z.string().min(1).max(200),
     personsInsuredCount: z.coerce.number().int().min(1),
     periodMonthText: z.string().min(1).max(20),
+    allowNegativeWallet: z.boolean().optional(),
   });
 
 export const yearValueKeys = [
@@ -286,6 +288,9 @@ export const patchPolicyBodySchema = z
   .merge(policyHolderSectionSchema)
   .merge(policyYearSectionSchema)
   .merge(adPolicyExtraSchema.partial())
+  .extend({
+    allowNegativeWallet: z.boolean().optional(),
+  })
   .superRefine((data, ctx) => {
     const hasYearField = yearValueKeys.some(
       (k) => data[k as keyof typeof data] !== undefined,

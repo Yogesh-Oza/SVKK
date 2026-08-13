@@ -218,6 +218,7 @@ export function buildLegacyPolicyCsvCells(
     loan_pending_amt: fmtCsvDecimal(r.loanPendingAmount),
     cd_account_status: cdAccountStatusLabel(r.cdAccountUsed),
     cd_amount: fmtCsvDecimal(r.cdAmount),
+    date_of_submission: fmtCsvDate(r.dateOfSubmission),
     "Refund Cheque Amount": fmtCsvDecimal(r.refundChequeAmount),
     "Refund Cheque Number": r.refundChequeNo ?? "",
     "Refund Cheque Date": fmtCsvDate(r.refundChequeDate),

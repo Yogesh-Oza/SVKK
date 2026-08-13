@@ -49,6 +49,7 @@ type RunOpts = {
   dryRun: boolean;
   force: boolean;
   previewToken?: string;
+  allowNegativeWallet?: boolean;
 };
 
 function validateLegacyRow(updateMode: CsvUpdateMode, header: string[], row: string[]) {
@@ -168,6 +169,7 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
               updateMode: opts.updateMode,
               typeCache,
               dryRun: true,
+              allowNegativeWallet: opts.allowNegativeWallet === true,
             });
             if (outcome === "created") created++;
             else updated++;
@@ -186,6 +188,7 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
             importMode: opts.importMode,
             updateMode: opts.updateMode,
             typeCache,
+            allowNegativeWallet: opts.allowNegativeWallet === true,
           });
           if (outcome === "created") created++;
           else updated++;

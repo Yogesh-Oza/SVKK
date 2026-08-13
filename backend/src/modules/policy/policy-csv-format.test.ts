@@ -28,6 +28,9 @@ describe("policy-csv-format v2", () => {
     expect(POLICY_CSV_FLAT_HEADERS).toContain("category change remark");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("loan_repayment");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("loan_pending_amt");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("cd_account_status");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("cd_amount");
+    expect(POLICY_CSV_FLAT_HEADERS).toContain("date_of_submission");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("nominee_dob");
     expect(POLICY_CSV_FLAT_HEADERS).toContain("bank_ac_holder_name");
   });
@@ -158,5 +161,20 @@ describe("policy remark CSV columns", () => {
     expect(cells[headers.indexOf("gen remark")]).toBe("test 1");
     expect(cells[headers.indexOf("policy remarK")]).toBe("policy note");
     expect(cells[headers.indexOf("category change remark")]).toBe("category note");
+  });
+
+  it("exports date_of_submission next to cd_amount", () => {
+    const row = {
+      cdAccountUsed: true,
+      cdAmount: 1500,
+      dateOfSubmission: new Date("2026-06-15T00:00:00.000Z"),
+      years: [{ members: [], payments: [] }],
+    } as Parameters<typeof buildLegacyPolicyCsvCells>[0];
+    const headers = ["cd_account_status", "cd_amount", "date_of_submission"];
+    const paymentPlan = buildPaymentExportPlan([], 1);
+    const cells = buildLegacyPolicyCsvCells(row, null, row.years[0], new Map(), headers, paymentPlan);
+    expect(cells[headers.indexOf("cd_account_status")]).toBe("Yes");
+    expect(cells[headers.indexOf("cd_amount")]).toBe("1500");
+    expect(cells[headers.indexOf("date_of_submission")]).toMatch(/15/);
   });
 });

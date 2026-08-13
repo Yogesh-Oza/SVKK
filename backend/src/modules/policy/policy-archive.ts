@@ -7,6 +7,7 @@ import {
   type GeoScope,
 } from "../../services/mis-scope.service.js";
 import { resolvePolicyHolderName, resolvePolicyHolderCustomerId } from "./policy-holder-snapshot.js";
+import { redebitPolicyWalletOnRestore } from "../wallet/wallet-policy-sync.js";
 
 const archivedPolicy: Prisma.PolicyWhereInput = { deletedAt: { not: null } };
 
@@ -195,11 +196,14 @@ async function loadRestoreSnapshot(policyId: string, existing: {
 export async function restoreArchivedPolicy(input: {
   actorUserId: string;
   policyId: string;
+  allowNegativeWallet?: boolean;
 }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: { not: null } },
     include: {
       insuredParty: { select: { name: true, svkkPublicId: true } },
+      category: { select: { name: true } },
+      policyType: { select: { name: true } },
       years: {
         orderBy: { yearLabel: "desc" },
         take: 1,
@@ -274,15 +278,28 @@ export async function restoreArchivedPolicy(input: {
     );
   }
 
-  const updated = await prisma.policy.update({
-    where: { id: input.policyId },
-    data: {
-      deletedAt: null,
-      policyNo: snapshot.policyNo,
-      referenceNo: snapshot.referenceNo,
-      archivedPolicyNo: null,
-      archivedReferenceNo: null,
-    },
+  const { updated, cdWalletPosted } = await prisma.$transaction(async (tx) => {
+    const row = await tx.policy.update({
+      where: { id: input.policyId },
+      data: {
+        deletedAt: null,
+        policyNo: snapshot.policyNo,
+        referenceNo: snapshot.referenceNo,
+        archivedPolicyNo: null,
+        archivedReferenceNo: null,
+      },
+      include: {
+        category: { select: { name: true } },
+        policyType: { select: { name: true } },
+        insuredParty: { select: { name: true } },
+      },
+    });
+    const posted = await redebitPolicyWalletOnRestore(tx, {
+      policy: row,
+      allowNegative: input.allowNegativeWallet === true,
+      userId: input.actorUserId,
+    });
+    return { updated: row, cdWalletPosted: posted };
   });
 
   await writeActivityLog({
@@ -303,6 +320,7 @@ export async function restoreArchivedPolicy(input: {
       referenceNo: updated.referenceNo,
       yearLabel,
       holderName: resolvePolicyHolderName(existing, existing.insuredParty),
+      cdWalletPosted,
     } as unknown as Prisma.InputJsonValue,
   });
 

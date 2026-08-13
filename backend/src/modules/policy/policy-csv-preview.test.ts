@@ -12,8 +12,16 @@ vi.mock("../../lib/prisma.js", () => ({
   prisma: {},
 }));
 
-vi.mock("./policy-csv-import.js", () => ({
-  processLegacyPolicyCsvRow: vi.fn(),
+vi.mock("./policy-csv-import.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./policy-csv-import.js")>();
+  return {
+    ...actual,
+    processLegacyPolicyCsvRow: vi.fn(),
+  };
+});
+
+vi.mock("../wallet/wallet.service.js", () => ({
+  getOrCreateWallet: vi.fn(),
 }));
 
 vi.mock("./policy-csv-resolve.js", async (importOriginal) => {
@@ -25,8 +33,10 @@ vi.mock("./policy-csv-resolve.js", async (importOriginal) => {
   };
 });
 
+import { Prisma } from "@prisma/client";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
 import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
+import { getOrCreateWallet } from "../wallet/wallet.service.js";
 
 function mockTypeCache(): PolicyTypeCache {
   const types = [{ id: "pt-1", key: "family_floater", name: "Family Floater" }];
@@ -62,6 +72,9 @@ const row = ["REF-1", "SVKK-1", "PN-1", "Holder A", "Village A", "Family Floater
 describe("policy-csv-preview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getOrCreateWallet).mockResolvedValue({
+      currentBalance: new Prisma.Decimal("10000"),
+    } as never);
   });
 
   it("emptyPolicyPreviewSummary returns zeros", () => {
@@ -189,5 +202,48 @@ describe("policy-csv-preview", () => {
     expect(previewRows).toHaveLength(POLICY_PREVIEW_ROW_LIMIT);
     expect(summary.totalRows).toBe(POLICY_PREVIEW_ROW_LIMIT + 5);
     expect(summary.ready).toBe(POLICY_PREVIEW_ROW_LIMIT + 5);
+  });
+
+  it("buildPolicyImportPreview sums create-row CD as wallet debit", async () => {
+    vi.mocked(resolvePolicyForCsvImport).mockResolvedValue({
+      match: null,
+      matchedBy: null,
+    });
+    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("created");
+
+    const cdHeader = [...header, "cd_account_status", "cd_amount"];
+    const cdRow = [...row, "Yes", "1500"];
+    const { walletImpact } = await buildPolicyImportPreview(cdHeader, [cdRow], 2, previewCtx);
+
+    expect(walletImpact).toEqual({
+      totalDebit: 1500,
+      totalCredit: 0,
+      currentBalance: 10000,
+      resultingBalance: 8500,
+      wouldGoNegative: false,
+    });
+  });
+
+  it("buildPolicyImportPreview uses update-row CD delta vs current policy", async () => {
+    vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
+      match: { id: "p1", cdAccountUsed: true, cdAmount: new Prisma.Decimal("1000") } as never,
+    });
+    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
+
+    const updateHeader = ["ref no", "cd_account_status", "cd_amount"];
+    const updateRow = ["REF-1", "Yes", "400"];
+    const { walletImpact } = await buildPolicyImportPreview(updateHeader, [updateRow], 2, {
+      ...previewCtx,
+      importMode: "UPDATE_ONLY",
+      updateMode: "FULL",
+    });
+
+    expect(walletImpact).toEqual({
+      totalDebit: 0,
+      totalCredit: 600,
+      currentBalance: 10000,
+      resultingBalance: 10600,
+      wouldGoNegative: false,
+    });
   });
 });

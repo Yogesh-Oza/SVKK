@@ -287,6 +287,7 @@ function patchBodyToInput(
   if (rest.policyGroup !== undefined) policy.policyGroup = rest.policyGroup;
   if (rest.cdAccountUsed !== undefined) policy.cdAccountUsed = rest.cdAccountUsed;
   if (rest.cdAmount !== undefined) policy.cdAmount = rest.cdAmount;
+  if (rest.dateOfSubmission !== undefined) policy.dateOfSubmission = rest.dateOfSubmission;
   if (rest.courierStatus !== undefined) policy.courierStatus = rest.courierStatus;
   if (rest.courierDate !== undefined) policy.courierDate = rest.courierDate;
   if (rest.courierCompany !== undefined) policy.courierCompany = rest.courierCompany;
@@ -970,6 +971,7 @@ export function createPolicyRouter(env: Env) {
         insuredParty,
         replaceMembers,
         replacePayments,
+        allowNegativeWallet: parsed.allowNegativeWallet === true,
       });
       res.json({
         ...row,

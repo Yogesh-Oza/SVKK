@@ -54,6 +54,12 @@ import {
   resolvePolicyHolderName,
   routeInsuredPartyPatchToPolicySnapshot,
 } from "./policy-holder-snapshot.js";
+import {
+  effectiveCdAmount,
+  reversePolicyWalletOnDelete,
+  syncPolicyWallet,
+  type SyncPolicyWalletResult,
+} from "../wallet/wallet-policy-sync.js";
 
 export type CreatePolicyInput = z.infer<typeof createPolicyBodySchema> & { actorUserId: string };
 
@@ -279,6 +285,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
           refundChequeDate: input.refundChequeDate ?? undefined,
           cdAccountUsed: input.cdAccountUsed ?? undefined,
           cdAmount: input.cdAmount != null ? input.cdAmount : undefined,
+          dateOfSubmission: input.dateOfSubmission ?? undefined,
           courierStatus: input.courierStatus ?? undefined,
           courierDate: input.courierDate ?? undefined,
           courierAddress: input.courierAddress ?? undefined,
@@ -417,7 +424,30 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
         paymentMode: input.paymentMode ?? input.initialPayment?.method ?? null,
       });
 
-      return { party, policy, year };
+      let cdWalletPosted: SyncPolicyWalletResult | null = null;
+      const nextCd = effectiveCdAmount({
+        cdAccountUsed: input.cdAccountUsed,
+        cdAmount: input.cdAmount,
+      });
+      if (nextCd.gt(0)) {
+        const policyWithRels = await tx.policy.findUniqueOrThrow({
+          where: { id: policy.id },
+          include: {
+            category: { select: { name: true } },
+            policyType: { select: { name: true } },
+            insuredParty: { select: { name: true } },
+          },
+        });
+        cdWalletPosted = await syncPolicyWallet(tx, {
+          policy: policyWithRels,
+          previousEffective: new Prisma.Decimal(0),
+          nextEffective: nextCd,
+          allowNegative: input.allowNegativeWallet === true,
+          userId: input.actorUserId,
+        });
+      }
+
+      return { party, policy, year, cdWalletPosted };
     },
     // Policy creation can involve many sequential writes; allow more than the 5s default.
     { timeout: 20_000, maxWait: 20_000 },
@@ -438,6 +468,7 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
       village: result.policy.village,
       holderName: result.policy.holderName ?? result.party.name,
       yearLabel: result.year.yearLabel,
+      cdWalletPosted: result.cdWalletPosted,
     } as unknown as Prisma.InputJsonValue,
   });
 
@@ -606,6 +637,7 @@ export type PolicySectionPatch = {
   policyGroup?: string | null;
   cdAccountUsed?: boolean | null;
   cdAmount?: number | null;
+  dateOfSubmission?: Date | null;
   courierStatus?: string | null;
   courierDate?: Date | null;
   courierCompany?: string | null;
@@ -836,6 +868,7 @@ export async function updatePolicySections(input: {
   insuredParty?: InsuredPartySectionPatch;
   replaceMembers?: { yearLabel: string; members: PolicyMemberReplaceRow[] };
   replacePayments?: { yearLabel: string; payments: PaymentReplaceRow[] };
+  allowNegativeWallet?: boolean;
 }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: null },
@@ -1003,7 +1036,7 @@ export async function updatePolicySections(input: {
       input.year!.holderBasicPremium,
     ].some((v) => v !== undefined);
 
-  await prisma.$transaction(
+  const txResult = await prisma.$transaction(
     async (tx: Prisma.TransactionClient) => {
       let bumpVersionWithoutPolicyRow = false;
 
@@ -1099,6 +1132,40 @@ export async function updatePolicySections(input: {
           data: { version: { increment: 1 } },
         });
       }
+
+      const prevCd = effectiveCdAmount({
+        cdAccountUsed: existing.cdAccountUsed,
+        cdAmount: existing.cdAmount,
+      });
+      const nextCdUsed =
+        input.policy.cdAccountUsed !== undefined
+          ? input.policy.cdAccountUsed
+          : existing.cdAccountUsed;
+      const nextCdAmt =
+        input.policy.cdAmount !== undefined ? input.policy.cdAmount : existing.cdAmount;
+      const nextCd = effectiveCdAmount({
+        cdAccountUsed: nextCdUsed,
+        cdAmount: nextCdAmt,
+      });
+      let cdWalletPosted: SyncPolicyWalletResult | null = null;
+      if (!prevCd.eq(nextCd)) {
+        const policyWithRels = await tx.policy.findUniqueOrThrow({
+          where: { id: input.policyId },
+          include: {
+            category: { select: { name: true } },
+            policyType: { select: { name: true } },
+            insuredParty: { select: { name: true } },
+          },
+        });
+        cdWalletPosted = await syncPolicyWallet(tx, {
+          policy: policyWithRels,
+          previousEffective: prevCd,
+          nextEffective: nextCd,
+          allowNegative: input.allowNegativeWallet === true,
+          userId: input.actorUserId,
+        });
+      }
+      return { cdWalletPosted };
     },
     // Remote MySQL (Railway proxy): keep the interactive tx short — reads/sync run after commit.
     { timeout: 60_000, maxWait: 30_000 },
@@ -1120,7 +1187,11 @@ export async function updatePolicySections(input: {
     entityType: "Policy",
     entityId: input.policyId,
     beforeData: beforeSnapshot as unknown as Prisma.InputJsonValue,
-    afterData: { policy: updated, yearLabel: input.year?.yearLabel } as unknown as Prisma.InputJsonValue,
+    afterData: {
+      policy: updated,
+      yearLabel: input.year?.yearLabel,
+      cdWalletPosted: txResult.cdWalletPosted,
+    } as unknown as Prisma.InputJsonValue,
   });
 
   dispatchPolicyNumberOrDocumentUpdated(
@@ -1144,25 +1215,37 @@ export async function updatePolicySections(input: {
 /**
  * Soft-deletes (archives) a policy; related years/members are hidden because reads filter parent `deletedAt`.
  * Snapshots policyNo / referenceNo, then clears live unique fields so they can be reused on a new policy.
+ * Credits net wallet CD posted for this policy (immutable reversal row).
  */
 export async function softDeletePolicy(input: { actorUserId: string; policyId: string }) {
   const existing = await prisma.policy.findFirst({
     where: { id: input.policyId, deletedAt: null },
-    include: { insuredParty: { select: { name: true } } },
+    include: {
+      insuredParty: { select: { name: true } },
+      category: { select: { name: true } },
+      policyType: { select: { name: true } },
+    },
   });
   if (!existing) {
     throw new AppError("NOT_FOUND", "Policy not found", 404);
   }
 
-  await prisma.policy.update({
-    where: { id: input.policyId },
-    data: {
-      deletedAt: new Date(),
-      archivedPolicyNo: existing.policyNo,
-      archivedReferenceNo: existing.referenceNo,
-      policyNo: null,
-      referenceNo: null,
-    },
+  const cdWalletPosted = await prisma.$transaction(async (tx) => {
+    const posted = await reversePolicyWalletOnDelete(tx, {
+      policy: existing,
+      userId: input.actorUserId,
+    });
+    await tx.policy.update({
+      where: { id: input.policyId },
+      data: {
+        deletedAt: new Date(),
+        archivedPolicyNo: existing.policyNo,
+        archivedReferenceNo: existing.referenceNo,
+        policyNo: null,
+        referenceNo: null,
+      },
+    });
+    return posted;
   });
 
   await writeActivityLog({
@@ -1177,6 +1260,6 @@ export async function softDeletePolicy(input: { actorUserId: string; policyId: s
       village: existing.village,
       holderName: resolvePolicyHolderName(existing, existing.insuredParty),
     } as unknown as Prisma.InputJsonValue,
-    afterData: { archived: true } as unknown as Prisma.InputJsonValue,
+    afterData: { archived: true, cdWalletPosted } as unknown as Prisma.InputJsonValue,
   });
 }

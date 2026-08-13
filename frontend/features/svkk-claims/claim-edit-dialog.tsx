@@ -81,11 +81,25 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
     }
     setSaving(true);
     try {
-      const updated = await svkkJson<ClaimDetail>(`/claims/${claimId}`, {
-        method: "PATCH",
-        body: JSON.stringify(parsed.body),
-      });
-      toast.success("Claim updated");
+      const updated = await svkkJson<ClaimDetail & { policyLinkWarning?: string | null }>(
+        `/claims/${claimId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(parsed.body),
+        },
+      );
+      if (updated.policyLinkWarning) {
+        toast.success("Claim updated");
+        toast.warning(updated.policyLinkWarning);
+      } else {
+        toast.success(
+          updated.policyId
+            ? "Claim updated and linked to policy"
+            : form.policyNoText.trim()
+              ? "Claim updated"
+              : "Claim updated (policy unlinked)",
+        );
+      }
       onSaved(updated);
       onClose();
     } catch (e) {
@@ -101,8 +115,8 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Edit claim details</DialogTitle>
           <DialogDescription>
-            Update all claim fields imported from CSV. Claim number cannot be changed. Policy number
-            on the form is a CSV snapshot and does not change the linked policy.
+            Update claim fields. Changing the Policy Number re-runs matching and updates the linked
+            policy. Clearing it unlinks the claim from any policy.
             {meta ? (
               <span className="mt-1 block font-mono text-xs">
                 {meta.claimNo}

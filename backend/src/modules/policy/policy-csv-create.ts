@@ -40,6 +40,14 @@ function parseOptionalInt(raw: string): number | undefined {
   return n;
 }
 
+function parseCdAccount(raw: string): boolean | undefined {
+  const t = raw.trim().toLowerCase();
+  if (!t) return undefined;
+  if (["yes", "y", "true", "1"].includes(t)) return true;
+  if (["no", "n", "false", "0"].includes(t)) return false;
+  return undefined;
+}
+
 const CSV_PAYMENT_MODES = ["NEFT", "UPI", "CHQ", "CASH"] as const;
 type CsvPaymentMode = (typeof CSV_PAYMENT_MODES)[number];
 
@@ -87,6 +95,7 @@ export async function createPolicyFromCsvRow(
     permissions: Set<string>;
     scope: GeoScope;
     typeCache: PolicyTypeCache;
+    allowNegativeWallet?: boolean;
   },
 ): Promise<void> {
   if (!ctx.permissions.has("policy:create")) {
@@ -207,6 +216,10 @@ export async function createPolicyFromCsvRow(
     loanAmount: parseOptionalDecimal(getCsvField(map, "loan_amt")) ?? null,
     loanRepaymentAmount: parseOptionalDecimal(getCsvField(map, "loan_repayment")) ?? null,
     loanPendingAmount: parseOptionalDecimal(getCsvField(map, "loan_pending_amt")) ?? null,
+    cdAccountUsed: parseCdAccount(getCsvField(map, "cd_account_status")),
+    cdAmount: parseOptionalDecimal(getCsvField(map, "cd_amount")) ?? null,
+    dateOfSubmission: parseOptionalDate(getCsvField(map, "date_of_submission")) ?? null,
+    allowNegativeWallet: ctx.allowNegativeWallet === true,
   });
 }
 

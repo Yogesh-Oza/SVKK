@@ -142,7 +142,7 @@ export function createPolicyUploadRouter(env: Env) {
         const typeCache = await buildPolicyTypeCache(prisma);
         const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
 
-        const { previewRows, summary } = await buildPolicyImportPreview(
+        const { previewRows, summary, walletImpact } = await buildPolicyImportPreview(
           header,
           dataRows,
           headerOffset,
@@ -172,6 +172,7 @@ export function createPolicyUploadRouter(env: Env) {
           previewToken,
           previewRows,
           summary,
+          walletImpact,
           warnings,
           csvVersion: "v2",
           duplicateImport: duplicateImportPayload(env, prior, importMode, updateMode),
@@ -191,6 +192,7 @@ export function createPolicyUploadRouter(env: Env) {
           .object({
             previewToken: z.string().min(1),
             force: z.boolean().optional().default(false),
+            allowNegativeWallet: z.boolean().optional(),
           })
           .parse(req.body);
 
@@ -206,6 +208,7 @@ export function createPolicyUploadRouter(env: Env) {
           dryRun: false,
           force: body.force,
           previewToken: body.previewToken,
+          allowNegativeWallet: body.allowNegativeWallet === true,
         });
 
         res.status(201).json(result);

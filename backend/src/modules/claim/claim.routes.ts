@@ -25,6 +25,7 @@ import {
 import { queryClaimSummary } from "./claim.summary.js";
 import { buildClaimsExportCsv } from "./claim.export-csv.js";
 import { claimDetailSelect } from "./claim-detail.js";
+import { resolveClaimManualPolicyLink } from "./claim-policy-link.js";
 import { claimUpdateBodySchema } from "./claim-update.schema.js";
 
 function queryToStringArray(v: unknown): string[] | undefined {
@@ -267,6 +268,7 @@ export function createClaimRouter(env: Env) {
       const body = z
         .object({
           claimNo: z.string().min(1),
+          // Ignored: policy link is derived from policyNoText via matchPolicyForClaim.
           policyId: z.string().optional().nullable(),
         })
         .merge(claimUpdateBodySchema.partial())
@@ -278,17 +280,20 @@ export function createClaimRouter(env: Env) {
 
       const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
 
-      let policyArea: string | null = null;
-      if (body.policyId) {
-        const policy = await prisma.policy.findFirst({
-          where: { id: body.policyId, deletedAt: null },
-          select: { area: true },
-        });
-        if (!policy) {
-          throw new AppError("NOT_FOUND", "Policy not found", 404);
-        }
-        policyArea = policy.area;
-      }
+      const link = await resolveClaimManualPolicyLink({
+        policyNo: body.policyNoText,
+        svkkPublicId: body.svkkPublicId,
+        policyHolderName: body.policyHolderName,
+        policyTypeText: body.policyTypeText,
+        policyStartDate: body.policyStartDate,
+        policyEndDate: body.policyEndDate,
+        sumInsured: body.sumInsured,
+        insuranceCompany: body.insuranceCompany,
+        admissionDate: body.admissionDate,
+        lodgeDate: body.lodgeDate,
+        claimReceivedDate: body.claimReceivedDate,
+      });
+      const policyArea = link.policyArea;
 
       const village = body.village ?? null;
       assertGeoFieldsOnWrite(
@@ -298,18 +303,24 @@ export function createClaimRouter(env: Env) {
         "claim",
       );
 
-      const party = await prisma.insuredParty.findFirst({
-        where: { svkkPublicId: body.svkkPublicId },
-      });
+      const party = link.insuredPartyId
+        ? null
+        : await prisma.insuredParty.findFirst({
+            where: { svkkPublicId: body.svkkPublicId },
+          });
 
-      const { claimNo, policyId, svkkPublicId, policyYear, ...rest } = body;
+      const { claimNo, policyId: _ignoredPolicyId, svkkPublicId, policyYear, ...rest } = body;
       const row = await prisma.claim.create({
         data: {
           claimNo,
           svkkPublicId,
-          insuredPartyId: party?.id,
-          policyId: policyId ?? undefined,
+          insuredPartyId: link.insuredPartyId ?? party?.id ?? null,
+          policyId: link.policyId,
+          policyYearId: link.policyYearId,
           policyYear,
+          matchStatus: link.matchStatus,
+          verificationWarnings:
+            link.verificationWarnings.length > 0 ? link.verificationWarnings : undefined,
           status: body.status ?? ClaimStatus.PENDING,
           createdById: req.userId,
           ...rest,
@@ -322,7 +333,7 @@ export function createClaimRouter(env: Env) {
         scope,
       );
 
-      res.status(201).json(row);
+      res.status(201).json({ ...row, policyLinkWarning: link.linkWarning });
     } catch (e) {
       next(e);
     }
@@ -462,6 +473,17 @@ export function createClaimRouter(env: Env) {
         select: {
           id: true,
           village: true,
+          svkkPublicId: true,
+          policyHolderName: true,
+          policyTypeText: true,
+          policyStartDate: true,
+          policyEndDate: true,
+          sumInsured: true,
+          insuranceCompany: true,
+          admissionDate: true,
+          lodgeDate: true,
+          claimReceivedDate: true,
+          insuredPartyId: true,
           policy: { select: { area: true } },
         },
       });
@@ -470,15 +492,64 @@ export function createClaimRouter(env: Env) {
       }
       assertClaimInGeoScope(found, req.permissions!, scope);
 
+      const update: Record<string, unknown> = { ...body };
+      let policyLinkWarning: string | null = null;
+      let policyArea = found.policy?.area ?? null;
+
+      // Rematch whenever policyNoText is present in the body (including null = clear).
+      if (body.policyNoText !== undefined) {
+        const sumInsured =
+          body.sumInsured !== undefined
+            ? body.sumInsured
+            : found.sumInsured != null
+              ? Number(found.sumInsured)
+              : null;
+        const link = await resolveClaimManualPolicyLink({
+          policyNo: body.policyNoText,
+          svkkPublicId: body.svkkPublicId ?? found.svkkPublicId,
+          policyHolderName: body.policyHolderName ?? found.policyHolderName,
+          policyTypeText: body.policyTypeText ?? found.policyTypeText,
+          policyStartDate:
+            body.policyStartDate !== undefined ? body.policyStartDate : found.policyStartDate,
+          policyEndDate:
+            body.policyEndDate !== undefined ? body.policyEndDate : found.policyEndDate,
+          sumInsured,
+          insuranceCompany: body.insuranceCompany ?? found.insuranceCompany,
+          admissionDate:
+            body.admissionDate !== undefined ? body.admissionDate : found.admissionDate,
+          lodgeDate: body.lodgeDate !== undefined ? body.lodgeDate : found.lodgeDate,
+          claimReceivedDate:
+            body.claimReceivedDate !== undefined
+              ? body.claimReceivedDate
+              : found.claimReceivedDate,
+        });
+        policyLinkWarning = link.linkWarning;
+        policyArea = link.policyArea;
+        // Always overwrite link FKs so an invalid/cleared number cannot keep a stale policyId.
+        update.policyId = link.policyId;
+        update.policyYearId = link.policyYearId;
+        update.matchStatus = link.matchStatus;
+        update.verificationWarnings =
+          link.verificationWarnings.length > 0 ? link.verificationWarnings : null;
+        if (link.insuredPartyId) {
+          update.insuredPartyId = link.insuredPartyId;
+        } else if (body.svkkPublicId !== undefined) {
+          const party = await prisma.insuredParty.findFirst({
+            where: { svkkPublicId: body.svkkPublicId },
+          });
+          update.insuredPartyId = party?.id ?? null;
+        }
+        // When unlinked and SVKK unchanged, keep existing insuredPartyId.
+      }
+
       const nextVillage = body.village !== undefined ? body.village : found.village;
       assertGeoFieldsOnWrite(
-        { village: nextVillage, area: found.policy?.area ?? null },
+        { village: nextVillage, area: policyArea },
         scope,
         req.permissions!,
         "claim",
       );
 
-      const update: Record<string, unknown> = { ...body };
       if (body.status === ClaimStatus.APPROVED) {
         update.approvedById = req.userId;
       }
@@ -488,7 +559,7 @@ export function createClaimRouter(env: Env) {
         data: update as object,
         select: claimDetailSelect,
       });
-      res.json(row);
+      res.json({ ...row, policyLinkWarning });
     } catch (e) {
       next(e);
     }

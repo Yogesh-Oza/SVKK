@@ -50,6 +50,7 @@ export type LegacyCsvRowContext = {
   updateMode?: CsvUpdateMode;
   typeCache: PolicyTypeCache;
   dryRun?: boolean;
+  allowNegativeWallet?: boolean;
 };
 
 function parseOptionalDate(raw: string): Date | undefined {
@@ -75,7 +76,7 @@ function parseOptionalInt(raw: string): number | undefined | null {
   return n;
 }
 
-function parseCdAccount(raw: string): boolean | undefined {
+export function parseCdAccount(raw: string): boolean | undefined {
   const t = raw.trim().toLowerCase();
   if (!t) return undefined;
   if (["yes", "y", "true", "1"].includes(t)) return true;
@@ -344,6 +345,8 @@ async function updatePolicyCsvRow(
   if (cdParsed !== undefined) policyUpdate.cdAccountUsed = cdParsed;
   const cdAmt = getCsvField(map, "cd_amount");
   if (cdAmt) policyUpdate.cdAmount = parseOptionalDecimal(cdAmt);
+  const dateOfSubmission = getCsvField(map, "date_of_submission");
+  if (dateOfSubmission) policyUpdate.dateOfSubmission = parseOptionalDate(dateOfSubmission);
   const refundAmt = getCsvField(map, "Refund Cheque Amount");
   if (refundAmt) policyUpdate.refundChequeAmount = parseOptionalDecimal(refundAmt);
   const refundNo = getCsvField(map, "Refund Cheque Number");
@@ -581,6 +584,7 @@ export async function processLegacyPolicyCsvRow(
     permissions: ctx.permissions,
     scope: ctx.scope,
     typeCache: ctx.typeCache,
+    allowNegativeWallet: ctx.allowNegativeWallet === true,
   });
   return "created";
 }

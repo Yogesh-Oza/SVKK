@@ -60,11 +60,23 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
     }
     setSaving(true);
     try {
-      await svkkJson("/claims", {
+      const created = await svkkJson<{
+        id: string;
+        policyId?: string | null;
+        matchStatus?: string | null;
+        policyLinkWarning?: string | null;
+      }>("/claims", {
         method: "POST",
         body: JSON.stringify({ claimNo: no, ...patch.body }),
       });
-      toast.success("Claim created");
+      if (created.policyLinkWarning) {
+        toast.success("Claim created");
+        toast.warning(created.policyLinkWarning);
+      } else if (created.policyId) {
+        toast.success("Claim created and linked to policy");
+      } else {
+        toast.success("Claim created");
+      }
       handleClose();
       onCreated();
     } catch (e) {
@@ -80,8 +92,8 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Add new claim entry</DialogTitle>
           <DialogDescription>
-            Fill in claim details. Claim #, SVKK ID, and policy year are required. Policy number is a
-            CSV snapshot and does not link a policy automatically.
+            Fill in claim details. Claim #, SVKK ID, and policy year are required. Entering a Policy
+            Number will try to link this claim to the matching policy automatically.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
