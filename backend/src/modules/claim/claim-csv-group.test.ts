@@ -289,6 +289,24 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.willReject).toBe(0);
   });
 
+  it("treats CI Received with a different admission date as the same CCN", () => {
+    const groups = groupParsedClaimRows([
+      parsed(2, {
+        "Claim Number": "CCN-001",
+        "Claim Type": "Non Cash Less",
+        "Date Of Admission": "18-07-2025",
+      }),
+      parsed(3, {
+        "Claim Number": "CCN-001",
+        "Claim Type": "CI Received",
+        "Date Of Admission": "01-08-2025",
+      }),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.differentEventRows).toHaveLength(0);
+    expect(groups[0]!.sameEventRows).toHaveLength(1);
+  });
+
   it("does not treat Additional/Deduction lodge types as a different claim", () => {
     const existing = new Map([["CCN-001", ident()]]);
     const { stats, preview } = previewOf(

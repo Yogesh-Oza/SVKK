@@ -67,6 +67,22 @@ function isWeakIdentity(row: ClaimEventIdentity): boolean {
   return !claimEventDay(row) && !normalizeLodgeTypeBucket(row.actualLodgeType, row.claimType);
 }
 
+/** TPA payment/status stages of an existing CCN — not a new hospital event. */
+export function isTpaFollowOnLodgeType(
+  actualLodgeType: string | null | undefined,
+  claimType?: string | null | undefined,
+): boolean {
+  const raw = `${actualLodgeType ?? ""} ${claimType ?? ""}`.toLowerCase().replace(/[-_]/g, " ");
+  return (
+    raw.includes("additional") ||
+    raw.includes("deduction") ||
+    raw.includes("reconsider") ||
+    raw.includes("ci received") ||
+    raw.includes("ral lodged") ||
+    raw.includes("al issued")
+  );
+}
+
 /** Classify an incoming CCN against an existing claim (if any). */
 export function classifyClaimEvent(
   incoming: ClaimEventIdentity,
@@ -76,6 +92,11 @@ export function classifyClaimEvent(
   if (isWeakIdentity(incoming) || isWeakIdentity(existing)) return "WEAK_IDENTITY";
 
   const samePolicy = policyIdentityKey(incoming) !== "" && policyIdentityKey(incoming) === policyIdentityKey(existing);
+  const followOn =
+    isTpaFollowOnLodgeType(incoming.actualLodgeType, incoming.claimType) ||
+    isTpaFollowOnLodgeType(existing.actualLodgeType, existing.claimType);
+  if (samePolicy && followOn) return "SAME_EVENT";
+
   const sameDay = claimEventDay(incoming) === claimEventDay(existing);
   const sameLodge =
     normalizeLodgeTypeBucket(incoming.actualLodgeType, incoming.claimType) ===

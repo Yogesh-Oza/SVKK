@@ -194,7 +194,7 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
     expect(r.verificationWarnings).toContain("policy_type");
   });
 
-  it("date mismatch still MATCHED + policy_dates warning", () => {
+  it("CSV policy dates that disagree with the register still MATCHED when admission picks a year", () => {
     const r = resolveClaimPolicyMatch(
       [polOne],
       baseInput({
@@ -202,6 +202,18 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
         policyEndDate: utc(2021, 3, 31),
         admissionDate: utc(2025, 6, 1),
       }),
+      emptyTypeCache(),
+    );
+    expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.MATCHED_EXACT);
+    expect(r.policyId).toBe("pol-1");
+    expect(r.policyYearId).toBe("py-25");
+    expect(r.verificationWarnings).not.toContain("policy_dates");
+  });
+
+  it("admission outside every PolicyYear still MATCHED + policy_dates warning", () => {
+    const r = resolveClaimPolicyMatch(
+      [polOne],
+      baseInput({ admissionDate: utc(2020, 6, 1) }),
       emptyTypeCache(),
     );
     expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.MATCHED_EXACT);
@@ -223,6 +235,32 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
     expect(r.policyId).toBeUndefined();
     expect(r.matchReason).toContain("Policy Number matches multiple live policies");
     expect(r.matchReason).toContain("cannot be linked safely");
+  });
+
+  it("shared Policy Number + unique coverage year → MATCHED to that policy", () => {
+    const floater = makePolicy({
+      id: "pol-floater",
+      policyNo: "PO-001",
+      svkk: "SVKK001",
+      typeName: "Family Floater",
+      years: [{ id: "py-25", yearLabel: "2025-26", start: utc(2025, 8, 11), end: utc(2026, 8, 10) }],
+    });
+    const individual = makePolicy({
+      id: "pol-ind",
+      policyNo: "PO-001",
+      svkk: "SVKK001",
+      typeId: "pt-ind",
+      typeName: "Individual",
+      years: [{ id: "py-26", yearLabel: "2026-27", start: utc(2026, 8, 11), end: utc(2027, 8, 10) }],
+    });
+    const r = resolveClaimPolicyMatch(
+      [floater, individual],
+      baseInput({ policyNo: "PO-001", admissionDate: utc(2025, 12, 21) }),
+      emptyTypeCache(),
+    );
+    expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.MATCHED_EXACT);
+    expect(r.policyId).toBe("pol-floater");
+    expect(r.verificationWarnings).toContain("policy_number_shared");
   });
 
   it("single Policy, two years, exact dates pick one year", () => {

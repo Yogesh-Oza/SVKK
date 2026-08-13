@@ -88,15 +88,95 @@ export function normalizePersonName(raw: string): string {
   return raw.trim().toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Compare holder names with token overlap tolerance. */
-export function holderNamesMatch(csvName: string, dbName: string): boolean {
-  const a = normalizePersonName(csvName);
-  const b = normalizePersonName(dbName);
+const INSURER_STOP = new Set([
+  "the",
+  "a",
+  "an",
+  "co",
+  "company",
+  "ltd",
+  "limited",
+  "pvt",
+  "private",
+  "insurance",
+  "assurance",
+  "general",
+  "inc",
+  "corp",
+  "corporation",
+]);
+
+/** Normalize insurer names so TPA legal names match the policy register. */
+export function normalizeInsurerName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter((t) => t.length > 1 && !INSURER_STOP.has(t))
+    .join(" ");
+}
+
+/** Compare insurer names with suffix-stripping and containment. */
+export function insurersMatch(csvName: string, dbName: string): boolean {
+  const a = normalizeInsurerName(csvName);
+  const b = normalizeInsurerName(dbName);
   if (!a || !b) return true;
   if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const ta = new Set(a.split(" "));
+  const tb = new Set(b.split(" "));
+  let overlap = 0;
+  for (const tok of ta) {
+    if (tb.has(tok)) overlap++;
+  }
+  const minSize = Math.min(ta.size, tb.size);
+  return minSize > 0 && overlap >= minSize;
+}
+
+const HOLDER_STOP = new Set([
+  "smt",
+  "shri",
+  "shree",
+  "mrs",
+  "mr",
+  "ms",
+  "miss",
+  "kum",
+  "kumari",
+  "w",
+  "o",
+  "d",
+  "wo",
+  "do",
+  "so",
+]);
+
+function holderNameTokens(raw: string): string[] {
+  return normalizePersonName(raw)
+    .split(" ")
+    .filter((x) => x.length > 1 && !HOLDER_STOP.has(x));
+}
+
+/** Compare holder names with token overlap and joined-token tolerance (Kiranben / Kiran Ben). */
+export function holderNamesMatch(csvName: string, dbName: string): boolean {
+  const a = holderNameTokens(csvName).join(" ");
+  const b = holderNameTokens(dbName).join(" ");
+  if (!a || !b) return true;
+  if (a === b) return true;
+  const compactA = a.replace(/\s+/g, "");
+  const compactB = b.replace(/\s+/g, "");
+  if (compactA === compactB) return true;
+  if (
+    Math.min(compactA.length, compactB.length) >= 8 &&
+    (compactA.includes(compactB) || compactB.includes(compactA))
+  ) {
+    return true;
+  }
   const ta = new Set(a.split(" ").filter((x) => x.length > 1));
   const tb = new Set(b.split(" ").filter((x) => x.length > 1));
-  if (ta.size === 0 || tb.size === 0) return a === b;
+  if (ta.size === 0 || tb.size === 0) return compactA === compactB;
   let overlap = 0;
   for (const tok of ta) {
     if (tb.has(tok)) overlap++;

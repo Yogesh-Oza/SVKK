@@ -112,8 +112,9 @@ export function groupParsedClaimRows(rows: ParsedClaimRow[]): ClaimRowGroup[] {
     const canonicalId = identityFromParsed(canonical);
     for (const row of list) {
       if (row === canonical) continue;
+      const followOn = primaryLodgePriority(row.claimType) >= 2;
       const classification = classifyClaimEvent(identityFromParsed(row), canonicalId);
-      if (classification === "DIFFERENT_EVENT") differentEventRows.push(row);
+      if (!followOn && classification === "DIFFERENT_EVENT") differentEventRows.push(row);
       else sameEventRows.push(row);
     }
     groups.push({

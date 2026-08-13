@@ -9,6 +9,7 @@ import {
 import {
   datesEqualUtc,
   holderNamesMatch,
+  insurersMatch,
   normalizePolicyNo,
   sumInsuredMatches,
 } from "./claim-csv-normalize.js";
@@ -145,9 +146,7 @@ function pickPolicyYearHint(
     if (exact.length === 1) {
       return { policyYearId: exact[0]!.id, yearLabel: exact[0]!.yearLabel, warnings };
     }
-    if (exact.length === 0) {
-      warnings.push("policy_dates");
-    } else {
+    if (exact.length > 1) {
       warnings.push("policy_year_ambiguous");
       return { warnings };
     }
@@ -159,13 +158,15 @@ function pickPolicyYearHint(
     if (inWindow.length === 1) {
       return { policyYearId: inWindow[0]!.id, yearLabel: inWindow[0]!.yearLabel, warnings };
     }
-    if (inWindow.length === 0 && !warnings.includes("policy_dates")) {
+    if (inWindow.length === 0) {
       warnings.push("policy_dates");
     }
     if (inWindow.length > 1) {
       warnings.push("policy_year_ambiguous");
       return { warnings };
     }
+  } else if (hasExplicitCsvPolicyDates(input)) {
+    warnings.push("policy_dates");
   }
 
   if (years.length === 1 && !warnings.includes("policy_dates")) {
@@ -219,9 +220,9 @@ function runValidations(
     }
   }
 
-  const csvIns = (input.insuranceCompany ?? "").trim().toLowerCase();
-  const dbIns = (policy.insuranceCompany ?? "").trim().toLowerCase();
-  if (csvIns && dbIns && csvIns !== dbIns) {
+  const csvIns = (input.insuranceCompany ?? "").trim();
+  const dbIns = (policy.insuranceCompany ?? "").trim();
+  if (csvIns && dbIns && !insurersMatch(csvIns, dbIns)) {
     warnings.push("insurance_company");
   }
   return warnings;
@@ -322,9 +323,29 @@ export function resolveClaimPolicyMatch(
     return unlinked("No policy found for this Policy Number.");
   }
   if (pool.length > 1) {
+    const coverage = claimCoverageDate(input);
+    const covering = coverage
+      ? pool.filter((p) => liveYears(p).some((y) => policyYearContainsDate(y, coverage)))
+      : [];
+    if (covering.length === 1) {
+      const policy = covering[0]!;
+      const yearHint = pickPolicyYearHint(policy, input);
+      const chosenYear = yearHint.policyYearId
+        ? liveYears(policy).find((y) => y.id === yearHint.policyYearId)
+        : undefined;
+      const warnings = [
+        "policy_number_shared",
+        ...yearHint.warnings,
+        ...runValidations(policy, input, typeCache, chosenYear),
+      ];
+      return matchedResult(policy, warnings, yearHint);
+    }
     const display = input.policyNo.trim() || policyNo;
+    const labels = pool
+      .map((p) => `${p.policyType.name} (${p.holderName ?? p.insuredParty.name})`)
+      .join("; ");
     return conflict(
-      `${pool.length} live policies share Policy Number ${display}`,
+      `${pool.length} live policies share Policy Number ${display}: ${labels}`,
       "Policy Number matches multiple live policies. Claim cannot be linked safely.",
     );
   }

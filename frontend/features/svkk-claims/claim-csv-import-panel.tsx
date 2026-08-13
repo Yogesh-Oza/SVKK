@@ -115,6 +115,7 @@ function warningLabel(code: string): string {
     sum_insured: "Sum insured differs",
     insurance_company: "Insurer name differs",
     event_identity_weak: "Weak event identity",
+    policy_number_shared: "Shared policy number",
   };
   return labels[code] ?? code;
 }
@@ -129,6 +130,8 @@ function warningHint(code: string): string {
     sum_insured: "Sum insured in the file does not match the linked policy year.",
     insurance_company: "Insurer name in the file does not match the linked policy. The claim still links by Policy Number.",
     event_identity_weak: "Admission/lodge details are thin, so same-claim vs new-event is uncertain.",
+    policy_number_shared:
+      "More than one live policy uses this Policy Number. Linked to the record whose year covers the admission date.",
   };
   return hints[code] ?? "Verification difference vs the linked policy. Import can still proceed.";
 }
@@ -344,7 +347,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
   );
 
   const confirmDisabled =
-    linkMode === "STRICT_MATCH" && summary != null && (summary.conflicts > 0 || summary.unlinked > 0);
+    summary != null && (summary.willCreate ?? 0) + (summary.willUpdate ?? 0) === 0;
 
   const blockConfirm = Boolean(duplicateImport) && !confirmDisabled;
 
@@ -622,12 +625,12 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             </Table>
           </div>
 
-          {confirmDisabled ? (
+          {(summary?.unlinked ?? 0) > 0 || (summary?.conflicts ?? 0) > 0 ? (
             <p className="text-destructive text-xs">
-              Strict match: {summary?.unlinked ?? 0} unlinked and {summary?.conflicts ?? 0} conflict
-              claim{(summary?.conflicts ?? 0) === 1 ? "" : "s"} must be fixed, or switch Link mode to
-              Allow unlinked, before you can confirm. One policy may have many claims — Conflict
-              means the Policy Number matches more than one live policy record.
+              Strict match will skip {summary?.unlinked ?? 0} unlinked and {summary?.conflicts ?? 0}{" "}
+              conflict claim{(summary?.conflicts ?? 0) === 1 ? "" : "s"}. Other claims can still
+              import. Conflict means two live policy records share the same Policy Number — not that
+              the policy already has claims.
             </p>
           ) : (
             <p className="text-muted-foreground text-xs">

@@ -53,6 +53,15 @@ describe("classifyClaimEvent", () => {
     expect(classifyClaimEvent(ident(), ident({ actualLodgeType: "Reimbursement" }))).toBe("DIFFERENT_EVENT");
   });
 
+  it("CI Received / Additional Payment on the same policy is the same claim", () => {
+    expect(
+      classifyClaimEvent(
+        ident({ claimType: "CI Received", admissionDate: utc(2025, 8, 1) }),
+        ident({ claimType: "Non Cash Less", actualLodgeType: "Non Cash Less" }),
+      ),
+    ).toBe("SAME_EVENT");
+  });
+
   it("weak identity (no dates and no lodge type) → WEAK_IDENTITY", () => {
     const weak = ident({
       admissionDate: null,

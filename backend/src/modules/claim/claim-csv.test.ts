@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   datesEqualUtc,
   holderNamesMatch,
+  insurersMatch,
+  normalizeInsurerName,
   normalizePersonName,
   normalizePolicyNo,
   parseClaimDate,
@@ -40,6 +42,7 @@ describe("claim-csv-normalize", () => {
 
   it("matches holder name variants with token overlap", () => {
     expect(holderNamesMatch("YOGESH OZA", "Yogesh M. Oza")).toBe(true);
+    expect(holderNamesMatch("Smt Kiranben Shah", "Kiran Ben Shah")).toBe(true);
     expect(normalizePersonName("  Yogesh   Oza ")).toBe("yogesh oza");
   });
 
@@ -52,6 +55,14 @@ describe("claim-csv-normalize", () => {
     expect(normalizePolicyNo("  ABC  123 ")).toBe("abc123");
     expect(normalizePolicyNo("abc123")).toBe(normalizePolicyNo("ABC 123"));
     expect(normalizePolicyNo("   ")).toBe("");
+  });
+
+  it("matches TPA insurer legal names to the register", () => {
+    expect(normalizeInsurerName("The New India Assurance Company Limited")).toBe("new india");
+    expect(
+      insurersMatch("The New India Assurance Company Limited", "New India Assurance"),
+    ).toBe(true);
+    expect(insurersMatch("The New India Assurance Company Limited", "NIA")).toBe(false);
   });
 });
 
