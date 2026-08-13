@@ -348,8 +348,13 @@ function parseNonNegativeAmount(raw: unknown): Prisma.Decimal {
   return d;
 }
 
-export async function setOpeningBalance(amountRaw: unknown, userId: string | undefined) {
+export async function setOpeningBalance(
+  amountRaw: unknown,
+  userId: string | undefined,
+  dateOfSubmission?: Date | null,
+) {
   const amount = parseNonNegativeAmount(amountRaw);
+  const txnDate = dateOfSubmission ?? new Date();
 
   return prisma.$transaction(async (tx) => {
     const wallet = await ensureAndLockWallet(tx);
@@ -371,6 +376,8 @@ export async function setOpeningBalance(amountRaw: unknown, userId: string | und
       isCredit: true,
       userId,
       snapshots: {
+        dateOfSubmission: txnDate,
+        txnDate,
         remark: "Opening Wallet Balance",
         particulars: "Opening Wallet Balance",
       },
@@ -383,9 +390,15 @@ export async function setOpeningBalance(amountRaw: unknown, userId: string | und
   });
 }
 
-export async function topUpWallet(amountRaw: unknown, remark: string | undefined, userId: string | undefined) {
+export async function topUpWallet(
+  amountRaw: unknown,
+  remark: string | undefined,
+  userId: string | undefined,
+  dateOfSubmission?: Date | null,
+) {
   const amount = parsePositiveAmount(amountRaw);
   const text = (remark?.trim() || "Manual Wallet Top-Up").slice(0, 500);
+  const txnDate = dateOfSubmission ?? new Date();
 
   return prisma.$transaction(async (tx) => {
     const wallet = await ensureAndLockWallet(tx);
@@ -395,7 +408,12 @@ export async function topUpWallet(amountRaw: unknown, remark: string | undefined
       amount,
       isCredit: true,
       userId,
-      snapshots: { remark: text, particulars: text },
+      snapshots: {
+        dateOfSubmission: txnDate,
+        txnDate,
+        remark: text,
+        particulars: text,
+      },
     });
     return {
       currentBalance: decimalToString(newBalance),

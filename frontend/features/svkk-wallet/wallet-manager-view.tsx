@@ -254,9 +254,11 @@ export function WalletManagerView() {
   );
 
   const [openingAmount, setOpeningAmount] = useState("");
+  const [openingDate, setOpeningDate] = useState(todayIsoDate);
   const [openingBusy, setOpeningBusy] = useState(false);
 
   const [topupAmount, setTopupAmount] = useState("");
+  const [topupDate, setTopupDate] = useState(todayIsoDate);
   const [topupRemark, setTopupRemark] = useState("");
   const [topupBusy, setTopupBusy] = useState(false);
 
@@ -416,9 +418,13 @@ export function WalletManagerView() {
   async function submitOpening() {
     setOpeningBusy(true);
     try {
-      await backendApi.post("/wallet/opening", { amount: openingAmount });
+      await backendApi.post("/wallet/opening", {
+        amount: openingAmount,
+        dateOfSubmission: openingDate || undefined,
+      });
       toast.success("Opening balance set");
       setOpeningAmount("");
+      setOpeningDate(todayIsoDate());
       setPage(1);
       await refreshAll();
     } catch (e) {
@@ -443,9 +449,11 @@ export function WalletManagerView() {
       await backendApi.post("/wallet/topup", {
         amount: topupAmount,
         remark: topupRemark || undefined,
+        dateOfSubmission: topupDate || undefined,
       });
       toast.success("Top-up added");
       setTopupAmount("");
+      setTopupDate(todayIsoDate());
       setTopupRemark("");
       await refreshAll();
     } catch (e) {
@@ -887,17 +895,31 @@ export function WalletManagerView() {
           <CardContent className="space-y-4">
             {canWalletOpening(perms) ? (
               <div className="space-y-2">
-                <Label htmlFor="opening-amount">Opening balance</Label>
-                <Input
-                  id="opening-amount"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="e.g. 5000"
-                  value={openingAmount}
-                  onChange={(e) => setOpeningAmount(e.target.value)}
-                  disabled={openingBusy}
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="opening-amount">Opening balance</Label>
+                    <Input
+                      id="opening-amount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="e.g. 5000"
+                      value={openingAmount}
+                      onChange={(e) => setOpeningAmount(e.target.value)}
+                      disabled={openingBusy}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="opening-date">Date</Label>
+                    <Input
+                      id="opening-date"
+                      type="date"
+                      value={openingDate}
+                      onChange={(e) => setOpeningDate(e.target.value)}
+                      disabled={openingBusy}
+                    />
+                  </div>
+                </div>
                 <Button
                   disabled={openingBusy || !openingAmount}
                   onClick={() => void submitOpening()}
@@ -909,17 +931,31 @@ export function WalletManagerView() {
 
             {canWalletTopup(perms) ? (
               <div className="space-y-2 border-t pt-4">
-                <Label htmlFor="topup-amount">Top-up amount</Label>
-                <Input
-                  id="topup-amount"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="e.g. 1000"
-                  value={topupAmount}
-                  onChange={(e) => setTopupAmount(e.target.value)}
-                  disabled={topupBusy}
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="topup-amount">Top-up amount</Label>
+                    <Input
+                      id="topup-amount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="e.g. 1000"
+                      value={topupAmount}
+                      onChange={(e) => setTopupAmount(e.target.value)}
+                      disabled={topupBusy}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="topup-date">Date</Label>
+                    <Input
+                      id="topup-date"
+                      type="date"
+                      value={topupDate}
+                      onChange={(e) => setTopupDate(e.target.value)}
+                      disabled={topupBusy}
+                    />
+                  </div>
+                </div>
                 <Label htmlFor="topup-remark">Remark</Label>
                 <Input
                   id="topup-remark"

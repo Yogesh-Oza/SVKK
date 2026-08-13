@@ -47,8 +47,13 @@ const amountBody = z.object({
   amount: z.union([z.string(), z.number()]),
 });
 
+const openingBody = amountBody.extend({
+  dateOfSubmission: optionalDate,
+});
+
 const topupBody = amountBody.extend({
   remark: z.string().max(500).optional(),
+  dateOfSubmission: optionalDate,
 });
 
 const optionalDate = z.preprocess(
@@ -229,8 +234,8 @@ export function createWalletRouter(_env: Env) {
 
   r.post("/opening", requirePermission("wallet:opening"), async (req, res, next) => {
     try {
-      const body = amountBody.parse(req.body);
-      const data = await setOpeningBalance(body.amount, req.userId);
+      const body = openingBody.parse(req.body);
+      const data = await setOpeningBalance(body.amount, req.userId, body.dateOfSubmission);
       res.json({ success: true, data });
     } catch (e) {
       next(e);
@@ -240,7 +245,7 @@ export function createWalletRouter(_env: Env) {
   r.post("/topup", requirePermission("wallet:topup"), async (req, res, next) => {
     try {
       const body = topupBody.parse(req.body);
-      const data = await topUpWallet(body.amount, body.remark, req.userId);
+      const data = await topUpWallet(body.amount, body.remark, req.userId, body.dateOfSubmission);
       res.json({ success: true, data });
     } catch (e) {
       next(e);
