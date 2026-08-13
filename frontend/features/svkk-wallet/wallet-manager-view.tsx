@@ -36,7 +36,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useSvkkAuth } from "@/contexts/svkk-auth-context";
+import { Separator } from "@/components/ui/separator";
+import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
+import {
+  PolicyFilterMulti,
+  type PolicyFilterOption,
+} from "@/features/svkk-policies/policy-filter-multi";
+import { todayFormDate } from "@/lib/svkk/form-date";
+import { monthFilterOptionsFromMeta } from "@/lib/svkk/policy-period-months";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { getSvkkErrorCode, getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { getSvkkApiBase } from "@/lib/svkk/config";
@@ -72,6 +79,7 @@ import {
   type WalletSummary,
   type WalletTxnPage,
 } from "./wallet-types";
+import { appendWalletTxnFilters } from "./wallet-txn-query";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -179,31 +187,70 @@ export function WalletManagerView() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryErr, setSummaryErr] = useState<string | null>(null);
 
-  const [filterVillages, setFilterVillages] = useState<string[]>([]);
+  const [filterMeta, setFilterMeta] = useState<{
+    villages?: string[];
+    areas?: string[];
+    sumInsuredValues?: string[];
+    periodYearTexts?: string[];
+    periodMonthTexts?: string[];
+    policyGroupings?: string[];
+  } | null>(null);
+
   const villageOptions = useMemo(() => {
-    const fromFilters = filterVillages;
+    const fromMeta = filterMeta?.villages ?? [];
     const fromDd = (ddOptions.VILLAGE ?? []).map((o) => o.value || o.label).filter(Boolean);
-    return [...new Set([...fromFilters, ...fromDd])].sort((a, b) => a.localeCompare(b));
-  }, [filterVillages, ddOptions.VILLAGE]);
+    return [...new Set([...fromMeta, ...fromDd])].sort((a, b) => a.localeCompare(b));
+  }, [filterMeta?.villages, ddOptions.VILLAGE]);
   const categoryOptions = useMemo(() => {
     const fromAdmin = (ddOptions.categories ?? [])
       .map((c) => (c.label || c.value || "").trim())
       .filter(Boolean);
     return [...new Set(fromAdmin)].sort((a, b) => a.localeCompare(b));
   }, [ddOptions.categories]);
-  const groupOptions = useMemo(
-    () =>
-      [...new Set((ddOptions.policyGroupings ?? []).map((g) => g.value || g.label).filter(Boolean))].sort(
-        (a, b) => a.localeCompare(b),
-      ),
-    [ddOptions.policyGroupings],
-  );
+  const groupOptions = useMemo(() => {
+    const fromMeta = filterMeta?.policyGroupings ?? [];
+    const fromDd = (ddOptions.policyGroupings ?? []).map((g) => g.value || g.label).filter(Boolean);
+    return [...new Set([...fromMeta, ...fromDd])].sort((a, b) => a.localeCompare(b));
+  }, [filterMeta?.policyGroupings, ddOptions.policyGroupings]);
   const policyTypeOptions = useMemo(
     () =>
       [...new Set((ddOptions.policyTypes ?? []).map((t) => t.label || t.value).filter(Boolean))].sort(
         (a, b) => a.localeCompare(b),
       ),
     [ddOptions.policyTypes],
+  );
+
+  const yearFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.periodYearTexts ?? []).map((v) => ({ value: v, label: v })),
+    [filterMeta?.periodYearTexts],
+  );
+  const monthFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => monthFilterOptionsFromMeta(filterMeta?.periodMonthTexts ?? []),
+    [filterMeta?.periodMonthTexts],
+  );
+  const areaFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.areas ?? []).map((v) => ({ value: v, label: v })),
+    [filterMeta?.areas],
+  );
+  const villageFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => villageOptions.map((v) => ({ value: v, label: v })),
+    [villageOptions],
+  );
+  const sumInsuredFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => (filterMeta?.sumInsuredValues ?? []).map((v) => ({ value: v, label: v })),
+    [filterMeta?.sumInsuredValues],
+  );
+  const groupFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => groupOptions.map((g) => ({ value: g, label: g })),
+    [groupOptions],
+  );
+  const categoryFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => categoryOptions.map((c) => ({ value: c, label: c })),
+    [categoryOptions],
+  );
+  const policyTypeFilterOptions = useMemo<PolicyFilterOption[]>(
+    () => policyTypeOptions.map((t) => ({ value: t, label: t })),
+    [policyTypeOptions],
   );
 
   const [openingAmount, setOpeningAmount] = useState("");
@@ -241,7 +288,16 @@ export function WalletManagerView() {
   const [sampleBusy, setSampleBusy] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState(todayFormDate);
+  const [filterYears, setFilterYears] = useState<string[]>([]);
+  const [filterCategories, setFilterCategories] = useState<string[]>([]);
+  const [filterPolicyTypes, setFilterPolicyTypes] = useState<string[]>([]);
+  const [filterMonths, setFilterMonths] = useState<string[]>([]);
+  const [filterAreas, setFilterAreas] = useState<string[]>([]);
+  const [filterVillages, setFilterVillages] = useState<string[]>([]);
+  const [filterSumInsureds, setFilterSumInsureds] = useState<string[]>([]);
+  const [filterGroups, setFilterGroups] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [txnPage, setTxnPage] = useState<WalletTxnPage | null>(null);
@@ -272,15 +328,45 @@ export function WalletManagerView() {
     }
   }, [missingUrl]);
 
+  const txnFilters = useMemo(
+    () => ({
+      q: search,
+      dateFrom,
+      dateTo,
+      categories: filterCategories,
+      villages: filterVillages,
+      groups: filterGroups,
+      months: filterMonths,
+      years: filterYears,
+      policyTypes: filterPolicyTypes,
+      areas: filterAreas,
+      sumInsureds: filterSumInsureds,
+      page,
+      pageSize,
+    }),
+    [
+      search,
+      dateFrom,
+      dateTo,
+      filterCategories,
+      filterVillages,
+      filterGroups,
+      filterMonths,
+      filterYears,
+      filterPolicyTypes,
+      filterAreas,
+      filterSumInsureds,
+      page,
+      pageSize,
+    ],
+  );
+
   const loadTransactions = useCallback(async () => {
     if (missingUrl) return;
     setTxnLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set("page", String(page));
-      params.set("pageSize", String(pageSize));
-      if (search.trim()) params.set("q", search.trim());
-      if (categoryFilter) params.set("category", categoryFilter);
+      appendWalletTxnFilters(params, txnFilters);
       const res = await svkkJson<{ success: boolean; data: WalletTxnPage }>(
         `/wallet/transactions?${params}`,
       );
@@ -290,7 +376,7 @@ export function WalletManagerView() {
     } finally {
       setTxnLoading(false);
     }
-  }, [missingUrl, page, pageSize, search, categoryFilter]);
+  }, [missingUrl, txnFilters]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadSummary(), loadTransactions()]);
@@ -311,8 +397,15 @@ export function WalletManagerView() {
     let cancelled = false;
     void (async () => {
       try {
-        const f = await svkkJson<{ villages?: string[] }>("/policies/filters");
-        if (!cancelled) setFilterVillages(f.villages ?? []);
+        const f = await svkkJson<{
+          villages?: string[];
+          areas?: string[];
+          sumInsuredValues?: string[];
+          periodYearTexts?: string[];
+          periodMonthTexts?: string[];
+          policyGroupings?: string[];
+        }>("/policies/filters");
+        if (!cancelled) setFilterMeta(f);
       } catch {
         /* non-fatal — free text / empty select */
       }
@@ -485,8 +578,19 @@ export function WalletManagerView() {
     setExportBusy(true);
     try {
       const params = new URLSearchParams();
-      if (search.trim()) params.set("q", search.trim());
-      if (categoryFilter) params.set("category", categoryFilter);
+      appendWalletTxnFilters(params, {
+        q: search,
+        dateFrom,
+        dateTo,
+        categories: filterCategories,
+        villages: filterVillages,
+        groups: filterGroups,
+        months: filterMonths,
+        years: filterYears,
+        policyTypes: filterPolicyTypes,
+        areas: filterAreas,
+        sumInsureds: filterSumInsureds,
+      });
       const res = await backendApi.get(`/wallet/transactions/export.csv?${params}`, {
         responseType: "blob",
       });
@@ -496,6 +600,21 @@ export function WalletManagerView() {
     } finally {
       setExportBusy(false);
     }
+  }
+
+  function resetTxnFilters() {
+    setSearch("");
+    setDateFrom("");
+    setDateTo(todayFormDate());
+    setFilterYears([]);
+    setFilterCategories([]);
+    setFilterPolicyTypes([]);
+    setFilterMonths([]);
+    setFilterAreas([]);
+    setFilterVillages([]);
+    setFilterSumInsureds([]);
+    setFilterGroups([]);
+    setPage(1);
   }
 
   async function exportMis(dimension: WalletMisDimension, filename: string) {
@@ -1218,24 +1337,14 @@ export function WalletManagerView() {
           </div>
           <div className="flex flex-wrap gap-2">
             {canWalletExport(perms) ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={exportBusy}
-                  onClick={() => void exportTransactions()}
-                >
-                  Export Transactions CSV
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={exportBusy}
-                  onClick={() => void downloadBackup()}
-                >
-                  Backup Wallet Data
-                </Button>
-              </>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={exportBusy}
+                onClick={() => void downloadBackup()}
+              >
+                Backup Wallet Data
+              </Button>
             ) : null}
             {canWalletClear(perms) ? (
               <>
@@ -1269,38 +1378,154 @@ export function WalletManagerView() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Search transaction…"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
-            <Select
-              value={categoryFilter || "all"}
-              onValueChange={(v) => {
-                setCategoryFilter(v === "all" ? "" : v);
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Search transaction…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categoryOptions.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
+          </div>
+          <Separator />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+              <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
+                From date
+              </Label>
+              <PolicyDateInput
+                value={dateFrom}
+                onValueChange={(v) => {
+                  setDateFrom(v);
+                  setPage(1);
+                }}
+                className="h-10 bg-background/90 font-bold"
+              />
+            </div>
+            <div className="rounded-xl border-2 border-slate-200/90 bg-gradient-to-br from-slate-50/95 to-card p-3 shadow-sm dark:border-slate-800/50 dark:from-slate-950/35 dark:to-card">
+              <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
+                To date
+              </Label>
+              <PolicyDateInput
+                value={dateTo}
+                onValueChange={(v) => {
+                  setDateTo(v);
+                  setPage(1);
+                }}
+                className="h-10 bg-background/90 font-bold"
+              />
+            </div>
+            <PolicyFilterMulti
+              label="Year"
+              placeholder="All years"
+              options={yearFilterOptions}
+              selected={filterYears}
+              onChange={(next) => {
+                setFilterYears(next);
+                setPage(1);
+              }}
+              accentClassName="border-amber-200/90 from-amber-50/95 to-card dark:border-amber-900/50 dark:from-amber-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Category"
+              placeholder="All categories"
+              options={categoryFilterOptions}
+              selected={filterCategories}
+              onChange={(next) => {
+                setFilterCategories(next);
+                setPage(1);
+              }}
+              accentClassName="border-violet-200/90 from-violet-50/95 to-card dark:border-violet-900/50 dark:from-violet-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Policy type (product)"
+              placeholder="All types"
+              options={policyTypeFilterOptions}
+              selected={filterPolicyTypes}
+              onChange={(next) => {
+                setFilterPolicyTypes(next);
+                setPage(1);
+              }}
+              accentClassName="border-rose-200/90 from-rose-50/95 to-card dark:border-rose-900/50 dark:from-rose-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Month"
+              placeholder="All months"
+              options={monthFilterOptions}
+              selected={filterMonths}
+              onChange={(next) => {
+                setFilterMonths(next);
+                setPage(1);
+              }}
+              accentClassName="border-sky-200/90 from-sky-50/95 to-card dark:border-sky-900/50 dark:from-sky-950/35 dark:to-card"
+              popoverContentClassName="max-h-[min(22rem,70vh)]"
+            />
+            <PolicyFilterMulti
+              label="Area"
+              placeholder="All areas"
+              options={areaFilterOptions}
+              selected={filterAreas}
+              onChange={(next) => {
+                setFilterAreas(next);
+                setPage(1);
+              }}
+              accentClassName="border-teal-200/90 from-teal-50/95 to-card dark:border-teal-900/50 dark:from-teal-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Village"
+              placeholder="All villages"
+              options={villageFilterOptions}
+              selected={filterVillages}
+              onChange={(next) => {
+                setFilterVillages(next);
+                setPage(1);
+              }}
+              accentClassName="border-emerald-200/90 from-emerald-50/95 to-card dark:border-emerald-900/50 dark:from-emerald-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Sum insured"
+              placeholder="All SI"
+              options={sumInsuredFilterOptions}
+              selected={filterSumInsureds}
+              onChange={(next) => {
+                setFilterSumInsureds(next);
+                setPage(1);
+              }}
+              accentClassName="border-orange-200/90 from-orange-50/95 to-card dark:border-orange-900/50 dark:from-orange-950/35 dark:to-card"
+            />
+            <PolicyFilterMulti
+              label="Group"
+              placeholder="All groups"
+              options={groupFilterOptions}
+              selected={filterGroups}
+              onChange={(next) => {
+                setFilterGroups(next);
+                setPage(1);
+              }}
+              accentClassName="border-indigo-200/90 from-indigo-50/95 to-card dark:border-indigo-900/50 dark:from-indigo-950/35 dark:to-card"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canWalletExport(perms) ? (
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                disabled={exportBusy}
+                onClick={() => void exportTransactions()}
+              >
+                <Download className="size-3.5" />
+                Export CSV
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={resetTxnFilters}>
+              <RotateCcw className="size-3.5" />
+              Reset filters
+            </Button>
           </div>
 
           <div className="overflow-auto rounded-md border">

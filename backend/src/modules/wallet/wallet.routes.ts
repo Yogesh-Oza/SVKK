@@ -126,6 +126,7 @@ const restoreBody = z.object({
 const listQuerySchema = z.object({
   q: z.string().optional(),
   category: z.string().optional(),
+  categories: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
   type: z
     .string()
     .optional()
@@ -141,13 +142,34 @@ const listQuerySchema = z.object({
         .optional(),
     ),
   village: z.string().optional(),
+  villages: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
   group: z.string().optional(),
+  groups: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
   month: z.string().optional(),
+  months: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
   year: z.string().optional(),
+  years: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
+  policyTypes: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
+  areas: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
+  sumInsureds: z.preprocess(queryToStringArray, z.array(z.string()).optional()),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
   policyId: z.string().optional(),
   page: z.coerce.number().min(1).optional(),
   pageSize: z.coerce.number().min(1).max(100).optional(),
 });
+
+function queryToStringArray(v: unknown): string[] | undefined {
+  if (v == null || v === "") return undefined;
+  if (Array.isArray(v)) {
+    const out = v.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
+    return out.length ? out : undefined;
+  }
+  const s = String(v).trim();
+  if (!s) return undefined;
+  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  return parts.length ? parts : undefined;
+}
 
 const misExportQuerySchema = z.object({
   dimension: z.enum(WALLET_MIS_DIMENSIONS).optional().default("category"),

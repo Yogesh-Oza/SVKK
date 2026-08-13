@@ -5,12 +5,12 @@ describe("buildWalletTxnWhere", () => {
   it("filters by type, village, group, month, year, and policyId", () => {
     const where = buildWalletTxnWhere("w1", {
       type: "DEBIT",
-      village: "Bhachau",
-      group: "SVKK",
-      month: "6",
-      year: "2026",
+      villages: ["Bhachau"],
+      groups: ["SVKK"],
+      months: ["6"],
+      years: ["2026"],
       policyId: "pol-1",
-      category: "A",
+      categories: ["A"],
     });
     expect(where.walletId).toBe("w1");
     expect(where.AND).toEqual(
@@ -22,6 +22,51 @@ describe("buildWalletTxnWhere", () => {
         { yearText: "2026" },
         { policyId: "pol-1" },
         { category: "A" },
+      ]),
+    );
+  });
+
+  it("filters by date range on dateOfSubmission or txnDate", () => {
+    const where = buildWalletTxnWhere("w1", {
+      dateFrom: "2026-08-01",
+      dateTo: "2026-08-31",
+    });
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        {
+          OR: [
+            {
+              dateOfSubmission: {
+                gte: new Date("2026-08-01T00:00:00.000Z"),
+                lte: new Date("2026-08-31T23:59:59.999Z"),
+              },
+            },
+            {
+              AND: [
+                { dateOfSubmission: null },
+                {
+                  txnDate: {
+                    gte: new Date("2026-08-01T00:00:00.000Z"),
+                    lte: new Date("2026-08-31T23:59:59.999Z"),
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+  });
+
+  it("filters by multiple categories and policy types", () => {
+    const where = buildWalletTxnWhere("w1", {
+      categories: ["A", "B"],
+      policyTypes: ["Family Floater", "Individual"],
+    });
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        { category: { in: ["A", "B"] } },
+        { policyTypeName: { in: ["Family Floater", "Individual"] } },
       ]),
     );
   });

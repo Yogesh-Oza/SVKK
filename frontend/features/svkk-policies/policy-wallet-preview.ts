@@ -13,19 +13,6 @@ export function effectiveCdFromForm(cdAccountStatus: string, cdAmount: string): 
   return n;
 }
 
-export function savedCdFieldsFromPolicy(
-  detail: SvkkPolicyDetailForForm | null | undefined,
-): { cdAccountStatus: string; cdAmount: string } {
-  if (!detail) {
-    return { cdAccountStatus: "", cdAmount: "" };
-  }
-  return {
-    cdAccountStatus:
-      detail.cdAccountUsed === true ? "YES" : detail.cdAccountUsed === false ? "NO" : "",
-    cdAmount: detail.cdAmount != null ? String(detail.cdAmount) : "",
-  };
-}
-
 export type WalletCdPreview = {
   currentBalance: number | null;
   savedEffectiveCd: number;
@@ -35,13 +22,28 @@ export type WalletCdPreview = {
   wouldGoNegative: boolean;
 };
 
-export function computeWalletCdPreview(input: {
+export type WalletCdPreviewInput = {
   walletBalance: string | null;
   savedCdAccountStatus: string;
   savedCdAmount: string;
   cdAccountStatus: string;
   cdAmount: string;
-}): WalletCdPreview {
+};
+
+export function savedCdFieldsFromPolicy(
+  detail: SvkkPolicyDetailForForm | null | undefined,
+): Pick<WalletCdPreviewInput, "savedCdAccountStatus" | "savedCdAmount"> {
+  if (!detail) {
+    return { savedCdAccountStatus: "", savedCdAmount: "" };
+  }
+  return {
+    savedCdAccountStatus:
+      detail.cdAccountUsed === true ? "YES" : detail.cdAccountUsed === false ? "NO" : "",
+    savedCdAmount: detail.cdAmount != null ? String(detail.cdAmount) : "",
+  };
+}
+
+export function computeWalletCdPreview(input: WalletCdPreviewInput): WalletCdPreview {
   const currentBalance =
     input.walletBalance != null && Number.isFinite(Number(input.walletBalance))
       ? Number(input.walletBalance)

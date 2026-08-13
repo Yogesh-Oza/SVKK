@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeWalletCdPreview, effectiveCdFromForm } from "./policy-wallet-preview";
+import {
+  computeWalletCdPreview,
+  effectiveCdFromForm,
+  savedCdFieldsFromPolicy,
+} from "./policy-wallet-preview";
 
 describe("effectiveCdFromForm", () => {
   it("returns 0 when CD account is not YES", () => {
@@ -60,5 +64,24 @@ describe("computeWalletCdPreview", () => {
     });
     expect(preview.projectedBalance).toBe(-5000);
     expect(preview.wouldGoNegative).toBe(true);
+  });
+
+  it("accepts saved CD fields spread from savedCdFieldsFromPolicy", () => {
+    const saved = savedCdFieldsFromPolicy({
+      cdAccountUsed: true,
+      cdAmount: 10000,
+    } as Parameters<typeof savedCdFieldsFromPolicy>[0]);
+    const preview = computeWalletCdPreview({
+      walletBalance: "45000",
+      ...saved,
+      cdAccountStatus: "YES",
+      cdAmount: "20000",
+    });
+    expect(saved).toEqual({
+      savedCdAccountStatus: "YES",
+      savedCdAmount: "10000",
+    });
+    expect(preview.cdDelta).toBe(10000);
+    expect(preview.projectedBalance).toBe(35000);
   });
 });

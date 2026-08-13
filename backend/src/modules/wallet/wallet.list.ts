@@ -1,4 +1,4 @@
-import type { Prisma, WalletTxnType } from "@prisma/client";
+import { Prisma, type WalletTxnType } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { getOrCreateWallet, serializeTxn } from "./wallet.service.js";
 import {
@@ -14,11 +14,21 @@ export const WALLET_TXN_EXPORT_MAX_ROWS = 50_000;
 export type WalletTxnListQuery = {
   q?: string;
   category?: string;
+  categories?: string[];
   type?: string;
   village?: string;
+  villages?: string[];
   group?: string;
+  groups?: string[];
   month?: string;
+  months?: string[];
   year?: string;
+  years?: string[];
+  policyTypes?: string[];
+  areas?: string[];
+  sumInsureds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
   policyId?: string;
   page?: number;
   pageSize?: number;
@@ -60,6 +70,43 @@ export function parseTypeFilter(raw: string | undefined): WalletTxnType | undefi
   return parseWalletLedgerType(raw) ?? undefined;
 }
 
+function parseIsoDateStart(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function parseIsoDateEnd(iso: string): Date {
+  return new Date(`${iso}T23:59:59.999Z`);
+}
+
+function stringInFilter(values: string[] | undefined): string | { in: string[] } | undefined {
+  const cleaned = (values ?? []).map((v) => v.trim()).filter(Boolean);
+  if (cleaned.length === 0) return undefined;
+  if (cleaned.length === 1) return cleaned[0];
+  return { in: cleaned };
+}
+
+function normalizedCategories(query: WalletTxnListQuery): string[] {
+  const raw = [
+    ...(query.categories ?? []),
+    ...(query.category ? [query.category] : []),
+  ];
+  return [...new Set(raw.map((c) => normalizeWalletCategory(c)).filter(Boolean))];
+}
+
+function normalizedMonths(query: WalletTxnListQuery): string[] {
+  const raw = [...(query.months ?? []), ...(query.month ? [query.month] : [])];
+  return [...new Set(raw.map((m) => normalizeWalletMonth(m)).filter(Boolean))];
+}
+
+function normalizedYears(query: WalletTxnListQuery): string[] {
+  const raw = [...(query.years ?? []), ...(query.year ? [query.year] : [])];
+  return [...new Set(raw.map((y) => y.trim()).filter(Boolean))];
+}
+
+function normalizedStrings(...groups: Array<string[] | undefined>): string[] {
+  return [...new Set(groups.flatMap((g) => g ?? []).map((v) => v.trim()).filter(Boolean))];
+}
+
 export function buildWalletTxnWhere(
   walletId: string,
   query: WalletTxnListQuery,
@@ -67,11 +114,10 @@ export function buildWalletTxnWhere(
   const where: Prisma.WalletTransactionWhereInput = { walletId };
   const and: Prisma.WalletTransactionWhereInput[] = [];
 
-  if (query.category) {
-    const cat = normalizeWalletCategory(query.category);
-    if (cat) {
-      and.push({ category: cat });
-    }
+  const categories = normalizedCategories(query);
+  const categoryFilter = stringInFilter(categories);
+  if (categoryFilter) {
+    and.push({ category: categoryFilter });
   }
 
   const typeFilter = parseTypeFilter(query.type);
@@ -79,24 +125,73 @@ export function buildWalletTxnWhere(
     and.push({ type: typeFilter });
   }
 
-  const village = query.village?.trim();
-  if (village) {
-    and.push({ village });
+  const villageFilter = stringInFilter(
+    normalizedStrings(query.villages, query.village ? [query.village] : undefined),
+  );
+  if (villageFilter) {
+    and.push({ village: villageFilter });
   }
 
-  const group = query.group?.trim();
-  if (group) {
-    and.push({ groupName: group });
+  const groupFilter = stringInFilter(
+    normalizedStrings(query.groups, query.group ? [query.group] : undefined),
+  );
+  if (groupFilter) {
+    and.push({ groupName: groupFilter });
   }
 
-  const month = normalizeWalletMonth(query.month);
-  if (month) {
-    and.push({ monthText: month });
+  const monthFilter = stringInFilter(normalizedMonths(query));
+  if (monthFilter) {
+    and.push({ monthText: monthFilter });
   }
 
-  const year = query.year?.trim();
-  if (year) {
-    and.push({ yearText: year });
+  const yearFilter = stringInFilter(normalizedYears(query));
+  if (yearFilter) {
+    and.push({ yearText: yearFilter });
+  }
+
+  const policyTypeFilter = stringInFilter(normalizedStrings(query.policyTypes));
+  if (policyTypeFilter) {
+    and.push({ policyTypeName: policyTypeFilter });
+  }
+
+  if (query.dateFrom?.trim() || query.dateTo?.trim()) {
+    const range: Prisma.DateTimeFilter = {};
+    if (query.dateFrom?.trim()) range.gte = parseIsoDateStart(query.dateFrom.trim());
+    if (query.dateTo?.trim()) range.lte = parseIsoDateEnd(query.dateTo.trim());
+    and.push({
+      OR: [
+        { dateOfSubmission: range },
+        { AND: [{ dateOfSubmission: null }, { txnDate: range }] },
+      ],
+    });
+  }
+
+  const policyAnd: Prisma.PolicyWhereInput[] = [];
+  const areaFilter = stringInFilter(normalizedStrings(query.areas));
+  if (areaFilter) {
+    policyAnd.push({ area: areaFilter });
+  }
+  const sumInsureds = normalizedStrings(query.sumInsureds);
+  if (sumInsureds.length > 0) {
+    const decimals = sumInsureds
+      .map((s) => {
+        try {
+          return new Prisma.Decimal(s);
+        } catch {
+          return null;
+        }
+      })
+      .filter((d): d is Prisma.Decimal => d != null && d.isFinite());
+    if (decimals.length === 1) {
+      policyAnd.push({ years: { some: { deletedAt: null, sumInsured: decimals[0] } } });
+    } else if (decimals.length > 1) {
+      policyAnd.push({ years: { some: { deletedAt: null, sumInsured: { in: decimals } } } });
+    }
+  }
+  if (policyAnd.length === 1) {
+    and.push({ policy: policyAnd[0]! });
+  } else if (policyAnd.length > 1) {
+    and.push({ policy: { AND: policyAnd } });
   }
 
   const policyId = query.policyId?.trim();
