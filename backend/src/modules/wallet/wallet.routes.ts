@@ -47,15 +47,6 @@ const amountBody = z.object({
   amount: z.union([z.string(), z.number()]),
 });
 
-const openingBody = amountBody.extend({
-  dateOfSubmission: optionalDate,
-});
-
-const topupBody = amountBody.extend({
-  remark: z.string().max(500).optional(),
-  dateOfSubmission: optionalDate,
-});
-
 const optionalDate = z.preprocess(
   (v) => (v === "" || v == null ? undefined : v),
   z.coerce.date().optional(),
@@ -65,6 +56,15 @@ const optionalText = z.preprocess(
   (v) => (v === "" || v == null ? undefined : v),
   z.string().max(500).optional(),
 );
+
+const openingBody = amountBody.extend({
+  dateOfSubmission: optionalDate,
+});
+
+const topupBody = amountBody.extend({
+  remark: z.string().max(500).optional(),
+  dateOfSubmission: optionalDate,
+});
 
 const snapshotFields = {
   dateOfSubmission: optionalDate,
