@@ -392,7 +392,7 @@ export function createClaimRouter(env: Env) {
     async (req, res, next) => {
       try {
         const body = z
-          .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
+          .object({ ids: z.array(z.string().min(1)).min(1).max(500) })
           .parse(req.body);
         const scope = await loadMisScope(req.userId!, req.permissions!, "claim");
         for (const id of body.ids) {

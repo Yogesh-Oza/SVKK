@@ -640,6 +640,13 @@ export function ClaimsListView() {
 
   async function bulkDeleteClaims() {
     if (selectedIds.length === 0) return;
+    const BULK_DELETE_MAX = 500;
+    if (selectedIds.length > BULK_DELETE_MAX) {
+      toast.error(
+        `You can delete at most ${BULK_DELETE_MAX} claims at a time. ${selectedIds.length} are selected — deselect some and try again.`,
+      );
+      return;
+    }
     setDeleteBusy(true);
     try {
       await svkkJson("/claims/bulk-delete", {
@@ -996,7 +1003,15 @@ export function ClaimsListView() {
             variant="destructive"
             size="sm"
             className="gap-1.5"
-            onClick={() => setBulkDeleteOpen(true)}
+            onClick={() => {
+              if (selectedCount > 500) {
+                toast.error(
+                  `You can delete at most 500 claims at a time. ${selectedCount} are selected — deselect some and try again.`,
+                );
+                return;
+              }
+              setBulkDeleteOpen(true);
+            }}
           >
             <Trash2 className="size-3.5" />
             Delete selected
