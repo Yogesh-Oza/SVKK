@@ -9,6 +9,37 @@ Standalone Next.js + Express insurance management system for policy registration
 
 ## Current task (completed)
 
+**CD Account Manager — Policy-linked Wallet**
+
+Replaced the standalone Wallet ledger with a Policy-linked CD Account Manager. UI matches `wallet_balance_manager_new.html` (shadcn). Wallet remains the org singleton; Policy CD Amount drives immutable debit/credit/adjustment rows.
+
+| Rule | Detail |
+|------|--------|
+| Link | Wallet ↔ Policy only (`WalletTransaction.policyId`) |
+| Deduction source | `Policy.cdAccountUsed` + `Policy.cdAmount` (`effectiveCd`) |
+| Date of Submission | User-entered `Policy.dateOfSubmission` (never Policy Start / PolicyYear); snapshotted on each txn |
+| Immutability | No edit/delete of ledger rows; corrections = new ADJUSTMENT / CREDIT / DEBIT |
+| Create | Debit effective CD if &gt; 0 |
+| Update | Debit/credit delta only |
+| Soft-delete | Credit `netPosted(policyId)` = sum(DEBIT) − sum(CREDIT) |
+| Restore | Re-debit effective CD (`source: RESTORE`) |
+| Overdraft | Warn + confirm → `allowNegativeWallet` |
+
+**Migration:** `20260813150000_wallet_cd_policy_link`
+
+| Layer | Role |
+|-------|------|
+| `schema.prisma` | `CREDIT`/`ADJUSTMENT` types; `POLICY`/`RESTORE` sources; txn snapshots; `Policy.dateOfSubmission` |
+| `wallet.service.ts` | `appendWalletTxn`, opening-exists guard, credit/adjust/restore, extended summary MIS |
+| `wallet-policy-sync.ts` | `effectiveCdAmount`, `syncPolicyWallet`, delete/restore helpers |
+| `policy.service.ts` / `policy-archive.ts` | Create/update/soft-delete/restore wallet hooks |
+| `wallet.routes.ts` | Adjustment, restore, prototype CSV, filters, MIS dimensions |
+| `wallet-manager-view.tsx` | Prototype-matching Wallet / CD page |
+| `ad-policy-add-form.tsx` | Date of Submission, wallet balance, overdraft confirm |
+| `policy-profile-cd-history-tab.tsx` | Policy Details → CD Account History |
+
+## Previous task (completed)
+
 **Category Form admin — email template + PDF + category bulk send**
 
 New Admin nav item **Category form** (`/category-form`, `admin:settings`). Mediclaim-style email editor (reuse `EmailTemplateEditor`), one shared PDF on OneDrive, multi-select categories, recipient preview, test send, and bulk send (one email per policy with PDF attachment). Backend: `category-form.service.ts`, `category-form.routes.ts`, `AppSetting` keys, `sendEmail` attachments support.

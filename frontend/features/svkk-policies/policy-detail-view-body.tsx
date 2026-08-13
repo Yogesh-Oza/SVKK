@@ -75,6 +75,7 @@ export type PolicyDetailViewRow = {
   refundChequeDate?: string | null;
   cdAccountUsed?: boolean | null;
   cdAmount?: unknown;
+  dateOfSubmission?: string | null;
   courierStatus?: string | null;
   courierDate?: string | null;
   courierCompany?: string | null;
@@ -572,6 +573,7 @@ export function PolicyDetailViewBody({
           <ViewFieldTable
             cols={4}
             fields={[
+              { label: "Date of Submission", value: fmtDate(row.dateOfSubmission) },
               { label: "CD Account Used", value: yesNoLabel(row.cdAccountUsed) },
               { label: "CD Amount", value: fmt(row.cdAmount) },
             ]}

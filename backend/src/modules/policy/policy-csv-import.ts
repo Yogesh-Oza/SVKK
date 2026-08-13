@@ -39,6 +39,10 @@ import {
 } from "./policy-csv-resolve.js";
 import { prisma } from "../../lib/prisma.js";
 import { createPolicyFromCsvRow, validateCreateRequiredFields } from "./policy-csv-create.js";
+import {
+  effectiveCdAmount,
+  syncPolicyWallet,
+} from "../wallet/wallet-policy-sync.js";
 
 export type CsvUpsertResult = "created" | "updated";
 
@@ -286,6 +290,11 @@ async function updatePolicyCsvRow(
 
   assertPolicyReadable(policy, ctx.userId, ctx.permissions, ctx.scope);
 
+  const previousEffective = effectiveCdAmount({
+    cdAccountUsed: policy.cdAccountUsed,
+    cdAmount: policy.cdAmount,
+  });
+
   const year = pickPolicyYearForCsvUpdate(policy, yearCsv);
 
   const policyUpdate: Prisma.PolicyUpdateInput = {};
@@ -431,6 +440,34 @@ async function updatePolicyCsvRow(
 
   if (Object.keys(policyUpdate).length) {
     await tx.policy.update({ where: { id: policy.id }, data: policyUpdate });
+  }
+
+  const nextEffective = effectiveCdAmount({
+    cdAccountUsed:
+      policyUpdate.cdAccountUsed !== undefined
+        ? (policyUpdate.cdAccountUsed as boolean | null)
+        : policy.cdAccountUsed,
+    cdAmount:
+      policyUpdate.cdAmount !== undefined
+        ? (policyUpdate.cdAmount as PrismaNamespace.Decimal | number | null)
+        : policy.cdAmount,
+  });
+  if (!previousEffective.eq(nextEffective)) {
+    const policyWithRels = await tx.policy.findUniqueOrThrow({
+      where: { id: policy.id },
+      include: {
+        category: { select: { name: true } },
+        policyType: { select: { name: true } },
+        insuredParty: { select: { name: true } },
+      },
+    });
+    await syncPolicyWallet(tx, {
+      policy: policyWithRels,
+      previousEffective,
+      nextEffective,
+      allowNegative: ctx.allowNegativeWallet === true,
+      userId: ctx.userId,
+    });
   }
 
   if (year) {

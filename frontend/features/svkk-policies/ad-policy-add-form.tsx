@@ -513,6 +513,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [walletNegativeConfirmOpen, setWalletNegativeConfirmOpen] = useState(false);
   const allowNegativeWalletRef = useRef(false);
+  const walletBalanceRef = useRef<string | null>(null);
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
   const openReceiptPreviewRef = useRef<(() => void) | null>(null);
 
@@ -571,7 +572,11 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       try {
         const res = await svkkJson<{ success?: boolean; data?: { currentBalance?: string } }>("/wallet");
         const bal = res.data?.currentBalance ?? (res as { currentBalance?: string }).currentBalance;
-        if (!cancelled && bal != null) setWalletBalance(String(bal));
+        if (!cancelled && bal != null) {
+          const s = String(bal);
+          walletBalanceRef.current = s;
+          setWalletBalance(s);
+        }
       } catch {
         /* non-fatal — form still works without balance display */
       }
@@ -617,7 +622,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       setApiErr(null);
       try {
       const cdNum = Number(String(values.cdAmount).replace(/,/g, "").trim());
-      const balNum = walletBalance != null ? Number(walletBalance) : null;
+      const balNum = walletBalanceRef.current != null ? Number(walletBalanceRef.current) : null;
       const wouldGoNegative =
         values.cdAccountStatus === "YES" &&
         Number.isFinite(cdNum) &&
@@ -720,7 +725,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             categoryId: resolveCategoryIdByKey(values.cat, categoryItemsForSubmit),
             policyTypeId,
             policyChartId,
+            allowNegativeWallet: allowNegativeWallet || undefined,
           });
+          allowNegativeWalletRef.current = false;
           if (result.offline) {
             toast.success("Saved offline", {
               description: "Changes are queued and will sync when you're back online.",
@@ -730,11 +737,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           }
           navigatePolicyRoute("/policies", router);
         } catch (e) {
+          if (getSvkkErrorCode(e) === "WALLET_INSUFFICIENT" && !allowNegativeWallet) {
+            setWalletNegativeConfirmOpen(true);
+            return;
+          }
           if (tryApplyBackendValidationErrors(e)) {
             setApiErr("Please fix the highlighted fields and try again.");
             return;
           }
-          setApiErr(e instanceof Error ? e.message : "Update failed");
+          setApiErr(getSvkkErrorMessage(e, e instanceof Error ? e.message : "Update failed"));
         }
         return;
       }
@@ -749,7 +760,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           policyChartId,
           idemKey: idemKeyRef.current,
           categoryId: resolveCategoryIdByKey(values.cat, categoryItemsForSubmit),
+          allowNegativeWallet: allowNegativeWallet || undefined,
         });
+        allowNegativeWalletRef.current = false;
         const offlineSave = typeof navigator !== "undefined" && !navigator.onLine;
         if (offlineSave) {
           toast.success("Saved offline", {
@@ -778,11 +791,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           })();
         }
       } catch (e) {
+        if (getSvkkErrorCode(e) === "WALLET_INSUFFICIENT" && !allowNegativeWallet) {
+          setWalletNegativeConfirmOpen(true);
+          return;
+        }
         if (tryApplyBackendValidationErrors(e)) {
           setApiErr("Please fix the highlighted fields and try again.");
           return;
         }
-        setApiErr(e instanceof Error ? e.message : "Create failed");
+        setApiErr(getSvkkErrorMessage(e, e instanceof Error ? e.message : "Create failed"));
       }
       } finally {
         helpers.setSubmitting(false);
@@ -1377,6 +1394,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               loanNo: "",
               cdAccountStatus: "",
               cdAmount: "",
+              dateOfSubmission: "",
               refundChequeAmt: "",
               refundChequeNo: "",
               refundChequeDate: "",
@@ -1584,6 +1602,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
       path.startsWith("loanPendingAmount") ||
       path.startsWith("cdAccountStatus") ||
       path.startsWith("cdAmount") ||
+      path.startsWith("dateOfSubmission") ||
       path.startsWith("refundChequeAmt") ||
       path.startsWith("refundChequeNo") ||
       path.startsWith("refundChequeDate")
@@ -3676,6 +3695,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               CD
             </div>
             <div className="space-y-2">
+              <Label>Date of Submission</Label>
+              <PolicyDateInput
+                name="dateOfSubmission"
+                value={values.dateOfSubmission}
+                onValueChange={(v) => void setFieldValue("dateOfSubmission", v)}
+                onBlur={handleBlur}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>CD Account Used</Label>
               <DropdownCombobox
                 value={values.cdAccountStatus}
@@ -3688,6 +3716,20 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             <div className="space-y-2">
               <Label>CD Amount</Label>
               <Input name="cdAmount" value={values.cdAmount} onChange={handleChange} onBlur={handleBlur} />
+            </div>
+            <div className="space-y-2">
+              <Label>Current Wallet Balance</Label>
+              <div className="bg-muted/40 flex h-9 items-center rounded-md border px-3 text-sm font-medium">
+                {walletBalance != null ? formatWalletInr(walletBalance) : "—"}
+              </div>
+              {values.cdAccountStatus === "YES" &&
+              walletBalance != null &&
+              Number(String(values.cdAmount).replace(/,/g, "").trim()) >
+                Number(walletBalance) ? (
+                <p className="text-amber-700 dark:text-amber-400 text-xs">
+                  CD Amount exceeds available wallet balance ({formatWalletInr(walletBalance)}).
+                </p>
+              ) : null}
             </div>
 
             <div className="text-muted-foreground col-span-full border-t pt-3 text-xs font-medium uppercase tracking-wide">
@@ -4102,6 +4144,41 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           <DialogFooter>
             <Button type="button" onClick={dismissMemberAge25Alert}>
               OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={walletNegativeConfirmOpen} onOpenChange={setWalletNegativeConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Wallet will go negative</DialogTitle>
+            <DialogDescription>
+              CD Amount exceeds the current wallet balance
+              {walletBalance != null ? ` (${formatWalletInr(walletBalance)})` : ""}. Continue and allow
+              a negative wallet balance?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                allowNegativeWalletRef.current = false;
+                setWalletNegativeConfirmOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                allowNegativeWalletRef.current = true;
+                setWalletNegativeConfirmOpen(false);
+                void formik.submitForm();
+              }}
+            >
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>

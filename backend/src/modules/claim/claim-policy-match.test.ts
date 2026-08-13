@@ -78,6 +78,8 @@ function makePolicy(opts: {
       key: "floater",
       name: opts.typeName ?? "Floater",
     },
+    policyGrouping: null,
+    categoryText: null,
     years,
   };
 }

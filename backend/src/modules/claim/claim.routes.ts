@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Env } from "../../config/env.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
-import { requirePermission } from "../../middlewares/rbac.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import { ClaimPolicyMatchStatus, ClaimStatus, CsvImportEntity, CsvJobStatus } from "@prisma/client";
 import { AppError } from "../../errors/app-error.js";
@@ -25,8 +25,9 @@ import {
 import { queryClaimSummary } from "./claim.summary.js";
 import { buildClaimsExportCsv } from "./claim.export-csv.js";
 import { claimDetailSelect } from "./claim-detail.js";
-import { resolveClaimManualPolicyLink } from "./claim-policy-link.js";
+import { resolveClaimManualPolicyLink, applyMatchedPolicySnapshots } from "./claim-policy-link.js";
 import { claimUpdateBodySchema } from "./claim-update.schema.js";
+import { parseClaimDate } from "./claim-csv-normalize.js";
 
 function queryToStringArray(v: unknown): string[] | undefined {
   if (v == null) return undefined;
@@ -273,8 +274,8 @@ export function createClaimRouter(env: Env) {
         })
         .merge(claimUpdateBodySchema.partial())
         .extend({
-          svkkPublicId: z.string().min(1),
-          policyYear: z.string().min(1),
+          svkkPublicId: z.string().max(64).optional().default(""),
+          policyYear: z.string().max(20).optional().default(""),
         })
         .parse(req.body);
 
@@ -294,8 +295,19 @@ export function createClaimRouter(env: Env) {
         claimReceivedDate: body.claimReceivedDate,
       });
       const policyArea = link.policyArea;
-
-      const village = body.village ?? null;
+      const snapshots = applyMatchedPolicySnapshots(
+        {
+          svkkPublicId: body.svkkPublicId,
+          policyYear: body.policyYear,
+          village: body.village,
+          policyHolderName: body.policyHolderName,
+          policyTypeText: body.policyTypeText,
+          policyGroupingText: body.policyGroupingText,
+          categoryText: body.categoryText,
+        },
+        link,
+      );
+      const village = snapshots.village ?? body.village ?? null;
       assertGeoFieldsOnWrite(
         { village, area: policyArea },
         scope,
@@ -303,27 +315,51 @@ export function createClaimRouter(env: Env) {
         "claim",
       );
 
+      const resolvedSvkk = (snapshots.svkkPublicId ?? body.svkkPublicId).trim();
+      const resolvedYear = (snapshots.policyYear ?? body.policyYear).trim();
+      if (!resolvedSvkk) {
+        throw new AppError(
+          "SVKK_REQUIRED",
+          "SVKK ID is required unless a matching Policy Number fills it from the policy",
+          400,
+        );
+      }
+      if (!resolvedYear) {
+        throw new AppError(
+          "POLICY_YEAR_REQUIRED",
+          "Policy year is required unless a matching Policy Number fills it from the policy",
+          400,
+        );
+      }
+
       const party = link.insuredPartyId
         ? null
         : await prisma.insuredParty.findFirst({
-            where: { svkkPublicId: body.svkkPublicId },
+            where: { svkkPublicId: resolvedSvkk },
           });
 
       const { claimNo, policyId: _ignoredPolicyId, svkkPublicId, policyYear, ...rest } = body;
       const row = await prisma.claim.create({
         data: {
           claimNo,
-          svkkPublicId,
+          svkkPublicId: (snapshots.svkkPublicId ?? svkkPublicId) || resolvedSvkk,
           insuredPartyId: link.insuredPartyId ?? party?.id ?? null,
           policyId: link.policyId,
           policyYearId: link.policyYearId,
-          policyYear,
+          policyYear: (snapshots.policyYear ?? policyYear) || resolvedYear,
           matchStatus: link.matchStatus,
           verificationWarnings:
             link.verificationWarnings.length > 0 ? link.verificationWarnings : undefined,
           status: body.status ?? ClaimStatus.PENDING,
           createdById: req.userId,
           ...rest,
+          ...(snapshots.village != null ? { village: snapshots.village } : {}),
+          ...(snapshots.policyHolderName != null ? { policyHolderName: snapshots.policyHolderName } : {}),
+          ...(snapshots.policyTypeText != null ? { policyTypeText: snapshots.policyTypeText } : {}),
+          ...(snapshots.policyGroupingText != null
+            ? { policyGroupingText: snapshots.policyGroupingText }
+            : {}),
+          ...(snapshots.categoryText != null ? { categoryText: snapshots.categoryText } : {}),
         },
       });
 
@@ -338,6 +374,62 @@ export function createClaimRouter(env: Env) {
       next(e);
     }
   });
+
+  r.post(
+    "/match-preview",
+    requireAnyPermission(["claim:read", "claim:create", "claim:update"]),
+    async (req, res, next) => {
+      try {
+        const body = z
+          .object({
+            policyNoText: z.string().max(120).optional().nullable(),
+            svkkPublicId: z.string().max(64).optional().nullable(),
+            policyHolderName: z.string().max(200).optional().nullable(),
+            policyTypeText: z.string().max(200).optional().nullable(),
+            policyStartDate: z.string().optional().nullable(),
+            policyEndDate: z.string().optional().nullable(),
+            sumInsured: z.number().nonnegative().optional().nullable(),
+            insuranceCompany: z.string().max(200).optional().nullable(),
+            admissionDate: z.string().optional().nullable(),
+            lodgeDate: z.string().optional().nullable(),
+            claimReceivedDate: z.string().optional().nullable(),
+          })
+          .parse(req.body);
+
+        const link = await resolveClaimManualPolicyLink({
+          policyNo: body.policyNoText,
+          svkkPublicId: body.svkkPublicId,
+          policyHolderName: body.policyHolderName,
+          policyTypeText: body.policyTypeText,
+          policyStartDate: parseClaimDate(body.policyStartDate ?? ""),
+          policyEndDate: parseClaimDate(body.policyEndDate ?? ""),
+          sumInsured: body.sumInsured ?? null,
+          insuranceCompany: body.insuranceCompany,
+          admissionDate: parseClaimDate(body.admissionDate ?? ""),
+          lodgeDate: parseClaimDate(body.lodgeDate ?? ""),
+          claimReceivedDate: parseClaimDate(body.claimReceivedDate ?? ""),
+        });
+
+        res.json({
+          matchStatus: link.matchStatus,
+          matchReason: link.matchReason,
+          linked: Boolean(link.policyId),
+          matchedPolicyNo: link.matchedPolicyNo,
+          yearLabel: link.yearLabel,
+          svkkPublicId: link.svkkPublicId,
+          holderName: link.holderName,
+          village: link.village,
+          policyTypeName: link.policyTypeName,
+          policyGrouping: link.policyGrouping,
+          categoryText: link.categoryText,
+          verificationWarnings: link.verificationWarnings,
+          linkWarning: link.linkWarning,
+        });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
 
   r.get("/", requirePermission("claim:read"), async (req, res, next) => {
     try {
@@ -474,8 +566,11 @@ export function createClaimRouter(env: Env) {
           id: true,
           village: true,
           svkkPublicId: true,
+          policyYear: true,
           policyHolderName: true,
           policyTypeText: true,
+          policyGroupingText: true,
+          categoryText: true,
           policyStartDate: true,
           policyEndDate: true,
           sumInsured: true,
@@ -539,10 +634,30 @@ export function createClaimRouter(env: Env) {
           });
           update.insuredPartyId = party?.id ?? null;
         }
+        Object.assign(
+          update,
+          applyMatchedPolicySnapshots(
+            {
+              svkkPublicId: body.svkkPublicId ?? found.svkkPublicId,
+              policyYear: body.policyYear ?? found.policyYear,
+              village: body.village !== undefined ? body.village : found.village,
+              policyHolderName: body.policyHolderName ?? found.policyHolderName,
+              policyTypeText: body.policyTypeText ?? found.policyTypeText,
+              policyGroupingText: body.policyGroupingText ?? found.policyGroupingText,
+              categoryText: body.categoryText ?? found.categoryText,
+            },
+            link,
+          ),
+        );
         // When unlinked and SVKK unchanged, keep existing insuredPartyId.
       }
 
-      const nextVillage = body.village !== undefined ? body.village : found.village;
+      const nextVillage =
+        update.village !== undefined
+          ? (update.village as string | null)
+          : body.village !== undefined
+            ? body.village
+            : found.village;
       assertGeoFieldsOnWrite(
         { village: nextVillage, area: policyArea },
         scope,

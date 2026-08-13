@@ -201,6 +201,27 @@ function optText(raw: string): string | null {
   return t || null;
 }
 
+/** Fill blank claim fields from a matched policy. Does not overwrite user-entered values. */
+export function mergeEmptyClaimFieldsFromPolicy(
+  prev: ClaimEditFormValues,
+  patch: Partial<ClaimEditFormValues>,
+): ClaimEditFormValues {
+  let changed = false;
+  const next = { ...prev };
+  for (const [rawKey, rawVal] of Object.entries(patch)) {
+    const key = rawKey as keyof ClaimEditFormValues;
+    const val = rawVal ?? "";
+    if (!val) continue;
+    const current = prev[key] ?? "";
+    const villageJunk = key === "village" && /^\d+(\.\d+)?$/.test(current.trim());
+    if (!current.trim() || villageJunk) {
+      next[key] = val;
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
+}
+
 function defaultStatusText(status: string): string | null {
   if (status === "APPROVED") return "APPROVED";
   if (status === "REJECTED") return "REJECTED";

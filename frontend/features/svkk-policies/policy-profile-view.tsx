@@ -48,6 +48,7 @@ import { onOfflineAwareLinkClick } from "@/lib/svkk/offline/navigate";
 import { useMemo, useState, type ReactNode } from "react";
 import type { PolicyListYearSibling } from "@/features/svkk-policies/policy-year-siblings";
 import { PolicyProfileClaimsTab } from "@/features/svkk-policies/policy-profile-claims-tab";
+import { PolicyProfileCdHistoryTab } from "@/features/svkk-policies/policy-profile-cd-history-tab";
 import { yearChipLabel } from "@/features/svkk-policies/policy-year-display";
 
 /** Corporate blue palette aligned with insurance dashboard reference */
@@ -496,6 +497,7 @@ export function PolicyProfileView({
                   ["loan", "Loan / CD / Refund"],
                   ["documents", "Documents"],
                   ["claims", "Claims"],
+                  ["cd_history", "CD Account History"],
                 ].map(([id, label]) => (
                   <TabsTrigger
                     key={id}
@@ -676,6 +678,7 @@ export function PolicyProfileView({
                 <div className="border-t border-[#E5E7EB] pt-6">
                   <SubsectionLabel>CD</SubsectionLabel>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailField icon={<Calendar className="size-4" />} label="Date of Submission" value={fmtDate(row.dateOfSubmission)} />
                     <DetailField icon={<FileText className="size-4" />} label="CD Account Used" value={yesNoLabel(row.cdAccountUsed)} />
                     <DetailField icon={<IndianRupee className="size-4" />} label="CD Amount" value={fmt(row.cdAmount)} monetary />
                   </div>
@@ -768,6 +771,12 @@ export function PolicyProfileView({
               <PolicyProfileClaimsTab
                 policyId={currentPolicyId}
                 svkkPublicId={row.insuredParty?.svkkPublicId}
+                subtextClassName={profileTheme.subtext}
+              />
+            </TabsContent>
+            <TabsContent value="cd_history" className="mt-6">
+              <PolicyProfileCdHistoryTab
+                policyId={currentPolicyId}
                 subtextClassName={profileTheme.subtext}
               />
             </TabsContent>

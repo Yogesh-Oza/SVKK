@@ -3,6 +3,7 @@ import {
   claimDetailToForm,
   emptyClaimEditForm,
   formToClaimPatch,
+  mergeEmptyClaimFieldsFromPolicy,
 } from "./claim-edit-form";
 import type { ClaimDetail } from "./claim-detail-types";
 
@@ -65,5 +66,27 @@ describe("claimDetailToForm", () => {
     const form = claimDetailToForm(detail);
     expect(form.policyNoText).toBe("PO-99");
     expect(form.policyGroupingText).toBe("RTY");
+  });
+});
+
+describe("mergeEmptyClaimFieldsFromPolicy", () => {
+  it("fills blank SVKK and numeric village from the matched policy", () => {
+    const form = emptyClaimEditForm();
+    form.village = "72624";
+    const next = mergeEmptyClaimFieldsFromPolicy(form, {
+      svkkPublicId: "RTYJAN0038",
+      village: "Bhachau",
+      policyYear: "2024-25",
+    });
+    expect(next.svkkPublicId).toBe("RTYJAN0038");
+    expect(next.village).toBe("Bhachau");
+    expect(next.policyYear).toBe("2024-25");
+  });
+
+  it("does not overwrite an SVKK ID the user already typed", () => {
+    const form = emptyClaimEditForm();
+    form.svkkPublicId = "CUSTOM";
+    const next = mergeEmptyClaimFieldsFromPolicy(form, { svkkPublicId: "RTYJAN0038" });
+    expect(next.svkkPublicId).toBe("CUSTOM");
   });
 });

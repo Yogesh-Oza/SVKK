@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   claimMatchInputFromFields,
   linkFieldsFromMatchResult,
+  applyMatchedPolicySnapshots,
+  isPlaceholderVillage,
 } from "./claim-policy-link.js";
 import type { ClaimMatchResult } from "./claim-policy-match.js";
 
@@ -39,12 +41,23 @@ describe("linkFieldsFromMatchResult", () => {
         policyYearId: "py-1",
         insuredPartyId: "party-1",
         policyArea: "Area A",
+        policyNo: "PO-1",
+        svkkPublicId: "RTYJAN0038",
+        holderName: "Rekha",
+        village: "Bhachau",
+        policyGrouping: "RTY",
+        categoryText: "Category B",
+        yearLabel: "2024-25",
+        policyTypeName: "Family Floater",
       }),
       "PO-1",
     );
     expect(out.policyId).toBe("pol-1");
     expect(out.policyYearId).toBe("py-1");
     expect(out.insuredPartyId).toBe("party-1");
+    expect(out.matchedPolicyNo).toBe("PO-1");
+    expect(out.svkkPublicId).toBe("RTYJAN0038");
+    expect(out.village).toBe("Bhachau");
     expect(out.linkWarning).toBeNull();
   });
 
@@ -59,6 +72,8 @@ describe("linkFieldsFromMatchResult", () => {
     expect(out.policyId).toBeNull();
     expect(out.policyYearId).toBeNull();
     expect(out.insuredPartyId).toBeNull();
+    expect(out.matchedPolicyNo).toBeNull();
+    expect(out.svkkPublicId).toBeNull();
     expect(out.linkWarning).toContain("No policy found");
   });
 
@@ -85,5 +100,57 @@ describe("linkFieldsFromMatchResult", () => {
     );
     expect(out.policyId).toBeNull();
     expect(out.linkWarning).toBeNull();
+  });
+});
+
+describe("applyMatchedPolicySnapshots", () => {
+  const linked = linkFieldsFromMatchResult(
+    match({
+      matchStatus: ClaimPolicyMatchStatus.MATCHED_EXACT,
+      matchReason: "MATCHED",
+      policyId: "pol-1",
+      svkkPublicId: "RTYJAN0038",
+      yearLabel: "2024-25",
+      village: "Bhachau",
+      holderName: "Rekha Hasmukh Satra",
+      policyTypeName: "Family Floater",
+      policyGrouping: "RTY",
+      categoryText: "b",
+    }),
+    "PO-1",
+  );
+
+  it("fills blank SVKK ID and numeric-only village from the matched policy", () => {
+    const out = applyMatchedPolicySnapshots(
+      { svkkPublicId: "", village: "72624", policyYear: "2025-26" },
+      linked,
+    );
+    expect(out.svkkPublicId).toBe("RTYJAN0038");
+    expect(out.village).toBe("Bhachau");
+    expect(out.policyYear).toBeUndefined();
+  });
+
+  it("does not overwrite a SVKK ID the user already entered", () => {
+    const out = applyMatchedPolicySnapshots({ svkkPublicId: "CUSTOM" }, linked);
+    expect(out.svkkPublicId).toBeUndefined();
+  });
+
+  it("fills nothing when the claim is unlinked", () => {
+    const unlinked = linkFieldsFromMatchResult(
+      match({
+        matchStatus: ClaimPolicyMatchStatus.UNLINKED,
+        matchReason: "UNLINKED",
+      }),
+      "",
+    );
+    expect(applyMatchedPolicySnapshots({ svkkPublicId: "" }, unlinked)).toEqual({});
+  });
+});
+
+describe("isPlaceholderVillage", () => {
+  it("treats blank and numeric CSV leftovers as placeholders", () => {
+    expect(isPlaceholderVillage("")).toBe(true);
+    expect(isPlaceholderVillage("72624")).toBe(true);
+    expect(isPlaceholderVillage("Bhachau")).toBe(false);
   });
 });

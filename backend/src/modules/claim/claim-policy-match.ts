@@ -43,6 +43,11 @@ export type ClaimMatchResult = {
   policyArea?: string | null;
   policyTypeName?: string | null;
   conflictDetail?: string;
+  /** Canonical Policy.policyNo when MATCHED. */
+  policyNo?: string;
+  holderName?: string | null;
+  policyGrouping?: string | null;
+  categoryText?: string | null;
 };
 
 export type PolicyYearHint = {
@@ -64,6 +69,8 @@ export type PolicyMatchCandidate = {
   insuredPartyId: string;
   insuredParty: { id: string; svkkPublicId: string; name: string };
   policyType: { id: string; key: string; name: string };
+  policyGrouping: string | null;
+  categoryText: string | null;
   years: PolicyYearHint[];
 };
 
@@ -240,6 +247,10 @@ function matchedResult(
     village: policy.village,
     policyArea: policy.area,
     policyTypeName: policy.policyType.name,
+    policyNo,
+    holderName: policy.holderName ?? policy.insuredParty.name,
+    policyGrouping: policy.policyGrouping,
+    categoryText: policy.categoryText,
   };
 }
 
@@ -279,6 +290,8 @@ function toCandidate(row: PolicyLookupRow): PolicyMatchCandidate {
       key: row.policyType.key,
       name: row.policyType.name,
     },
+    policyGrouping: row.policyGrouping,
+    categoryText: row.categoryText,
     years: row.years.map((y) => ({
       id: y.id,
       yearLabel: y.yearLabel,

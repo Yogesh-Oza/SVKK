@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,7 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { svkkJson } from "@/lib/svkk/api";
 
-import { emptyClaimEditForm, formToClaimPatch, type ClaimEditFormValues } from "./claim-edit-form";
+import {
+  emptyClaimEditForm,
+  formToClaimPatch,
+  mergeEmptyClaimFieldsFromPolicy,
+  type ClaimEditFormValues,
+} from "./claim-edit-form";
 import { ClaimFormFields } from "./claim-form-fields";
 
 type ClaimAddDialogProps = {
@@ -33,6 +38,10 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  const fillEmptyFromPolicy = useCallback((patch: Partial<ClaimEditFormValues>) => {
+    setForm((prev) => mergeEmptyClaimFieldsFromPolicy(prev, patch));
+  }, []);
+
   function handleClose() {
     setClaimNo("");
     setForm(emptyClaimEditForm());
@@ -45,12 +54,12 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
       toast.error("Claim number is required");
       return;
     }
-    if (!form.svkkPublicId.trim()) {
-      toast.error("SVKK ID is required");
+    if (!form.svkkPublicId.trim() && !form.policyNoText.trim()) {
+      toast.error("Enter an SVKK ID, or a Policy Number so SVKK can be filled from the policy");
       return;
     }
-    if (!form.policyYear.trim()) {
-      toast.error("Policy year is required");
+    if (!form.policyYear.trim() && !form.policyNoText.trim()) {
+      toast.error("Enter a policy year, or a Policy Number so the year can be filled from the policy");
       return;
     }
     const patch = formToClaimPatch(form);
@@ -64,6 +73,7 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
         id: string;
         policyId?: string | null;
         matchStatus?: string | null;
+        svkkPublicId?: string | null;
         policyLinkWarning?: string | null;
       }>("/claims", {
         method: "POST",
@@ -73,7 +83,11 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
         toast.success("Claim created");
         toast.warning(created.policyLinkWarning);
       } else if (created.policyId) {
-        toast.success("Claim created and linked to policy");
+        toast.success(
+          created.svkkPublicId
+            ? `Claim created and linked · SVKK ${created.svkkPublicId}`
+            : "Claim created and linked to policy",
+        );
       } else {
         toast.success("Claim created");
       }
@@ -92,8 +106,8 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Add new claim entry</DialogTitle>
           <DialogDescription>
-            Fill in claim details. Claim #, SVKK ID, and policy year are required. Entering a Policy
-            Number will try to link this claim to the matching policy automatically.
+            Claim # is required. Enter a Policy Number to auto-link and fill blank SVKK ID, year,
+            holder, type, grouping, category, and village from the policy — same as Edit.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -103,6 +117,7 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
             mode="create"
             claimNo={claimNo}
             onClaimNoChange={setClaimNo}
+            onFillEmptyFromPolicy={fillEmptyFromPolicy}
           />
         </div>
         <DialogFooter className="shrink-0 border-t px-6 py-4">

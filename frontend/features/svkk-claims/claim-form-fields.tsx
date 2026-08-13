@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 
 import type { ClaimEditFormValues } from "./claim-edit-form";
+import { ClaimPolicyMatchHint } from "./claim-policy-match-hint";
 
 const CLAIM_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 
@@ -53,6 +54,8 @@ export type ClaimFormFieldsProps = {
   mode: "create" | "edit";
   claimNo?: string;
   onClaimNoChange?: (value: string) => void;
+  savedLinkedPolicyNo?: string | null;
+  onFillEmptyFromPolicy?: (patch: Partial<ClaimEditFormValues>) => void;
 };
 
 export function ClaimFormFields({
@@ -61,6 +64,8 @@ export function ClaimFormFields({
   mode,
   claimNo,
   onClaimNoChange,
+  savedLinkedPolicyNo,
+  onFillEmptyFromPolicy,
 }: ClaimFormFieldsProps) {
   const set = (key: keyof ClaimEditFormValues) => (value: string) => onChange(key, value);
   const required = mode === "create";
@@ -73,10 +78,10 @@ export function ClaimFormFields({
             <Input value={claimNo ?? ""} onChange={(e) => onClaimNoChange?.(e.target.value)} />
           </Field>
         ) : null}
-        <Field label={required ? "SVKK ID *" : "SVKK ID"}>
+        <Field label="SVKK ID" hint={required ? "or filled from policy number" : undefined}>
           <Input value={form.svkkPublicId} onChange={(e) => set("svkkPublicId")(e.target.value)} />
         </Field>
-        <Field label={required ? "Policy year *" : "Policy year"}>
+        <Field label="Policy year" hint={required ? "or filled from policy number" : undefined}>
           <Input value={form.policyYear} onChange={(e) => set("policyYear")(e.target.value)} />
         </Field>
         <Field label="Village">
@@ -97,8 +102,13 @@ export function ClaimFormFields({
         <Field label="Policy type">
           <Input value={form.policyTypeText} onChange={(e) => set("policyTypeText")(e.target.value)} />
         </Field>
-        <Field label="Policy number" hint="auto-links policy">
+        <Field label="Policy number" hint="links on save — not while typing">
           <Input value={form.policyNoText} onChange={(e) => set("policyNoText")(e.target.value)} />
+          <ClaimPolicyMatchHint
+            form={form}
+            savedLinkedPolicyNo={savedLinkedPolicyNo}
+            onFillEmpty={onFillEmptyFromPolicy}
+          />
         </Field>
         <Field label="Policy grouping" hint="CSV snapshot">
           <Input

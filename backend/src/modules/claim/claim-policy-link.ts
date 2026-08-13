@@ -32,9 +32,67 @@ export type ClaimPolicyLinkFields = {
   policyArea: string | null;
   policyTypeName: string | null;
   yearLabel: string | null;
+  /** Policy number on the matched Policy row, when linked. */
+  matchedPolicyNo: string | null;
+  svkkPublicId: string | null;
+  holderName: string | null;
+  village: string | null;
+  policyGrouping: string | null;
+  categoryText: string | null;
   /** Non-null when the user entered a policy number that did not link. */
   linkWarning: string | null;
 };
+
+export type ClaimSnapshotFields = {
+  svkkPublicId?: string | null;
+  policyYear?: string | null;
+  village?: string | null;
+  policyHolderName?: string | null;
+  policyTypeText?: string | null;
+  policyGroupingText?: string | null;
+  categoryText?: string | null;
+};
+
+/** Village values that came from a shifted CSV (lodge amount in the Village column). */
+export function isPlaceholderVillage(village: string | null | undefined): boolean {
+  const t = (village ?? "").trim();
+  if (!t) return true;
+  return /^\d+(\.\d+)?$/.test(t);
+}
+
+/**
+ * Copy identifiers from the matched policy into blank claim fields.
+ * Does not overwrite a value the user (or CSV) already provided, except numeric-only village.
+ */
+export function applyMatchedPolicySnapshots(
+  current: ClaimSnapshotFields,
+  link: ClaimPolicyLinkFields,
+): Partial<ClaimSnapshotFields> {
+  if (!link.policyId) return {};
+  const out: Partial<ClaimSnapshotFields> = {};
+  if (!current.svkkPublicId?.trim() && link.svkkPublicId) {
+    out.svkkPublicId = link.svkkPublicId;
+  }
+  if (!current.policyYear?.trim() && link.yearLabel) {
+    out.policyYear = link.yearLabel;
+  }
+  if (isPlaceholderVillage(current.village) && link.village) {
+    out.village = link.village;
+  }
+  if (!current.policyHolderName?.trim() && link.holderName) {
+    out.policyHolderName = link.holderName;
+  }
+  if (!current.policyTypeText?.trim() && link.policyTypeName) {
+    out.policyTypeText = link.policyTypeName;
+  }
+  if (!current.policyGroupingText?.trim() && link.policyGrouping) {
+    out.policyGroupingText = link.policyGrouping;
+  }
+  if (!current.categoryText?.trim() && link.categoryText) {
+    out.categoryText = link.categoryText;
+  }
+  return out;
+}
 
 export function claimMatchInputFromFields(fields: ClaimManualMatchFields): ClaimMatchInput {
   return {
@@ -73,6 +131,12 @@ export function linkFieldsFromMatchResult(
     policyArea: match.policyArea ?? null,
     policyTypeName: match.policyTypeName ?? null,
     yearLabel: match.yearLabel ?? null,
+    matchedPolicyNo: linked ? (match.policyNo ?? (trimmed || null)) : null,
+    svkkPublicId: linked ? (match.svkkPublicId ?? null) : null,
+    holderName: linked ? (match.holderName ?? null) : null,
+    village: linked ? (match.village ?? null) : null,
+    policyGrouping: linked ? (match.policyGrouping ?? null) : null,
+    categoryText: linked ? (match.categoryText ?? null) : null,
     linkWarning: !trimmed || linked ? null : match.matchReason,
   };
 }

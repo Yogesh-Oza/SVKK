@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import {
   claimDetailToForm,
   emptyClaimEditForm,
   formToClaimPatch,
+  mergeEmptyClaimFieldsFromPolicy,
   type ClaimEditFormValues,
 } from "./claim-edit-form";
 import { ClaimFormFields } from "./claim-form-fields";
@@ -34,7 +35,11 @@ type ClaimEditDialogProps = {
 export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEditDialogProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [meta, setMeta] = useState<{ claimNo: string; policyNo: string } | null>(null);
+  const [meta, setMeta] = useState<{
+    claimNo: string;
+    policyNo: string;
+    matchStatus: string | null;
+  } | null>(null);
   const [form, setForm] = useState<ClaimEditFormValues>(emptyClaimEditForm);
 
   useEffect(() => {
@@ -50,7 +55,8 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
         if (cancelled) return;
         setMeta({
           claimNo: detail.claimNo,
-          policyNo: detail.policy?.policyNo ?? "—",
+          policyNo: detail.policy?.policyNo ?? detail.policyNoText ?? "—",
+          matchStatus: detail.matchStatus ?? null,
         });
         setForm(claimDetailToForm(detail));
       })
@@ -72,6 +78,10 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const fillEmptyFromPolicy = useCallback((patch: Partial<ClaimEditFormValues>) => {
+    setForm((prev) => mergeEmptyClaimFieldsFromPolicy(prev, patch));
+  }, []);
+
   async function handleSave() {
     if (!claimId) return;
     const parsed = formToClaimPatch(form);
@@ -91,13 +101,16 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
       if (updated.policyLinkWarning) {
         toast.success("Claim updated");
         toast.warning(updated.policyLinkWarning);
+      } else if (updated.matchStatus === "UNLINKED") {
+        toast.success("Claim updated and unlinked from policy");
+      } else if (updated.matchStatus === "CONFLICT") {
+        toast.success("Claim updated");
+        toast.warning("Several policies share that Policy Number — claim was left unlinked");
+      } else if (updated.policyId) {
+        toast.success("Claim updated and linked to policy");
       } else {
         toast.success(
-          updated.policyId
-            ? "Claim updated and linked to policy"
-            : form.policyNoText.trim()
-              ? "Claim updated"
-              : "Claim updated (policy unlinked)",
+          form.policyNoText.trim() ? "Claim updated" : "Claim updated (policy unlinked)",
         );
       }
       onSaved(updated);
@@ -115,12 +128,14 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Edit claim details</DialogTitle>
           <DialogDescription>
-            Update claim fields. Changing the Policy Number re-runs matching and updates the linked
-            policy. Clearing it unlinks the claim from any policy.
+            Update claim fields. Matching runs when you click Save — typing a new Policy Number
+            does not change the saved link yet. Clearing it unlinks the claim on save.
             {meta ? (
               <span className="mt-1 block font-mono text-xs">
                 {meta.claimNo}
-                {meta.policyNo !== "—" ? ` · Linked policy ${meta.policyNo}` : ""}
+                {meta.policyNo !== "—"
+                  ? ` · Currently saved: ${meta.matchStatus === "MATCHED_EXACT" ? "Matched" : meta.matchStatus ?? "linked"} · ${meta.policyNo}`
+                  : " · Currently saved: not linked"}
               </span>
             ) : claimNo ? (
               <span className="mt-1 block font-mono text-xs">{claimNo}</span>
@@ -135,7 +150,13 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
               Loading claim…
             </div>
           ) : (
-            <ClaimFormFields form={form} onChange={onChange} mode="edit" />
+            <ClaimFormFields
+              form={form}
+              onChange={onChange}
+              mode="edit"
+              savedLinkedPolicyNo={meta?.policyNo === "—" ? null : meta?.policyNo}
+              onFillEmptyFromPolicy={fillEmptyFromPolicy}
+            />
           )}
         </div>
 

@@ -115,6 +115,13 @@ function duplicateImportDescription(info: DuplicateImportInfo): string {
   return `The same CSV contents were already imported on ${when}${file}. Duplicate detection uses file data, not the filename — if you changed the CSV and still see this, save the file and upload again. Job ${info.jobId.slice(0, 8)}…. Click Import anyway to re-run, or edit the CSV data first.`;
 }
 
+type PolicyCsvWalletImpact = {
+  currentBalance: string;
+  projectedDebit: string;
+  resultingBalance: string;
+  wouldGoNegative: boolean;
+};
+
 type PolicyCsvImportInlineProps = {
   disabled?: boolean;
   onImported?: () => void;
@@ -138,6 +145,7 @@ export function PolicyCsvImportInline({
   const [summary, setSummary] = useState<PolicyPreviewSummary | null>(null);
   const [headerWarnings, setHeaderWarnings] = useState<string[]>([]);
   const [duplicateImport, setDuplicateImport] = useState<DuplicateImportInfo | null>(null);
+  const [walletImpact, setWalletImpact] = useState<PolicyCsvWalletImpact | null>(null);
   const [lastResult, setLastResult] = useState<ImportResult | null>(null);
   const [importMsg, setImportMsg] = useState("");
 
@@ -175,6 +183,7 @@ export function PolicyCsvImportInline({
     setLastResult(null);
     setImportMsg("");
     setDuplicateImport(null);
+    setWalletImpact(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -188,12 +197,14 @@ export function PolicyCsvImportInline({
         summary: PolicyPreviewSummary;
         warnings?: string[];
         duplicateImport?: DuplicateImportInfo | null;
+        walletImpact?: PolicyCsvWalletImpact | null;
       }>("/upload/policy-csv/preview", fd);
       setPreviewToken(data.previewToken);
       setPreviewRows(data.previewRows);
       setSummary(data.summary);
       setHeaderWarnings(data.warnings ?? []);
       setDuplicateImport(data.duplicateImport ?? null);
+      setWalletImpact(data.walletImpact ?? null);
       setPreviewOpen(true);
       if (data.duplicateImport) {
         toast.warning("This file was imported before", {
@@ -215,9 +226,11 @@ export function PolicyCsvImportInline({
         const { data } = await backendApi.post<ImportResult>("/upload/policy-csv/confirm", {
           previewToken,
           force,
+          allowNegativeWallet: walletImpact?.wouldGoNegative === true ? true : undefined,
         });
         setLastResult(data);
         setDuplicateImport(null);
+        setWalletImpact(null);
         setPreviewOpen(false);
         setFile(null);
         const actionSummary = isUpdateMode
@@ -242,7 +255,7 @@ export function PolicyCsvImportInline({
         setConfirmBusy(false);
       }
     },
-    [isUpdateMode, onImported, previewToken],
+    [isUpdateMode, onImported, previewToken, walletImpact?.wouldGoNegative],
   );
 
   const confirmDisabled = isUpdateMode
@@ -369,6 +382,18 @@ export function PolicyCsvImportInline({
               <AlertTriangle className="text-amber-600" />
               <AlertTitle>File already imported</AlertTitle>
               <AlertDescription>{duplicateImportDescription(duplicateImport)}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {walletImpact?.wouldGoNegative ? (
+            <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-100">
+              <AlertTriangle className="text-amber-600" />
+              <AlertTitle>Wallet will go negative</AlertTitle>
+              <AlertDescription>
+                Projected CD debit {walletImpact.projectedDebit} would leave balance{" "}
+                {walletImpact.resultingBalance} (current {walletImpact.currentBalance}). Confirming
+                will allow a negative wallet balance.
+              </AlertDescription>
             </Alert>
           ) : null}
 

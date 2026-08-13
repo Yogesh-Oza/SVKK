@@ -143,7 +143,10 @@ function recordSummary(summary: PolicyPreviewSummary, status: PolicyPreviewRowSt
   else summary.errors++;
 }
 
-type ExistingCd = { cdAccountUsed?: boolean | null; cdAmount?: unknown };
+type ExistingCd = {
+  cdAccountUsed?: boolean | null;
+  cdAmount?: Prisma.Decimal | number | string | null;
+};
 
 function csvNextEffectiveCd(map: Map<string, string>, existing?: ExistingCd | null): Prisma.Decimal {
   const usedRaw = getCsvField(map, "cd_account_status");
