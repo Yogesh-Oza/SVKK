@@ -319,13 +319,13 @@ export function resolveClaimPolicyMatch(
 
   const pool = candidates.filter((p) => normalizePolicyNo(p.policyNo) === policyNo);
   if (pool.length === 0) {
-    return unlinked(`No policy found for Policy Number ${input.policyNo.trim() || policyNo}`);
+    return unlinked("No policy found for this Policy Number.");
   }
   if (pool.length > 1) {
     const display = input.policyNo.trim() || policyNo;
     return conflict(
-      `${pool.length} policies share Policy Number ${display}`,
-      `Multiple policies share Policy Number ${display}`,
+      `${pool.length} live policies share Policy Number ${display}`,
+      "Policy Number matches multiple live policies. Claim cannot be linked safely.",
     );
   }
 

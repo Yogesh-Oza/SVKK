@@ -10,7 +10,6 @@ import {
   parseWalletAmount,
   parseWalletCsvDate,
   parseWalletLedgerType,
-  WALLET_ALLOWED_CATEGORIES,
   WALLET_MONTH_NAMES,
   type WalletCategory,
 } from "./wallet-csv-format.js";
@@ -246,7 +245,7 @@ export async function buildWalletSummary(
     }),
     prisma.walletTransaction.groupBy({
       by: ["category"],
-      where: { walletId, type: "DEBIT", category: { in: [...WALLET_ALLOWED_CATEGORIES] } },
+      where: { walletId, type: "DEBIT" },
       _count: { _all: true },
       _sum: { amount: true },
     }),
@@ -270,21 +269,16 @@ export async function buildWalletSummary(
     }),
   ]);
 
-  const mis = emptyCategoryMis();
-  for (const row of debitByCategory) {
-    const cat = normalizeWalletCategory(row.category ?? "");
-    if (!cat) continue;
-    mis[cat] = {
-      count: row._count._all,
-      amount: decimalToString(row._sum.amount ?? new Prisma.Decimal(0)),
-    };
-  }
-
-  const misList = WALLET_ALLOWED_CATEGORIES.map((category) => ({
-    category,
-    count: mis[category].count,
-    amount: mis[category].amount,
-  }));
+  const misList = debitByCategory
+    .map((row) => {
+      const category = normalizeWalletCategory(row.category ?? "") || "Unspecified";
+      return {
+        category,
+        count: row._count._all,
+        amount: decimalToString(row._sum.amount ?? new Prisma.Decimal(0)),
+      };
+    })
+    .sort((a, b) => Number(b.amount) - Number(a.amount));
 
   const mapFieldMis = (
     rows: Array<{

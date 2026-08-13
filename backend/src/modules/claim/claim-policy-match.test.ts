@@ -212,7 +212,7 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
   it("zero policies → UNLINKED", () => {
     const r = resolveClaimPolicyMatch([], baseInput(), emptyTypeCache());
     expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.UNLINKED);
-    expect(r.matchReason).toContain("No policy found");
+    expect(r.matchReason).toContain("No policy found for this Policy Number");
   });
 
   it("two policies with the same normalized Policy Number → CONFLICT", () => {
@@ -221,7 +221,8 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
     const r = resolveClaimPolicyMatch([a, b], baseInput({ policyNo: "ABC123" }), emptyTypeCache());
     expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.CONFLICT);
     expect(r.policyId).toBeUndefined();
-    expect(r.matchReason).toContain("Multiple policies share Policy Number");
+    expect(r.matchReason).toContain("Policy Number matches multiple live policies");
+    expect(r.matchReason).toContain("cannot be linked safely");
   });
 
   it("single Policy, two years, exact dates pick one year", () => {

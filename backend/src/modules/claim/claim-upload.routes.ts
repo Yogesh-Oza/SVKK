@@ -30,11 +30,16 @@ import {
   validateClaimRow,
 } from "./claim-csv-import.js";
 import {
+  decideGroupedClaimPreview,
+  groupParsedClaimRows,
+  normalizeClaimNo,
+  type ExistingClaimIdentity,
+} from "./claim-csv-group.js";
+import {
   claimRowToMap,
   parseClaimFile,
 } from "./claim-csv-parse.js";
 import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "./claim-policy-match.js";
-import { decideClaimImportAction } from "./claim-duplicate.js";
 import {
   createPreviewToken,
   emptyMatchStats,
@@ -146,7 +151,7 @@ type ExistingClaimRow = {
   claimType: string | null;
 };
 
-function existingToIdentity(row: ExistingClaimRow) {
+function existingToIdentity(row: ExistingClaimRow): ExistingClaimIdentity {
   return {
     claimNo: row.claimNo,
     policyId: row.policyId,
@@ -159,23 +164,8 @@ function existingToIdentity(row: ExistingClaimRow) {
   };
 }
 
-function previewDecisionForRow(
-  row: ReturnType<typeof parseClaimRow>,
-  match: Awaited<ReturnType<typeof evaluateClaimRow>>,
-  existing: ExistingClaimRow | undefined,
-  linkMode: ClaimLinkMode,
-) {
-  return decideClaimImportAction({
-    matchStatus: match.matchStatus,
-    linkMode,
-    existing: existing ? existingToIdentity(existing) : null,
-    incoming: claimEventIdentityFromRow(row, match),
-    validationError: validateClaimRow(row),
-  });
-}
-
 async function loadExistingByClaimNo(claimNos: string[]): Promise<Map<string, ExistingClaimRow>> {
-  const unique = [...new Set(claimNos.filter(Boolean))];
+  const unique = [...new Set(claimNos.map((n) => normalizeClaimNo(n)).filter(Boolean))];
   if (!unique.length) return new Map();
   const existing = await prisma.claim.findMany({
     where: { claimNo: { in: unique } },
@@ -184,67 +174,42 @@ async function loadExistingByClaimNo(claimNos: string[]): Promise<Map<string, Ex
   return new Map(existing.map((c) => [c.claimNo, c]));
 }
 
-function applyDispositionStats(
-  stats: ClaimImportMatchStats,
-  parsedRows: ReturnType<typeof parseClaimRow>[],
-  matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
-  existingByNo: Map<string, ExistingClaimRow>,
-  linkMode: ClaimLinkMode,
-): void {
-  for (let i = 0; i < parsedRows.length; i++) {
-    const row = parsedRows[i]!;
-    const match = matches[i]!;
-    const decision = previewDecisionForRow(row, match, existingByNo.get(row.claimNo), linkMode);
-    if (decision.disposition === "WILL_CREATE") stats.willCreate++;
-    else if (decision.disposition === "WILL_UPDATE") stats.willUpdate++;
-    else stats.willReject++;
-    if (decision.dispositionReason === "different_event") stats.differentEventBlocked++;
-  }
-}
-
 function isoDate(d: Date | null | undefined): string | null {
   return d ? d.toISOString() : null;
 }
 
-async function buildPreviewRows(
-  parsedRows: ReturnType<typeof parseClaimRow>[],
-  matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
+function toPublicPreviewRow(
+  grouped: ReturnType<typeof decideGroupedClaimPreview>["preview"][number],
   existingByNo: Map<string, ExistingClaimRow>,
-  linkMode: ClaimLinkMode,
 ) {
-  const previewRows = [];
-  for (let i = 0; i < parsedRows.length; i++) {
-    const row = parsedRows[i]!;
-    const match = matches[i]!;
-    const existing = existingByNo.get(row.claimNo);
-    const decision = previewDecisionForRow(row, match, existing, linkMode);
-    const warnings = [...match.verificationWarnings, ...decision.extraWarnings];
-    previewRows.push({
-      rowNumber: row.rowNumber,
-      claimNo: row.claimNo,
-      policyNo: row.policyNo,
-      svkkPublicId: row.svkkPublicIdCsv || match.svkkPublicId || "",
-      policyHolderName: row.policyHolderName,
-      patientName: row.patientName,
-      hospitalName: row.hospitalName,
-      hospitalArea: row.hospitalArea,
-      insuranceCompany: row.insuranceCompany,
-      statusText: row.statusText,
-      lodgeType: row.actualLodgeType || row.claimType || null,
-      claimAmount: row.claimAmount,
-      paidAmount: row.approvedAmount,
-      admissionDate: isoDate(row.admissionDate),
-      policyYear: match.yearLabel ?? null,
-      matchStatus: match.matchStatus,
-      matchReason: match.matchReason,
-      verificationWarnings: warnings,
-      alreadyExists: Boolean(existing),
-      disposition: decision.disposition,
-      dispositionReason: decision.dispositionReason,
-      eventClassification: decision.eventClassification,
-    });
-  }
-  return previewRows;
+  const { row, match, decision, sourceRowRole, sourceRowCount } = grouped;
+  const warnings = [...match.verificationWarnings, ...decision.extraWarnings];
+  return {
+    rowNumber: row.rowNumber,
+    claimNo: row.claimNo,
+    policyNo: row.policyNo,
+    svkkPublicId: row.svkkPublicIdCsv || match.svkkPublicId || "",
+    policyHolderName: row.policyHolderName,
+    patientName: row.patientName,
+    hospitalName: row.hospitalName,
+    hospitalArea: row.hospitalArea,
+    insuranceCompany: row.insuranceCompany,
+    statusText: row.statusText,
+    lodgeType: row.actualLodgeType || row.claimType || null,
+    claimAmount: row.claimAmount,
+    paidAmount: row.approvedAmount,
+    admissionDate: isoDate(row.admissionDate),
+    policyYear: match.yearLabel ?? null,
+    matchStatus: match.matchStatus,
+    matchReason: match.matchReason,
+    verificationWarnings: warnings,
+    alreadyExists: Boolean(existingByNo.get(normalizeClaimNo(row.claimNo))),
+    disposition: decision.disposition,
+    dispositionReason: decision.dispositionReason,
+    eventClassification: decision.eventClassification,
+    sourceRowRole,
+    sourceRowCount,
+  };
 }
 
 function recordMatchStats(
@@ -315,18 +280,22 @@ async function runClaimImport(
   const typeCache = await buildClaimImportTypeCache();
   const policyCache = await buildClaimImportPolicyCache();
   const scope = await loadMisScope(opts.userId, opts.permissions, "claim");
+  const groups = groupParsedClaimRows(parsedRows.map((row) => applyStatusMap(row, statusMap)));
   const stats = emptyMatchStats();
   stats.totalRows = parsedRows.length;
+  stats.uniqueClaims = groups.length;
+  stats.sameCcnExtraRows = groups.reduce((n, g) => n + g.sameEventRows.length, 0);
 
   let created = 0;
   let updated = 0;
   let failed = 0;
   const rowErrors: ClaimCsvRowError[] = [];
 
-  for (let batchStart = 0; batchStart < parsedRows.length; batchStart += BATCH_SIZE) {
-    const batchEnd = Math.min(batchStart + BATCH_SIZE, parsedRows.length);
+  for (let batchStart = 0; batchStart < groups.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, groups.length);
     for (let i = batchStart; i < batchEnd; i++) {
-      const row = applyStatusMap(parsedRows[i]!, statusMap);
+      const group = groups[i]!;
+      const row = group.canonical;
       try {
         const outcome = await importClaimRow(row, {
           typeCache,
@@ -351,7 +320,21 @@ async function runClaimImport(
         else if (outcome.result === "updated") updated++;
         else if (outcome.error) {
           failed++;
+          if (outcome.error.dispositionReason === "different_event") stats.differentEventBlocked++;
           rowErrors.push(outcome.error);
+        }
+
+        for (const extra of group.differentEventRows) {
+          failed++;
+          stats.differentEventBlocked++;
+          rowErrors.push({
+            row: extra.rowNumber,
+            error: "Claim Number already exists with a different admission/event.",
+            claimNo: extra.claimNo,
+            policyNo: extra.policyNo,
+            disposition: "WILL_REJECT",
+            dispositionReason: "different_event",
+          });
         }
       } catch (e) {
         failed++;
@@ -455,16 +438,31 @@ export function createClaimUploadRouter(env: Env) {
 
         const typeCache = await buildClaimImportTypeCache();
         const policyCache = await buildClaimImportPolicyCache();
-        const stats = emptyMatchStats();
-        stats.totalRows = parsedRows.length;
-
-        const matches = [];
-        for (const row of parsedRows) {
-          matches.push(await evaluateClaimRow(row, typeCache, stats, policyCache));
+        const groups = groupParsedClaimRows(parsedRows);
+        const matchByCanonicalRow = new Map<number, Awaited<ReturnType<typeof evaluateClaimRow>>>();
+        for (const group of groups) {
+          matchByCanonicalRow.set(
+            group.canonical.rowNumber,
+            await evaluateClaimRow(group.canonical, typeCache, policyCache),
+          );
         }
 
-        const existingByNo = await loadExistingByClaimNo(parsedRows.map((r) => r.claimNo));
-        applyDispositionStats(stats, parsedRows, matches, existingByNo, linkMode);
+        const existingRows = await loadExistingByClaimNo(groups.map((g) => g.canonical.claimNo));
+        const existingByNo = new Map(
+          [...existingRows.entries()].map(([claimNo, row]) => [
+            normalizeClaimNo(claimNo),
+            existingToIdentity(row),
+          ]),
+        );
+        const { preview, stats } = decideGroupedClaimPreview({
+          groups,
+          matchByCanonicalRow,
+          existingByNo,
+          linkMode,
+          importMode,
+          validateRow: validateClaimRow,
+          identityFromRow: claimEventIdentityFromRow,
+        });
 
         const prior = await findPriorCompletedClaimImport(checksum);
         const previewToken = createPreviewToken(env, {
@@ -478,7 +476,7 @@ export function createClaimUploadRouter(env: Env) {
 
         res.json({
           previewToken,
-          previewRows: await buildPreviewRows(parsedRows, matches, existingByNo, linkMode),
+          previewRows: preview.map((row) => toPublicPreviewRow(row, existingRows)),
           summary: stats,
           duplicateImport: duplicateImportPayload(env, prior),
         });

@@ -22,7 +22,9 @@ describe("wallet-csv-format", () => {
     expect(normalizeWalletCategory("a")).toBe("A");
     expect(normalizeWalletCategory("STAFF")).toBe("Staff");
     expect(normalizeWalletCategory("svga")).toBe("SVGA");
-    expect(normalizeWalletCategory("xyz")).toBe("");
+    expect(normalizeWalletCategory("xyz")).toBe("xyz");
+    expect(normalizeWalletCategory("Category B")).toBe("B");
+    expect(normalizeWalletCategory("")).toBe("");
   });
 
   it("normalizes month names and numbers", () => {

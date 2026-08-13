@@ -64,7 +64,7 @@ describe("wallet CSV import", () => {
     const csv =
       "Date,Category,Particulars,Amount,Reference\n" +
       "2026-06-16,A,Ok,100,R1\n" +
-      "2026-06-16,ZZZ,Bad cat,50,R2\n" +
+      "2026-06-16,,Missing cat,50,R2\n" +
       "2026-06-16,B,Zero,0,R3\n" +
       "2026-06-16,C,Neg,-5,R4\n";
     const result = await importWalletUsageCsv(Buffer.from(csv, "utf8"), undefined);

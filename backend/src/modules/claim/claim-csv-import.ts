@@ -27,7 +27,6 @@ import {
 } from "./claim-policy-match.js";
 import { mapStatusTextToEnum } from "./claim-status-map.js";
 import type { ClaimCsvRowError } from "./claim-csv-errors.js";
-import type { ClaimImportMatchStats } from "./claim-csv-preview.js";
 import {
   decideClaimImportAction,
   type ClaimEventIdentity,
@@ -287,9 +286,9 @@ function matchErrorMessage(
 ): string {
   if (matchReason) return matchReason;
   if (matchStatus === ClaimPolicyMatchStatus.CONFLICT) {
-    return detail ?? "Multiple policies share this Policy Number";
+    return detail ?? "Policy Number matches multiple live policies. Claim cannot be linked safely.";
   }
-  return "No policy found for Policy Number";
+  return "No policy found for this Policy Number.";
 }
 
 export function claimEventIdentityFromRow(
@@ -308,19 +307,13 @@ export function claimEventIdentityFromRow(
   };
 }
 
-/** Evaluate match for preview without DB writes. */
+/** Evaluate match for preview without DB writes. Stats are counted per unique CCN. */
 export async function evaluateClaimRow(
   row: ParsedClaimRow,
   typeCache: PolicyTypeCache,
-  stats: ClaimImportMatchStats,
   policyCache?: ClaimPolicyLookupCache,
 ): Promise<Awaited<ReturnType<typeof matchPolicyForClaim>>> {
-  const match = await matchPolicyForClaim(row.matchInput, typeCache, policyCache);
-  if (match.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT) stats.matchedExact++;
-  else if (match.matchStatus === ClaimPolicyMatchStatus.UNLINKED) stats.unlinked++;
-  else if (match.matchStatus === ClaimPolicyMatchStatus.CONFLICT) stats.conflicts++;
-  if (match.verificationWarnings.length > 0) stats.verificationWarnings++;
-  return match;
+  return matchPolicyForClaim(row.matchInput, typeCache, policyCache);
 }
 
 export type ImportClaimRowResult = "created" | "updated" | "failed";
@@ -405,7 +398,7 @@ export async function importClaimRow(
   if (decision.disposition === "WILL_REJECT") {
     const errorText =
       decision.dispositionReason === "different_event"
-        ? "Different claim event for the same Claim Number — blocked by unique CCN"
+        ? "Claim Number already exists with a different admission/event."
         : decision.dispositionReason === "not_found"
           ? "Claim not found (UPDATE_ONLY)"
           : matchErrorMessage(match.matchStatus, match.matchReason, match.conflictDetail);

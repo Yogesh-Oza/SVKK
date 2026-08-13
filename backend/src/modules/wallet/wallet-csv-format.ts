@@ -152,17 +152,22 @@ export const WALLET_SAMPLE_ROWS: ReadonlyArray<{
   },
 ];
 
-export function normalizeWalletCategory(raw: string | null | undefined): WalletCategory | "" {
-  const c = String(raw ?? "")
-    .trim()
-    .toLowerCase();
+/**
+ * Normalize a wallet category for storage/filter.
+ * Keeps A/B/C/D/Staff/SVGA aliases; otherwise accepts any admin-panel category name (max 32).
+ */
+export function normalizeWalletCategory(raw: string | null | undefined): string {
+  let original = String(raw ?? "").trim();
+  if (!original || original === "-") return "";
+  const stripped = original.replace(/^cat[ae]gory\s*[-:]?\s*/i, "").trim();
+  const c = (stripped || original).toLowerCase();
   if (c === "a") return "A";
   if (c === "b") return "B";
   if (c === "c") return "C";
   if (c === "d") return "D";
   if (c === "staff") return "Staff";
   if (c === "svga") return "SVGA";
-  return "";
+  return (stripped || original).slice(0, 32);
 }
 
 export function normalizeWalletMonth(raw: string | null | undefined): string {

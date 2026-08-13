@@ -66,7 +66,6 @@ import {
   formatWalletDate,
   formatWalletDateTime,
   formatWalletInr,
-  WALLET_CATEGORIES,
   type WalletCsvImportResult,
   type WalletFieldMisRow,
   type WalletMisDimension,
@@ -186,6 +185,12 @@ export function WalletManagerView() {
     const fromDd = (ddOptions.VILLAGE ?? []).map((o) => o.value || o.label).filter(Boolean);
     return [...new Set([...fromFilters, ...fromDd])].sort((a, b) => a.localeCompare(b));
   }, [filterVillages, ddOptions.VILLAGE]);
+  const categoryOptions = useMemo(() => {
+    const fromAdmin = (ddOptions.categories ?? [])
+      .map((c) => (c.label || c.value || "").trim())
+      .filter(Boolean);
+    return [...new Set(fromAdmin)].sort((a, b) => a.localeCompare(b));
+  }, [ddOptions.categories]);
   const groupOptions = useMemo(
     () =>
       [...new Set((ddOptions.policyGroupings ?? []).map((g) => g.value || g.label).filter(Boolean))].sort(
@@ -586,8 +591,19 @@ export function WalletManagerView() {
     );
   }
 
-  const categoryMis =
-    summary?.mis ?? WALLET_CATEGORIES.map((c) => ({ category: c, count: 0, amount: "0" }));
+  const categoryMis = useMemo(() => {
+    const byKey = new Map(
+      (summary?.mis ?? []).map((row) => [row.category, row] as const),
+    );
+    const keys = [
+      ...new Set([
+        ...categoryOptions,
+        ...(summary?.mis ?? []).map((r) => r.category).filter(Boolean),
+      ]),
+    ];
+    if (keys.length === 0) return [];
+    return keys.map((category) => byKey.get(category) ?? { category, count: 0, amount: "0" });
+  }, [categoryOptions, summary?.mis]);
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -676,7 +692,7 @@ export function WalletManagerView() {
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
           <div>
             <CardTitle>Category-wise MIS</CardTitle>
-            <CardDescription>Debit usage only (A, B, C, D, Staff, SVGA)</CardDescription>
+            <CardDescription>Debit usage only — categories from Admin</CardDescription>
           </div>
           {canWalletExport(perms) ? (
             <Button
@@ -691,18 +707,24 @@ export function WalletManagerView() {
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            {categoryMis.map((row) => (
-              <div
-                key={row.category}
-                className="rounded-lg border border-violet-100 bg-gradient-to-br from-white to-violet-50/80 p-3 border-l-4 border-l-violet-600"
-              >
-                <div className="text-muted-foreground text-xs">Category {row.category}</div>
-                <div className="font-semibold text-lg mt-1 text-violet-900">{formatWalletInr(row.amount)}</div>
-                <div className="text-muted-foreground text-xs mt-1">{row.count} entries</div>
+            {categoryMis.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No categories in Admin yet</p>
+            ) : (
+              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+                {categoryMis.map((row) => (
+                  <div
+                    key={row.category}
+                    className="rounded-lg border border-violet-100 bg-gradient-to-br from-white to-violet-50/80 p-3 border-l-4 border-l-violet-600"
+                  >
+                    <div className="text-muted-foreground text-xs truncate" title={row.category}>
+                      {row.category}
+                    </div>
+                    <div className="font-semibold text-lg mt-1 text-violet-900">{formatWalletInr(row.amount)}</div>
+                    <div className="text-muted-foreground text-xs mt-1">{row.count} entries</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
           <div className="overflow-auto">
             <Table>
               <TableHeader>
@@ -713,15 +735,23 @@ export function WalletManagerView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {categoryMis.map((row) => (
-                  <TableRow key={`mis-t-${row.category}`}>
-                    <TableCell>
-                      <Badge variant="secondary">{row.category}</Badge>
+                {categoryMis.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      No usage yet
                     </TableCell>
-                    <TableCell className="text-right">{row.count}</TableCell>
-                    <TableCell className="text-right font-medium">{formatWalletInr(row.amount)}</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  categoryMis.map((row) => (
+                    <TableRow key={`mis-t-${row.category}`}>
+                      <TableCell>
+                        <Badge variant="secondary">{row.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{row.count}</TableCell>
+                      <TableCell className="text-right font-medium">{formatWalletInr(row.amount)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -941,7 +971,7 @@ export function WalletManagerView() {
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {WALLET_CATEGORIES.map((c) => (
+                    {categoryOptions.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
@@ -1149,7 +1179,7 @@ export function WalletManagerView() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {WALLET_CATEGORIES.map((c) => (
+                    {categoryOptions.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
@@ -1264,7 +1294,7 @@ export function WalletManagerView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {WALLET_CATEGORIES.map((c) => (
+                {categoryOptions.map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
                   </SelectItem>

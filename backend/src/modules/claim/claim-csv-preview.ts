@@ -70,7 +70,12 @@ export function hashPreviewToken(token: string): string {
 /** Preview returns every parsed row (capped by CLAIM_IMPORT_MAX_ROWS on upload). */
 
 export type ClaimImportMatchStats = {
+  /** Raw CSV/XLSX data rows (payment/event lines). */
   totalRows: number;
+  /** Distinct Claim Numbers that will be created/updated/rejected. */
+  uniqueClaims: number;
+  /** CSV rows beyond the first/canonical row per Claim Number. */
+  sameCcnExtraRows: number;
   matchedExact: number;
   unlinked: number;
   conflicts: number;
@@ -87,6 +92,8 @@ export type ClaimImportMatchStats = {
 export function emptyMatchStats(): ClaimImportMatchStats {
   return {
     totalRows: 0,
+    uniqueClaims: 0,
+    sameCcnExtraRows: 0,
     matchedExact: 0,
     unlinked: 0,
     conflicts: 0,

@@ -41,6 +41,11 @@ import { svkkJson } from "@/lib/svkk/api";
 import { getSvkkErrorCode, getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { fetchPolicyDetail, fetchPolicyListRowsForForm } from "@/lib/svkk/offline/policy-data";
 import { formatWalletInr } from "@/features/svkk-wallet/wallet-types";
+import {
+  computeWalletCdPreview,
+  savedCdFieldsFromPolicy,
+} from "@/features/svkk-policies/policy-wallet-preview";
+import { cn } from "@/lib/utils";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
@@ -621,16 +626,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     onSubmit: async (values, helpers) => {
       setApiErr(null);
       try {
-      const cdNum = Number(String(values.cdAmount).replace(/,/g, "").trim());
-      const balNum = walletBalanceRef.current != null ? Number(walletBalanceRef.current) : null;
-      const wouldGoNegative =
-        values.cdAccountStatus === "YES" &&
-        Number.isFinite(cdNum) &&
-        cdNum > 0 &&
-        balNum != null &&
-        Number.isFinite(balNum) &&
-        cdNum > balNum;
-      if (wouldGoNegative && !allowNegativeWalletRef.current) {
+      const savedCdSource =
+        isEdit && policyId && detail ? detail : fetchedPolicyForUpdate;
+      const walletCdPreview = computeWalletCdPreview({
+        walletBalance: walletBalanceRef.current,
+        ...savedCdFieldsFromPolicy(savedCdSource),
+        cdAccountStatus: values.cdAccountStatus,
+        cdAmount: values.cdAmount,
+      });
+      if (walletCdPreview.wouldGoNegative && !allowNegativeWalletRef.current) {
         setWalletNegativeConfirmOpen(true);
         return;
       }
@@ -819,6 +823,26 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     submitCount,
   } = formik;
   const isBusy = isSubmitting;
+
+  const savedCdFields = useMemo(
+    () =>
+      savedCdFieldsFromPolicy(
+        isEdit && detail ? detail : fetchedPolicyForUpdate,
+      ),
+    [isEdit, detail, fetchedPolicyForUpdate],
+  );
+
+  const walletCdPreview = useMemo(
+    () =>
+      computeWalletCdPreview({
+        walletBalance,
+        ...savedCdFields,
+        cdAccountStatus: values.cdAccountStatus,
+        cdAmount: values.cdAmount,
+      }),
+    [walletBalance, savedCdFields, values.cdAccountStatus, values.cdAmount],
+  );
+
   const [premiumManual, setPremiumManual] = useState<Record<string, boolean>>({});
   const [ageManual, setAgeManual] = useState<Record<string, boolean>>({});
   /** After DB hydrate (fetch/edit): show stored premiums until user edits a calc-trigger field. */
@@ -3719,15 +3743,30 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             </div>
             <div className="space-y-2">
               <Label>Current Wallet Balance</Label>
-              <div className="bg-muted/40 flex h-9 items-center rounded-md border px-3 text-sm font-medium">
-                {walletBalance != null ? formatWalletInr(walletBalance) : "—"}
+              <div
+                className={cn(
+                  "bg-muted/40 flex h-9 items-center rounded-md border px-3 text-sm font-medium",
+                  walletCdPreview.wouldGoNegative && "border-destructive/50 text-destructive",
+                )}
+              >
+                {walletCdPreview.projectedBalance != null
+                  ? formatWalletInr(String(walletCdPreview.projectedBalance))
+                  : walletBalance != null
+                    ? formatWalletInr(walletBalance)
+                    : "—"}
               </div>
-              {values.cdAccountStatus === "YES" &&
-              walletBalance != null &&
-              Number(String(values.cdAmount).replace(/,/g, "").trim()) >
-                Number(walletBalance) ? (
+              {walletBalance != null && walletCdPreview.cdDelta !== 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Wallet now {formatWalletInr(walletBalance)}
+                  {walletCdPreview.cdDelta > 0
+                    ? ` − ${formatWalletInr(String(walletCdPreview.cdDelta))} CD`
+                    : ` + ${formatWalletInr(String(-walletCdPreview.cdDelta))} CD refund`}
+                </p>
+              ) : null}
+              {walletCdPreview.wouldGoNegative ? (
                 <p className="text-amber-700 dark:text-amber-400 text-xs">
-                  CD Amount exceeds available wallet balance ({formatWalletInr(walletBalance)}).
+                  CD change exceeds available wallet balance. Saving will require confirmation and
+                  may leave a negative balance.
                 </p>
               ) : null}
             </div>
@@ -4153,9 +4192,12 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           <DialogHeader>
             <DialogTitle>Wallet will go negative</DialogTitle>
             <DialogDescription>
-              CD Amount exceeds the current wallet balance
-              {walletBalance != null ? ` (${formatWalletInr(walletBalance)})` : ""}. Continue and allow
-              a negative wallet balance?
+              After this CD change, wallet balance will be{" "}
+              {walletCdPreview.projectedBalance != null
+                ? formatWalletInr(String(walletCdPreview.projectedBalance))
+                : "negative"}
+              {walletBalance != null ? ` (current ${formatWalletInr(walletBalance)})` : ""}. Continue
+              and allow a negative wallet balance?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
