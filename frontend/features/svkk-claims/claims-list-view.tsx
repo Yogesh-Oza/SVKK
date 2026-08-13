@@ -133,6 +133,7 @@ type Claim = {
     policyNo: string | null;
     policyGrouping?: string | null;
     category?: { key: string } | null;
+    policyType?: { id: string; key: string; name: string } | null;
   } | null;
 };
 
@@ -1126,7 +1127,9 @@ export function ClaimsListView() {
                     </TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.svkkPublicId || "—"}</TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>{c.mdId ?? "—"}</TableCell>
-                    <TableCell className="max-w-[100px] truncate text-xs">{c.policyTypeText ?? "—"}</TableCell>
+                    <TableCell className="max-w-[100px] truncate text-xs">
+                      {c.policy?.policyType?.name || c.policyTypeText || "—"}
+                    </TableCell>
                     <TableCell className="max-w-[90px] truncate text-xs">{c.policy?.policyGrouping ?? "—"}</TableCell>
                     <TableCell className={cn(claimTableCell, "font-mono text-xs")}>
                       {c.policyId && c.policy?.policyNo ? (

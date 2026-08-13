@@ -22,16 +22,19 @@ import { loadMisScope } from "../../services/mis-scope.service.js";
 import { buildClaimErrorReportCsv, type ClaimCsvRowError } from "./claim-csv-errors.js";
 import {
   applyStatusMap,
+  claimEventIdentityFromRow,
   claimImportMaxRows,
   evaluateClaimRow,
   importClaimRow,
   parseClaimRow,
+  validateClaimRow,
 } from "./claim-csv-import.js";
 import {
   claimRowToMap,
   parseClaimFile,
 } from "./claim-csv-parse.js";
-import { buildClaimImportTypeCache } from "./claim-policy-match.js";
+import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "./claim-policy-match.js";
+import { decideClaimImportAction } from "./claim-duplicate.js";
 import {
   CLAIM_PREVIEW_ROW_LIMIT,
   createPreviewToken,
@@ -122,33 +125,111 @@ async function loadParsedRows(
   return { header, parsedRows };
 }
 
+const existingClaimSelect = {
+  claimNo: true,
+  policyId: true,
+  policyNoText: true,
+  admissionDate: true,
+  lodgeDate: true,
+  claimReceivedDate: true,
+  actualLodgeType: true,
+  claimType: true,
+} as const;
+
+type ExistingClaimRow = {
+  claimNo: string;
+  policyId: string | null;
+  policyNoText: string | null;
+  admissionDate: Date | null;
+  lodgeDate: Date | null;
+  claimReceivedDate: Date | null;
+  actualLodgeType: string | null;
+  claimType: string | null;
+};
+
+function existingToIdentity(row: ExistingClaimRow) {
+  return {
+    claimNo: row.claimNo,
+    policyId: row.policyId,
+    policyNo: row.policyNoText ?? "",
+    admissionDate: row.admissionDate,
+    lodgeDate: row.lodgeDate,
+    claimReceivedDate: row.claimReceivedDate,
+    actualLodgeType: row.actualLodgeType,
+    claimType: row.claimType,
+  };
+}
+
+function previewDecisionForRow(
+  row: ReturnType<typeof parseClaimRow>,
+  match: Awaited<ReturnType<typeof evaluateClaimRow>>,
+  existing: ExistingClaimRow | undefined,
+  linkMode: ClaimLinkMode,
+) {
+  return decideClaimImportAction({
+    matchStatus: match.matchStatus,
+    linkMode,
+    existing: existing ? existingToIdentity(existing) : null,
+    incoming: claimEventIdentityFromRow(row, match),
+    validationError: validateClaimRow(row),
+  });
+}
+
+async function loadExistingByClaimNo(claimNos: string[]): Promise<Map<string, ExistingClaimRow>> {
+  const unique = [...new Set(claimNos.filter(Boolean))];
+  if (!unique.length) return new Map();
+  const existing = await prisma.claim.findMany({
+    where: { claimNo: { in: unique } },
+    select: existingClaimSelect,
+  });
+  return new Map(existing.map((c) => [c.claimNo, c]));
+}
+
+function applyDispositionStats(
+  stats: ClaimImportMatchStats,
+  parsedRows: ReturnType<typeof parseClaimRow>[],
+  matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
+  existingByNo: Map<string, ExistingClaimRow>,
+  linkMode: ClaimLinkMode,
+): void {
+  for (let i = 0; i < parsedRows.length; i++) {
+    const row = parsedRows[i]!;
+    const match = matches[i]!;
+    const decision = previewDecisionForRow(row, match, existingByNo.get(row.claimNo), linkMode);
+    if (decision.disposition === "WILL_CREATE") stats.willCreate++;
+    else if (decision.disposition === "WILL_UPDATE") stats.willUpdate++;
+    else stats.willReject++;
+    if (decision.dispositionReason === "different_event") stats.differentEventBlocked++;
+  }
+}
+
 async function buildPreviewRows(
   parsedRows: ReturnType<typeof parseClaimRow>[],
   matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
+  existingByNo: Map<string, ExistingClaimRow>,
+  linkMode: ClaimLinkMode,
 ) {
   const limit = Math.min(CLAIM_PREVIEW_ROW_LIMIT, parsedRows.length);
-  const claimNos = parsedRows.slice(0, limit).map((r) => r.claimNo).filter(Boolean);
-  const existing = claimNos.length
-    ? await prisma.claim.findMany({
-        where: { claimNo: { in: claimNos } },
-        select: { claimNo: true },
-      })
-    : [];
-  const existingSet = new Set(existing.map((c) => c.claimNo));
   const previewRows = [];
   for (let i = 0; i < limit; i++) {
     const row = parsedRows[i]!;
     const match = matches[i]!;
+    const existing = existingByNo.get(row.claimNo);
+    const decision = previewDecisionForRow(row, match, existing, linkMode);
+    const warnings = [...match.verificationWarnings, ...decision.extraWarnings];
     previewRows.push({
       rowNumber: row.rowNumber,
       claimNo: row.claimNo,
       policyNo: row.policyNo,
       matchStatus: match.matchStatus,
       matchReason: match.matchReason,
-      verificationWarnings: match.verificationWarnings,
+      verificationWarnings: warnings,
       policyHolderName: row.policyHolderName,
       claimAmount: row.claimAmount,
-      alreadyExists: existingSet.has(row.claimNo),
+      alreadyExists: Boolean(existing),
+      disposition: decision.disposition,
+      dispositionReason: decision.dispositionReason,
+      eventClassification: decision.eventClassification,
     });
   }
   return previewRows;
@@ -220,6 +301,7 @@ async function runClaimImport(
   });
 
   const typeCache = await buildClaimImportTypeCache();
+  const policyCache = await buildClaimImportPolicyCache();
   const scope = await loadMisScope(opts.userId, opts.permissions, "claim");
   const stats = emptyMatchStats();
   stats.totalRows = parsedRows.length;
@@ -236,6 +318,7 @@ async function runClaimImport(
       try {
         const outcome = await importClaimRow(row, {
           typeCache,
+          policyCache,
           linkMode: opts.linkMode,
           importMode: opts.importMode,
           dryRun: opts.dryRun,
@@ -359,13 +442,17 @@ export function createClaimUploadRouter(env: Env) {
         }
 
         const typeCache = await buildClaimImportTypeCache();
+        const policyCache = await buildClaimImportPolicyCache();
         const stats = emptyMatchStats();
         stats.totalRows = parsedRows.length;
 
         const matches = [];
         for (const row of parsedRows) {
-          matches.push(await evaluateClaimRow(row, typeCache, stats));
+          matches.push(await evaluateClaimRow(row, typeCache, stats, policyCache));
         }
+
+        const existingByNo = await loadExistingByClaimNo(parsedRows.map((r) => r.claimNo));
+        applyDispositionStats(stats, parsedRows, matches, existingByNo, linkMode);
 
         const prior = await findPriorCompletedClaimImport(checksum);
         const previewToken = createPreviewToken(env, {
@@ -379,7 +466,7 @@ export function createClaimUploadRouter(env: Env) {
 
         res.json({
           previewToken,
-          previewRows: await buildPreviewRows(parsedRows, matches),
+          previewRows: await buildPreviewRows(parsedRows, matches, existingByNo, linkMode),
           summary: stats,
           duplicateImport: duplicateImportPayload(env, prior),
         });

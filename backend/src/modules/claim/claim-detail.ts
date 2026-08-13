@@ -57,7 +57,12 @@ export const claimDetailSelect = {
   paymentDate: true,
   prsCrsDate: true,
   matchStatus: true,
-  policy: { select: { policyNo: true } },
+  policy: {
+    select: {
+      policyNo: true,
+      policyType: { select: { id: true, key: true, name: true } },
+    },
+  },
 } satisfies Prisma.ClaimSelect;
 
 export type ClaimDetailRow = Prisma.ClaimGetPayload<{ select: typeof claimDetailSelect }>;

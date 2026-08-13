@@ -34,6 +34,8 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 type MatchStatus = "MATCHED_EXACT" | "UNLINKED" | "CONFLICT";
+type Disposition = "WILL_CREATE" | "WILL_UPDATE" | "WILL_REJECT";
+type EventClassification = "NEW" | "SAME_EVENT" | "DIFFERENT_EVENT" | "WEAK_IDENTITY" | "N/A";
 
 type PreviewRow = {
   rowNumber: number;
@@ -45,6 +47,9 @@ type PreviewRow = {
   verificationWarnings?: string[];
   policyHolderName?: string;
   claimAmount?: number | null;
+  disposition?: Disposition;
+  dispositionReason?: string;
+  eventClassification?: EventClassification;
 };
 
 type MatchSummary = {
@@ -53,6 +58,10 @@ type MatchSummary = {
   unlinked: number;
   conflicts: number;
   verificationWarnings: number;
+  willCreate?: number;
+  willUpdate?: number;
+  willReject?: number;
+  differentEventBlocked?: number;
 };
 
 type DuplicateImportInfo = {
@@ -70,17 +79,37 @@ type ImportResult = {
   errorReportUrl?: string;
 };
 
-function matchBadge(status: MatchStatus, alreadyExists?: boolean): { label: string; className: string } {
-  if (alreadyExists) {
-    return { label: "Already exists", className: "text-amber-700" };
+function warningLabel(code: string): string {
+  const labels: Record<string, string> = {
+    svkk: "SVKK mismatch",
+    policy_type: "Policy type",
+    policy_dates: "Policy dates",
+    policy_year_ambiguous: "Year ambiguous",
+    holder_name: "Holder name",
+    sum_insured: "Sum insured",
+    insurance_company: "Insurer",
+    event_identity_weak: "Weak event identity",
+  };
+  return labels[code] ?? code;
+}
+
+function dispositionBadge(row: PreviewRow): { label: string; className: string } {
+  if (row.disposition === "WILL_UPDATE") {
+    return { label: "Will update", className: "text-sky-700" };
   }
-  if (status === "MATCHED_EXACT") {
-    return { label: "Matched", className: "text-emerald-600" };
+  if (row.disposition === "WILL_CREATE") {
+    return { label: "Will create", className: "text-emerald-600" };
   }
-  if (status === "CONFLICT") {
-    return { label: "Ambiguous", className: "text-amber-600" };
+  if (row.dispositionReason === "different_event" || row.eventClassification === "DIFFERENT_EVENT") {
+    return { label: "Duplicate event", className: "text-amber-700" };
   }
-  return { label: "Unlinked", className: "text-destructive" };
+  if (row.matchStatus === "CONFLICT" || row.dispositionReason === "conflict") {
+    return { label: "Conflict", className: "text-amber-600" };
+  }
+  if (row.matchStatus === "UNLINKED" || row.dispositionReason === "unlinked") {
+    return { label: "Unlinked", className: "text-destructive" };
+  }
+  return { label: "Will reject", className: "text-destructive" };
 }
 
 function formatImportTimestamp(iso: string): string {
@@ -178,9 +207,9 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
         setDuplicateImport(null);
         setPreviewOpen(false);
         setImportMsg(
-          `Import job ${data.jobId.slice(0, 8)}… — ${data.created} created, ${data.failed} failed`,
+          `Import job ${data.jobId.slice(0, 8)}… — ${data.created} created, ${data.updated} updated, ${data.failed} failed`,
         );
-        toast.success(`Import complete: ${data.created} claim(s) created`);
+        toast.success(`Import complete: ${data.created} created, ${data.updated} updated`);
         onImported?.();
       } catch (e) {
         toast.error(getSvkkErrorMessage(e, "Import failed"));
@@ -201,7 +230,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
         Upload CSV / XLSX
         <span className="text-muted-foreground ml-2 font-normal">
-          Create only (update/upsert in a later phase)
+          Same claim event updates; a different event with the same CCN is rejected
         </span>
       </Label>
       <div className="border-primary/20 bg-muted/20 rounded-xl border border-dashed p-3">
@@ -223,7 +252,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
               />
             </div>
             <Badge variant="secondary" className="shrink-0 font-bold">
-              Create only
+              Hybrid CCN
             </Badge>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -273,7 +302,8 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
         <div className="text-muted-foreground mt-2 space-y-1 text-xs leading-relaxed">
           <p>
             Matched {lastResult.matchStats.matchedExact} · Unlinked {lastResult.matchStats.unlinked} ·
-            Conflicts {lastResult.matchStats.conflicts}
+            Conflicts {lastResult.matchStats.conflicts} · Created {lastResult.created} · Updated{" "}
+            {lastResult.updated}
           </p>
           {lastResult.errorReportUrl ? (
             <a className="text-primary font-bold underline" href={lastResult.errorReportUrl}>
@@ -302,10 +332,23 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
 
           {summary ? (
             <p className="text-muted-foreground text-sm">
-              {summary.matchedExact} matched · {summary.unlinked} unlinked · {summary.conflicts}{" "}
-              conflicts · {summary.verificationWarnings} verification warnings · {summary.totalRows}{" "}
-              total rows
+              {summary.willCreate ?? 0} will create · {summary.willUpdate ?? 0} will update ·{" "}
+              {summary.willReject ?? 0} will reject · {summary.matchedExact} matched ·{" "}
+              {summary.unlinked} unlinked · {summary.conflicts} conflicts ·{" "}
+              {summary.verificationWarnings} verification warnings · {summary.totalRows} total rows
             </p>
+          ) : null}
+
+          {summary && (summary.differentEventBlocked ?? 0) > 0 ? (
+            <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-100">
+              <AlertTriangle className="text-amber-600" />
+              <AlertTitle>Duplicate claim events</AlertTitle>
+              <AlertDescription>
+                {summary.differentEventBlocked} row{summary.differentEventBlocked === 1 ? "" : "s"}{" "}
+                have the same Claim Number as a different event and will be rejected. Other rows can
+                still import.
+              </AlertDescription>
+            </Alert>
           ) : null}
 
           <div className="max-h-80 overflow-auto rounded border">
@@ -314,28 +357,34 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
                 <TableRow>
                   <TableHead>Claim #</TableHead>
                   <TableHead>Policy #</TableHead>
-                  <TableHead>Match</TableHead>
+                  <TableHead>Disposition</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Warnings</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {previewRows.map((row) => {
-                  const badge = matchBadge(row.matchStatus, row.alreadyExists);
+                  const badge = dispositionBadge(row);
                   return (
                     <TableRow key={row.rowNumber}>
                       <TableCell className="font-mono text-xs">{row.claimNo}</TableCell>
                       <TableCell className="font-mono text-xs">{row.policyNo || "—"}</TableCell>
                       <TableCell className={badge.className}>{badge.label}</TableCell>
                       <TableCell className="max-w-[280px] text-xs text-muted-foreground">
-                        {row.alreadyExists
-                          ? "Claim already exists (CREATE_ONLY) — will not import"
-                          : row.matchReason || "—"}
+                        {row.matchReason || row.dispositionReason || "—"}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {row.verificationWarnings?.length
-                          ? row.verificationWarnings.join(", ")
-                          : "—"}
+                        {row.verificationWarnings?.length ? (
+                          <span className="flex flex-wrap gap-1">
+                            {row.verificationWarnings.map((w) => (
+                              <Badge key={w} variant="outline" className="text-[10px] font-normal">
+                                {warningLabel(w)}
+                              </Badge>
+                            ))}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                     </TableRow>
                   );

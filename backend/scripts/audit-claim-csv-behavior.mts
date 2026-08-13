@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClaimLinkMode, ClaimPolicyMatchStatus } from "@prisma/client";
+import { ClaimPolicyMatchStatus } from "@prisma/client";
 import {
   CLAIM_CSV_PUBLIC_HEADERS,
   buildSampleClaimCsv,
@@ -15,16 +15,16 @@ import { parseClaimFile, claimRowToMap } from "../src/modules/claim/claim-csv-pa
 import { parseClaimRow, validateClaimRow } from "../src/modules/claim/claim-csv-import.js";
 import { DEFAULT_CLAIM_STATUS_MAP } from "../src/modules/claim/claim-status-map.js";
 import {
+  buildClaimImportPolicyCache,
   claimCoverageDate,
+  matchPolicyForClaim,
   resolveClaimPolicyMatch,
-  type PolicyYearMatch,
+  type PolicyMatchCandidate,
 } from "../src/modules/claim/claim-policy-match.js";
 import type { PolicyTypeCache } from "../src/modules/policy/policy-csv-resolve.js";
 import { buildClaimsExportCsv } from "../src/modules/claim/claim.export-csv.js";
 import type { ClaimListRow } from "../src/modules/claim/claim.list.js";
-import { shouldRejectDuplicateClaim } from "../src/modules/claim/claim-duplicate.js";
 import { prisma } from "../src/lib/prisma.js";
-import { CsvImportMode } from "@prisma/client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -47,51 +47,45 @@ function utc(y: number, m: number, d: number) {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
-function mockYear(opts: {
+function mockPolicy(opts: {
   policyNo: string;
   svkk: string;
-  yearLabel: string;
-  start: Date;
-  end: Date;
-  typeId?: string;
-  typeName?: string;
   policyId?: string;
   insuredPartyId?: string;
-  policyYearId?: string;
-  grouping?: string;
-}): PolicyYearMatch {
+  typeId?: string;
+  typeName?: string;
+  years: Array<{ id: string; yearLabel: string; start: Date; end: Date }>;
+}): PolicyMatchCandidate {
   const typeId = opts.typeId ?? "pt-floater";
   const policyId = opts.policyId ?? `pol-${opts.policyNo}`;
   const insuredPartyId = opts.insuredPartyId ?? `ip-${opts.svkk}`;
   return {
-    id: opts.policyYearId ?? `py-${opts.yearLabel}`,
-    policyId,
-    yearLabel: opts.yearLabel,
-    policyStart: opts.start,
-    policyEnd: opts.end,
-    sumInsured: null,
-    deletedAt: null,
-    policy: {
-      id: policyId,
-      policyNo: opts.policyNo,
-      deletedAt: null,
-      policyGrouping: opts.grouping ?? "Group A",
-      village: "Anand",
-      area: "Anand",
-      insuranceCompany: "NIA",
-      insuredPartyId,
-      insuredParty: {
-        id: insuredPartyId,
-        svkkPublicId: opts.svkk,
-        name: "Ramesh Patel",
-      },
-      policyType: {
-        id: typeId,
-        key: "floater",
-        name: opts.typeName ?? "Floater",
-      },
+    id: policyId,
+    policyNo: opts.policyNo,
+    village: "Anand",
+    area: "Anand",
+    insuranceCompany: "NIA",
+    holderName: "Ramesh Patel",
+    insuredPartyId,
+    insuredParty: {
+      id: insuredPartyId,
+      svkkPublicId: opts.svkk,
+      name: "Ramesh Patel",
     },
-  } as unknown as PolicyYearMatch;
+    policyType: {
+      id: typeId,
+      key: "floater",
+      name: opts.typeName ?? "Floater",
+    },
+    years: opts.years.map((y) => ({
+      id: y.id,
+      yearLabel: y.yearLabel,
+      policyStart: y.start,
+      policyEnd: y.end,
+      sumInsured: null,
+      deletedAt: null,
+    })),
+  };
 }
 
 function typeCacheWithFloater(): PolicyTypeCache {
@@ -158,56 +152,49 @@ async function sectionCsvContract() {
 }
 
 async function sectionMatching() {
-  console.log("\n=== 2. Policy matching (realistic CSV → parse → resolve) ===");
-  const y1 = mockYear({
+  console.log("\n=== 2. Policy matching (Policy Number only) ===");
+  const pol1 = mockPolicy({
     policyNo: "MDI123456/24/00001",
     svkk: "SVKK001",
-    yearLabel: "2024-25",
-    start: utc(2024, 4, 1),
-    end: utc(2025, 3, 31),
     policyId: "pol-1",
     insuredPartyId: "ip-1",
-    policyYearId: "py-1",
+    years: [
+      { id: "py-1", yearLabel: "2024-25", start: utc(2024, 4, 1), end: utc(2025, 3, 31) },
+      { id: "py-2", yearLabel: "2025-26", start: utc(2025, 4, 1), end: utc(2026, 3, 31) },
+    ],
   });
-  const y2 = mockYear({
-    policyNo: "MDI123456/24/00001",
-    svkk: "SVKK001",
-    yearLabel: "2025-26",
-    start: utc(2025, 4, 1),
-    end: utc(2026, 3, 31),
-    policyId: "pol-1",
-    insuredPartyId: "ip-1",
-    policyYearId: "py-2",
-  });
-  const otherSvkk = mockYear({
-    policyNo: "MDI123456/24/00001",
+  const otherNo = mockPolicy({
+    policyNo: "OTHER-999",
     svkk: "SVKK999",
-    yearLabel: "2024-25",
-    start: utc(2024, 4, 1),
-    end: utc(2025, 3, 31),
     policyId: "pol-other",
     insuredPartyId: "ip-other",
-    policyYearId: "py-other",
+    years: [{ id: "py-other", yearLabel: "2024-25", start: utc(2024, 4, 1), end: utc(2025, 3, 31) }],
+  });
+  const duplicateNo = mockPolicy({
+    policyNo: "MDI123456/24/00001",
+    svkk: "SVKK999",
+    policyId: "pol-dup",
+    insuredPartyId: "ip-dup",
+    typeId: "pt-other",
+    typeName: "Other",
+    years: [{ id: "py-dup", yearLabel: "2024-25", start: utc(2024, 4, 1), end: utc(2025, 3, 31) }],
   });
 
-  // Exact match via sample CSV row
   const sampleBuf = Buffer.from(buildSampleClaimCsv(), "utf8");
   const sampleSheet = await parseClaimFile(sampleBuf, "sample.csv");
   const sampleMap = claimRowToMap(sampleSheet.header, sampleSheet.dataRows[0]!);
   const sampleRow = parseClaimRow(2, sampleMap, DEFAULT_CLAIM_STATUS_MAP);
-  const exact = resolveClaimPolicyMatch([y1, y2, otherSvkk], sampleRow.matchInput, typeCache);
+  const exact = resolveClaimPolicyMatch([pol1, otherNo], sampleRow.matchInput, typeCache);
   if (
     exact.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT &&
     exact.policyId === "pol-1" &&
-    exact.policyYearId === "py-1" &&
     exact.insuredPartyId === "ip-1"
   ) {
-    ok(`Exact match: ${exact.matchReason}`);
+    ok(`Exact Policy Number match: ${exact.matchReason}`);
   } else {
     fail(`Exact match failed: ${JSON.stringify(exact)}`);
   }
 
-  // Wrong SVKK
   const wrongSvkkCsv = buildSampleClaimCsv().replace("SVKK001", "SVKK002");
   const wrongSheet = await parseClaimFile(Buffer.from(wrongSvkkCsv), "wrong.csv");
   const wrongRow = parseClaimRow(
@@ -215,19 +202,17 @@ async function sectionMatching() {
     claimRowToMap(wrongSheet.header, wrongSheet.dataRows[0]!),
     DEFAULT_CLAIM_STATUS_MAP,
   );
-  const wrong = resolveClaimPolicyMatch([y1, y2, otherSvkk], wrongRow.matchInput, typeCache);
+  const wrong = resolveClaimPolicyMatch([pol1], wrongRow.matchInput, typeCache);
   if (
-    wrong.matchStatus === ClaimPolicyMatchStatus.UNLINKED &&
-    !wrong.policyId &&
-    (wrong.matchReason.includes("does not match policy owner") ||
-      wrong.matchReason.includes("No policy found"))
+    wrong.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT &&
+    wrong.policyId === "pol-1" &&
+    wrong.verificationWarnings.includes("svkk")
   ) {
-    ok(`Wrong SVKK → UNLINKED (never links other SVKK): ${wrong.matchReason}`);
+    ok(`Wrong SVKK still MATCHED + svkk warning: ${wrong.matchReason}`);
   } else {
     fail(`Wrong SVKK unexpected: ${JSON.stringify(wrong)}`);
   }
 
-  // Renewal: explicit dates select 2025-26
   const renewalCsv = buildSampleClaimCsv()
     .replace("01-04-2024", "01-04-2025")
     .replace("31-03-2025", "31-03-2026")
@@ -238,14 +223,13 @@ async function sectionMatching() {
     claimRowToMap(renewSheet.header, renewSheet.dataRows[0]!),
     DEFAULT_CLAIM_STATUS_MAP,
   );
-  const renew = resolveClaimPolicyMatch([y1, y2], renewRow.matchInput, typeCache);
+  const renew = resolveClaimPolicyMatch([pol1], renewRow.matchInput, typeCache);
   if (renew.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT && renew.policyYearId === "py-2") {
-    ok(`Renewal explicit dates → PolicyYear 2025-26: ${renew.matchReason}`);
+    ok(`Renewal explicit dates → PolicyYear hint 2025-26: ${renew.matchReason}`);
   } else {
     fail(`Renewal failed: ${JSON.stringify(renew)}`);
   }
 
-  // Coverage fallback — strip policy dates from CSV by blanking start/end after parse
   const covInput = {
     ...sampleRow.matchInput,
     policyStartDate: null,
@@ -254,14 +238,13 @@ async function sectionMatching() {
     lodgeDate: null,
     claimReceivedDate: null,
   };
-  const cov = resolveClaimPolicyMatch([y1, y2], covInput, typeCache);
+  const cov = resolveClaimPolicyMatch([pol1], covInput, typeCache);
   if (cov.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT && cov.policyYearId === "py-2") {
-    ok("Coverage fallback (admission) selects single containing year");
+    ok("Coverage year hint (admission) selects single containing year");
   } else {
     fail(`Coverage fallback failed: ${JSON.stringify(cov)}`);
   }
 
-  // Coverage order admission → lodge → received
   const covOrder = claimCoverageDate({
     policyNo: "x",
     svkkPublicId: "",
@@ -279,25 +262,18 @@ async function sectionMatching() {
     ok("Coverage date order: admission → lodge → received");
   } else fail("Coverage date order wrong");
 
-  // Ambiguous overlapping
-  const overlapA = mockYear({
+  const overlap = mockPolicy({
     policyNo: "MDI123456/24/00001",
     svkk: "SVKK001",
-    yearLabel: "overlap-a",
-    start: utc(2025, 1, 1),
-    end: utc(2025, 12, 31),
-    policyYearId: "py-oa",
-  });
-  const overlapB = mockYear({
-    policyNo: "MDI123456/24/00001",
-    svkk: "SVKK001",
-    yearLabel: "overlap-b",
-    start: utc(2025, 6, 1),
-    end: utc(2026, 5, 31),
-    policyYearId: "py-ob",
+    policyId: "pol-1",
+    insuredPartyId: "ip-1",
+    years: [
+      { id: "py-oa", yearLabel: "overlap-a", start: utc(2025, 1, 1), end: utc(2025, 12, 31) },
+      { id: "py-ob", yearLabel: "overlap-b", start: utc(2025, 6, 1), end: utc(2026, 5, 31) },
+    ],
   });
   const amb = resolveClaimPolicyMatch(
-    [overlapA, overlapB],
+    [overlap],
     {
       ...sampleRow.matchInput,
       policyStartDate: null,
@@ -306,18 +282,29 @@ async function sectionMatching() {
     },
     typeCache,
   );
-  if (amb.matchStatus === ClaimPolicyMatchStatus.CONFLICT && !amb.policyId) {
-    ok(`Ambiguous coverage → CONFLICT (no auto-pick): ${amb.matchReason}`);
+  if (
+    amb.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT &&
+    amb.policyId === "pol-1" &&
+    amb.verificationWarnings.includes("policy_year_ambiguous")
+  ) {
+    ok(`Overlapping years stay MATCHED (year hint omitted): ${amb.matchReason}`);
   } else {
-    fail(`Ambiguous unexpected: ${JSON.stringify(amb)}`);
+    fail(`Ambiguous years unexpected: ${JSON.stringify(amb)}`);
   }
 
-  // Both link modes reject CONFLICT
-  const rejectStrict =
-    amb.matchStatus === ClaimPolicyMatchStatus.CONFLICT; // import rejects CONFLICT always
-  const rejectAllow = amb.matchStatus === ClaimPolicyMatchStatus.CONFLICT;
-  if (rejectStrict && rejectAllow) {
-    ok("CONFLICT rejected under STRICT_MATCH and ALLOW_UNLINKED (import shouldRejectMatch)");
+  const conflict = resolveClaimPolicyMatch(
+    [pol1, duplicateNo],
+    sampleRow.matchInput,
+    typeCache,
+  );
+  if (conflict.matchStatus === ClaimPolicyMatchStatus.CONFLICT && !conflict.policyId) {
+    ok(`Duplicate Policy Number → CONFLICT: ${conflict.matchReason}`);
+  } else {
+    fail(`Duplicate Policy Number unexpected: ${JSON.stringify(conflict)}`);
+  }
+
+  if (conflict.matchStatus === ClaimPolicyMatchStatus.CONFLICT) {
+    ok("CONFLICT rejected under STRICT_MATCH and ALLOW_UNLINKED");
   }
 }
 
@@ -344,6 +331,7 @@ async function sectionReferenceCsv() {
 
   const { buildPolicyTypeCache } = await import("../src/modules/policy/policy-csv-resolve.js");
   const liveTypeCache = await buildPolicyTypeCache(prisma);
+  const policyCache = await buildClaimImportPolicyCache();
 
   let valid = 0;
   let invalid = 0;
@@ -386,19 +374,10 @@ async function sectionReferenceCsv() {
 
     if (existingClaimNos.has(row.claimNo)) {
       alreadyExists++;
-      reasons.set("Claim already exists", (reasons.get("Claim already exists") ?? 0) + 1);
+      reasons.set("Existing CCN (hybrid update/reject)", (reasons.get("Existing CCN (hybrid update/reject)") ?? 0) + 1);
     }
 
-    const candidates = await prisma.policyYear.findMany({
-      where: {
-        deletedAt: null,
-        policy: { deletedAt: null, policyNo: row.policyNo.trim() || "__none__" },
-      },
-      include: {
-        policy: { include: { insuredParty: true, policyType: true } },
-      },
-    });
-    const match = resolveClaimPolicyMatch(candidates, row.matchInput, liveTypeCache);
+    const match = await matchPolicyForClaim(row.matchInput, liveTypeCache, policyCache);
     if (match.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT) matched++;
     else if (match.matchStatus === ClaimPolicyMatchStatus.UNLINKED) unlinked++;
     else if (match.matchStatus === ClaimPolicyMatchStatus.CONFLICT) conflict++;
@@ -602,7 +581,7 @@ async function sectionRoundTripAndLinked() {
 
     let unsupported = 0;
     let survive = { policyNo: 0, svkk: 0, claimNo: 0, category: 0, lodge: 0, paid: 0, status: 0, lodgeType: 0 };
-    let dupeReject = 0;
+    let existingCcn = 0;
     for (let i = 0; i < expSheet.dataRows.length; i++) {
       const map = claimRowToMap(expSheet.header, expSheet.dataRows[i]!);
       const row = parseClaimRow(i + 2, map, DEFAULT_CLAIM_STATUS_MAP);
@@ -615,23 +594,18 @@ async function sectionRoundTripAndLinked() {
       if (row.approvedAmount != null) survive.paid++;
       if (row.statusText) survive.status++;
       if (row.claimType) survive.lodgeType++;
-      if (
-        shouldRejectDuplicateClaim(
-          CsvImportMode.CREATE_ONLY,
-          rows.some((x) => x.claimNo === row.claimNo) ? row.claimNo : null,
-        )
-      ) {
-        dupeReject++;
+      if (rows.some((x) => x.claimNo === row.claimNo)) {
+        existingCcn++;
       }
     }
     note(`Round-trip field survival (of ${expSheet.dataRows.length}): ${JSON.stringify(survive)}`);
     if (unsupported === 0) ok("Exported CSV parses with 0 validation errors / no unsupported headers");
     else fail(`${unsupported} validation errors on re-parse`);
 
-    if (dupeReject === expSheet.dataRows.length) {
-      ok(`Re-import CREATE_ONLY would reject all ${expSheet.dataRows.length} exported claims (0 creates)`);
+    if (existingCcn === expSheet.dataRows.length) {
+      ok(`Re-import of exported rows finds ${existingCcn} existing CCNs (hybrid UPDATE/REJECT, not new creates)`);
     } else {
-      fail(`Duplicate reject count ${dupeReject} != rows ${expSheet.dataRows.length}`);
+      fail(`Existing CCN count ${existingCcn} != rows ${expSheet.dataRows.length}`);
     }
     const countAfter = await prisma.claim.count();
     if (countAfter === claimCountBefore) {

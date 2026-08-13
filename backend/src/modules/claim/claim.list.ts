@@ -274,6 +274,7 @@ export const claimListSelect = {
       policyGrouping: true,
       category: { select: { key: true } },
       insuredParty: { select: { svkkPublicId: true } },
+      policyType: { select: { id: true, key: true, name: true } },
     },
   },
 } satisfies Prisma.ClaimSelect;

@@ -54,5 +54,8 @@ export type ClaimDetail = {
   paymentDate?: string | null;
   prsCrsDate?: string | null;
   matchStatus?: string | null;
-  policy?: { policyNo: string | null } | null;
+  policy?: {
+    policyNo: string | null;
+    policyType?: { id: string; key: string; name: string } | null;
+  } | null;
 };

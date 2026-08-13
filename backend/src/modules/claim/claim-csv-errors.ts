@@ -8,11 +8,16 @@ export type ClaimCsvRowError = {
   policyNo?: string;
   matchStatus?: ClaimPolicyMatchStatus;
   verificationWarnings?: string[];
+  matchReason?: string;
+  disposition?: string;
+  dispositionReason?: string;
 };
 
 /** Build downloadable claim import error report CSV. */
 export function buildClaimErrorReportCsv(errors: ClaimCsvRowError[]): string {
-  const lines = ["Row,Error,Claim No,Policy No,Match Status,Verification Warnings"];
+  const lines = [
+    "Row,Error,Claim No,Policy No,Match Status,Match Reason,Disposition,Disposition Reason,Verification Warnings",
+  ];
   for (const e of errors) {
     lines.push(
       [
@@ -21,6 +26,9 @@ export function buildClaimErrorReportCsv(errors: ClaimCsvRowError[]): string {
         e.claimNo ?? "",
         e.policyNo ?? "",
         e.matchStatus ?? "",
+        e.matchReason ?? "",
+        e.disposition ?? "",
+        e.dispositionReason ?? "",
         (e.verificationWarnings ?? []).join(";"),
       ]
         .map(csvCell)

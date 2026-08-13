@@ -37,7 +37,7 @@ export function buildClaimsExportCsv(rows: ClaimListRow[]): string {
       [
         category,
         svkk,
-        r.policyTypeText ?? "",
+        firstNonEmpty(r.policy?.policyType?.name, r.policyTypeText),
         grouping,
         r.insuranceCompany ?? "",
         policyNo,

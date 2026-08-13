@@ -78,6 +78,10 @@ export type ClaimImportMatchStats = {
   created: number;
   updated: number;
   failed: number;
+  willCreate: number;
+  willUpdate: number;
+  willReject: number;
+  differentEventBlocked: number;
 };
 
 export function emptyMatchStats(): ClaimImportMatchStats {
@@ -90,5 +94,9 @@ export function emptyMatchStats(): ClaimImportMatchStats {
     created: 0,
     updated: 0,
     failed: 0,
+    willCreate: 0,
+    willUpdate: 0,
+    willReject: 0,
+    differentEventBlocked: 0,
   };
 }

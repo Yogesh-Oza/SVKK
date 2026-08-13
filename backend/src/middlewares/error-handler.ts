@@ -44,6 +44,22 @@ export function errorHandler(
     });
   }
 
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    const target = Array.isArray(err.meta?.target)
+      ? (err.meta.target as string[]).join(",")
+      : String(err.meta?.target ?? "");
+    const message = target.toLowerCase().includes("claimno")
+      ? "A claim with this claim number already exists."
+      : "A record with this unique value already exists.";
+    req.log?.warn({ err, meta: err.meta }, "unique constraint");
+    return res.status(409).json({
+      success: false,
+      code: "CONFLICT",
+      message,
+      traceId,
+    });
+  }
+
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
     req.log?.warn({ err, meta: err.meta }, "foreign key constraint");
     return res.status(409).json({

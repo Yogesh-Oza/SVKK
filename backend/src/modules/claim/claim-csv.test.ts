@@ -3,6 +3,7 @@ import {
   datesEqualUtc,
   holderNamesMatch,
   normalizePersonName,
+  normalizePolicyNo,
   parseClaimDate,
   parseClaimDecimal,
   sumInsuredMatches,
@@ -16,6 +17,7 @@ import { ClaimStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { canonicalClaimHeader } from "./claim-csv-format.js";
 import { parseClaimRow, resolveClaimVillage } from "./claim-csv-import.js";
+import { buildClaimErrorReportCsv } from "./claim-csv-errors.js";
 
 describe("claim-csv-normalize", () => {
   it("parses ISO and DD-MM-YYYY dates", () => {
@@ -44,6 +46,12 @@ describe("claim-csv-normalize", () => {
   it("parses decimals and sum insured", () => {
     expect(parseClaimDecimal("1,50,000")).toBe(150000);
     expect(sumInsuredMatches(200000, new Prisma.Decimal("200000.00"))).toBe(true);
+  });
+
+  it("normalizes Policy Number by trimming, stripping spaces, and ignoring case", () => {
+    expect(normalizePolicyNo("  ABC  123 ")).toBe("abc123");
+    expect(normalizePolicyNo("abc123")).toBe(normalizePolicyNo("ABC 123"));
+    expect(normalizePolicyNo("   ")).toBe("");
   });
 });
 
@@ -169,5 +177,28 @@ describe("resolveClaimVillage", () => {
     expect(
       resolveClaimVillage(undefined, { villageCsv: null, hospitalArea: null }),
     ).toBeNull();
+  });
+});
+
+describe("claim import error report", () => {
+  it("includes disposition and match reason columns", () => {
+    const csv = buildClaimErrorReportCsv([
+      {
+        row: 4,
+        error: "Different claim event for the same Claim Number — blocked by unique CCN",
+        claimNo: "CCN-1",
+        policyNo: "ABC123",
+        matchStatus: "MATCHED_EXACT",
+        matchReason: "MATCHED — Policy Number ABC123",
+        disposition: "WILL_REJECT",
+        dispositionReason: "different_event",
+        verificationWarnings: ["svkk"],
+      },
+    ]);
+    const header = csv.replace(/^\uFEFF/, "").split(/\r?\n/)[0];
+    expect(header).toContain("Disposition");
+    expect(header).toContain("Match Reason");
+    expect(csv).toContain("different_event");
+    expect(csv).toContain("MATCHED — Policy Number ABC123");
   });
 });

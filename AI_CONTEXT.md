@@ -388,7 +388,7 @@ AD policy form: **disable live auto-calculation on fetch / edit / update**; keep
 
 ## Previous task (completed)
 
-Claim CSV/XLSX import with preview-before-commit, tiered policy matching, match-confidence reporting, and Claim MIS tab (dimensional + trend views).
+Claim CSV/XLSX import with preview-before-commit, Policy-Number-only matching (other fields are warnings), hybrid CCN (same-event UPDATE / different-event REJECT), and Claim MIS tab (dimensional + trend views).
 
 ## Tech stack
 
@@ -428,11 +428,17 @@ Env: `POLICY_IMPORT_MAX_ROWS` (default 10000), `CSV_DUPLICATE_MODE`, `ACCESS_TOK
 
 1. **Preview:** `POST /api/v1/upload/claim-csv/preview` — parses file, returns first 20 rows + summary + `duplicateImport` (if prior completed job with same checksum) + signed `previewToken` (15 min TTL).
 2. **Confirm:** `POST /api/v1/upload/claim-csv/confirm` — body `{ previewToken, force?: boolean }`; `force: true` bypasses duplicate block when `CSV_DUPLICATE_MODE=block`.
-3. **Matching (tiered):**
-   - Primary (required): Policy No + Policy Type + Start Date + End Date
-   - Secondary (warnings only): Holder Name + Sum Insured
-4. **Link modes:** `STRICT_MATCH` (default) | `ALLOW_UNLINKED`
-5. **Import mode:** `CREATE_ONLY` only (upsert / update-only planned for a future release)
+3. **Matching (Policy Number only):**
+   - Primary (required): Policy Number only (trim, strip whitespace, case-insensitive). Unique Policy → MATCHED; none → UNLINKED; two+ Policies with the same normalized number → CONFLICT.
+   - Warnings only (never choose or reject the Policy): SVKK, Policy Type, Policy dates / year hint, Holder Name, Sum Insured, Insurance Company.
+   - Optional `policyYearId` hint within the already matched Policy; year ambiguity does not un-match.
+4. **Link modes:** `STRICT_MATCH` (default, rejects UNLINKED) | `ALLOW_UNLINKED`. CONFLICT is rejected in both.
+5. **CCN (Phase 1 hybrid):** `claimNo` stays unique. Same event → UPDATE; different event → REJECT; weak identity (no admission/lodge/received and no lodge type) → UPDATE + `event_identity_weak`. File-checksum duplicate mode unchanged. `POST /claims` maps unique `claimNo` (`P2002`) to 409.
+6. **Preview:** Per-row `disposition` (`WILL_CREATE` | `WILL_UPDATE` | `WILL_REJECT`), `dispositionReason`, `eventClassification`; summary includes `willCreate`, `willUpdate`, `willReject`, `differentEventBlocked`.
+
+## Phase 2 claim schema (not approved)
+
+Do **not** drop unique `claimNo` or add `claimEventKey` without explicit written approval. Trigger is material `DIFFERENT_EVENT` volume in preview `differentEventBlocked` / error reports after Phase 1 ships. Measure that volume before proposing Phase 2.
 
 ## API endpoints (claim import & MIS)
 
@@ -478,4 +484,5 @@ Requires `REDIS_URL`. Schema reserves `CsvImportJob.progressPercent`.
 ## Known risks
 
 - Sync import may timeout above ~5k rows on slow hosts — use Phase 2 queue.
-- Unlinked claims have empty `svkkPublicId` unless populated from CSV later.
+- Unlinked claims keep CSV `svkkPublicId` snapshot; linking is Policy Number only (SVKK mismatch is a warning).
+- Measure `differentEventBlocked` / DIFFERENT_EVENT volume from claim import preview and error reports before considering Phase 2 CCN schema.

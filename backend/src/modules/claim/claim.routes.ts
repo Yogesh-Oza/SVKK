@@ -420,7 +420,13 @@ export function createClaimRouter(env: Env) {
         where: { id: String(req.params.id) },
         select: {
           ...claimDetailSelect,
-          policy: { select: { policyNo: true, area: true } },
+          policy: {
+            select: {
+              policyNo: true,
+              area: true,
+              policyType: { select: { id: true, key: true, name: true } },
+            },
+          },
         },
       });
       if (!row) {
@@ -434,7 +440,12 @@ export function createClaimRouter(env: Env) {
       const { policy, ...detail } = row;
       res.json({
         ...detail,
-        policy: policy ? { policyNo: policy.policyNo } : null,
+        policy: policy
+          ? {
+              policyNo: policy.policyNo,
+              policyType: policy.policyType,
+            }
+          : null,
       });
     } catch (e) {
       next(e);

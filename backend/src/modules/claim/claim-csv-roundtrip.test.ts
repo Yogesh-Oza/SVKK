@@ -10,8 +10,7 @@ import { parseClaimRow } from "./claim-csv-import.js";
 import { buildClaimsExportCsv } from "./claim.export-csv.js";
 import { csvCell } from "../policy/policy-csv-utils.js";
 import type { ClaimListRow } from "./claim.list.js";
-import { shouldRejectDuplicateClaim } from "./claim-duplicate.js";
-import { CsvImportMode } from "@prisma/client";
+import { classifyClaimEvent } from "./claim-duplicate.js";
 
 describe("canonical 39-column CSV contract", () => {
   it("has exactly 39 public headers", () => {
@@ -109,7 +108,38 @@ describe("canonical 39-column CSV contract", () => {
     expect(parsed.categoryText).toBe("A");
   });
 
-  it("re-import of same claimNo is rejected by CREATE_ONLY (no silent duplicates)", () => {
-    expect(shouldRejectDuplicateClaim(CsvImportMode.CREATE_ONLY, "CCN2024001")).toBe(true);
+  it("export prefers linked catalog Policy Type over snapshot", () => {
+    const row = {
+      claimNo: "CCN-TYPE",
+      svkkPublicId: "SVKK001",
+      policyNoText: "MDI123",
+      policyTypeText: "CSV Snapshot Type",
+      policy: {
+        policyNo: "MDI123",
+        policyType: { id: "pt-1", key: "floater", name: "Family Floater" },
+      },
+      policyYearRow: null,
+    } as unknown as ClaimListRow;
+    const csv = buildClaimsExportCsv([row]);
+    const values = csv.split("\n")[1]!.split(",").map((c) => c.replace(/^"|"$/g, ""));
+    const map = new Map<string, string>();
+    CLAIM_CSV_PUBLIC_HEADERS.forEach((h, i) => {
+      map.set(canonicalClaimHeader(h), values[i] ?? "");
+    });
+    expect(map.get("Policy Type")).toBe("Family Floater");
+  });
+
+  it("same CCN same-event is classified as update (not a silent duplicate create)", () => {
+    const incoming = {
+      claimNo: "CCN2024001",
+      policyId: "p1",
+      policyNo: "MDI123",
+      admissionDate: new Date(Date.UTC(2024, 3, 15)),
+      lodgeDate: new Date(Date.UTC(2024, 3, 22)),
+      claimReceivedDate: null,
+      actualLodgeType: "Cashless",
+      claimType: "Cashless",
+    };
+    expect(classifyClaimEvent(incoming, incoming)).toBe("SAME_EVENT");
   });
 });

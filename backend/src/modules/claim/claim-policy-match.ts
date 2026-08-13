@@ -9,12 +9,13 @@ import {
 import {
   datesEqualUtc,
   holderNamesMatch,
+  normalizePolicyNo,
   sumInsuredMatches,
 } from "./claim-csv-normalize.js";
 
 export type ClaimMatchInput = {
   policyNo: string;
-  /** CSV SVKK ID when provided — strong identity constraint via InsuredParty. */
+  /** CSV SVKK ID — validation only; never used to choose or reject the Policy. */
   svkkPublicId: string;
   policyHolderName: string;
   policyTypeText: string;
@@ -22,7 +23,7 @@ export type ClaimMatchInput = {
   policyEndDate: Date | null;
   sumInsured: number | null;
   insuranceCompany: string | null;
-  /** Coverage-date fallback: admission → lodge → received */
+  /** Coverage-date year hint: admission → lodge → received */
   admissionDate: Date | null;
   lodgeDate: Date | null;
   claimReceivedDate: Date | null;
@@ -40,18 +41,55 @@ export type ClaimMatchResult = {
   yearLabel?: string;
   village?: string | null;
   policyArea?: string | null;
+  policyTypeName?: string | null;
   conflictDetail?: string;
 };
 
-export type PolicyYearMatch = Prisma.PolicyYearGetPayload<{
-  include: {
-    policy: {
-      include: { insuredParty: true; policyType: true };
-    };
-  };
-}>;
+export type PolicyYearHint = {
+  id: string;
+  yearLabel: string;
+  policyStart: Date | null;
+  policyEnd: Date | null;
+  sumInsured: { toString(): string } | null;
+  deletedAt?: Date | null;
+};
 
-/** Prefer admission → lodge → received for coverage-window fallback. */
+export type PolicyMatchCandidate = {
+  id: string;
+  policyNo: string | null;
+  village: string | null;
+  area: string | null;
+  insuranceCompany: string | null;
+  holderName: string | null;
+  insuredPartyId: string;
+  insuredParty: { id: string; svkkPublicId: string; name: string };
+  policyType: { id: string; key: string; name: string };
+  years: PolicyYearHint[];
+};
+
+export type ClaimPolicyLookupCache = {
+  byNormalizedNo: Map<string, PolicyMatchCandidate[]>;
+};
+
+const policyLookupInclude = {
+  insuredParty: true,
+  policyType: true,
+  years: {
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      yearLabel: true,
+      policyStart: true,
+      policyEnd: true,
+      sumInsured: true,
+      deletedAt: true,
+    },
+  },
+} as const;
+
+type PolicyLookupRow = Prisma.PolicyGetPayload<{ include: typeof policyLookupInclude }>;
+
+/** Prefer admission → lodge → received for coverage-window year hint. */
 export function claimCoverageDate(input: ClaimMatchInput): Date | null {
   return input.admissionDate ?? input.lodgeDate ?? input.claimReceivedDate ?? null;
 }
@@ -74,87 +112,134 @@ export function policyYearContainsDate(
   return utcDayMs(py.policyStart) <= t && t <= utcDayMs(py.policyEnd);
 }
 
-function normalizePolicyNo(raw: string): string {
-  return raw.trim();
+function liveYears(policy: PolicyMatchCandidate): PolicyYearHint[] {
+  return policy.years.filter((y) => !y.deletedAt);
 }
 
-function normalizeSvkk(raw: string): string {
-  return raw.trim();
+function yearMatchesExactCsvDates(py: PolicyYearHint, input: ClaimMatchInput): boolean {
+  if (input.policyStartDate != null && !datesEqualUtc(py.policyStart, input.policyStartDate)) {
+    return false;
+  }
+  if (input.policyEndDate != null && !datesEqualUtc(py.policyEnd, input.policyEndDate)) {
+    return false;
+  }
+  return true;
 }
 
-/** Narrow by Policy Type when CSV provides a resolvable type. */
-function filterByPolicyType(
-  candidates: PolicyYearMatch[],
+function pickPolicyYearHint(
+  policy: PolicyMatchCandidate,
+  input: ClaimMatchInput,
+): { policyYearId?: string; yearLabel?: string; warnings: string[] } {
+  const years = liveYears(policy);
+  const warnings: string[] = [];
+
+  if (hasExplicitCsvPolicyDates(input)) {
+    const exact = years.filter((y) => yearMatchesExactCsvDates(y, input));
+    if (exact.length === 1) {
+      return { policyYearId: exact[0]!.id, yearLabel: exact[0]!.yearLabel, warnings };
+    }
+    if (exact.length === 0) {
+      warnings.push("policy_dates");
+    } else {
+      warnings.push("policy_year_ambiguous");
+      return { warnings };
+    }
+  }
+
+  const coverage = claimCoverageDate(input);
+  if (coverage) {
+    const inWindow = years.filter((y) => policyYearContainsDate(y, coverage));
+    if (inWindow.length === 1) {
+      return { policyYearId: inWindow[0]!.id, yearLabel: inWindow[0]!.yearLabel, warnings };
+    }
+    if (inWindow.length === 0 && !warnings.includes("policy_dates")) {
+      warnings.push("policy_dates");
+    }
+    if (inWindow.length > 1) {
+      warnings.push("policy_year_ambiguous");
+      return { warnings };
+    }
+  }
+
+  if (years.length === 1 && !warnings.includes("policy_dates")) {
+    return { policyYearId: years[0]!.id, yearLabel: years[0]!.yearLabel, warnings };
+  }
+  if (years.length > 1 && !warnings.includes("policy_year_ambiguous") && !warnings.includes("policy_dates")) {
+    warnings.push("policy_year_ambiguous");
+  }
+  return { warnings };
+}
+
+function runValidations(
+  policy: PolicyMatchCandidate,
   input: ClaimMatchInput,
   typeCache: PolicyTypeCache,
-): PolicyYearMatch[] {
-  const raw = input.policyTypeText.trim();
-  if (!raw) return candidates;
-  const resolved = resolvePolicyTypeFromCache(raw, typeCache);
-  if (!resolved) return [];
-  return candidates.filter((py) => py.policy.policyType.id === resolved.id);
-}
-
-/** Exact CSV Policy Start/End equality against PolicyYear (when either CSV date is set). */
-function filterByExactCsvPolicyDates(
-  candidates: PolicyYearMatch[],
-  input: ClaimMatchInput,
-): PolicyYearMatch[] {
-  if (!hasExplicitCsvPolicyDates(input)) return candidates;
-  return candidates.filter((py) => {
-    if (input.policyStartDate != null && !datesEqualUtc(py.policyStart, input.policyStartDate)) {
-      return false;
-    }
-    if (input.policyEndDate != null && !datesEqualUtc(py.policyEnd, input.policyEndDate)) {
-      return false;
-    }
-    return true;
-  });
-}
-
-function filterByCoverageDate(
-  candidates: PolicyYearMatch[],
-  coverageDate: Date,
-): PolicyYearMatch[] {
-  return candidates.filter((py) => policyYearContainsDate(py, coverageDate));
-}
-
-function runSecondaryVerification(
-  match: PolicyYearMatch,
-  input: ClaimMatchInput,
+  chosenYear: PolicyYearHint | undefined,
 ): string[] {
   const warnings: string[] = [];
-  if (
-    input.policyHolderName &&
-    !holderNamesMatch(input.policyHolderName, match.policy.insuredParty.name)
-  ) {
-    warnings.push("holder_name");
+  const csvSvkk = input.svkkPublicId.trim();
+  const dbSvkk = policy.insuredParty.svkkPublicId.trim();
+  if (csvSvkk && dbSvkk && csvSvkk.toLowerCase() !== dbSvkk.toLowerCase()) {
+    warnings.push("svkk");
   }
-  if (!sumInsuredMatches(input.sumInsured, match.sumInsured)) {
-    warnings.push("sum_insured");
+
+  const typeRaw = input.policyTypeText.trim();
+  if (typeRaw) {
+    const resolved = resolvePolicyTypeFromCache(typeRaw, typeCache);
+    if (!resolved || resolved.id !== policy.policyType.id) {
+      warnings.push("policy_type");
+    }
   }
+
+  const holderCsv = input.policyHolderName.trim();
+  if (holderCsv) {
+    const partyOk = holderNamesMatch(holderCsv, policy.insuredParty.name);
+    const policyOk = policy.holderName ? holderNamesMatch(holderCsv, policy.holderName) : false;
+    if (!partyOk && !policyOk) {
+      warnings.push("holder_name");
+    }
+  }
+
+  const years = liveYears(policy);
+  const sumYear = chosenYear ?? (years.length === 1 ? years[0] : undefined);
+  if (input.sumInsured != null) {
+    if (sumYear) {
+      if (!sumInsuredMatches(input.sumInsured, sumYear.sumInsured as never)) {
+        warnings.push("sum_insured");
+      }
+    } else if (years.length > 0 && !years.some((y) => sumInsuredMatches(input.sumInsured, y.sumInsured as never))) {
+      warnings.push("sum_insured");
+    }
+  }
+
   const csvIns = (input.insuranceCompany ?? "").trim().toLowerCase();
-  const dbIns = (match.policy.insuranceCompany ?? "").trim().toLowerCase();
+  const dbIns = (policy.insuranceCompany ?? "").trim().toLowerCase();
   if (csvIns && dbIns && csvIns !== dbIns) {
     warnings.push("insurance_company");
   }
   return warnings;
 }
 
-function matchedResult(match: PolicyYearMatch, warnings: string[]): ClaimMatchResult {
-  const policyNo = match.policy.policyNo ?? "";
-  const svkk = match.policy.insuredParty.svkkPublicId;
+function matchedResult(
+  policy: PolicyMatchCandidate,
+  warnings: string[],
+  year: { policyYearId?: string; yearLabel?: string },
+): ClaimMatchResult {
+  const policyNo = policy.policyNo ?? "";
+  const svkk = policy.insuredParty.svkkPublicId;
+  const yearBit = year.yearLabel ? ` · Policy Year: ${year.yearLabel}` : "";
   return {
     matchStatus: ClaimPolicyMatchStatus.MATCHED_EXACT,
     verificationWarnings: warnings,
-    matchReason: `MATCHED — Policy: ${policyNo} · SVKK: ${svkk} · Policy Year: ${match.yearLabel}`,
-    policyId: match.policyId,
-    policyYearId: match.id,
-    insuredPartyId: match.policy.insuredPartyId,
+    matchReason: `MATCHED — Policy Number ${policyNo}${yearBit}`,
+    policyId: policy.id,
+    policyYearId: year.policyYearId,
+    insuredPartyId: policy.insuredPartyId,
     svkkPublicId: svkk,
-    yearLabel: match.yearLabel,
-    village: match.policy.village,
-    policyArea: match.policy.area,
+    yearLabel: year.yearLabel,
+    village: policy.village,
+    policyArea: policy.area,
+    policyTypeName: policy.policyType.name,
   };
 }
 
@@ -175,13 +260,42 @@ function conflict(detail: string, reason: string): ClaimMatchResult {
   };
 }
 
+function toCandidate(row: PolicyLookupRow): PolicyMatchCandidate {
+  return {
+    id: row.id,
+    policyNo: row.policyNo,
+    village: row.village,
+    area: row.area,
+    insuranceCompany: row.insuranceCompany,
+    holderName: row.holderName,
+    insuredPartyId: row.insuredPartyId,
+    insuredParty: {
+      id: row.insuredParty.id,
+      svkkPublicId: row.insuredParty.svkkPublicId,
+      name: row.insuredParty.name,
+    },
+    policyType: {
+      id: row.policyType.id,
+      key: row.policyType.key,
+      name: row.policyType.name,
+    },
+    years: row.years.map((y) => ({
+      id: y.id,
+      yearLabel: y.yearLabel,
+      policyStart: y.policyStart,
+      policyEnd: y.policyEnd,
+      sumInsured: y.sumInsured,
+      deletedAt: y.deletedAt,
+    })),
+  };
+}
+
 /**
- * Pure matching against already-loaded PolicyYear candidates.
- * Implements Steps A–E: policyNo → SVKK → type → exact CSV dates → coverage fallback.
- * Never auto-picks when candidate count > 1.
+ * Link decision uses Policy Number only (normalized). Other fields become warnings
+ * and an optional PolicyYear hint — they never change MATCHED / UNLINKED / CONFLICT.
  */
 export function resolveClaimPolicyMatch(
-  candidates: PolicyYearMatch[],
+  candidates: PolicyMatchCandidate[],
   input: ClaimMatchInput,
   typeCache: PolicyTypeCache,
 ): ClaimMatchResult {
@@ -190,105 +304,60 @@ export function resolveClaimPolicyMatch(
     return unlinked("Policy Number is blank");
   }
 
-  const csvSvkk = normalizeSvkk(input.svkkPublicId);
-  let pool = candidates.filter((py) => (py.policy.policyNo ?? "").trim() === policyNo);
-
-  if (csvSvkk) {
-    const bySvkk = pool.filter(
-      (py) => normalizeSvkk(py.policy.insuredParty.svkkPublicId) === csvSvkk,
-    );
-    if (pool.length > 0 && bySvkk.length === 0) {
-      return unlinked("CSV SVKK ID does not match policy owner");
-    }
-    pool = bySvkk;
-  }
-
+  const pool = candidates.filter((p) => normalizePolicyNo(p.policyNo) === policyNo);
   if (pool.length === 0) {
-    return unlinked(
-      csvSvkk
-        ? `No policy found for Policy Number ${policyNo} + SVKK ${csvSvkk}`
-        : `No policy found for Policy Number ${policyNo}`,
-    );
+    return unlinked(`No policy found for Policy Number ${input.policyNo.trim() || policyNo}`);
   }
-
-  pool = filterByPolicyType(pool, input, typeCache);
-  if (pool.length === 0) {
-    return unlinked(
-      input.policyTypeText.trim()
-        ? `No policy of type "${input.policyTypeText.trim()}" for Policy Number ${policyNo}`
-        : `No policy found for Policy Number ${policyNo}`,
-    );
-  }
-
-  const hadExplicitDates = hasExplicitCsvPolicyDates(input);
-  if (hadExplicitDates) {
-    const dated = filterByExactCsvPolicyDates(pool, input);
-    if (dated.length === 1) {
-      const match = dated[0]!;
-      return matchedResult(match, runSecondaryVerification(match, input));
-    }
-    if (dated.length > 1) {
-      return conflict(
-        `${dated.length} policy years match Policy Number ${policyNo} with CSV policy dates`,
-        "Multiple policy years match this claim",
-      );
-    }
-    // Explicit CSV dates contradict available years — do NOT fall back to coverage date.
-    return unlinked(
-      `CSV Policy Start/End dates do not match any PolicyYear for Policy Number ${policyNo}`,
-    );
-  }
-
-  // Coverage-date fallback only when CSV policy dates are missing/insufficient.
-  if (pool.length === 1) {
-    const match = pool[0]!;
-    return matchedResult(match, runSecondaryVerification(match, input));
-  }
-
-  const coverage = claimCoverageDate(input);
-  if (!coverage) {
+  if (pool.length > 1) {
+    const display = input.policyNo.trim() || policyNo;
     return conflict(
-      `${pool.length} policy years match Policy Number ${policyNo}; no coverage date to disambiguate`,
-      "Multiple policy years match this claim",
+      `${pool.length} policies share Policy Number ${display}`,
+      `Multiple policies share Policy Number ${display}`,
     );
   }
 
-  const inWindow = filterByCoverageDate(pool, coverage);
-  if (inWindow.length === 1) {
-    const match = inWindow[0]!;
-    return matchedResult(match, runSecondaryVerification(match, input));
-  }
-  if (inWindow.length === 0) {
-    return unlinked(
-      `No PolicyYear contains claim coverage date for Policy Number ${policyNo}`,
-    );
-  }
-  return conflict(
-    `${inWindow.length} policy years contain the claim coverage date for Policy Number ${policyNo}`,
-    "Multiple policy years match this claim",
-  );
+  const policy = pool[0]!;
+  const yearHint = pickPolicyYearHint(policy, input);
+  const chosenYear = yearHint.policyYearId
+    ? liveYears(policy).find((y) => y.id === yearHint.policyYearId)
+    : undefined;
+  const warnings = [
+    ...yearHint.warnings,
+    ...runValidations(policy, input, typeCache, chosenYear),
+  ];
+  return matchedResult(policy, warnings, yearHint);
 }
 
-/** Find policy year matches for a claim row using deterministic Steps A–E. */
+/** Load non-deleted policies once per import job; key by normalized Policy Number. */
+export async function buildClaimImportPolicyCache(): Promise<ClaimPolicyLookupCache> {
+  const rows = await prisma.policy.findMany({
+    where: { deletedAt: null },
+    include: policyLookupInclude,
+  });
+  const byNormalizedNo = new Map<string, PolicyMatchCandidate[]>();
+  for (const row of rows) {
+    const key = normalizePolicyNo(row.policyNo);
+    if (!key) continue;
+    const list = byNormalizedNo.get(key) ?? [];
+    list.push(toCandidate(row));
+    byNormalizedNo.set(key, list);
+  }
+  return { byNormalizedNo };
+}
+
+/** Find the Policy for a claim row using Policy Number only. */
 export async function matchPolicyForClaim(
   input: ClaimMatchInput,
   typeCache: PolicyTypeCache,
+  policyCache?: ClaimPolicyLookupCache,
 ): Promise<ClaimMatchResult> {
   const policyNo = normalizePolicyNo(input.policyNo);
   if (!policyNo) {
     return unlinked("Policy Number is blank");
   }
 
-  const candidates = await prisma.policyYear.findMany({
-    where: {
-      deletedAt: null,
-      policy: { deletedAt: null, policyNo },
-    },
-    include: {
-      policy: { include: { insuredParty: true, policyType: true } },
-    },
-  });
-
+  const cache = policyCache ?? (await buildClaimImportPolicyCache());
+  const candidates = cache.byNormalizedNo.get(policyNo) ?? [];
   return resolveClaimPolicyMatch(candidates, input, typeCache);
 }
 

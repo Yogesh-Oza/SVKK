@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PUJA CD ACCOUNT MANAGER</title>
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --card:#ffffff;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --green:#16a34a;
+    --red:#dc2626;
+    --orange:#f59e0b;
+    --border:#e5e7eb;
+    --purple:#7c3aed;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Arial, Helvetica, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header{
+    background:linear-gradient(135deg,#1d4ed8,#2563eb);
+    color:#fff;
+    padding:22px;
+    text-align:center;
+  }
+  header h1{margin:0;font-size:28px}
+  header p{margin:6px 0 0;opacity:.9}
+  .container{
+    max-width:1200px;
+    margin:24px auto;
+    padding:0 15px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:16px;
+  }
+  .mis-grid{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:12px;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:18px;
+    box-shadow:0 6px 18px rgba(0,0,0,.06);
+  }
+  .balance-card{
+    background:linear-gradient(135deg,#ffffff,#eef5ff);
+    border-left:6px solid var(--primary);
+  }
+  .mis-card{
+    padding:14px;
+    border-left:5px solid var(--purple);
+    background:linear-gradient(135deg,#ffffff,#f5f3ff);
+  }
+  .label{
+    color:var(--muted);
+    font-size:14px;
+    margin-bottom:6px;
+  }
+  .amount{
+    font-size:34px;
+    font-weight:bold;
+    color:var(--primary-dark);
+  }
+  .small-stat{
+    font-size:26px;
+    font-weight:bold;
+    margin-top:5px;
+  }
+  .mis-amount{
+    font-size:21px;
+    font-weight:bold;
+    color:#4c1d95;
+  }
+  .mis-count{
+    color:var(--muted);
+    font-size:13px;
+    margin-top:4px;
+  }
+  .green{color:var(--green)}
+  .red{color:var(--red)}
+  .orange{color:var(--orange)}
+  h2{
+    font-size:20px;
+    margin:0 0 14px;
+  }
+  input, select, textarea{
+    width:100%;
+    padding:11px;
+    border:1px solid var(--border);
+    border-radius:9px;
+    font-size:15px;
+    margin-bottom:10px;
+    background:#fff;
+  }
+  button{
+    border:0;
+    border-radius:9px;
+    padding:11px 16px;
+    font-size:15px;
+    font-weight:bold;
+    cursor:pointer;
+    background:var(--primary);
+    color:#fff;
+    margin:4px 4px 4px 0;
+  }
+  button:hover{background:var(--primary-dark)}
+  button.secondary{background:#374151}
+  button.secondary:hover{background:#111827}
+  button.danger{background:var(--red)}
+  button.danger:hover{background:#b91c1c}
+  button.success{background:var(--green)}
+  button.success:hover{background:#15803d}
+  .full{grid-column:1/-1}
+  .row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:#fff;
+    overflow:hidden;
+    border-radius:12px;
+  }
+  th,td{
+    border-bottom:1px solid var(--border);
+    padding:10px;
+    text-align:left;
+    font-size:14px;
+  }
+  th{
+    background:#f3f4f6;
+    color:#111827;
+  }
+  tr:hover td{background:#fafafa}
+  .note{
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    padding:12px;
+    border-radius:10px;
+    margin-top:10px;
+    font-size:14px;
+  }
+  .ok{
+    background:#ecfdf5;
+    border:1px solid #bbf7d0;
+    color:#166534;
+  }
+  .err{
+    background:#fef2f2;
+    border:1px solid #fecaca;
+    color:#991b1b;
+  }
+  .actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.55);
+    display:none;
+    align-items:flex-start;
+    justify-content:center;
+    padding:24px 12px;
+    overflow:auto;
+    z-index:1000;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{
+    background:#fff;
+    border-radius:14px;
+    padding:20px;
+    width:100%;
+    max-width:520px;
+    box-shadow:0 20px 50px rgba(0,0,0,.25);
+  }
+  .modal-box h2{ margin-top:0; }
+  .right{text-align:right}
+  .pill{
+    display:inline-block;
+    padding:5px 9px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:bold;
+    white-space:nowrap;
+  }
+  .pill.credit{background:#dcfce7;color:#166534}
+  .pill.debit{background:#fee2e2;color:#991b1b}
+  .pill.cat{background:#e0e7ff;color:#3730a3}
+  @media(max-width:1000px){
+    .mis-grid{grid-template-columns:repeat(3,1fr)}
+  }
+  @media(max-width:850px){
+    .grid,.row{grid-template-columns:1fr}
+    .mis-grid{grid-template-columns:repeat(2,1fr)}
+    .amount{font-size:28px}
+  }
+  @media(max-width:520px){
+    .mis-grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PUJA CD ACCOUNT MANAGER</h1>
+  <p>Wallet top-up + CD amount usage deduction + Category-wise MIS | Auto-save enabled</p>
+</header>
+
+<div class="container">
+  <div class="grid">
+    <div class="card balance-card">
+      <div class="label">Current Wallet Balance</div>
+      <div class="amount" id="walletBalance">₹0.00</div>
+      <div class="label">Last updated: <span id="lastUpdated">-</span></div>
+      <button class="danger" style="margin-top:10px;" onclick="clearAllData()">Reset Wallet &amp; All Entries</button>
+    </div>
+    <div class="card">
+      <div class="label">Total Top-Up</div>
+      <div class="small-stat green" id="totalTopup">₹0.00</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Used / Deducted</div>
+      <div class="small-stat red" id="totalUsed">₹0.00</div>
+    </div>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <h2>Category-wise MIS</h2>
+      <button class="secondary" onclick="exportMIS()">Export MIS CSV</button>
+    </div>
+    <div class="mis-grid" id="misCards"></div>
+
+    <div style="overflow:auto;margin-top:16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th class="right">No. of Entries</th>
+            <th class="right">Wallet Used</th>
+          </tr>
+        </thead>
+        <tbody id="misTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <h2>Village-wise MIS</h2>
+      <button class="secondary" onclick="exportFieldMIS('village','Village','wallet_village_mis.csv')">Export MIS CSV</button>
+    </div>
+    <div class="mis-grid" id="villageMisCards"></div>
+
+    <div style="overflow:auto;margin-top:16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Village</th>
+            <th class="right">No. of Entries</th>
+            <th class="right">Wallet Used</th>
+          </tr>
+        </thead>
+        <tbody id="villageMisTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <h2>Group-wise MIS</h2>
+      <button class="secondary" onclick="exportFieldMIS('group','Group','wallet_group_mis.csv')">Export MIS CSV</button>
+    </div>
+    <div class="mis-grid" id="groupMisCards"></div>
+
+    <div style="overflow:auto;margin-top:16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Group</th>
+            <th class="right">No. of Entries</th>
+            <th class="right">Wallet Used</th>
+          </tr>
+        </thead>
+        <tbody id="groupMisTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <h2>Policy Type-wise MIS</h2>
+      <button class="secondary" onclick="exportFieldMIS('policyType','Policy Type','wallet_policy_type_mis.csv')">Export MIS CSV</button>
+    </div>
+    <div class="mis-grid" id="policyMisCards"></div>
+
+    <div style="overflow:auto;margin-top:16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Policy Type</th>
+            <th class="right">No. of Entries</th>
+            <th class="right">Wallet Used</th>
+          </tr>
+        </thead>
+        <tbody id="policyMisTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px;">
+    <div class="card">
+      <h2>Set / Top-Up Wallet</h2>
+      <input type="number" id="initialBalance" placeholder="Set opening wallet balance e.g. 5000" />
+      <button onclick="setOpeningBalance()">Set Opening Balance</button>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:16px 0;">
+
+      <input type="number" id="topupAmount" placeholder="Top-up amount e.g. 1000" />
+      <input type="text" id="topupRemark" placeholder="Remark e.g. Cash top-up / UPI top-up" />
+      <button class="success" onclick="topupWallet()">Add Top-Up</button>
+
+      <div class="note">
+        Opening balance resets the wallet only after confirmation. Top-up adds amount to current wallet.<br><br>
+        <b>Auto-save:</b> Wallet balance and all transactions are saved in this browser. Refreshing the page will not reset the balance.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Upload Usage CSV</h2>
+      <input type="file" id="csvFile" accept=".csv" />
+      <button id="uploadBtn" onclick="processCSV()">Upload & Deduct</button>
+      <button class="secondary" onclick="downloadSampleCSV()">Download Sample CSV</button>
+
+      <div class="note">
+        CSV columns accepted: <b>Date of Submission, Month, Year, Type, Holder's Name, Village, Category, Group, Policy Type, CD Account Used, CD Amount, Remark, Deposited/Deducted Amount</b><br>
+        Required columns: <b>Deposited/Deducted Amount</b> (or <b>Amount</b>) and <b>Category</b><br>
+        Type column accepts <b>Credit</b> or <b>Debit</b> (defaults to Debit if left blank)<br>
+        Allowed categories: <b>A, B, C, D, Staff, SVGA</b>
+      </div>
+      <div id="csvResult"></div>
+    </div>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <h2>Manual Usage Deduction</h2>
+    <div class="row">
+      <input type="date" id="manualDate" />
+      <select id="manualMonth">
+        <option value="">Select Month</option>
+      </select>
+    </div>
+    <div class="row">
+      <input type="number" id="manualYear" placeholder="Year e.g. 2026" />
+      <select id="manualCategory">
+        <option value="">Select Category</option>
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+        <option value="Staff">Staff</option>
+        <option value="SVGA">SVGA</option>
+      </select>
+    </div>
+    <div class="row">
+      <input type="text" id="manualHolderName" placeholder="Holder's Name" />
+      <select id="manualVillage"><option value="">Select Village</option></select>
+    </div>
+    <div class="row">
+      <select id="manualGroup"><option value="">Select Group</option></select>
+      <select id="manualPolicyType"><option value="">Select Policy Type</option></select>
+    </div>
+    <div class="row">
+      <input type="text" id="manualCdAccount" placeholder="CD Account Used" />
+      <input type="number" id="manualCdAmount" placeholder="CD Amount" />
+    </div>
+    <div class="row">
+      <input type="text" id="manualRemark" placeholder="Remark e.g. Printing Charge" />
+      <input type="number" id="manualAmount" placeholder="Deposited / Deducted Amount e.g. 250" />
+    </div>
+    <div class="note">
+      This form always records a <b>Debit</b> (usage) entry against the wallet. Use the Top-Up card for Credits.
+    </div>
+    <button class="danger" onclick="manualDeduct()">Deduct Manually</button>
+  </div>
+
+  <div class="card full" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <h2>Transaction History</h2>
+      <div class="actions">
+        <button class="secondary" onclick="exportTransactions()">Export Transactions CSV</button>
+        <button class="secondary" onclick="backupWalletData()">Backup Wallet Data</button>
+        <button class="danger" onclick="clearAllData()">Clear All Data</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <input type="text" id="searchBox" placeholder="Search transaction..." oninput="debouncedRender()" />
+      <select id="categoryFilter" onchange="render()">
+        <option value="">All Categories</option>
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+        <option value="Staff">Staff</option>
+        <option value="SVGA">SVGA</option>
+      </select>
+    </div>
+
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Date of Submission</th>
+            <th>Month</th>
+            <th>Year</th>
+            <th>Type</th>
+            <th>Holder's Name</th>
+            <th>Village</th>
+            <th>Category</th>
+            <th>Group</th>
+            <th>Policy Type</th>
+            <th>CD Account Used</th>
+            <th class="right">CD Amount</th>
+            <th>Remark</th>
+            <th class="right">Deposited / Deducted</th>
+            <th class="right">Balance After</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="transactionTable"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editModal">
+  <div class="modal-box">
+    <h2>Edit Entry</h2>
+    <div class="row">
+      <input type="date" id="editDate" />
+      <select id="editMonth"><option value="">Select Month</option></select>
+    </div>
+    <div class="row">
+      <input type="number" id="editYear" placeholder="Year" />
+      <select id="editType">
+        <option value="DEBIT">Debit</option>
+        <option value="CREDIT">Credit</option>
+        <option value="TOP-UP">Top-Up</option>
+        <option value="OPENING">Opening</option>
+      </select>
+    </div>
+    <div class="row">
+      <input type="text" id="editHolderName" placeholder="Holder's Name" />
+      <select id="editVillage"><option value="">Select Village</option></select>
+    </div>
+    <div class="row">
+      <select id="editCategory">
+        <option value="">Select Category</option>
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+        <option value="Staff">Staff</option>
+        <option value="SVGA">SVGA</option>
+      </select>
+      <select id="editGroup"><option value="">Select Group</option></select>
+    </div>
+    <div class="row">
+      <select id="editPolicyType"><option value="">Select Policy Type</option></select>
+      <input type="text" id="editCdAccount" placeholder="CD Account Used" />
+    </div>
+    <div class="row">
+      <input type="number" id="editCdAmount" placeholder="CD Amount" />
+      <input type="number" id="editAmount" placeholder="Deposited / Deducted Amount" />
+    </div>
+    <input type="text" id="editRemark" placeholder="Remark" style="width:100%;margin-top:10px;" />
+    <div class="note err" id="editError" style="display:none;"></div>
+    <div class="actions" style="margin-top:14px;">
+      <button onclick="saveEditModal()">Save Changes</button>
+      <button class="secondary" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let wallet = Number(localStorage.getItem("wallet_balance") || 0);
+let transactions = JSON.parse(localStorage.getItem("wallet_transactions") || "[]");
+
+function generateId(){
+  return "t_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
+}
+// Backfill ids for transactions saved before edit/delete support existed.
+transactions.forEach(t => { if(!t.id) t.id = generateId(); });
+
+const allowedCategories = ["A", "B", "C", "D", "Staff", "SVGA"];
+
+// Edit these two lists to match your actual Groups / Policy Types.
+const allowedGroups = ["SVKK", "NVKK", "RTY", "Other"];
+const allowedPolicyTypes = ["Individual", "Family Floater", "Asha Kiran", "Senior Citizen"];
+
+const allowedVillages = [
+  "Adhoi", "Thoriari", "Bhachau", "Bharudia", "Gagodar", "Ghanithar", "Halra",
+  "Kakarva", "Kharoi", "Lakadia", "Manafara", "N.Trambau", "Nandasar",
+  "Navagam-dayapar-Bhachau", "Rav", "Samkhiyali", "Shikra-Bhachau", "Shivlakha",
+  "Suvai", "SVGA", "Thoriyari", "Trambau", "Vanoi", "VKK"
+];
+
+const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function populateDropdown(id, values, placeholder){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.innerHTML = `<option value="">${placeholder}</option>` +
+    values.map(v => `<option value="${v}">${v}</option>`).join("");
+}
+function initDropdowns(){
+  populateDropdown("manualMonth", monthNames, "Select Month");
+  populateDropdown("manualGroup", allowedGroups, "Select Group");
+  populateDropdown("manualPolicyType", allowedPolicyTypes, "Select Policy Type");
+  populateDropdown("manualVillage", allowedVillages, "Select Village");
+  const dateEl = document.getElementById("manualDate");
+  if(dateEl) dateEl.valueAsDate = new Date();
+  const yearEl = document.getElementById("manualYear");
+  if(yearEl) yearEl.value = new Date().getFullYear();
+
+  populateDropdown("editMonth", monthNames, "Select Month");
+  populateDropdown("editGroup", allowedGroups, "Select Group");
+  populateDropdown("editPolicyType", allowedPolicyTypes, "Select Policy Type");
+  populateDropdown("editVillage", allowedVillages, "Select Village");
+}
+
+function money(n){
+  return "₹" + Number(n || 0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function today(){
+  return new Date().toLocaleString("en-IN");
+}
+function todayISO(){
+  return new Date().toISOString().slice(0,10);
+}
+function save(){
+  localStorage.setItem("wallet_balance", wallet);
+  localStorage.setItem("wallet_transactions", JSON.stringify(transactions));
+  localStorage.setItem("wallet_last_updated", today());
+}
+function recalcBalances(){
+  // transactions is stored newest-first; walk oldest-to-newest to rebuild the running balance
+  // after an edit or delete, so balanceAfter and the wallet total stay consistent.
+  const chronological = [...transactions].reverse();
+  let bal = 0;
+  chronological.forEach(t => {
+    if(t.type === "DEBIT"){
+      bal -= Number(t.amount || 0);
+    } else {
+      bal += Number(t.amount || 0);
+    }
+    t.balanceAfter = bal;
+  });
+  wallet = bal;
+  save();
+}
+function normalizeCategory(cat){
+  let c = String(cat || "").trim().toLowerCase();
+  // strip leading "category"/"catagory" word (with optional space/dash/colon separator), e.g. "Catagory A" -> "A"
+  c = c.replace(/^cat[ae]gory\s*[-:]?\s*/i, "").trim();
+  if(c === "a") return "A";
+  if(c === "b") return "B";
+  if(c === "c") return "C";
+  if(c === "d") return "D";
+  if(c === "staff") return "Staff";
+  if(c === "svga") return "SVGA";
+  return "";
+}
+function addTransaction(fields){
+  const now = new Date();
+  transactions.unshift({
+    id: generateId(),
+    dateOfSubmission: fields.dateOfSubmission || todayISO(),
+    month: fields.month || monthNames[now.getMonth()],
+    year: fields.year || now.getFullYear(),
+    type: fields.type,
+    holderName: fields.holderName || "-",
+    village: fields.village || "-",
+    category: fields.category || "-",
+    group: fields.group || "-",
+    policyType: fields.policyType || "-",
+    cdAccount: fields.cdAccount || "-",
+    cdAmount: fields.cdAmount != null && fields.cdAmount !== "" ? Number(fields.cdAmount) : "-",
+    remark: fields.remark || "-",
+    amount: Number(fields.amount),
+    balanceAfter: Number(fields.balanceAfter),
+    date: today()
+  });
+  save();
+  render();
+}
+function calculateMIS(){
+  const mis = {};
+  allowedCategories.forEach(cat => {
+    mis[cat] = { count: 0, amount: 0 };
+  });
+
+  transactions.forEach(t => {
+    if(t.type === "DEBIT"){
+      const cat = normalizeCategory(t.category);
+      if(cat && mis[cat]){
+        mis[cat].count += 1;
+        mis[cat].amount += Number(t.amount || 0);
+      }
+    }
+  });
+
+  return mis;
+}
+function renderMIS(){
+  const mis = calculateMIS();
+  const cards = document.getElementById("misCards");
+  const tbody = document.getElementById("misTable");
+
+  let cardsHtml = "", rowsHtml = "";
+  allowedCategories.forEach(cat => {
+    cardsHtml += `
+      <div class="mis-card">
+        <div class="label">Category ${cat}</div>
+        <div class="mis-amount">${money(mis[cat].amount)}</div>
+        <div class="mis-count">${mis[cat].count} entries</div>
+      </div>
+    `;
+    rowsHtml += `
+      <tr>
+        <td><span class="pill cat">${cat}</span></td>
+        <td class="right">${mis[cat].count}</td>
+        <td class="right"><b>${money(mis[cat].amount)}</b></td>
+      </tr>
+    `;
+  });
+  cards.innerHTML = cardsHtml;
+  tbody.innerHTML = rowsHtml;
+}
+
+function calculateFieldMIS(field, fixedList){
+  const mis = {};
+  const keys = fixedList ? fixedList.slice() : [];
+
+  transactions.forEach(t => {
+    if(t.type === "DEBIT"){
+      let val = t[field];
+      if(!val || val === "-") val = "Unspecified";
+      if(!keys.includes(val)) keys.push(val);
+    }
+  });
+
+  keys.forEach(k => { mis[k] = { count: 0, amount: 0 }; });
+
+  transactions.forEach(t => {
+    if(t.type === "DEBIT"){
+      let val = t[field];
+      if(!val || val === "-") val = "Unspecified";
+      mis[val].count += 1;
+      mis[val].amount += Number(t.amount || 0);
+    }
+  });
+
+  if(!fixedList){
+    keys.sort((a,b) => mis[b].amount - mis[a].amount);
+  }
+
+  return { mis, keys };
+}
+function renderFieldMIS(field, fixedList, cardsId, tableId, labelPrefix){
+  const { mis, keys } = calculateFieldMIS(field, fixedList);
+  const cards = document.getElementById(cardsId);
+  const tbody = document.getElementById(tableId);
+  if(!cards || !tbody) return;
+
+  if(keys.length === 0){
+    cards.innerHTML = `<div class="mis-count">No data yet</div>`;
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#6b7280;">No data yet</td></tr>`;
+    return;
+  }
+
+  let cardsHtml = "", rowsHtml = "";
+  keys.forEach(key => {
+    cardsHtml += `
+      <div class="mis-card">
+        <div class="label">${labelPrefix ? labelPrefix + " " : ""}${escapeHtml(key)}</div>
+        <div class="mis-amount">${money(mis[key].amount)}</div>
+        <div class="mis-count">${mis[key].count} entries</div>
+      </div>
+    `;
+    rowsHtml += `
+      <tr>
+        <td><span class="pill cat">${escapeHtml(key)}</span></td>
+        <td class="right">${mis[key].count}</td>
+        <td class="right"><b>${money(mis[key].amount)}</b></td>
+      </tr>
+    `;
+  });
+  cards.innerHTML = cardsHtml;
+  tbody.innerHTML = rowsHtml;
+}
+function exportFieldMIS(field, columnLabel, filename){
+  const { mis, keys } = calculateFieldMIS(field, field === "group" ? allowedGroups : field === "policyType" ? allowedPolicyTypes : field === "village" ? allowedVillages : null);
+  let csv = `${columnLabel},No. of Entries,Wallet Used\n`;
+  keys.forEach(key => {
+    csv += [csvSafe(key), mis[key].count, mis[key].amount].join(",") + "\n";
+  });
+  downloadFile(csv, filename, "text/csv");
+}
+let renderDebounceTimer = null;
+function debouncedRender(){
+  clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(render, 200);
+}
+function render(){
+  document.getElementById("walletBalance").innerText = money(wallet);
+  document.getElementById("lastUpdated").innerText = localStorage.getItem("wallet_last_updated") || "-";
+
+  let totalTopup = transactions
+    .filter(t => t.type === "TOP-UP" || t.type === "OPENING")
+    .reduce((s,t) => s + Number(t.amount), 0);
+
+  let totalUsed = transactions
+    .filter(t => t.type === "DEBIT")
+    .reduce((s,t) => s + Number(t.amount), 0);
+
+  document.getElementById("totalTopup").innerText = money(totalTopup);
+  document.getElementById("totalUsed").innerText = money(totalUsed);
+
+  renderMIS();
+  renderFieldMIS("village", allowedVillages, "villageMisCards", "villageMisTable", "");
+  renderFieldMIS("group", allowedGroups, "groupMisCards", "groupMisTable", "");
+  renderFieldMIS("policyType", allowedPolicyTypes, "policyMisCards", "policyMisTable", "");
+
+  const q = document.getElementById("searchBox")?.value?.toLowerCase() || "";
+  const selectedCat = document.getElementById("categoryFilter")?.value || "";
+  const tbody = document.getElementById("transactionTable");
+  tbody.innerHTML = "";
+
+  const filtered = transactions.filter(t => {
+    const matchesSearch = Object.values(t).join(" ").toLowerCase().includes(q);
+    const matchesCat = !selectedCat || normalizeCategory(t.category) === selectedCat;
+    return matchesSearch && matchesCat;
+  });
+
+  if(filtered.length === 0){
+    tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;color:#6b7280;">No transactions found</td></tr>`;
+    return;
+  }
+
+  let rowsHtml = "";
+  filtered.forEach(t => {
+    const cls = (t.type === "DEBIT") ? "debit" : "credit";
+    const cat = normalizeCategory(t.category) || "-";
+    rowsHtml += `
+      <tr>
+        <td>${escapeHtml(t.dateOfSubmission || t.date)}</td>
+        <td>${escapeHtml(t.month)}</td>
+        <td>${escapeHtml(t.year)}</td>
+        <td><span class="pill ${cls}">${t.type}</span></td>
+        <td>${escapeHtml(t.holderName)}</td>
+        <td>${escapeHtml(t.village)}</td>
+        <td>${cat !== "-" ? `<span class="pill cat">${cat}</span>` : "-"}</td>
+        <td>${escapeHtml(t.group)}</td>
+        <td>${escapeHtml(t.policyType)}</td>
+        <td>${escapeHtml(t.cdAccount)}</td>
+        <td class="right">${t.cdAmount !== "-" && t.cdAmount != null ? money(t.cdAmount) : "-"}</td>
+        <td>${escapeHtml(t.remark)}</td>
+        <td class="right">${money(t.amount)}</td>
+        <td class="right"><b>${money(t.balanceAfter)}</b></td>
+        <td>
+          <div class="actions">
+            <button class="secondary" style="padding:6px 10px;font-size:12px;" onclick="openEditModal('${t.id}')">Edit</button>
+            <button class="danger" style="padding:6px 10px;font-size:12px;" onclick="deleteTransactionEntry('${t.id}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+  tbody.innerHTML = rowsHtml;
+}
+function escapeHtml(str){
+  return String(str || "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+function setOpeningBalance(){
+  const val = Number(document.getElementById("initialBalance").value);
+  if(!val || val < 0){ alert("Please enter valid opening balance."); return; }
+  if(!confirm("This will reset current wallet balance and all previous transactions. Continue?")) return;
+  wallet = val;
+  transactions = [];
+  addTransaction({ type:"OPENING", remark:"Opening Wallet Balance", amount:val, balanceAfter:wallet });
+  document.getElementById("initialBalance").value = "";
+}
+function topupWallet(){
+  const amount = Number(document.getElementById("topupAmount").value);
+  const remark = document.getElementById("topupRemark").value;
+  if(!amount || amount <= 0){ alert("Please enter valid top-up amount."); return; }
+  wallet += amount;
+  addTransaction({ type:"TOP-UP", remark: remark || "Manual Wallet Top-Up", amount, balanceAfter: wallet });
+  document.getElementById("topupAmount").value = "";
+  document.getElementById("topupRemark").value = "";
+}
+function manualDeduct(){
+  const category = normalizeCategory(document.getElementById("manualCategory").value);
+  const amount = Number(document.getElementById("manualAmount").value);
+
+  const fields = {
+    type: "DEBIT",
+    dateOfSubmission: document.getElementById("manualDate").value || todayISO(),
+    month: document.getElementById("manualMonth").value,
+    year: document.getElementById("manualYear").value,
+    holderName: document.getElementById("manualHolderName").value,
+    village: document.getElementById("manualVillage").value,
+    category,
+    group: document.getElementById("manualGroup").value,
+    policyType: document.getElementById("manualPolicyType").value,
+    cdAccount: document.getElementById("manualCdAccount").value,
+    cdAmount: document.getElementById("manualCdAmount").value,
+    remark: document.getElementById("manualRemark").value || "Manual Usage Deduction",
+    amount
+  };
+
+  if(!category){ alert("Please select category."); return; }
+  if(!amount || amount <= 0){ alert("Please enter valid deduction amount."); return; }
+
+  if(amount > wallet){
+    if(!confirm("Amount is greater than wallet balance. Wallet will go negative. Continue?")) return;
+  }
+
+  wallet -= amount;
+  fields.balanceAfter = wallet;
+  addTransaction(fields);
+
+  document.getElementById("manualCategory").value = "";
+  document.getElementById("manualHolderName").value = "";
+  document.getElementById("manualVillage").value = "";
+  document.getElementById("manualGroup").value = "";
+  document.getElementById("manualPolicyType").value = "";
+  document.getElementById("manualCdAccount").value = "";
+  document.getElementById("manualCdAmount").value = "";
+  document.getElementById("manualRemark").value = "";
+  document.getElementById("manualAmount").value = "";
+}
+function parseCSV(text){
+  const rows = [];
+  let row = [], cell = "", inQuotes = false;
+
+  for(let i=0;i<text.length;i++){
+    const c = text[i], next = text[i+1];
+
+    if(c === '"' && inQuotes && next === '"'){
+      cell += '"'; i++;
+    } else if(c === '"'){
+      inQuotes = !inQuotes;
+    } else if(c === "," && !inQuotes){
+      row.push(cell); cell = "";
+    } else if((c === "\n" || c === "\r") && !inQuotes){
+      if(cell || row.length){
+        row.push(cell);
+        rows.push(row);
+        row = []; cell = "";
+      }
+      if(c === "\r" && next === "\n") i++;
+    } else {
+      cell += c;
+    }
+  }
+  if(cell || row.length){ row.push(cell); rows.push(row); }
+  return rows;
+}
+function processCSV(){
+  const file = document.getElementById("csvFile").files[0];
+  const btn = document.getElementById("uploadBtn");
+  const resultBox = document.getElementById("csvResult");
+
+  if(!file){
+    resultBox.innerHTML = `<div class="note err">Please select a CSV file first.</div>`;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Processing...";
+  resultBox.innerHTML = `<div class="note">Reading file...</div>`;
+
+  const reader = new FileReader();
+
+  reader.onerror = function(){
+    btn.disabled = false;
+    btn.innerText = "Upload & Deduct";
+    resultBox.innerHTML = `<div class="note err">Could not read the file. Please try again.</div>`;
+  };
+
+  reader.onload = function(e){
+    // Defer the heavy work one tick so the "Processing..." state actually paints first.
+    setTimeout(function(){
+      try{
+        const text = e.target.result.replace(/^\uFEFF/, "");
+        const rows = parseCSV(text).filter(r => r.join("").trim() !== "");
+        if(rows.length < 2){
+          resultBox.innerHTML = `<div class="note err">CSV should contain a header row and at least one data row.</div>`;
+          return;
+        }
+
+        const headers = rows[0].map(h => h.trim().toLowerCase());
+        const findCol = (...names) => {
+          for(const n of names){
+            const idx = headers.indexOf(n);
+            if(idx !== -1) return idx;
+          }
+          return -1;
+        };
+
+        const dateIndex = findCol("date of submission", "date");
+        const monthIndex = findCol("month");
+        const yearIndex = findCol("year");
+        const typeIndex = findCol("type");
+        const holderIndex = findCol("holder's name", "holders name", "holder name");
+        const villageIndex = findCol("village");
+        const categoryIndex = findCol("catagory", "category");
+        const groupIndex = findCol("group");
+        const policyTypeIndex = findCol("policy type");
+        const cdAccountIndex = findCol("cd account used", "cd account");
+        const cdAmountIndex = findCol("cd amount");
+        const remarkIndex = findCol("remark", "particulars");
+        const amountIndex = findCol("deposited/deducted amount", "deposited / deducted amount", "amount");
+
+        if(amountIndex === -1){
+          resultBox.innerHTML = `<div class="note err">Deposited/Deducted Amount column is required in CSV. Detected headers: <b>${escapeHtml(rows[0].join(", "))}</b></div>`;
+          return;
+        }
+        if(categoryIndex === -1){
+          resultBox.innerHTML = `<div class="note err">Category column is required in CSV. Detected headers: <b>${escapeHtml(rows[0].join(", "))}</b></div>`;
+          return;
+        }
+
+        let success = 0, skipped = 0, invalidCategory = 0, totalDeducted = 0, totalDeposited = 0;
+        let tempTransactions = [];
+        let badCategorySamples = [];
+
+        for(let i=1; i<rows.length; i++){
+          const row = rows[i];
+          const rawAmount = String(row[amountIndex] || "").replace(/[₹,\s]/g,"");
+          const amount = Number(rawAmount);
+          const category = normalizeCategory(row[categoryIndex]);
+          const typeRaw = String(row[typeIndex] || "").trim().toLowerCase();
+          const type = typeRaw === "credit" ? "CREDIT" : "DEBIT";
+
+          if(!category){
+            invalidCategory++;
+            skipped++;
+            const rawVal = row[categoryIndex] === undefined ? "(missing)" : (row[categoryIndex] === "" ? "(blank)" : row[categoryIndex]);
+            if(badCategorySamples.length < 5 && !badCategorySamples.includes(rawVal)){
+              badCategorySamples.push(rawVal);
+            }
+            continue;
+          }
+
+          if(!amount || amount <= 0){
+            skipped++;
+            continue;
+          }
+
+          if(type === "DEBIT"){
+            wallet -= amount;
+            totalDeducted += amount;
+          } else {
+            wallet += amount;
+            totalDeposited += amount;
+          }
+          success++;
+
+          tempTransactions.push({
+            id: generateId(),
+            dateOfSubmission: row[dateIndex] || todayISO(),
+            month: row[monthIndex] || "-",
+            year: row[yearIndex] || "-",
+            type: type,
+            holderName: row[holderIndex] || "-",
+            village: row[villageIndex] || "-",
+            category: category,
+            group: row[groupIndex] || "-",
+            policyType: row[policyTypeIndex] || "-",
+            cdAccount: row[cdAccountIndex] || "-",
+            cdAmount: row[cdAmountIndex] || "-",
+            remark: row[remarkIndex] || "CSV Wallet Usage",
+            amount: amount,
+            balanceAfter: wallet,
+            date: today()
+          });
+        }
+
+        transactions = [...tempTransactions.reverse(), ...transactions];
+        save();
+        render();
+
+        resultBox.innerHTML =
+          `<div class="note ${success > 0 ? "ok" : "err"}">
+            CSV processed.<br>
+            Detected column headers: <b>${escapeHtml(rows[0].join(", "))}</b><br>
+            Category column matched to file column: <b>"${escapeHtml(rows[0][categoryIndex])}"</b> (index ${categoryIndex})<br>
+            Rows processed: <b>${success}</b><br>
+            Skipped rows: <b>${skipped}</b><br>
+            Invalid category rows: <b>${invalidCategory}</b>${badCategorySamples.length ? `<br>Sample unrecognized category values: <b>${badCategorySamples.map(v => escapeHtml(v)).join(", ")}</b> (allowed: A, B, C, D, Staff, SVGA)` : ""}<br>
+            Total deducted: <b>${money(totalDeducted)}</b> | Total deposited: <b>${money(totalDeposited)}</b><br>
+            Remaining balance: <b>${money(wallet)}</b>
+          </div>`;
+      } catch(err){
+        resultBox.innerHTML = `<div class="note err">Something went wrong while processing this file: ${escapeHtml(err.message)}</div>`;
+      } finally{
+        btn.disabled = false;
+        btn.innerText = "Upload & Deduct";
+      }
+    }, 10);
+  };
+
+  reader.readAsText(file);
+}
+function downloadSampleCSV(){
+  const header = "Date of Submission,Month,Year,Type,Holder's Name,Village,Category,Group,Policy Type,CD Account Used,CD Amount,Remark,Deposited/Deducted Amount\n";
+  const rows = [
+    "2026-06-16,June,2026,Debit,Kiran Nishar,Bhachau,A,SVKK,Individual,CD-1023,5000,Printing Charge,250",
+    "2026-06-16,June,2026,Debit,Rita Shah,Adhoi,B,NVKK,Family Floater,CD-1044,3000,Delivery Charge,100",
+    "2026-06-16,June,2026,Debit,-,-,Staff,-,-,-,-,Staff Tea Expense,120",
+    "2026-06-16,June,2026,Credit,-,-,SVGA,-,-,-,-,SVGA Donation Received,500"
+  ].join("\n") + "\n";
+  downloadFile(header + rows, "sample_wallet_usage_with_category.csv", "text/csv");
+}
+function exportTransactions(){
+  let csv = "Date of Submission,Month,Year,Type,Holder's Name,Village,Category,Group,Policy Type,CD Account Used,CD Amount,Remark,Deposited/Deducted Amount,Balance After\n";
+  transactions.forEach(t => {
+    csv += [
+      csvSafe(t.dateOfSubmission || t.date),
+      csvSafe(t.month),
+      csvSafe(t.year),
+      csvSafe(t.type),
+      csvSafe(t.holderName),
+      csvSafe(t.village),
+      csvSafe(t.category || "-"),
+      csvSafe(t.group),
+      csvSafe(t.policyType),
+      csvSafe(t.cdAccount),
+      t.cdAmount,
+      csvSafe(t.remark),
+      t.amount,
+      t.balanceAfter
+    ].join(",") + "\n";
+  });
+  downloadFile(csv, "wallet_transactions.csv", "text/csv");
+}
+function exportMIS(){
+  const mis = calculateMIS();
+  let csv = "Category,No. of Entries,Wallet Used\n";
+  allowedCategories.forEach(cat => {
+    csv += [cat, mis[cat].count, mis[cat].amount].join(",") + "\n";
+  });
+  downloadFile(csv, "wallet_category_mis.csv", "text/csv");
+}
+function csvSafe(v){
+  v = String(v ?? "");
+  if(v.includes(",") || v.includes('"') || v.includes("\n")){
+    return '"' + v.replaceAll('"','""') + '"';
+  }
+  return v;
+}
+function downloadFile(content, filename, type){
+  const blob = new Blob([content], {type});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function backupWalletData(){
+  const data = {
+    wallet_balance: wallet,
+    wallet_transactions: transactions,
+    wallet_last_updated: localStorage.getItem("wallet_last_updated") || today()
+  };
+  downloadFile(JSON.stringify(data, null, 2), "puja_cd_account_wallet_backup.json", "application/json");
+}
+
+let editingId = null;
+function openEditModal(id){
+  const t = transactions.find(x => x.id === id);
+  if(!t) return;
+  editingId = id;
+
+  const val = (v) => (v && v !== "-") ? v : "";
+  document.getElementById("editDate").value = val(t.dateOfSubmission) || todayISO();
+  document.getElementById("editMonth").value = val(t.month);
+  document.getElementById("editYear").value = val(t.year);
+  document.getElementById("editType").value = t.type || "DEBIT";
+  document.getElementById("editHolderName").value = val(t.holderName);
+  document.getElementById("editVillage").value = val(t.village);
+  document.getElementById("editCategory").value = normalizeCategory(t.category) || "";
+  document.getElementById("editGroup").value = val(t.group);
+  document.getElementById("editPolicyType").value = val(t.policyType);
+  document.getElementById("editCdAccount").value = val(t.cdAccount);
+  document.getElementById("editCdAmount").value = val(t.cdAmount);
+  document.getElementById("editRemark").value = val(t.remark);
+  document.getElementById("editAmount").value = t.amount;
+  document.getElementById("editError").style.display = "none";
+
+  document.getElementById("editModal").classList.add("open");
+}
+function closeEditModal(){
+  document.getElementById("editModal").classList.remove("open");
+  editingId = null;
+}
+function saveEditModal(){
+  const t = transactions.find(x => x.id === editingId);
+  if(!t) return;
+
+  const errBox = document.getElementById("editError");
+  const amount = Number(document.getElementById("editAmount").value);
+  const category = normalizeCategory(document.getElementById("editCategory").value);
+  const type = document.getElementById("editType").value;
+
+  if(!amount || amount <= 0){
+    errBox.style.display = "block";
+    errBox.innerText = "Please enter a valid amount.";
+    return;
+  }
+  if((type === "DEBIT" || type === "CREDIT") && !category){
+    errBox.style.display = "block";
+    errBox.innerText = "Please select a category.";
+    return;
+  }
+
+  t.dateOfSubmission = document.getElementById("editDate").value || t.dateOfSubmission;
+  t.month = document.getElementById("editMonth").value || "-";
+  t.year = document.getElementById("editYear").value || "-";
+  t.type = type;
+  t.holderName = document.getElementById("editHolderName").value || "-";
+  t.village = document.getElementById("editVillage").value || "-";
+  t.category = category || "-";
+  t.group = document.getElementById("editGroup").value || "-";
+  t.policyType = document.getElementById("editPolicyType").value || "-";
+  t.cdAccount = document.getElementById("editCdAccount").value || "-";
+  t.cdAmount = document.getElementById("editCdAmount").value || "-";
+  t.remark = document.getElementById("editRemark").value || "-";
+  t.amount = amount;
+
+  recalcBalances();
+  render();
+  closeEditModal();
+}
+function deleteTransactionEntry(id){
+  const t = transactions.find(x => x.id === id);
+  if(!t) return;
+  if(!confirm(`Delete this entry (${t.type}, ${money(t.amount)}, ${t.remark !== "-" ? t.remark : t.holderName})? The wallet balance will be recalculated.`)) return;
+  transactions = transactions.filter(x => x.id !== id);
+  recalcBalances();
+  render();
+}
+function clearAllData(){
+  if(!confirm("This will permanently delete the wallet balance and ALL transaction entries. This cannot be undone. Continue?")) return;
+  if(!confirm("Are you absolutely sure? Consider using 'Backup Wallet Data' first if you haven't already.")) return;
+  wallet = 0;
+  transactions = [];
+  localStorage.removeItem("wallet_balance");
+  localStorage.removeItem("wallet_transactions");
+  localStorage.removeItem("wallet_last_updated");
+  render();
+}
+initDropdowns();
+render();
+</script>
+</body>
+</html>

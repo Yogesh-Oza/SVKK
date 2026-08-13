@@ -8,7 +8,7 @@ import {
 } from "@prisma/client";
 import { loadMisScope } from "../src/services/mis-scope.service.js";
 import { loadClaimStatusMap } from "../src/modules/claim/claim-status-map.js";
-import { buildClaimImportTypeCache } from "../src/modules/claim/claim-policy-match.js";
+import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "../src/modules/claim/claim-policy-match.js";
 import {
   importClaimRow,
   parseClaimRow,
@@ -39,6 +39,7 @@ async function main() {
   const scope = await loadMisScope(user.id, permissions, "claim");
   const statusMap = await loadClaimStatusMap();
   const typeCache = await buildClaimImportTypeCache();
+  const policyCache = await buildClaimImportPolicyCache();
 
   const { header, dataRows } = await parseClaimFile(buffer, "claim-import-test-sample.csv");
   const parsedRows = dataRows.map((row, i) =>
@@ -46,11 +47,13 @@ async function main() {
   );
 
   let created = 0;
+  let updated = 0;
   let failed = 0;
 
   for (const row of parsedRows) {
     const outcome = await importClaimRow(row, {
       typeCache,
+      policyCache,
       linkMode: ClaimLinkMode.STRICT_MATCH,
       importMode: CsvImportMode.CREATE_ONLY,
       dryRun: false,
@@ -62,13 +65,16 @@ async function main() {
     if (outcome.result === "created") {
       created++;
       console.log("OK", row.claimNo, row.policyNo, outcome.matchStatus);
+    } else if (outcome.result === "updated") {
+      updated++;
+      console.log("UPD", row.claimNo, row.policyNo, outcome.matchStatus);
     } else {
       failed++;
       console.error("FAIL", row.claimNo, outcome.error?.error, outcome.matchStatus);
     }
   }
 
-  console.log(`\nDone: ${created} created, ${failed} failed (${parsedRows.length} rows)`);
+  console.log(`\nDone: ${created} created, ${updated} updated, ${failed} failed (${parsedRows.length} rows)`);
 }
 
 main()

@@ -26,4 +26,11 @@ describe("buildClaimListWhere received-date filter", () => {
     expect(s).toContain("insuranceCompany");
     expect(s).toContain("policyNoText");
   });
+
+  it("policyId-only filter does not OR svkkPublicId", () => {
+    const where = buildClaimListWhere(fullScope, { policyId: "pol-1" });
+    const s = JSON.stringify(where);
+    expect(s).toContain("pol-1");
+    expect(s).not.toContain("OR");
+  });
 });

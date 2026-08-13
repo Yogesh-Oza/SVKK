@@ -75,6 +75,14 @@ export function parseYesNo(raw: string): boolean | null {
   return null;
 }
 
+/**
+ * Normalize Policy Number for claim→policy linking.
+ * Trim, remove all whitespace, compare case-insensitively so "ABC 123" and "abc123" match.
+ */
+export function normalizePolicyNo(raw: string | null | undefined): string {
+  return (raw ?? "").trim().replace(/\s+/g, "").toLowerCase();
+}
+
 /** Normalize person names for fuzzy comparison. */
 export function normalizePersonName(raw: string): string {
   return raw.trim().toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
