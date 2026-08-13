@@ -252,7 +252,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
               />
             </div>
             <Badge variant="secondary" className="shrink-0 font-bold">
-              Hybrid CCN
+              Same-event update
             </Badge>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
