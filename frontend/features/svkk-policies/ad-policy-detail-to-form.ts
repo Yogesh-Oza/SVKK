@@ -107,6 +107,7 @@ export type SvkkPolicyDetailForForm = {
   refundChequeDate: string | null;
   cdAccountUsed: boolean | null;
   cdAmount: Decimalish;
+  dateOfSubmission?: string | null;
   courierStatus: string | null;
   courierDate: string | null;
   courierCompany: string | null;
@@ -622,6 +623,7 @@ export function policyDetailToAdFormValues(
     cdAccountStatus:
       row.cdAccountUsed === true ? "YES" : row.cdAccountUsed === false ? "NO" : "",
     cdAmount: decStr(row.cdAmount),
+    dateOfSubmission: isoToDateInput(row.dateOfSubmission ?? ""),
     notCourier: row.courierStatus ?? "",
     courierDate: isoToDateInput(row.courierDate ?? ""),
     courierCompany: row.courierCompany ?? "",

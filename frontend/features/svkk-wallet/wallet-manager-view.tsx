@@ -40,6 +40,7 @@ import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
 import { getSvkkErrorCode, getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { getSvkkApiBase } from "@/lib/svkk/config";
+import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import {
   canWalletClear,
   canWalletDebit,
@@ -48,22 +49,27 @@ import {
   canWalletOpening,
   canWalletTopup,
 } from "@/lib/svkk/permissions";
+import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { cn } from "@/lib/utils";
 import {
   Download,
   FileSpreadsheet,
+  RotateCcw,
   Search,
   Trash2,
   Upload,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  formatWalletDate,
   formatWalletDateTime,
   formatWalletInr,
   WALLET_CATEGORIES,
   type WalletCsvImportResult,
+  type WalletFieldMisRow,
+  type WalletMisDimension,
   type WalletSummary,
   type WalletTxnPage,
 } from "./wallet-types";
@@ -77,29 +83,152 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function currentMonthLabel(): string {
+  return POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER[new Date().getMonth()];
+}
+
+function MisSection({
+  title,
+  rows,
+  labelHeader,
+  canExport,
+  exportBusy,
+  onExport,
+}: {
+  title: string;
+  rows: WalletFieldMisRow[];
+  labelHeader: string;
+  canExport: boolean;
+  exportBusy: boolean;
+  onExport: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
+        <div>
+          <CardTitle>{title}</CardTitle>
+        </div>
+        {canExport ? (
+          <Button variant="secondary" size="sm" disabled={exportBusy} onClick={onExport}>
+            <Download className="size-4 mr-1" />
+            Export MIS CSV
+          </Button>
+        ) : null}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          {(rows.length
+            ? rows
+            : [{ key: "—", count: 0, amount: "0" }]
+          ).slice(0, 12).map((row) => (
+            <div
+              key={`${labelHeader}-${row.key}`}
+              className="rounded-lg border border-violet-100 bg-gradient-to-br from-white to-violet-50/80 p-3 border-l-4 border-l-violet-600"
+            >
+              <div className="text-muted-foreground text-xs truncate" title={row.key}>
+                {row.key}
+              </div>
+              <div className="font-semibold text-lg mt-1 text-violet-900">{formatWalletInr(row.amount)}</div>
+              <div className="text-muted-foreground text-xs mt-1">{row.count} entries</div>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{labelHeader}</TableHead>
+                <TableHead className="text-right">No. of Entries</TableHead>
+                <TableHead className="text-right">Wallet Used</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                    No usage yet
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row) => (
+                  <TableRow key={`${labelHeader}-t-${row.key}`}>
+                    <TableCell>{row.key}</TableCell>
+                    <TableCell className="text-right">{row.count}</TableCell>
+                    <TableCell className="text-right font-medium">{formatWalletInr(row.amount)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function WalletManagerView() {
   const { user } = useSvkkAuth();
   const perms = user?.permissions ?? [];
   const missingUrl = !getSvkkApiBase();
+  const { options: ddOptions } = useDropdownOptions();
 
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryErr, setSummaryErr] = useState<string | null>(null);
 
+  const [filterVillages, setFilterVillages] = useState<string[]>([]);
+  const villageOptions = useMemo(() => {
+    const fromFilters = filterVillages;
+    const fromDd = (ddOptions.VILLAGE ?? []).map((o) => o.value || o.label).filter(Boolean);
+    return [...new Set([...fromFilters, ...fromDd])].sort((a, b) => a.localeCompare(b));
+  }, [filterVillages, ddOptions.VILLAGE]);
+  const groupOptions = useMemo(
+    () =>
+      [...new Set((ddOptions.policyGroupings ?? []).map((g) => g.value || g.label).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [ddOptions.policyGroupings],
+  );
+  const policyTypeOptions = useMemo(
+    () =>
+      [...new Set((ddOptions.policyTypes ?? []).map((t) => t.label || t.value).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [ddOptions.policyTypes],
+  );
+
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingBusy, setOpeningBusy] = useState(false);
-  const [openingConfirmOpen, setOpeningConfirmOpen] = useState(false);
 
   const [topupAmount, setTopupAmount] = useState("");
   const [topupRemark, setTopupRemark] = useState("");
   const [topupBusy, setTopupBusy] = useState(false);
 
+  const [debitDate, setDebitDate] = useState(todayIsoDate);
+  const [debitMonth, setDebitMonth] = useState(currentMonthLabel);
+  const [debitYear, setDebitYear] = useState(String(new Date().getFullYear()));
   const [debitCategory, setDebitCategory] = useState("");
+  const [debitHolder, setDebitHolder] = useState("");
+  const [debitVillage, setDebitVillage] = useState("");
+  const [debitGroup, setDebitGroup] = useState("");
+  const [debitPolicyType, setDebitPolicyType] = useState("");
+  const [debitCdAccount, setDebitCdAccount] = useState("");
+  const [debitCdAmount, setDebitCdAmount] = useState("");
+  const [debitRemark, setDebitRemark] = useState("");
   const [debitAmount, setDebitAmount] = useState("");
-  const [debitParticulars, setDebitParticulars] = useState("");
-  const [debitReference, setDebitReference] = useState("");
   const [debitBusy, setDebitBusy] = useState(false);
   const [negativeConfirmOpen, setNegativeConfirmOpen] = useState(false);
+
+  const [adjAmount, setAdjAmount] = useState("");
+  const [adjDirection, setAdjDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const [adjRemark, setAdjRemark] = useState("");
+  const [adjCategory, setAdjCategory] = useState("");
+  const [adjBusy, setAdjBusy] = useState(false);
+  const [adjNegativeOpen, setAdjNegativeOpen] = useState(false);
 
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvBusy, setCsvBusy] = useState(false);
@@ -115,6 +244,14 @@ export function WalletManagerView() {
   const [exportBusy, setExportBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [restorePayload, setRestorePayload] = useState<{
+    wallet_balance?: unknown;
+    wallet_last_updated?: unknown;
+    wallet_transactions: Array<Record<string, unknown>>;
+  } | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const loadSummary = useCallback(async () => {
     if (missingUrl) return;
@@ -164,17 +301,41 @@ export function WalletManagerView() {
     void loadTransactions();
   }, [loadTransactions]);
 
+  useEffect(() => {
+    if (missingUrl) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const f = await svkkJson<{ villages?: string[] }>("/policies/filters");
+        if (!cancelled) setFilterVillages(f.villages ?? []);
+      } catch {
+        /* non-fatal — free text / empty select */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingUrl]);
+
   async function submitOpening() {
     setOpeningBusy(true);
     try {
       await backendApi.post("/wallet/opening", { amount: openingAmount });
       toast.success("Opening balance set");
       setOpeningAmount("");
-      setOpeningConfirmOpen(false);
       setPage(1);
       await refreshAll();
     } catch (e) {
-      toast.error(getSvkkErrorMessage(e, "Failed to set opening balance"));
+      if (getSvkkErrorCode(e) === "WALLET_OPENING_EXISTS") {
+        toast.error(
+          getSvkkErrorMessage(
+            e,
+            "Opening balance can only be set when the wallet has no transactions. Use Top-up or Manual Adjustment instead.",
+          ),
+        );
+      } else {
+        toast.error(getSvkkErrorMessage(e, "Failed to set opening balance"));
+      }
     } finally {
       setOpeningBusy(false);
     }
@@ -198,21 +359,42 @@ export function WalletManagerView() {
     }
   }
 
+  function resetDebitForm() {
+    setDebitDate(todayIsoDate());
+    setDebitMonth(currentMonthLabel());
+    setDebitYear(String(new Date().getFullYear()));
+    setDebitCategory("");
+    setDebitHolder("");
+    setDebitVillage("");
+    setDebitGroup("");
+    setDebitPolicyType("");
+    setDebitCdAccount("");
+    setDebitCdAmount("");
+    setDebitRemark("");
+    setDebitAmount("");
+  }
+
   async function submitDebit(allowNegative: boolean) {
     setDebitBusy(true);
     try {
       await backendApi.post("/wallet/debit", {
         category: debitCategory,
         amount: debitAmount,
-        particulars: debitParticulars || undefined,
-        reference: debitReference || undefined,
+        dateOfSubmission: debitDate || undefined,
+        month: debitMonth || undefined,
+        year: debitYear || undefined,
+        holderName: debitHolder || undefined,
+        village: debitVillage || undefined,
+        group: debitGroup || undefined,
+        policyType: debitPolicyType || undefined,
+        cdAccountUsed: debitCdAccount || undefined,
+        cdAmount: debitCdAmount || undefined,
+        remark: debitRemark || undefined,
+        particulars: debitRemark || undefined,
         allowNegative: allowNegative || undefined,
       });
       toast.success("Amount deducted");
-      setDebitCategory("");
-      setDebitAmount("");
-      setDebitParticulars("");
-      setDebitReference("");
+      resetDebitForm();
       setNegativeConfirmOpen(false);
       await refreshAll();
     } catch (e) {
@@ -223,6 +405,37 @@ export function WalletManagerView() {
       }
     } finally {
       setDebitBusy(false);
+    }
+  }
+
+  async function submitAdjustment(allowNegative: boolean) {
+    setAdjBusy(true);
+    try {
+      await backendApi.post("/wallet/adjustment", {
+        amount: adjAmount,
+        direction: adjDirection,
+        remark: adjRemark || undefined,
+        category: adjCategory || undefined,
+        allowNegative: allowNegative || undefined,
+      });
+      toast.success("Adjustment saved");
+      setAdjAmount("");
+      setAdjRemark("");
+      setAdjCategory("");
+      setAdjNegativeOpen(false);
+      await refreshAll();
+    } catch (e) {
+      if (
+        getSvkkErrorCode(e) === "WALLET_INSUFFICIENT" &&
+        !allowNegative &&
+        adjDirection === "DEBIT"
+      ) {
+        setAdjNegativeOpen(true);
+      } else {
+        toast.error(getSvkkErrorMessage(e, "Adjustment failed"));
+      }
+    } finally {
+      setAdjBusy(false);
     }
   }
 
@@ -280,11 +493,13 @@ export function WalletManagerView() {
     }
   }
 
-  async function exportMis() {
+  async function exportMis(dimension: WalletMisDimension, filename: string) {
     setExportBusy(true);
     try {
-      const res = await backendApi.get("/wallet/mis/export.csv", { responseType: "blob" });
-      downloadBlob(res.data as Blob, "wallet_category_mis.csv");
+      const res = await backendApi.get(`/wallet/mis/export.csv?dimension=${dimension}`, {
+        responseType: "blob",
+      });
+      downloadBlob(res.data as Blob, filename);
     } catch (e) {
       toast.error(getSvkkErrorMessage(e, "MIS export failed"));
     } finally {
@@ -301,6 +516,49 @@ export function WalletManagerView() {
       toast.error(getSvkkErrorMessage(e, "Backup failed"));
     } finally {
       setExportBusy(false);
+    }
+  }
+
+  async function onRestoreFileSelected(file: File | null) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as {
+        wallet_balance?: unknown;
+        wallet_last_updated?: unknown;
+        wallet_transactions?: unknown;
+      };
+      if (!Array.isArray(parsed.wallet_transactions)) {
+        toast.error("Invalid backup file: missing wallet_transactions array");
+        return;
+      }
+      setRestorePayload({
+        wallet_balance: parsed.wallet_balance,
+        wallet_last_updated: parsed.wallet_last_updated,
+        wallet_transactions: parsed.wallet_transactions as Array<Record<string, unknown>>,
+      });
+      setRestoreConfirmOpen(true);
+    } catch {
+      toast.error("Could not read backup JSON");
+    } finally {
+      if (restoreInputRef.current) restoreInputRef.current.value = "";
+    }
+  }
+
+  async function submitRestore() {
+    if (!restorePayload) return;
+    setRestoreBusy(true);
+    try {
+      await backendApi.post("/wallet/restore", { confirm: true, backup: restorePayload });
+      toast.success("Wallet restored from backup");
+      setRestoreConfirmOpen(false);
+      setRestorePayload(null);
+      setPage(1);
+      await refreshAll();
+    } catch (e) {
+      toast.error(getSvkkErrorMessage(e, "Restore failed"));
+    } finally {
+      setRestoreBusy(false);
     }
   }
 
@@ -328,6 +586,9 @@ export function WalletManagerView() {
     );
   }
 
+  const categoryMis =
+    summary?.mis ?? WALLET_CATEGORIES.map((c) => ({ category: c, count: 0, amount: "0" }));
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div>
@@ -336,7 +597,7 @@ export function WalletManagerView() {
           Wallet / CD Account Manager
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Wallet top-up, usage deduction, and category-wise MIS
+          Wallet top-up, CD usage deduction, and MIS by category, village, group, and policy type
         </p>
       </div>
 
@@ -347,16 +608,26 @@ export function WalletManagerView() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="border-l-4 border-l-primary bg-gradient-to-br from-white to-blue-50/60 dark:from-card dark:to-blue-950/20">
           <CardHeader className="pb-2">
             <CardDescription>Current Wallet Balance</CardDescription>
             <CardTitle className="text-3xl text-primary">
               {summaryLoading ? <Skeleton className="h-9 w-40" /> : formatWalletInr(summary?.currentBalance)}
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-muted-foreground text-sm">
-            Last updated: {summaryLoading ? "…" : formatWalletDateTime(summary?.lastUpdatedAt)}
+          <CardContent className="text-muted-foreground text-sm space-y-2">
+            <div>Last updated: {summaryLoading ? "…" : formatWalletDateTime(summary?.lastUpdatedAt)}</div>
+            {canWalletClear(perms) ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={clearBusy}
+                onClick={() => setClearConfirmOpen(true)}
+              >
+                Reset Wallet &amp; All Entries
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
         <Card>
@@ -375,6 +646,30 @@ export function WalletManagerView() {
             </CardTitle>
           </CardHeader>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Refund / Credit</CardDescription>
+            <CardTitle className="text-2xl text-amber-600 dark:text-amber-400">
+              {summaryLoading ? <Skeleton className="h-8 w-32" /> : formatWalletInr(summary?.totalRefund)}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Today Usage</CardDescription>
+            <CardTitle className="text-2xl">
+              {summaryLoading ? <Skeleton className="h-8 w-32" /> : formatWalletInr(summary?.todayUsage)}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>This Month Usage</CardDescription>
+            <CardTitle className="text-2xl">
+              {summaryLoading ? <Skeleton className="h-8 w-32" /> : formatWalletInr(summary?.thisMonthUsage)}
+            </CardTitle>
+          </CardHeader>
+        </Card>
       </div>
 
       <Card>
@@ -384,7 +679,12 @@ export function WalletManagerView() {
             <CardDescription>Debit usage only (A, B, C, D, Staff, SVGA)</CardDescription>
           </div>
           {canWalletExport(perms) ? (
-            <Button variant="secondary" size="sm" disabled={exportBusy} onClick={() => void exportMis()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={exportBusy}
+              onClick={() => void exportMis("category", "wallet_category_mis.csv")}
+            >
               <Download className="size-4 mr-1" />
               Export MIS CSV
             </Button>
@@ -392,15 +692,16 @@ export function WalletManagerView() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            {(summary?.mis ?? WALLET_CATEGORIES.map((c) => ({ category: c, count: 0, amount: "0" }))).map(
-              (row) => (
-                <div key={row.category} className="rounded-lg border bg-muted/30 p-3">
-                  <div className="text-muted-foreground text-xs">Category {row.category}</div>
-                  <div className="font-semibold text-lg mt-1">{formatWalletInr(row.amount)}</div>
-                  <div className="text-muted-foreground text-xs mt-1">{row.count} entries</div>
-                </div>
-              ),
-            )}
+            {categoryMis.map((row) => (
+              <div
+                key={row.category}
+                className="rounded-lg border border-violet-100 bg-gradient-to-br from-white to-violet-50/80 p-3 border-l-4 border-l-violet-600"
+              >
+                <div className="text-muted-foreground text-xs">Category {row.category}</div>
+                <div className="font-semibold text-lg mt-1 text-violet-900">{formatWalletInr(row.amount)}</div>
+                <div className="text-muted-foreground text-xs mt-1">{row.count} entries</div>
+              </div>
+            ))}
           </div>
           <div className="overflow-auto">
             <Table>
@@ -412,7 +713,7 @@ export function WalletManagerView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(summary?.mis ?? []).map((row) => (
+                {categoryMis.map((row) => (
                   <TableRow key={`mis-t-${row.category}`}>
                     <TableCell>
                       <Badge variant="secondary">{row.category}</Badge>
@@ -427,12 +728,38 @@ export function WalletManagerView() {
         </CardContent>
       </Card>
 
+      <MisSection
+        title="Village-wise MIS"
+        rows={summary?.misVillage ?? []}
+        labelHeader="Village"
+        canExport={canWalletExport(perms)}
+        exportBusy={exportBusy}
+        onExport={() => void exportMis("village", "wallet_village_mis.csv")}
+      />
+      <MisSection
+        title="Group-wise MIS"
+        rows={summary?.misGroup ?? []}
+        labelHeader="Group"
+        canExport={canWalletExport(perms)}
+        exportBusy={exportBusy}
+        onExport={() => void exportMis("group", "wallet_group_mis.csv")}
+      />
+      <MisSection
+        title="Policy Type-wise MIS"
+        rows={summary?.misPolicyType ?? []}
+        labelHeader="Policy Type"
+        canExport={canWalletExport(perms)}
+        exportBusy={exportBusy}
+        onExport={() => void exportMis("policyType", "wallet_policy_type_mis.csv")}
+      />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Set / Top-Up Wallet</CardTitle>
             <CardDescription>
-              Opening balance resets history after confirmation. Top-up adds to the current balance.
+              Opening balance can only be set when the ledger is empty. Top-up adds to the current
+              balance.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -451,7 +778,7 @@ export function WalletManagerView() {
                 />
                 <Button
                   disabled={openingBusy || !openingAmount}
-                  onClick={() => setOpeningConfirmOpen(true)}
+                  onClick={() => void submitOpening()}
                 >
                   Set Opening Balance
                 </Button>
@@ -495,8 +822,9 @@ export function WalletManagerView() {
           <CardHeader>
             <CardTitle>Upload Usage CSV</CardTitle>
             <CardDescription>
-              Columns: Date, Category, Particulars, Amount, Reference. Required: Category, Amount.
-              Dates: YYYY-MM-DD or DD-MM-YYYY (empty date uses now).
+              Columns: Date of Submission, Month, Year, Type, Holder&apos;s Name, Village, Category,
+              Group, Policy Type, CD Account Used, CD Amount, Remark, Deposited/Deducted Amount.
+              Required: Amount (or Deposited/Deducted Amount) and Category.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -556,9 +884,52 @@ export function WalletManagerView() {
         <Card>
           <CardHeader>
             <CardTitle>Manual Usage Deduction</CardTitle>
+            <CardDescription>
+              Always records a Debit (usage) entry. Use Top-Up for credits.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="debit-date">Date of Submission</Label>
+                <Input
+                  id="debit-date"
+                  type="date"
+                  value={debitDate}
+                  onChange={(e) => setDebitDate(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Month</Label>
+                <Select
+                  value={debitMonth || undefined}
+                  onValueChange={setDebitMonth}
+                  disabled={debitBusy}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="debit-year">Year</Label>
+                <Input
+                  id="debit-year"
+                  type="number"
+                  placeholder="e.g. 2026"
+                  value={debitYear}
+                  onChange={(e) => setDebitYear(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Select
@@ -579,7 +950,133 @@ export function WalletManagerView() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="debit-amount">Amount</Label>
+                <Label htmlFor="debit-holder">Holder&apos;s Name</Label>
+                <Input
+                  id="debit-holder"
+                  placeholder="Holder's Name"
+                  value={debitHolder}
+                  onChange={(e) => setDebitHolder(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Village</Label>
+                {villageOptions.length ? (
+                  <Select
+                    value={debitVillage || undefined}
+                    onValueChange={setDebitVillage}
+                    disabled={debitBusy}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Village" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {villageOptions.map((v) => (
+                        <SelectItem key={v} value={v}>
+                          {v}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Village"
+                    value={debitVillage}
+                    onChange={(e) => setDebitVillage(e.target.value)}
+                    disabled={debitBusy}
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Group</Label>
+                {groupOptions.length ? (
+                  <Select
+                    value={debitGroup || undefined}
+                    onValueChange={setDebitGroup}
+                    disabled={debitBusy}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupOptions.map((g) => (
+                        <SelectItem key={g} value={g}>
+                          {g}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Group"
+                    value={debitGroup}
+                    onChange={(e) => setDebitGroup(e.target.value)}
+                    disabled={debitBusy}
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Policy Type</Label>
+                {policyTypeOptions.length ? (
+                  <Select
+                    value={debitPolicyType || undefined}
+                    onValueChange={setDebitPolicyType}
+                    disabled={debitBusy}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Policy Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {policyTypeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Policy Type"
+                    value={debitPolicyType}
+                    onChange={(e) => setDebitPolicyType(e.target.value)}
+                    disabled={debitBusy}
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="debit-cd-account">CD Account Used</Label>
+                <Input
+                  id="debit-cd-account"
+                  placeholder="CD Account Used"
+                  value={debitCdAccount}
+                  onChange={(e) => setDebitCdAccount(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="debit-cd-amount">CD Amount</Label>
+                <Input
+                  id="debit-cd-amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="CD Amount"
+                  value={debitCdAmount}
+                  onChange={(e) => setDebitCdAmount(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="debit-remark">Remark</Label>
+                <Input
+                  id="debit-remark"
+                  placeholder="e.g. Printing Charge"
+                  value={debitRemark}
+                  onChange={(e) => setDebitRemark(e.target.value)}
+                  disabled={debitBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="debit-amount">Deposited / Deducted Amount</Label>
                 <Input
                   id="debit-amount"
                   type="number"
@@ -591,26 +1088,6 @@ export function WalletManagerView() {
                   disabled={debitBusy}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="debit-part">Particulars</Label>
-                <Input
-                  id="debit-part"
-                  placeholder="Printing Charge"
-                  value={debitParticulars}
-                  onChange={(e) => setDebitParticulars(e.target.value)}
-                  disabled={debitBusy}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="debit-ref">Reference / Bill No.</Label>
-                <Input
-                  id="debit-ref"
-                  placeholder="Optional"
-                  value={debitReference}
-                  onChange={(e) => setDebitReference(e.target.value)}
-                  disabled={debitBusy}
-                />
-              </div>
             </div>
             <Button
               variant="destructive"
@@ -618,6 +1095,86 @@ export function WalletManagerView() {
               onClick={() => void submitDebit(false)}
             >
               Deduct Manually
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {canWalletDebit(perms) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Manual Adjustment</CardTitle>
+            <CardDescription>Credit or debit a one-off adjustment to the wallet.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Direction</Label>
+                <Select
+                  value={adjDirection}
+                  onValueChange={(v) => setAdjDirection(v as "CREDIT" | "DEBIT")}
+                  disabled={adjBusy}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CREDIT">Credit</SelectItem>
+                    <SelectItem value="DEBIT">Debit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adj-amount">Amount</Label>
+                <Input
+                  id="adj-amount"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="e.g. 100"
+                  value={adjAmount}
+                  onChange={(e) => setAdjAmount(e.target.value)}
+                  disabled={adjBusy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Category (optional)</Label>
+                <Select
+                  value={adjCategory || "none"}
+                  onValueChange={(v) => setAdjCategory(v === "none" ? "" : v)}
+                  disabled={adjBusy}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {WALLET_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adj-remark">Remark</Label>
+                <Input
+                  id="adj-remark"
+                  placeholder="Adjustment remark"
+                  value={adjRemark}
+                  onChange={(e) => setAdjRemark(e.target.value)}
+                  disabled={adjBusy}
+                />
+              </div>
+            </div>
+            <Button
+              disabled={adjBusy || !adjAmount}
+              onClick={() => void submitAdjustment(false)}
+              className={adjDirection === "DEBIT" ? undefined : "bg-emerald-600 hover:bg-emerald-700"}
+              variant={adjDirection === "DEBIT" ? "destructive" : "default"}
+            >
+              Apply Adjustment
             </Button>
           </CardContent>
         </Card>
@@ -651,15 +1208,33 @@ export function WalletManagerView() {
               </>
             ) : null}
             {canWalletClear(perms) ? (
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={clearBusy}
-                onClick={() => setClearConfirmOpen(true)}
-              >
-                <Trash2 className="size-4 mr-1" />
-                Clear All Data
-              </Button>
+              <>
+                <input
+                  ref={restoreInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => void onRestoreFileSelected(e.target.files?.[0] ?? null)}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={restoreBusy}
+                  onClick={() => restoreInputRef.current?.click()}
+                >
+                  <RotateCcw className="size-4 mr-1" />
+                  Restore
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={clearBusy}
+                  onClick={() => setClearConfirmOpen(true)}
+                >
+                  <Trash2 className="size-4 mr-1" />
+                  Clear All Data
+                </Button>
+              </>
             ) : null}
           </div>
         </CardHeader>
@@ -669,7 +1244,7 @@ export function WalletManagerView() {
               <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
               <Input
                 className="pl-8"
-                placeholder="Search particulars, reference, category, type…"
+                placeholder="Search transaction…"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -702,12 +1277,19 @@ export function WalletManagerView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Date of Submission</TableHead>
+                  <TableHead>Month</TableHead>
+                  <TableHead>Year</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Holder&apos;s Name</TableHead>
+                  <TableHead>Village</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Particulars</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Group</TableHead>
+                  <TableHead>Policy Type</TableHead>
+                  <TableHead>CD Account Used</TableHead>
+                  <TableHead className="text-right">CD Amount</TableHead>
+                  <TableHead>Remark</TableHead>
+                  <TableHead className="text-right">Deposited / Deducted</TableHead>
                   <TableHead className="text-right">Balance After</TableHead>
                 </TableRow>
               </TableHeader>
@@ -715,26 +1297,30 @@ export function WalletManagerView() {
                 {txnLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={14}>
                         <Skeleton className="h-6 w-full" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : !txnPage?.items.length ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={14} className="text-center text-muted-foreground">
                       No transactions found
                     </TableCell>
                   </TableRow>
                 ) : (
                   txnPage.items.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell className="whitespace-nowrap">{formatWalletDateTime(t.date)}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatWalletDate(t.dateOfSubmission ?? t.date)}
+                      </TableCell>
+                      <TableCell>{t.month || "—"}</TableCell>
+                      <TableCell>{t.year || "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
                           className={cn(
-                            t.type === "DEBIT"
+                            String(t.type).toUpperCase().includes("DEBIT")
                               ? "border-red-200 bg-red-50 text-red-800"
                               : "border-emerald-200 bg-emerald-50 text-emerald-800",
                           )}
@@ -742,11 +1328,20 @@ export function WalletManagerView() {
                           {t.type}
                         </Badge>
                       </TableCell>
+                      <TableCell>{t.holderName || "—"}</TableCell>
+                      <TableCell>{t.village || "—"}</TableCell>
                       <TableCell>
                         {t.category ? <Badge variant="secondary">{t.category}</Badge> : "—"}
                       </TableCell>
-                      <TableCell>{t.particulars || "—"}</TableCell>
-                      <TableCell>{t.reference || "—"}</TableCell>
+                      <TableCell>{t.group || "—"}</TableCell>
+                      <TableCell>{t.policyType || "—"}</TableCell>
+                      <TableCell>{t.cdAccountUsed || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {t.cdAmount != null ? formatWalletInr(t.cdAmount) : "—"}
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate" title={t.remark || t.particulars || ""}>
+                        {t.remark || t.particulars || "—"}
+                      </TableCell>
                       <TableCell className="text-right">{formatWalletInr(t.amount)}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatWalletInr(t.balanceAfter)}
@@ -786,26 +1381,6 @@ export function WalletManagerView() {
         </CardContent>
       </Card>
 
-      <Dialog open={openingConfirmOpen} onOpenChange={setOpeningConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset wallet with opening balance?</DialogTitle>
-            <DialogDescription>
-              This will delete all existing wallet transactions and set the balance to{" "}
-              {formatWalletInr(openingAmount)}. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" disabled={openingBusy} onClick={() => setOpeningConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" disabled={openingBusy} onClick={() => void submitOpening()}>
-              {openingBusy ? "Saving…" : "Confirm reset"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={negativeConfirmOpen} onOpenChange={setNegativeConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -821,6 +1396,52 @@ export function WalletManagerView() {
             </Button>
             <Button variant="destructive" disabled={debitBusy} onClick={() => void submitDebit(true)}>
               {debitBusy ? "Deducting…" : "Continue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={adjNegativeOpen} onOpenChange={setAdjNegativeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Wallet will go negative</DialogTitle>
+            <DialogDescription>
+              This debit adjustment exceeds the current balance. Continue anyway?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={adjBusy} onClick={() => setAdjNegativeOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={adjBusy} onClick={() => void submitAdjustment(true)}>
+              {adjBusy ? "Saving…" : "Continue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={restoreConfirmOpen} onOpenChange={setRestoreConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore wallet from backup?</DialogTitle>
+            <DialogDescription>
+              This clears the current ledger and replays{" "}
+              {restorePayload?.wallet_transactions.length ?? 0} transaction(s) from the backup file.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={restoreBusy}
+              onClick={() => {
+                setRestoreConfirmOpen(false);
+                setRestorePayload(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={restoreBusy} onClick={() => void submitRestore()}>
+              {restoreBusy ? "Restoring…" : "Confirm restore"}
             </Button>
           </DialogFooter>
         </DialogContent>

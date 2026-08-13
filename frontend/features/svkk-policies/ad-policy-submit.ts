@@ -78,6 +78,7 @@ export type SubmitAdPolicyParams = {
   policyChartId: string;
   idemKey: string;
   categoryId?: string;
+  allowNegativeWallet?: boolean;
 };
 
 /**
@@ -91,6 +92,7 @@ export async function submitAdPolicyRequest({
   policyChartId,
   idemKey,
   categoryId,
+  allowNegativeWallet,
 }: SubmitAdPolicyParams): Promise<string> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -160,6 +162,7 @@ export async function submitAdPolicyRequest({
     refundChequeDate: toApiDateIso(values.refundChequeDate),
     cdAccountUsed: values.cdAccountStatus === "YES" ? true : values.cdAccountStatus === "NO" ? false : null,
     cdAmount: parseNum(values.cdAmount) ?? null,
+    dateOfSubmission: toApiDateIso(values.dateOfSubmission),
     courierStatus: values.notCourier || null,
     courierDate: toApiDateIso(values.courierDate),
     courierCompany: values.courierCompany.trim() || null,
@@ -220,6 +223,9 @@ export async function submitAdPolicyRequest({
   if (co != null) {
     body.expectedNetPremium = co;
   }
+  if (allowNegativeWallet) {
+    body.allowNegativeWallet = true;
+  }
 
   const { isOfflineMode, submitPolicyCreateOffline } = await import("@/lib/svkk/offline/policy-data");
   if (isOfflineMode()) {
@@ -234,6 +240,10 @@ export async function submitAdPolicyRequest({
     });
   } catch (e) {
     if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
+      const code = (e.response.data as { code?: unknown }).code;
+      if (code === "WALLET_INSUFFICIENT") {
+        throw e;
+      }
       const msg = (e.response.data as { message?: unknown }).message;
       if (typeof msg === "string" && msg.trim()) {
         throw new Error(msg);
@@ -256,6 +266,7 @@ export type SubmitAdPolicyPatchParams = {
   categoryId?: string;
   policyTypeId?: string;
   policyChartId?: string;
+  allowNegativeWallet?: boolean;
 };
 
 /**
@@ -270,6 +281,7 @@ export async function submitAdPolicyPatchRequest({
   categoryId,
   policyTypeId,
   policyChartId,
+  allowNegativeWallet,
 }: SubmitAdPolicyPatchParams): Promise<{ offline: boolean }> {
   const variant = toAdProductVariant(values.adProduct);
   if (!variant) {
@@ -352,6 +364,7 @@ export async function submitAdPolicyPatchRequest({
     refundChequeDate: toApiDateIso(values.refundChequeDate),
     cdAccountUsed: values.cdAccountStatus === "YES" ? true : values.cdAccountStatus === "NO" ? false : null,
     cdAmount: parseNum(values.cdAmount) ?? null,
+    dateOfSubmission: toApiDateIso(values.dateOfSubmission),
     courierStatus: values.notCourier || null,
     courierDate: toApiDateIso(values.courierDate),
     courierCompany: values.courierCompany.trim() || null,
@@ -400,6 +413,9 @@ export async function submitAdPolicyPatchRequest({
   if (policyChartId) {
     body.policyChartId = policyChartId;
   }
+  if (allowNegativeWallet) {
+    body.allowNegativeWallet = true;
+  }
 
   debugPolicyUpdate("PATCH /policies/:id request", {
     policyId,
@@ -442,6 +458,10 @@ export async function submitAdPolicyPatchRequest({
       return queueOffline();
     }
     if (e instanceof AxiosError && e.response?.data && typeof e.response.data === "object") {
+      const code = (e.response.data as { code?: unknown }).code;
+      if (code === "WALLET_INSUFFICIENT") {
+        throw e;
+      }
       const msg = (e.response.data as { message?: unknown }).message;
       if (typeof msg === "string" && msg.trim()) {
         throw new Error(msg);

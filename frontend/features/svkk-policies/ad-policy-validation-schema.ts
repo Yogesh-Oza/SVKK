@@ -209,6 +209,7 @@ export const adPolicyValidationSchema = yup.object({
   refundChequeDate: yup.string().optional(),
   cdAccountStatus: yup.string().optional(),
   cdAmount: yup.string().optional(),
+  dateOfSubmission: yup.string().optional(),
   notCourier: yup.string().optional(),
   courierDate: yup.string().optional(),
   courierAddress: yup.string().optional(),

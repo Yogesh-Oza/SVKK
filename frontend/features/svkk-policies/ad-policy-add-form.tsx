@@ -38,7 +38,9 @@ import {
   type PremiumState,
 } from "@/lib/svkk/premium";
 import { svkkJson } from "@/lib/svkk/api";
+import { getSvkkErrorCode, getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { fetchPolicyDetail, fetchPolicyListRowsForForm } from "@/lib/svkk/offline/policy-data";
+import { formatWalletInr } from "@/features/svkk-wallet/wallet-types";
 import { useDropdownOptions } from "@/lib/svkk/use-dropdown-options";
 import { canUploadPolicyDrive } from "@/lib/svkk/permissions";
 import { buildReceiptDocumentHtml, type PolicyDetailForReceipt } from "@/lib/svkk/policy-receipt-print";
@@ -508,6 +510,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
   const [memberAgeAlertOpen, setMemberAgeAlertOpen] = useState(false);
   const [memberAgeAlertMessage, setMemberAgeAlertMessage] = useState("");
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
+  const [walletNegativeConfirmOpen, setWalletNegativeConfirmOpen] = useState(false);
+  const allowNegativeWalletRef = useRef(false);
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
   const openReceiptPreviewRef = useRef<(() => void) | null>(null);
 
@@ -559,6 +564,23 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     };
   }, []);
 
+  useEffect(() => {
+    if (missingUrl) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await svkkJson<{ success?: boolean; data?: { currentBalance?: string } }>("/wallet");
+        const bal = res.data?.currentBalance ?? (res as { currentBalance?: string }).currentBalance;
+        if (!cancelled && bal != null) setWalletBalance(String(bal));
+      } catch {
+        /* non-fatal — form still works without balance display */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingUrl]);
+
   const [premiumCalcBlocked, setPremiumCalcBlocked] = useState(false);
   useEffect(() => {
     const refreshBlock = () => void isPremiumAutoCalcBlocked().then(setPremiumCalcBlocked);
@@ -594,6 +616,21 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     onSubmit: async (values, helpers) => {
       setApiErr(null);
       try {
+      const cdNum = Number(String(values.cdAmount).replace(/,/g, "").trim());
+      const balNum = walletBalance != null ? Number(walletBalance) : null;
+      const wouldGoNegative =
+        values.cdAccountStatus === "YES" &&
+        Number.isFinite(cdNum) &&
+        cdNum > 0 &&
+        balNum != null &&
+        Number.isFinite(balNum) &&
+        cdNum > balNum;
+      if (wouldGoNegative && !allowNegativeWalletRef.current) {
+        setWalletNegativeConfirmOpen(true);
+        return;
+      }
+      const allowNegativeWallet = allowNegativeWalletRef.current;
+
       const applyBackendFieldErrors = (fieldErrors: unknown) => {
         if (!fieldErrors || typeof fieldErrors !== "object") {
           return false;

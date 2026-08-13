@@ -100,6 +100,7 @@ function minimalFormValues(overrides: Partial<AdPolicyFormValues>): AdPolicyForm
     refundChequeDate: "",
     cdAccountStatus: "",
     cdAmount: "",
+    dateOfSubmission: "",
     notCourier: "",
     courierDate: "",
     courierCompany: "",

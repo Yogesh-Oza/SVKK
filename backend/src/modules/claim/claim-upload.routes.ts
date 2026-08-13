@@ -36,7 +36,6 @@ import {
 import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "./claim-policy-match.js";
 import { decideClaimImportAction } from "./claim-duplicate.js";
 import {
-  CLAIM_PREVIEW_ROW_LIMIT,
   createPreviewToken,
   emptyMatchStats,
   hashPreviewToken,
@@ -203,15 +202,18 @@ function applyDispositionStats(
   }
 }
 
+function isoDate(d: Date | null | undefined): string | null {
+  return d ? d.toISOString() : null;
+}
+
 async function buildPreviewRows(
   parsedRows: ReturnType<typeof parseClaimRow>[],
   matches: Awaited<ReturnType<typeof evaluateClaimRow>>[],
   existingByNo: Map<string, ExistingClaimRow>,
   linkMode: ClaimLinkMode,
 ) {
-  const limit = Math.min(CLAIM_PREVIEW_ROW_LIMIT, parsedRows.length);
   const previewRows = [];
-  for (let i = 0; i < limit; i++) {
+  for (let i = 0; i < parsedRows.length; i++) {
     const row = parsedRows[i]!;
     const match = matches[i]!;
     const existing = existingByNo.get(row.claimNo);
@@ -221,11 +223,21 @@ async function buildPreviewRows(
       rowNumber: row.rowNumber,
       claimNo: row.claimNo,
       policyNo: row.policyNo,
+      svkkPublicId: row.svkkPublicIdCsv || match.svkkPublicId || "",
+      policyHolderName: row.policyHolderName,
+      patientName: row.patientName,
+      hospitalName: row.hospitalName,
+      hospitalArea: row.hospitalArea,
+      insuranceCompany: row.insuranceCompany,
+      statusText: row.statusText,
+      lodgeType: row.actualLodgeType || row.claimType || null,
+      claimAmount: row.claimAmount,
+      paidAmount: row.approvedAmount,
+      admissionDate: isoDate(row.admissionDate),
+      policyYear: match.yearLabel ?? null,
       matchStatus: match.matchStatus,
       matchReason: match.matchReason,
       verificationWarnings: warnings,
-      policyHolderName: row.policyHolderName,
-      claimAmount: row.claimAmount,
       alreadyExists: Boolean(existing),
       disposition: decision.disposition,
       dispositionReason: decision.dispositionReason,

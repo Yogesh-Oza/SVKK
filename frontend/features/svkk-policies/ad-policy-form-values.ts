@@ -131,6 +131,8 @@ export type AdPolicyFormValues = {
   refundChequeDate: string;
   cdAccountStatus: string;
   cdAmount: string;
+  /** DD-MM-YYYY form date; maps to API `dateOfSubmission`. */
+  dateOfSubmission: string;
   notCourier: string;
   courierDate: string;
   courierCompany: string;
@@ -236,6 +238,7 @@ export function getAdPolicyInitialValues(): AdPolicyFormValues {
     refundChequeDate: "",
     cdAccountStatus: "",
     cdAmount: "",
+    dateOfSubmission: "",
     notCourier: "",
     courierDate: "",
     courierCompany: "",

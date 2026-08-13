@@ -67,7 +67,7 @@ export function hashPreviewToken(token: string): string {
   return createHmac("sha256", "claim-preview").update(token).digest("hex");
 }
 
-export const CLAIM_PREVIEW_ROW_LIMIT = 20;
+/** Preview returns every parsed row (capped by CLAIM_IMPORT_MAX_ROWS on upload). */
 
 export type ClaimImportMatchStats = {
   totalRows: number;

@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -27,9 +28,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDateCell, formatInrRupee, StatusBadge } from "@/features/svkk-claims/claim-register-badges";
 import { getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { backendApi } from "@/lib/svkk/api";
-import { AlertTriangle, Download, FileSpreadsheet } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Search } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -45,12 +47,32 @@ type PreviewRow = {
   matchReason?: string;
   alreadyExists?: boolean;
   verificationWarnings?: string[];
+  svkkPublicId?: string;
   policyHolderName?: string;
+  patientName?: string | null;
+  hospitalName?: string | null;
+  hospitalArea?: string | null;
+  insuranceCompany?: string | null;
+  statusText?: string | null;
+  lodgeType?: string | null;
   claimAmount?: number | null;
+  paidAmount?: number | null;
+  admissionDate?: string | null;
+  policyYear?: string | null;
   disposition?: Disposition;
   dispositionReason?: string;
   eventClassification?: EventClassification;
 };
+
+type PreviewFilter =
+  | "all"
+  | "attention"
+  | "create"
+  | "update"
+  | "reject"
+  | "unlinked"
+  | "conflict"
+  | "warnings";
 
 type MatchSummary = {
   totalRows: number;
@@ -81,16 +103,96 @@ type ImportResult = {
 
 function warningLabel(code: string): string {
   const labels: Record<string, string> = {
-    svkk: "SVKK mismatch",
-    policy_type: "Policy type",
-    policy_dates: "Policy dates",
-    policy_year_ambiguous: "Year ambiguous",
-    holder_name: "Holder name",
-    sum_insured: "Sum insured",
-    insurance_company: "Insurer",
+    svkk: "SVKK ID differs",
+    policy_type: "Policy type differs",
+    policy_dates: "Policy dates differ",
+    policy_year_ambiguous: "Policy year unclear",
+    holder_name: "Holder name differs",
+    sum_insured: "Sum insured differs",
+    insurance_company: "Insurer name differs",
     event_identity_weak: "Weak event identity",
   };
   return labels[code] ?? code;
+}
+
+function warningHint(code: string): string {
+  const hints: Record<string, string> = {
+    svkk: "SVKK ID in the file does not match the linked policy. The claim still links by Policy Number.",
+    policy_type: "Product/type in the file does not match the linked policy.",
+    policy_dates: "Start/end dates in the file do not match the linked policy.",
+    policy_year_ambiguous: "Could not pick a single policy year from admission/lodge dates.",
+    holder_name: "Holder name in the file does not match the policy holder. The claim still links by Policy Number.",
+    sum_insured: "Sum insured in the file does not match the linked policy year.",
+    insurance_company: "Insurer name in the file does not match the linked policy. The claim still links by Policy Number.",
+    event_identity_weak: "Admission/lodge details are thin, so same-claim vs new-event is uncertain.",
+  };
+  return hints[code] ?? "Verification difference vs the linked policy. Import can still proceed.";
+}
+
+function dispositionExplain(row: PreviewRow): string {
+  if (row.disposition === "WILL_UPDATE") {
+    return row.dispositionReason === "weak_identity"
+      ? "Claim number already exists. Identity is weak, so the existing claim will be updated."
+      : "Claim number already exists for the same event. The existing claim will be updated.";
+  }
+  if (row.disposition === "WILL_CREATE") {
+    if (row.matchStatus === "UNLINKED") {
+      return "Will add as a new claim without linking to a policy (Allow unlinked).";
+    }
+    return row.policyYear
+      ? `Will add as a new claim, linked to this policy (${row.policyYear}).`
+      : "Will add as a new claim, linked to this policy.";
+  }
+  if (row.dispositionReason === "different_event" || row.eventClassification === "DIFFERENT_EVENT") {
+    return "This claim number already exists for a different hospital event, so the row is rejected.";
+  }
+  if (row.matchStatus === "CONFLICT" || row.dispositionReason === "conflict") {
+    return "Several policies share this Policy Number, so the row cannot be linked.";
+  }
+  if (row.matchStatus === "UNLINKED" || row.dispositionReason === "unlinked") {
+    return "No policy in the register matches this Policy Number. Strict match skips the row.";
+  }
+  if (row.dispositionReason === "validation") {
+    return "Claim Number is missing or invalid.";
+  }
+  return row.matchReason || "This row will be skipped.";
+}
+
+function rowNeedsAttention(row: PreviewRow): boolean {
+  return (
+    row.disposition === "WILL_REJECT" ||
+    row.matchStatus === "UNLINKED" ||
+    row.matchStatus === "CONFLICT"
+  );
+}
+
+function rowMatchesFilter(row: PreviewRow, filter: PreviewFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "attention") return rowNeedsAttention(row);
+  if (filter === "create") return row.disposition === "WILL_CREATE";
+  if (filter === "update") return row.disposition === "WILL_UPDATE";
+  if (filter === "reject") return row.disposition === "WILL_REJECT";
+  if (filter === "unlinked") return row.matchStatus === "UNLINKED";
+  if (filter === "conflict") return row.matchStatus === "CONFLICT";
+  if (filter === "warnings") return (row.verificationWarnings?.length ?? 0) > 0;
+  return true;
+}
+
+function rowSearchHaystack(row: PreviewRow): string {
+  return [
+    row.claimNo,
+    row.policyNo,
+    row.svkkPublicId,
+    row.policyHolderName,
+    row.patientName,
+    row.hospitalName,
+    row.hospitalArea,
+    row.insuranceCompany,
+    row.statusText,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function dispositionBadge(row: PreviewRow): { label: string; className: string } {
@@ -142,6 +244,8 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
   const [duplicateImport, setDuplicateImport] = useState<DuplicateImportInfo | null>(null);
   const [lastResult, setLastResult] = useState<ImportResult | null>(null);
   const [importMsg, setImportMsg] = useState("");
+  const [previewFilter, setPreviewFilter] = useState<PreviewFilter>("all");
+  const [previewSearch, setPreviewSearch] = useState("");
 
   const downloadSample = useCallback(async () => {
     try {
@@ -181,6 +285,8 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       setPreviewRows(data.previewRows);
       setSummary(data.summary);
       setDuplicateImport(data.duplicateImport ?? null);
+      setPreviewFilter("all");
+      setPreviewSearch("");
       setPreviewOpen(true);
       if (data.duplicateImport) {
         toast.warning("This file was imported before", {
@@ -224,6 +330,25 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
     linkMode === "STRICT_MATCH" && summary != null && (summary.conflicts > 0 || summary.unlinked > 0);
 
   const blockConfirm = Boolean(duplicateImport) && !confirmDisabled;
+
+  const attentionCount = previewRows.filter(rowNeedsAttention).length;
+  const searchNeedle = previewSearch.trim().toLowerCase();
+  const visibleRows = previewRows.filter((row) => {
+    if (!rowMatchesFilter(row, previewFilter)) return false;
+    if (!searchNeedle) return true;
+    return rowSearchHaystack(row).includes(searchNeedle);
+  });
+
+  const filterChips: { id: PreviewFilter; label: string; count: number }[] = [
+    { id: "all", label: "All claims", count: previewRows.length },
+    { id: "attention", label: "Needs attention", count: attentionCount },
+    { id: "create", label: "Will create", count: summary?.willCreate ?? 0 },
+    { id: "update", label: "Will update", count: summary?.willUpdate ?? 0 },
+    { id: "reject", label: "Will reject", count: summary?.willReject ?? 0 },
+    { id: "unlinked", label: "Unlinked", count: summary?.unlinked ?? 0 },
+    { id: "conflict", label: "Conflicts", count: summary?.conflicts ?? 0 },
+    { id: "warnings", label: "Warnings", count: summary?.verificationWarnings ?? 0 },
+  ];
 
   return (
     <>
@@ -314,11 +439,13 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       ) : null}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="flex h-[min(92vh,920px)] max-h-[92vh] w-[min(98vw,1280px)] max-w-[min(98vw,1280px)] flex-col gap-3 overflow-hidden sm:max-w-[min(98vw,1280px)]">
           <DialogHeader>
             <DialogTitle>Import preview</DialogTitle>
             <DialogDescription>
-              First 20 rows shown. Review match status before confirming.
+              All {previewRows.length.toLocaleString("en-IN")} claim
+              {previewRows.length === 1 ? "" : "s"} from the file. Warnings do not block import —
+              only Unlinked and Conflicts do in Strict match.
             </DialogDescription>
           </DialogHeader>
 
@@ -331,12 +458,20 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
           ) : null}
 
           {summary ? (
-            <p className="text-muted-foreground text-sm">
-              {summary.willCreate ?? 0} will create · {summary.willUpdate ?? 0} will update ·{" "}
-              {summary.willReject ?? 0} will reject · {summary.matchedExact} matched ·{" "}
-              {summary.unlinked} unlinked · {summary.conflicts} conflicts ·{" "}
-              {summary.verificationWarnings} verification warnings · {summary.totalRows} total rows
-            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {filterChips.map((chip) => (
+                <Button
+                  key={chip.id}
+                  type="button"
+                  size="sm"
+                  variant={previewFilter === chip.id ? "default" : "outline"}
+                  className="h-7 px-2.5 text-xs font-bold"
+                  onClick={() => setPreviewFilter(chip.id)}
+                >
+                  {chip.label} {chip.count}
+                </Button>
+              ))}
+            </div>
           ) : null}
 
           {summary && (summary.differentEventBlocked ?? 0) > 0 ? (
@@ -351,54 +486,133 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             </Alert>
           ) : null}
 
-          <div className="max-h-80 overflow-auto rounded border">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <Input
+              value={previewSearch}
+              onChange={(e) => setPreviewSearch(e.target.value)}
+              placeholder="Search claim #, policy #, holder, patient, hospital…"
+              className="h-8 pl-8 text-sm"
+            />
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            Showing {visibleRows.length.toLocaleString("en-IN")} of{" "}
+            {previewRows.length.toLocaleString("en-IN")} claims
+            {previewFilter !== "all" ? ` · filter: ${previewFilter}` : ""}
+          </p>
+
+          <div className="min-h-0 flex-1 overflow-auto rounded border">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-background sticky top-0 z-10">
                 <TableRow>
-                  <TableHead>Claim #</TableHead>
-                  <TableHead>Policy #</TableHead>
-                  <TableHead>Disposition</TableHead>
-                  <TableHead>Reason</TableHead>
+                  <TableHead className="w-12">Row</TableHead>
+                  <TableHead>Claim / Patient</TableHead>
+                  <TableHead>Policy / Holder</TableHead>
+                  <TableHead>Hospital</TableHead>
+                  <TableHead>Admission</TableHead>
+                  <TableHead>Lodge amt</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>What happens</TableHead>
+                  <TableHead>Why</TableHead>
                   <TableHead>Warnings</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {previewRows.map((row) => {
-                  const badge = dispositionBadge(row);
-                  return (
-                    <TableRow key={row.rowNumber}>
-                      <TableCell className="font-mono text-xs">{row.claimNo}</TableCell>
-                      <TableCell className="font-mono text-xs">{row.policyNo || "—"}</TableCell>
-                      <TableCell className={badge.className}>{badge.label}</TableCell>
-                      <TableCell className="max-w-[280px] text-xs text-muted-foreground">
-                        {row.matchReason || row.dispositionReason || "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {row.verificationWarnings?.length ? (
-                          <span className="flex flex-wrap gap-1">
-                            {row.verificationWarnings.map((w) => (
-                              <Badge key={w} variant="outline" className="text-[10px] font-normal">
-                                {warningLabel(w)}
-                              </Badge>
-                            ))}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {visibleRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-muted-foreground py-8 text-center text-sm">
+                      No claims match this filter or search.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  visibleRows.map((row) => {
+                    const badge = dispositionBadge(row);
+                    return (
+                      <TableRow
+                        key={row.rowNumber}
+                        className="[content-visibility:auto] [contain-intrinsic-size:auto_56px]"
+                      >
+                        <TableCell className="text-muted-foreground text-xs tabular-nums">
+                          {row.rowNumber}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono text-xs">{row.claimNo || "—"}</div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.patientName || "No patient name"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono text-xs">{row.policyNo || "—"}</div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.policyHolderName || "—"}
+                            {row.svkkPublicId ? ` · ${row.svkkPublicId}` : ""}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[160px] text-xs">
+                          <div className="truncate" title={row.hospitalName ?? undefined}>
+                            {row.hospitalName || "—"}
+                          </div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.hospitalArea || row.insuranceCompany || "—"}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {formatDateCell(row.admissionDate)}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {formatInrRupee(row.claimAmount)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <StatusBadge value={row.statusText} />
+                          {row.lodgeType ? (
+                            <div className="text-muted-foreground mt-0.5 text-[11px]">{row.lodgeType}</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className={`text-xs font-semibold ${badge.className}`}>
+                          {badge.label}
+                        </TableCell>
+                        <TableCell className="max-w-[280px] text-xs text-muted-foreground">
+                          {dispositionExplain(row)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {row.verificationWarnings?.length ? (
+                            <span className="flex flex-wrap gap-1">
+                              {row.verificationWarnings.map((w) => (
+                                <Badge
+                                  key={w}
+                                  variant="outline"
+                                  className="text-[10px] font-normal"
+                                  title={warningHint(w)}
+                                >
+                                  {warningLabel(w)}
+                                </Badge>
+                              ))}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
 
           {confirmDisabled ? (
             <p className="text-destructive text-xs">
-              Strict match mode: resolve unlinked/conflict rows or switch to Allow unlinked before
-              importing.
+              Strict match: {summary?.unlinked ?? 0} unlinked and {summary?.conflicts ?? 0} conflict
+              row{(summary?.conflicts ?? 0) === 1 ? "" : "s"} must be fixed, or switch Link mode to
+              Allow unlinked, before you can confirm.
             </p>
-          ) : null}
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              Holder / insurer warnings mean the file text differs from the policy register. The
+              claim still links by Policy Number.
+            </p>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="secondary" onClick={() => setPreviewOpen(false)}>
