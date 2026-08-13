@@ -52,7 +52,8 @@ export function computeWalletCdPreview(input: WalletCdPreviewInput): WalletCdPre
   const newEffectiveCd = effectiveCdFromForm(input.cdAccountStatus, input.cdAmount);
   const cdDelta = newEffectiveCd - savedEffectiveCd;
   const projectedBalance = currentBalance != null ? currentBalance - cdDelta : null;
-  const wouldGoNegative = projectedBalance != null && projectedBalance < 0;
+  const wouldGoNegative =
+    cdDelta > 0 && projectedBalance != null && projectedBalance < 0;
   return {
     currentBalance,
     savedEffectiveCd,

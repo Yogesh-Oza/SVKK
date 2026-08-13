@@ -3742,11 +3742,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               <Input name="cdAmount" value={values.cdAmount} onChange={handleChange} onBlur={handleBlur} />
             </div>
             <div className="space-y-2">
-              <Label>Current Wallet Balance</Label>
+              <Label>Balance after CD change</Label>
               <div
                 className={cn(
                   "bg-muted/40 flex h-9 items-center rounded-md border px-3 text-sm font-medium",
                   walletCdPreview.wouldGoNegative && "border-destructive/50 text-destructive",
+                  !walletCdPreview.wouldGoNegative &&
+                    walletCdPreview.projectedBalance != null &&
+                    walletCdPreview.projectedBalance < 0 &&
+                    "text-destructive",
                 )}
               >
                 {walletCdPreview.projectedBalance != null
@@ -3755,18 +3759,24 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
                     ? formatWalletInr(walletBalance)
                     : "—"}
               </div>
-              {walletBalance != null && walletCdPreview.cdDelta !== 0 ? (
+              {walletBalance != null ? (
                 <p className="text-muted-foreground text-xs">
                   Wallet now {formatWalletInr(walletBalance)}
-                  {walletCdPreview.cdDelta > 0
-                    ? ` − ${formatWalletInr(String(walletCdPreview.cdDelta))} CD`
-                    : ` + ${formatWalletInr(String(-walletCdPreview.cdDelta))} CD refund`}
+                  {walletCdPreview.cdDelta !== 0
+                    ? walletCdPreview.cdDelta > 0
+                      ? ` − ${formatWalletInr(String(walletCdPreview.cdDelta))} CD`
+                      : ` + ${formatWalletInr(String(-walletCdPreview.cdDelta))} CD refund`
+                    : null}
                 </p>
               ) : null}
               {walletCdPreview.wouldGoNegative ? (
                 <p className="text-amber-700 dark:text-amber-400 text-xs">
-                  CD change exceeds available wallet balance. Saving will require confirmation and
-                  may leave a negative balance.
+                  This CD increase exceeds the available wallet balance. Saving will require
+                  confirmation and may leave a negative balance.
+                </p>
+              ) : walletCdPreview.projectedBalance != null && walletCdPreview.projectedBalance < 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Wallet is already negative. Increase CD only if you intend to deduct more.
                 </p>
               ) : null}
             </div>

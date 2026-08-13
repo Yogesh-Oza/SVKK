@@ -181,6 +181,15 @@ function rowNeedsAttention(row: PreviewRow): boolean {
   );
 }
 
+function uniqueClaimCount(rows: PreviewRow[]): number {
+  const nos = new Set<string>();
+  for (const row of rows) {
+    const no = row.claimNo.trim();
+    if (no) nos.add(no);
+  }
+  return nos.size;
+}
+
 function rowMatchesFilter(row: PreviewRow, filter: PreviewFilter): boolean {
   if (filter === "all") return true;
   if (filter === "attention") return rowNeedsAttention(row);
@@ -351,13 +360,14 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
 
   const blockConfirm = Boolean(duplicateImport) && !confirmDisabled;
 
-  const attentionCount = previewRows.filter(rowNeedsAttention).length;
+  const attentionCount = uniqueClaimCount(previewRows.filter(rowNeedsAttention));
   const searchNeedle = previewSearch.trim().toLowerCase();
   const visibleRows = previewRows.filter((row) => {
     if (!rowMatchesFilter(row, previewFilter)) return false;
     if (!searchNeedle) return true;
     return rowSearchHaystack(row).includes(searchNeedle);
   });
+  const visibleUniqueClaims = uniqueClaimCount(visibleRows);
 
   const filterChips: { id: PreviewFilter; label: string; count: number }[] = [
     { id: "all", label: "CSV rows", count: summary?.totalRows ?? previewRows.length },
@@ -520,9 +530,11 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
           <p className="text-muted-foreground text-xs">
             Showing {visibleRows.length.toLocaleString("en-IN")} of{" "}
             {previewRows.length.toLocaleString("en-IN")} CSV rows
-            {summary?.uniqueClaims != null
+            {previewFilter === "all" && summary?.uniqueClaims != null
               ? ` · ${summary.uniqueClaims.toLocaleString("en-IN")} unique claims`
-              : ""}
+              : previewFilter !== "all"
+                ? ` · ${visibleUniqueClaims.toLocaleString("en-IN")} unique claim${visibleUniqueClaims === 1 ? "" : "s"} in this filter`
+                : ""}
             {previewFilter !== "all" ? ` · filter: ${previewFilter}` : ""}
           </p>
 
@@ -627,10 +639,11 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
 
           {(summary?.unlinked ?? 0) > 0 || (summary?.conflicts ?? 0) > 0 ? (
             <p className="text-destructive text-xs">
-              Strict match will skip {summary?.unlinked ?? 0} unlinked and {summary?.conflicts ?? 0}{" "}
-              conflict claim{(summary?.conflicts ?? 0) === 1 ? "" : "s"}. Other claims can still
-              import. Conflict means two live policy records share the same Policy Number — not that
-              the policy already has claims.
+              {linkMode === "ALLOW_UNLINKED"
+                ? `${summary?.unlinked ?? 0} unlinked claim${(summary?.unlinked ?? 0) === 1 ? "" : "s"} will be created without a policy. ${summary?.conflicts ?? 0} conflict claim${(summary?.conflicts ?? 0) === 1 ? "" : "s"} still cannot be linked.`
+                : `Strict match will skip ${summary?.unlinked ?? 0} unlinked and ${summary?.conflicts ?? 0} conflict claim${(summary?.conflicts ?? 0) === 1 ? "" : "s"}. Other claims can still import.`}{" "}
+              Unlinked/Conflict chips count unique Claim Numbers — the table still lists every CSV
+              payment row for those claims.
             </p>
           ) : (
             <p className="text-muted-foreground text-xs">

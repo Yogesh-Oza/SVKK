@@ -66,6 +66,19 @@ describe("computeWalletCdPreview", () => {
     expect(preview.wouldGoNegative).toBe(true);
   });
 
+  it("does not warn when wallet is negative but CD is unchanged", () => {
+    const preview = computeWalletCdPreview({
+      walletBalance: "-36089",
+      savedCdAccountStatus: "YES",
+      savedCdAmount: "22727",
+      cdAccountStatus: "YES",
+      cdAmount: "22727",
+    });
+    expect(preview.cdDelta).toBe(0);
+    expect(preview.projectedBalance).toBe(-36089);
+    expect(preview.wouldGoNegative).toBe(false);
+  });
+
   it("accepts saved CD fields spread from savedCdFieldsFromPolicy", () => {
     const saved = savedCdFieldsFromPolicy({
       cdAccountUsed: true,
