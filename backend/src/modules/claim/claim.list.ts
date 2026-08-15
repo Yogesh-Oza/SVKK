@@ -363,7 +363,7 @@ async function distinctScalar(
     take: FILTER_META_LIMIT,
   });
   return rows
-    .map((r) => r[field] as string | null)
+    .map((r) => (r as unknown as Record<string, string | null>)[field])
     .filter((v): v is string => Boolean(v?.trim()))
     .sort((a, b) => a.localeCompare(b));
 }
