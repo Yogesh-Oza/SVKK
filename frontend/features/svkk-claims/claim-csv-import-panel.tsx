@@ -87,6 +87,7 @@ type MatchSummary = {
   willCreate?: number;
   willUpdate?: number;
   willReject?: number;
+  differentEventBlocked?: number;
   willImportEvents?: number;
   eventsCreated?: number;
   eventsUpdated?: number;

@@ -41,6 +41,7 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
     policyNo: string;
     matchStatus: string | null;
   } | null>(null);
+  const [form, setForm] = useState<ClaimEditFormValues>(emptyClaimEditForm);
   const [events, setEvents] = useState<ClaimSourceEvent[]>([]);
 
   useEffect(() => {
