@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import type { Env } from "../../config/env.js";
 import { AppError } from "../../errors/app-error.js";
 import type { ClaimLinkMode, CsvImportMode } from "@prisma/client";
@@ -18,6 +18,11 @@ export type ClaimPreviewPayload = {
 
 function previewSecret(env: Env): string {
   return env.ACCESS_TOKEN_SECRET;
+}
+
+/** SHA-256 of file contents — duplicate-import key (not filename). */
+export function hashClaimImportFile(contents: Buffer | string): string {
+  return createHash("sha256").update(contents).digest("hex");
 }
 
 /** Sign a preview token binding file checksum and import options. */
@@ -86,7 +91,14 @@ export type ClaimImportMatchStats = {
   willCreate: number;
   willUpdate: number;
   willReject: number;
+  /** Source rows flagged as a different admission/event (still retained). */
   differentEventBlocked: number;
+  /** CSV rows that will be stored as claim events (including the canonical row). */
+  willImportEvents: number;
+  eventsCreated: number;
+  eventsUpdated: number;
+  eventsSkipped: number;
+  failedRows: number;
 };
 
 export function emptyMatchStats(): ClaimImportMatchStats {
@@ -105,5 +117,10 @@ export function emptyMatchStats(): ClaimImportMatchStats {
     willUpdate: 0,
     willReject: 0,
     differentEventBlocked: 0,
+    willImportEvents: 0,
+    eventsCreated: 0,
+    eventsUpdated: 0,
+    eventsSkipped: 0,
+    failedRows: 0,
   };
 }

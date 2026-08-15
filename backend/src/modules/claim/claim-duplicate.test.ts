@@ -123,16 +123,17 @@ describe("decideClaimImportAction", () => {
     expect(d.eventClassification).toBe("SAME_EVENT");
   });
 
-  it("different event → WILL_REJECT different_event", () => {
+  it("different event on existing CCN → WILL_UPDATE different_event_retained", () => {
     const d = decideClaimImportAction({
       matchStatus: ClaimPolicyMatchStatus.MATCHED_EXACT,
       linkMode: ClaimLinkMode.STRICT_MATCH,
       existing: ident({ admissionDate: utc(2024, 1, 1) }),
       incoming: ident(),
     });
-    expect(d.disposition).toBe("WILL_REJECT");
-    expect(d.dispositionReason).toBe("different_event");
+    expect(d.disposition).toBe("WILL_UPDATE");
+    expect(d.dispositionReason).toBe("different_event_retained");
     expect(d.eventClassification).toBe("DIFFERENT_EVENT");
+    expect(d.extraWarnings).toContain("different_event");
   });
 
   it("weak identity → WILL_UPDATE + event_identity_weak", () => {

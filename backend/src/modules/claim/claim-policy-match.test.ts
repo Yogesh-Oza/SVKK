@@ -237,7 +237,7 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
     expect(r.matchReason).toContain("cannot be linked safely");
   });
 
-  it("shared Policy Number + unique coverage year → MATCHED to that policy", () => {
+  it("shared Policy Number is always CONFLICT, even if coverage year is unique", () => {
     const floater = makePolicy({
       id: "pol-floater",
       policyNo: "PO-001",
@@ -258,9 +258,9 @@ describe("resolveClaimPolicyMatch (Policy Number only)", () => {
       baseInput({ policyNo: "PO-001", admissionDate: utc(2025, 12, 21) }),
       emptyTypeCache(),
     );
-    expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.MATCHED_EXACT);
-    expect(r.policyId).toBe("pol-floater");
-    expect(r.verificationWarnings).toContain("policy_number_shared");
+    expect(r.matchStatus).toBe(ClaimPolicyMatchStatus.CONFLICT);
+    expect(r.policyId).toBeUndefined();
+    expect(r.matchReason).toContain("Policy Number matches multiple live policies");
   });
 
   it("single Policy, two years, exact dates pick one year", () => {

@@ -138,12 +138,13 @@ function sameClaimDecision(canonical: ClaimImportDecision): ClaimImportDecision 
   };
 }
 
-function differentEventDecision(): ClaimImportDecision {
+function differentEventDecision(canonical: ClaimImportDecision): ClaimImportDecision {
+  if (canonical.disposition === "WILL_REJECT") return canonical;
   return {
-    disposition: "WILL_REJECT",
-    dispositionReason: "different_event",
+    disposition: "WILL_UPDATE",
+    dispositionReason: "different_event_retained",
     eventClassification: "DIFFERENT_EVENT",
-    extraWarnings: [],
+    extraWarnings: ["different_event"],
   };
 }
 
@@ -193,12 +194,18 @@ export function decideGroupedClaimPreview(opts: {
     const canonicalWarnings = [...match.verificationWarnings, ...canonicalDecision.extraWarnings];
     if (canonicalWarnings.length > 0) stats.verificationWarnings++;
 
-    if (canonicalDecision.dispositionReason === "different_event") {
+    if (
+      canonicalDecision.dispositionReason === "different_event" ||
+      canonicalDecision.dispositionReason === "different_event_retained"
+    ) {
       stats.differentEventBlocked++;
     }
     stats.sameCcnExtraRows += group.sameEventRows.length;
     if (group.differentEventRows.length > 0) {
       stats.differentEventBlocked += group.differentEventRows.length;
+    }
+    if (canonicalDecision.disposition !== "WILL_REJECT") {
+      stats.willImportEvents += group.rows.length;
     }
 
     preview.push({
@@ -221,7 +228,7 @@ export function decideGroupedClaimPreview(opts: {
       preview.push({
         row,
         match,
-        decision: differentEventDecision(),
+        decision: differentEventDecision(canonicalDecision),
         sourceRowRole: "different_event",
         sourceRowCount: group.rows.length,
       });

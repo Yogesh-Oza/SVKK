@@ -10,6 +10,7 @@ import {
   getWalletSummary,
   manualDebit,
   restoreWalletFromBackup,
+  clearWalletAllEntries,
   setOpeningBalance,
   topUpWallet,
 } from "./wallet.service.js";
@@ -121,6 +122,10 @@ const restoreBody = z.object({
     wallet_last_updated: z.unknown().optional(),
     wallet_transactions: z.array(z.record(z.unknown())),
   }),
+});
+
+const clearBody = z.object({
+  confirm: z.literal(true),
 });
 
 const listQuerySchema = z.object({
@@ -316,6 +321,16 @@ export function createWalletRouter(_env: Env) {
     try {
       const body = restoreBody.parse(req.body);
       const data = await restoreWalletFromBackup(body.confirm, body.backup, req.userId);
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.post("/clear", requirePermission("wallet:clear"), async (req, res, next) => {
+    try {
+      const body = clearBody.parse(req.body);
+      const data = await clearWalletAllEntries(body.confirm);
       res.json({ success: true, data });
     } catch (e) {
       next(e);

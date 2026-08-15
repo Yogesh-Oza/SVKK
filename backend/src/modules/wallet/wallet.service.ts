@@ -658,6 +658,39 @@ function parseRestoreTxn(raw: unknown, index: number): PreparedRestoreRow {
   };
 }
 
+async function wipeWalletLedger(
+  tx: Prisma.TransactionClient,
+  wallet: WalletLocked,
+): Promise<{ deletedCount: number; lastUpdatedAt: Date }> {
+  const deleted = await tx.walletTransaction.deleteMany({ where: { walletId: wallet.id } });
+  wallet.currentBalance = new Prisma.Decimal(0);
+  const lastUpdatedAt = new Date();
+  await tx.wallet.update({
+    where: { id: wallet.id },
+    data: { currentBalance: wallet.currentBalance, lastUpdatedAt },
+  });
+  return { deletedCount: deleted.count, lastUpdatedAt };
+}
+
+/**
+ * Permanently delete every wallet transaction and set the balance to 0.
+ */
+export async function clearWalletAllEntries(confirm: boolean) {
+  if (!confirm) {
+    throw new AppError("VALIDATION_ERROR", "Reset requires confirm: true.", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const wallet = await ensureAndLockWallet(tx);
+    const { deletedCount, lastUpdatedAt } = await wipeWalletLedger(tx, wallet);
+    return {
+      currentBalance: decimalToString(wallet.currentBalance),
+      deletedCount,
+      lastUpdatedAt: lastUpdatedAt.toISOString(),
+    };
+  });
+}
+
 /**
  * Clear the ledger then replay backup rows with appendWalletTxn (new IDs, recomputed balances).
  * Source is RESTORE. Invalid backup is rejected before any mutation.
@@ -692,12 +725,7 @@ export async function restoreWalletFromBackup(
   return prisma.$transaction(
     async (tx) => {
       const wallet = await ensureAndLockWallet(tx);
-      await tx.walletTransaction.deleteMany({ where: { walletId: wallet.id } });
-      wallet.currentBalance = new Prisma.Decimal(0);
-      await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { currentBalance: wallet.currentBalance, lastUpdatedAt: new Date() },
-      });
+      await wipeWalletLedger(tx, wallet);
 
       const policyIds = [
         ...new Set(

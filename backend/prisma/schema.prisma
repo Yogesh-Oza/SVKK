@@ -31,6 +31,18 @@ enum ClaimLinkMode {
   ALLOW_UNLINKED
 }
 
+enum ClaimEventKind {
+  CANONICAL
+  SAME_EVENT
+  DIFFERENT_EVENT
+}
+
+enum ClaimEventOutcome {
+  IMPORTED
+  UPDATED
+  REJECTED
+}
+
 enum CsvImportEntity {
   POLICY
   CLAIM
@@ -914,6 +926,7 @@ model Claim {
   approvedBy              User?                   @relation("ClaimApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
+  events                  ClaimEvent[]
 
   @@index([svkkPublicId, policyYear])
   @@index([policyId])
@@ -922,6 +935,42 @@ model Claim {
   @@index([matchStatus])
   @@index([claimReceivedDate])
   @@map("claim")
+}
+
+/// One TPA CSV payment/status row under a Claim (CCN). Unique by natural eventKey, not filename/row.
+model ClaimEvent {
+  id                  String             @id @default(cuid())
+  claimId             String
+  claim               Claim              @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  eventKey            String             @unique @db.VarChar(64)
+  sourceRowNumber     Int?
+  kind                ClaimEventKind
+  outcome             ClaimEventOutcome
+  rejectionReason     String?            @db.VarChar(500)
+  claimType           String?            @db.VarChar(100)
+  actualLodgeType     String?            @db.VarChar(100)
+  status              ClaimStatus?
+  statusText          String?            @db.VarChar(200)
+  claimAmount         Decimal?           @db.Decimal(14, 2)
+  reportedLodgeAmount Decimal?           @db.Decimal(14, 2)
+  approvedAmount      Decimal?           @db.Decimal(14, 2)
+  deductionAmount     Decimal?           @db.Decimal(14, 2)
+  discountAmount      Decimal?           @db.Decimal(14, 2)
+  admissionDate       DateTime?
+  dischargeDate       DateTime?
+  lodgeDate           DateTime?
+  claimReceivedDate   DateTime?
+  paymentDate         DateTime?
+  paymentDetails      String?            @db.Text
+  paymentInFavourOf   String?            @db.VarChar(200)
+  remark              String?            @db.Text
+  importJobId         String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([claimId])
+  @@index([importJobId])
+  @@map("claimevent")
 }
 
 model AppSetting {

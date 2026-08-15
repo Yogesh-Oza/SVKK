@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { svkkJson } from "@/lib/svkk/api";
 
-import type { ClaimDetail } from "./claim-detail-types";
+import type { ClaimDetail, ClaimSourceEvent } from "./claim-detail-types";
 import {
   claimDetailToForm,
   emptyClaimEditForm,
@@ -24,6 +24,7 @@ import {
   type ClaimEditFormValues,
 } from "./claim-edit-form";
 import { ClaimFormFields } from "./claim-form-fields";
+import { formatDateCell, formatInrRupee } from "./claim-register-badges";
 
 type ClaimEditDialogProps = {
   claimId: string | null;
@@ -40,12 +41,13 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
     policyNo: string;
     matchStatus: string | null;
   } | null>(null);
-  const [form, setForm] = useState<ClaimEditFormValues>(emptyClaimEditForm);
+  const [events, setEvents] = useState<ClaimSourceEvent[]>([]);
 
   useEffect(() => {
     if (!claimId) {
       setMeta(null);
       setForm(emptyClaimEditForm());
+      setEvents([]);
       return;
     }
     let cancelled = false;
@@ -59,6 +61,7 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
           matchStatus: detail.matchStatus ?? null,
         });
         setForm(claimDetailToForm(detail));
+        setEvents(detail.events ?? []);
       })
       .catch((e) => {
         if (!cancelled) {
@@ -150,6 +153,7 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
               Loading claim…
             </div>
           ) : (
+            <>
             <ClaimFormFields
               form={form}
               onChange={onChange}
@@ -157,6 +161,62 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
               savedLinkedPolicyNo={meta?.policyNo === "—" ? null : meta?.policyNo}
               onFillEmptyFromPolicy={fillEmptyFromPolicy}
             />
+            {events.length > 0 ? (
+              <div className="mt-6 space-y-2">
+                <h3 className="text-sm font-semibold">Imported payments / events</h3>
+                <p className="text-muted-foreground text-xs">
+                  {events.length} source row{events.length === 1 ? "" : "s"} stored under this Claim
+                  Number. These are not separate claims.
+                </p>
+                <div className="overflow-x-auto rounded border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <th className="px-2 py-1.5 font-medium">CSV row</th>
+                        <th className="px-2 py-1.5 font-medium">Kind</th>
+                        <th className="px-2 py-1.5 font-medium">Lodge type</th>
+                        <th className="px-2 py-1.5 font-medium">Amount</th>
+                        <th className="px-2 py-1.5 font-medium">Admission</th>
+                        <th className="px-2 py-1.5 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {events.map((event) => (
+                        <tr key={event.id} className="border-t">
+                          <td className="px-2 py-1.5 tabular-nums">{event.sourceRowNumber ?? "—"}</td>
+                          <td className="px-2 py-1.5">
+                            {event.kind === "DIFFERENT_EVENT"
+                              ? "Different event"
+                              : event.kind === "CANONICAL"
+                                ? "Primary"
+                                : "Payment / event"}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {event.actualLodgeType || event.claimType || "—"}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            {formatInrRupee(
+                              event.claimAmount != null ? Number(event.claimAmount) : null,
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            {formatDateCell(event.admissionDate ?? null)}
+                          </td>
+                          <td className="px-2 py-1.5">{event.statusText || event.outcome}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {events.some((event) => event.kind === "DIFFERENT_EVENT") ? (
+                  <p className="text-amber-800 dark:text-amber-200 text-xs">
+                    Flagged different-event rows were retained so the original CSV information is
+                    not lost.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            </>
           )}
         </div>
 

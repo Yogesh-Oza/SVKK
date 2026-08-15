@@ -9,6 +9,7 @@ import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import {
+  ClaimEventOutcome,
   ClaimLinkMode,
   ClaimPolicyMatchStatus,
   CsvImportEntity,
@@ -20,6 +21,7 @@ import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { loadMisScope } from "../../services/mis-scope.service.js";
 import { buildClaimErrorReportCsv, type ClaimCsvRowError } from "./claim-csv-errors.js";
+import { kindFromSourceRole, upsertClaimSourceEvent } from "./claim-csv-event.js";
 import {
   applyStatusMap,
   claimEventIdentityFromRow,
@@ -43,6 +45,7 @@ import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "./claim-
 import {
   createPreviewToken,
   emptyMatchStats,
+  hashClaimImportFile,
   hashPreviewToken,
   verifyPreviewToken,
   type ClaimImportMatchStats,
@@ -75,6 +78,19 @@ function duplicateImportPayload(
     jobId: prior.id,
     completedAt: prior.completedAt?.toISOString() ?? prior.createdAt.toISOString(),
     fileName: prior.fileName ?? undefined,
+    checksum: prior.checksum,
+  };
+}
+
+function sourceRowError(
+  row: { rowNumber: number; claimNo: string; policyNo: string },
+  template: ClaimCsvRowError,
+): ClaimCsvRowError {
+  return {
+    ...template,
+    row: row.rowNumber,
+    claimNo: row.claimNo,
+    policyNo: row.policyNo,
   };
 }
 
@@ -253,7 +269,11 @@ async function runClaimImport(
   const prior = await findPriorCompletedClaimImport(opts.checksum);
 
   if (prior && env.CSV_DUPLICATE_MODE === "block" && !opts.force) {
-    throw new AppError("DUPLICATE_CSV_IMPORT", "This file was already imported successfully", 409);
+        throw new AppError(
+          "DUPLICATE_CSV_IMPORT",
+          "This file content was already imported successfully (same checksum). Use Import anyway to re-apply.",
+          409,
+        );
   }
 
   const startedAt = performance.now();
@@ -284,7 +304,10 @@ async function runClaimImport(
   const stats = emptyMatchStats();
   stats.totalRows = parsedRows.length;
   stats.uniqueClaims = groups.length;
-  stats.sameCcnExtraRows = groups.reduce((n, g) => n + g.sameEventRows.length, 0);
+  stats.sameCcnExtraRows = groups.reduce(
+    (n, g) => n + g.sameEventRows.length + g.differentEventRows.length,
+    0,
+  );
 
   let created = 0;
   let updated = 0;
@@ -316,34 +339,70 @@ async function runClaimImport(
           recordMatchStats(stats, outcome.error.matchStatus, outcome.error.verificationWarnings);
         }
 
-        if (outcome.result === "created") created++;
-        else if (outcome.result === "updated") updated++;
-        else if (outcome.error) {
+        if (outcome.result === "failed" && outcome.error) {
           failed++;
-          if (outcome.error.dispositionReason === "different_event") stats.differentEventBlocked++;
-          rowErrors.push(outcome.error);
+          stats.failedRows += group.rows.length;
+          for (const source of group.rows) {
+            rowErrors.push(sourceRowError(source, outcome.error));
+          }
+          continue;
         }
 
-        for (const extra of group.differentEventRows) {
-          failed++;
+        if (outcome.result === "created") created++;
+        else if (outcome.result === "updated") updated++;
+
+        if (
+          outcome.dispositionReason === "different_event_retained" ||
+          outcome.eventClassification === "DIFFERENT_EVENT"
+        ) {
           stats.differentEventBlocked++;
-          rowErrors.push({
-            row: extra.rowNumber,
-            error: "Claim Number already exists with a different admission/event.",
-            claimNo: extra.claimNo,
-            policyNo: extra.policyNo,
-            disposition: "WILL_REJECT",
-            dispositionReason: "different_event",
-          });
+        }
+        stats.differentEventBlocked += group.differentEventRows.length;
+
+        if (!opts.dryRun && outcome.claimId) {
+          const eventRows: Array<{
+            row: (typeof group.rows)[number];
+            role: "canonical" | "same_claim" | "different_event";
+          }> = [
+            { row: group.canonical, role: "canonical" },
+            ...group.sameEventRows.map((r) => ({ row: r, role: "same_claim" as const })),
+            ...group.differentEventRows.map((r) => ({ row: r, role: "different_event" as const })),
+          ];
+          for (const item of eventRows) {
+            const eventResult = await upsertClaimSourceEvent({
+              claimId: outcome.claimId,
+              row: item.row,
+              kind: kindFromSourceRole(item.role),
+              outcome:
+                item.role === "different_event"
+                  ? ClaimEventOutcome.IMPORTED
+                  : outcome.result === "updated" && item.role === "canonical"
+                    ? ClaimEventOutcome.UPDATED
+                    : ClaimEventOutcome.IMPORTED,
+              rejectionReason:
+                item.role === "different_event"
+                  ? "Claim Number already exists with different admission/event details. Source row retained."
+                  : null,
+              importJobId: job.id,
+            });
+            if (eventResult === "created") stats.eventsCreated++;
+            else stats.eventsUpdated++;
+          }
+        } else if (opts.dryRun) {
+          stats.eventsCreated += group.rows.length;
         }
       } catch (e) {
         failed++;
-        rowErrors.push({
-          row: row.rowNumber,
-          error: e instanceof Error ? e.message : "Import failed",
-          claimNo: row.claimNo,
-          policyNo: row.policyNo,
-        });
+        stats.failedRows += group.rows.length;
+        const message = e instanceof Error ? e.message : "Import failed";
+        for (const source of group.rows) {
+          rowErrors.push({
+            row: source.rowNumber,
+            error: message,
+            claimNo: source.claimNo,
+            policyNo: source.policyNo,
+          });
+        }
       }
     }
   }
@@ -414,7 +473,7 @@ export function createClaimUploadRouter(env: Env) {
 
         const linkMode = parseLinkMode(req.body.linkMode ?? req.query.linkMode);
         const importMode = parseClaimImportMode(req.body.importMode ?? req.query.importMode);
-        const checksum = createHash("sha256").update(req.file.buffer).digest("hex");
+        const checksum = hashClaimImportFile(req.file.buffer);
         const fileName = req.file.originalname ?? "upload.csv";
 
         await mkdir(join(env.UPLOAD_DIR, "claims", "preview"), { recursive: true });

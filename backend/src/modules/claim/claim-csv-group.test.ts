@@ -103,6 +103,7 @@ function previewOf(
   rows: ReturnType<typeof parsed>[],
   match: ClaimMatchResult,
   existingByNo: Map<string, ExistingClaimIdentity> = new Map(),
+  linkMode: ClaimLinkMode = ClaimLinkMode.STRICT_MATCH,
 ) {
   const groups = groupParsedClaimRows(rows);
   const matchByCanonicalRow = new Map<number, ClaimMatchResult>();
@@ -111,7 +112,7 @@ function previewOf(
     groups,
     matchByCanonicalRow,
     existingByNo,
-    linkMode: ClaimLinkMode.STRICT_MATCH,
+    linkMode,
     importMode: CsvImportMode.CREATE_ONLY,
     validateRow: validateClaimRow,
     identityFromRow: claimEventIdentityFromRow,
@@ -141,6 +142,8 @@ describe("schema: one policy, many claims", () => {
     expect(claimModel).toMatch(/claimNo\s+String\s+@unique/);
     expect(claimModel).not.toMatch(/policyId\s+String\??\s+@unique/);
     expect(claimModel).toMatch(/@@index\(\[policyId\]\)/);
+    expect(schema).toMatch(/model ClaimEvent/);
+    expect(schema).toMatch(/eventKey\s+String\s+@unique/);
   });
 });
 
@@ -210,6 +213,7 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.conflicts).toBe(0);
     expect(stats.willReject).toBe(0);
     expect(stats.sameCcnExtraRows).toBe(0);
+    expect(stats.willImportEvents).toBe(3);
   });
 
   it("Test 2 — same CCN payment rows → 1 claim, not 3", () => {
@@ -225,8 +229,10 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.willCreate).toBe(1);
     expect(stats.sameCcnExtraRows).toBe(2);
     expect(stats.totalRows).toBe(3);
+    expect(stats.willImportEvents).toBe(3);
     expect(preview.filter((p) => p.sourceRowRole === "same_claim")).toHaveLength(2);
     expect(preview.filter((p) => p.decision.disposition === "WILL_CREATE")).toHaveLength(1);
+    expect(preview.filter((p) => p.decision.disposition === "WILL_REJECT")).toHaveLength(0);
   });
 
   it("Test 3 — duplicate policy number → Conflict", () => {
@@ -321,5 +327,81 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.willUpdate).toBe(1);
     expect(stats.willCreate).toBe(0);
     expect(preview.some((p) => p.decision.dispositionReason === "different_event")).toBe(false);
+  });
+
+  it("Test 7 — same CCN with different admission is flagged and retained", () => {
+    const { stats, preview } = previewOf(
+      [
+        parsed(2, {
+          "Claim Number": "CCN-001",
+          "Claim Type": "Non Cash Less",
+          "Date Of Admission": "01-01-2026",
+        }),
+        parsed(3, {
+          "Claim Number": "CCN-001",
+          "Claim Type": "Non Cash Less",
+          "Date Of Admission": "15-02-2026",
+        }),
+      ],
+      matched("pol-1"),
+    );
+    expect(stats.uniqueClaims).toBe(1);
+    expect(stats.willCreate).toBe(1);
+    expect(stats.willReject).toBe(0);
+    expect(stats.differentEventBlocked).toBeGreaterThan(0);
+    expect(stats.willImportEvents).toBe(2);
+    const flagged = preview.filter((p) => p.sourceRowRole === "different_event");
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.decision.disposition).toBe("WILL_UPDATE");
+    expect(flagged[0]!.decision.dispositionReason).toBe("different_event_retained");
+  });
+
+  it("Test 8 — missing policy + Strict Match rejects the claim", () => {
+    const { stats, preview } = previewOf(
+      [parsed(2, { "Policy Number": "PO-999", "Claim Number": "CCN-001" })],
+      unlinkedMatch(),
+      new Map(),
+      ClaimLinkMode.STRICT_MATCH,
+    );
+    expect(stats.unlinked).toBe(1);
+    expect(stats.willReject).toBe(1);
+    expect(stats.willCreate).toBe(0);
+    expect(stats.willImportEvents).toBe(0);
+    expect(preview[0]!.decision.dispositionReason).toBe("unlinked");
+  });
+
+  it("keeps five TPA rows for one CCN as one claim plus four events", () => {
+    const { stats, preview } = previewOf(
+      [
+        parsed(282, { "Claim Number": "MDI9918783", "Claim Type": "Non Cash Less", "Claim Amount": "50000" }),
+        parsed(508, { "Claim Number": "MDI9918783", "Claim Type": "Additional Payment", "Claim Amount": "5000" }),
+        parsed(628, { "Claim Number": "MDI9918783", "Claim Type": "Deductions Payment", "Claim Amount": "2000" }),
+        parsed(629, { "Claim Number": "MDI9918783", "Claim Type": "CI Received", "Claim Amount": "0" }),
+        parsed(878, { "Claim Number": "MDI9918783", "Claim Type": "Reconsideration", "Claim Amount": "1000" }),
+      ],
+      matched("pol-1"),
+    );
+    expect(stats.uniqueClaims).toBe(1);
+    expect(stats.totalRows).toBe(5);
+    expect(stats.willCreate).toBe(1);
+    expect(stats.sameCcnExtraRows).toBe(4);
+    expect(stats.willImportEvents).toBe(5);
+    expect(preview.every((p) => p.decision.disposition !== "WILL_REJECT")).toBe(true);
+    expect(preview.filter((p) => p.sourceRowRole === "canonical")).toHaveLength(1);
+    expect(preview.filter((p) => p.sourceRowRole !== "canonical")).toHaveLength(4);
+  });
+
+  it("Test 9 — missing policy + Allow Unlinked creates with no policy link", () => {
+    const { stats, preview } = previewOf(
+      [parsed(2, { "Policy Number": "PO-999", "Claim Number": "CCN-001" })],
+      unlinkedMatch(),
+      new Map(),
+      ClaimLinkMode.ALLOW_UNLINKED,
+    );
+    expect(stats.unlinked).toBe(1);
+    expect(stats.willCreate).toBe(1);
+    expect(stats.willReject).toBe(0);
+    expect(preview[0]!.decision.disposition).toBe("WILL_CREATE");
+    expect(preview[0]!.row.policyNo).toBe("PO-999");
   });
 });

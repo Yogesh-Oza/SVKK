@@ -161,6 +161,31 @@ describe("wallet.service ledger math", () => {
     ).toBe("RESTORE");
   });
 
+  it("clearWalletAllEntries wipes ledger and zeros balance", async () => {
+    txMock.walletTransaction.deleteMany.mockResolvedValue({ count: 12 });
+    const { clearWalletAllEntries } = await import("./wallet.service.js");
+    const result = await clearWalletAllEntries(true);
+    expect(result.currentBalance).toBe("0.00");
+    expect(result.deletedCount).toBe(12);
+    expect(txMock.walletTransaction.deleteMany).toHaveBeenCalled();
+    expect(txMock.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          currentBalance: expect.any(Prisma.Decimal),
+        }),
+      }),
+    );
+  });
+
+  it("clearWalletAllEntries requires confirm", async () => {
+    const { clearWalletAllEntries } = await import("./wallet.service.js");
+    await expect(clearWalletAllEntries(false)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      statusCode: 400,
+    });
+    expect(txMock.walletTransaction.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("restoreWalletFromBackup rejects invalid backup before clearing", async () => {
     const { restoreWalletFromBackup } = await import("./wallet.service.js");
     await expect(

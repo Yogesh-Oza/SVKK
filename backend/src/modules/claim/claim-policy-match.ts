@@ -323,23 +323,6 @@ export function resolveClaimPolicyMatch(
     return unlinked("No policy found for this Policy Number.");
   }
   if (pool.length > 1) {
-    const coverage = claimCoverageDate(input);
-    const covering = coverage
-      ? pool.filter((p) => liveYears(p).some((y) => policyYearContainsDate(y, coverage)))
-      : [];
-    if (covering.length === 1) {
-      const policy = covering[0]!;
-      const yearHint = pickPolicyYearHint(policy, input);
-      const chosenYear = yearHint.policyYearId
-        ? liveYears(policy).find((y) => y.id === yearHint.policyYearId)
-        : undefined;
-      const warnings = [
-        "policy_number_shared",
-        ...yearHint.warnings,
-        ...runValidations(policy, input, typeCache, chosenYear),
-      ];
-      return matchedResult(policy, warnings, yearHint);
-    }
     const display = input.policyNo.trim() || policyNo;
     const labels = pool
       .map((p) => `${p.policyType.name} (${p.holderName ?? p.insuredParty.name})`)

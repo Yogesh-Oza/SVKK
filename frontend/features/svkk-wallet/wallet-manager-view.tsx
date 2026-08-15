@@ -64,6 +64,7 @@ import {
   FileSpreadsheet,
   RotateCcw,
   Search,
+  Trash2,
   Upload,
   Wallet,
 } from "lucide-react";
@@ -307,6 +308,9 @@ export function WalletManagerView() {
   const [exportBusy, setExportBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearConfirmStep, setClearConfirmStep] = useState<1 | 2>(1);
   const [restorePayload, setRestorePayload] = useState<{
     wallet_balance?: unknown;
     wallet_last_updated?: unknown;
@@ -692,6 +696,33 @@ export function WalletManagerView() {
     }
   }
 
+  function openClearConfirm() {
+    setClearConfirmStep(1);
+    setClearConfirmOpen(true);
+  }
+
+  function closeClearConfirm() {
+    if (clearBusy) return;
+    setClearConfirmOpen(false);
+    setClearConfirmStep(1);
+  }
+
+  async function submitClearWallet() {
+    setClearBusy(true);
+    try {
+      await backendApi.post("/wallet/clear", { confirm: true });
+      toast.success("Wallet balance and all entries have been reset");
+      setClearConfirmOpen(false);
+      setClearConfirmStep(1);
+      setPage(1);
+      await refreshAll();
+    } catch (e) {
+      toast.error(getSvkkErrorMessage(e, "Reset failed"));
+    } finally {
+      setClearBusy(false);
+    }
+  }
+
   if (missingUrl) {
     return (
       <Alert variant="destructive">
@@ -744,6 +775,18 @@ export function WalletManagerView() {
           </CardHeader>
           <CardContent className="text-muted-foreground text-sm space-y-2">
             <div>Last updated: {summaryLoading ? "…" : formatWalletDateTime(summary?.lastUpdatedAt)}</div>
+            {canWalletClear(perms) ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="mt-2.5"
+                disabled={clearBusy || summaryLoading}
+                onClick={openClearConfirm}
+              >
+                <Trash2 className="size-4 mr-1" />
+                Reset Wallet & All Entries
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
         <Card>
@@ -1373,6 +1416,15 @@ export function WalletManagerView() {
                   <RotateCcw className="size-4 mr-1" />
                   Restore
                 </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={clearBusy}
+                  onClick={openClearConfirm}
+                >
+                  <Trash2 className="size-4 mr-1" />
+                  Clear All Data
+                </Button>
               </>
             ) : null}
           </div>
@@ -1698,6 +1750,40 @@ export function WalletManagerView() {
             <Button variant="destructive" disabled={restoreBusy} onClick={() => void submitRestore()}>
               {restoreBusy ? "Restoring…" : "Confirm restore"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={clearConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) closeClearConfirm();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {clearConfirmStep === 1 ? "Reset wallet & all entries?" : "Are you absolutely sure?"}
+            </DialogTitle>
+            <DialogDescription>
+              {clearConfirmStep === 1
+                ? "This will permanently delete the wallet balance and ALL transaction entries. This cannot be undone."
+                : "Consider using Backup Wallet Data first if you have not already. After reset the balance will be ₹0.00 and you can set a new opening balance."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={clearBusy} onClick={closeClearConfirm}>
+              Cancel
+            </Button>
+            {clearConfirmStep === 1 ? (
+              <Button variant="destructive" disabled={clearBusy} onClick={() => setClearConfirmStep(2)}>
+                Continue
+              </Button>
+            ) : (
+              <Button variant="destructive" disabled={clearBusy} onClick={() => void submitClearWallet()}>
+                {clearBusy ? "Resetting…" : "Reset Wallet & All Entries"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

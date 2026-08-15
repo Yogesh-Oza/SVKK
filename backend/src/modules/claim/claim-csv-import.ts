@@ -284,6 +284,9 @@ function matchErrorMessage(
   matchReason?: string,
   detail?: string,
 ): string {
+  if (matchStatus === ClaimPolicyMatchStatus.UNLINKED) {
+    return "Claim not imported because Policy Number was not found.";
+  }
   if (matchReason) return matchReason;
   if (matchStatus === ClaimPolicyMatchStatus.CONFLICT) {
     return detail ?? "Policy Number matches multiple live policies. Claim cannot be linked safely.";
@@ -320,10 +323,12 @@ export type ImportClaimRowResult = "created" | "updated" | "failed";
 
 export type ImportClaimRowOutcome = {
   result: ImportClaimRowResult;
+  claimId?: string;
   error?: ClaimCsvRowError;
   matchStatus?: ClaimPolicyMatchStatus;
   verificationWarnings?: string[];
   disposition?: string;
+  dispositionReason?: string;
   eventClassification?: string;
 };
 
@@ -397,16 +402,15 @@ export async function importClaimRow(
 
   if (decision.disposition === "WILL_REJECT") {
     const errorText =
-      decision.dispositionReason === "different_event"
-        ? "Claim Number already exists with a different admission/event."
-        : decision.dispositionReason === "not_found"
-          ? "Claim not found (UPDATE_ONLY)"
-          : matchErrorMessage(match.matchStatus, match.matchReason, match.conflictDetail);
+      decision.dispositionReason === "not_found"
+        ? "Claim not found (UPDATE_ONLY)"
+        : matchErrorMessage(match.matchStatus, match.matchReason, match.conflictDetail);
     return {
       result: "failed",
       matchStatus: match.matchStatus,
       verificationWarnings: warnings,
       disposition: decision.disposition,
+      dispositionReason: decision.dispositionReason,
       eventClassification: decision.eventClassification,
       error: {
         row: row.rowNumber,
@@ -434,15 +438,32 @@ export async function importClaimRow(
   if (opts.dryRun) {
     return {
       result: decision.disposition === "WILL_UPDATE" ? "updated" : "created",
+      claimId: existingRow?.id,
       matchStatus: match.matchStatus,
       verificationWarnings: warnings,
       disposition: decision.disposition,
+      dispositionReason: decision.dispositionReason,
       eventClassification: decision.eventClassification,
     };
   }
 
   const data = claimDataFromRow(row, matchWithWarnings, opts.importJobId, opts.userId);
   if (existingRow && decision.disposition === "WILL_UPDATE") {
+    if (decision.dispositionReason === "different_event_retained") {
+      await prisma.claim.update({
+        where: { id: existingRow.id },
+        data: opts.importJobId ? { importJobId: opts.importJobId } : {},
+      });
+      return {
+        result: "updated",
+        claimId: existingRow.id,
+        matchStatus: match.matchStatus,
+        verificationWarnings: warnings,
+        disposition: decision.disposition,
+        dispositionReason: decision.dispositionReason,
+        eventClassification: decision.eventClassification,
+      };
+    }
     const { createdBy, ...updateFields } = data;
     void createdBy;
     await prisma.claim.update({
@@ -451,19 +472,23 @@ export async function importClaimRow(
     });
     return {
       result: "updated",
+      claimId: existingRow.id,
       matchStatus: match.matchStatus,
       verificationWarnings: warnings,
       disposition: decision.disposition,
+      dispositionReason: decision.dispositionReason,
       eventClassification: decision.eventClassification,
     };
   }
 
-  await prisma.claim.create({ data });
+  const created = await prisma.claim.create({ data });
   return {
     result: "created",
+    claimId: created.id,
     matchStatus: match.matchStatus,
     verificationWarnings: warnings,
     disposition: decision.disposition,
+    dispositionReason: decision.dispositionReason,
     eventClassification: decision.eventClassification,
   };
 }

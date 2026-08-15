@@ -87,13 +87,18 @@ type MatchSummary = {
   willCreate?: number;
   willUpdate?: number;
   willReject?: number;
-  differentEventBlocked?: number;
+  willImportEvents?: number;
+  eventsCreated?: number;
+  eventsUpdated?: number;
+  eventsSkipped?: number;
+  failedRows?: number;
 };
 
 type DuplicateImportInfo = {
   jobId: string;
   completedAt: string;
   fileName?: string;
+  checksum?: string;
 };
 
 type ImportResult = {
@@ -116,6 +121,7 @@ function warningLabel(code: string): string {
     insurance_company: "Insurer name differs",
     event_identity_weak: "Weak event identity",
     policy_number_shared: "Shared policy number",
+    different_event: "Different event",
   };
   return labels[code] ?? code;
 }
@@ -131,15 +137,23 @@ function warningHint(code: string): string {
     insurance_company: "Insurer name in the file does not match the linked policy. The claim still links by Policy Number.",
     event_identity_weak: "Admission/lodge details are thin, so same-claim vs new-event is uncertain.",
     policy_number_shared:
-      "More than one live policy uses this Policy Number. Linked to the record whose year covers the admission date.",
+      "More than one live policy uses this Policy Number. That is a Policy data conflict, not because the policy already has claims.",
+    different_event:
+      "This Claim Number already has a different admission/event. The source row is retained as a flagged event.",
   };
   return hints[code] ?? "Verification difference vs the linked policy. Import can still proceed.";
 }
 
 function dispositionExplain(row: PreviewRow): string {
   if (row.dispositionReason === "same_ccn_source_row" || row.sourceRowRole === "same_claim") {
-    const n = row.sourceRowCount && row.sourceRowCount > 1 ? ` (${row.sourceRowCount} rows for this CCN)` : "";
-    return `Same Claim Number — payment/event row, not a new claim${n}.`;
+    const extra =
+      row.sourceRowCount && row.sourceRowCount > 1
+        ? ` ${row.sourceRowCount} source rows → 1 claim + ${row.sourceRowCount - 1} events.`
+        : "";
+    return `Same Claim Number — stored as a payment/event under this claim.${extra}`;
+  }
+  if (row.dispositionReason === "different_event_retained" || row.sourceRowRole === "different_event") {
+    return "Different event — Claim Number already exists with different admission/event details. Source row retained as a flagged event.";
   }
   if (row.disposition === "WILL_UPDATE") {
     return row.dispositionReason === "weak_identity"
@@ -148,24 +162,24 @@ function dispositionExplain(row: PreviewRow): string {
   }
   if (row.disposition === "WILL_CREATE") {
     if (row.matchStatus === "UNLINKED") {
-      return "Will add as a new claim without linking to a policy (Allow unlinked).";
+      return "Will add as a new claim without linking to a policy (Allow unlinked). The CSV Policy Number is preserved.";
     }
     const extra =
       row.sourceRowCount && row.sourceRowCount > 1
-        ? ` ${row.sourceRowCount} CSV rows belong to this Claim Number.`
+        ? ` ${row.sourceRowCount} source rows → 1 claim + ${row.sourceRowCount - 1} events.`
         : "";
     return row.policyYear
       ? `Will add as a new claim, linked to this policy (${row.policyYear}).${extra}`
       : `Will add as a new claim, linked to this policy.${extra}`;
   }
   if (row.dispositionReason === "different_event" || row.eventClassification === "DIFFERENT_EVENT") {
-    return "Claim Number already exists with a different admission/event.";
+    return "Different event — Claim Number already exists with different admission/event details. Source row retained.";
   }
   if (row.matchStatus === "CONFLICT" || row.dispositionReason === "conflict") {
     return "Policy Number matches multiple live policies. Claim cannot be linked safely.";
   }
   if (row.matchStatus === "UNLINKED" || row.dispositionReason === "unlinked") {
-    return "No policy found for this Policy Number.";
+    return "Claim not imported because Policy Number was not found.";
   }
   if (row.dispositionReason === "validation") {
     return "Claim Number is missing or invalid.";
@@ -195,7 +209,12 @@ function rowMatchesFilter(row: PreviewRow, filter: PreviewFilter): boolean {
   if (filter === "attention") return rowNeedsAttention(row);
   if (filter === "create") return row.disposition === "WILL_CREATE";
   if (filter === "update") {
-    return row.disposition === "WILL_UPDATE" && row.dispositionReason !== "same_ccn_source_row";
+    return (
+      row.disposition === "WILL_UPDATE" &&
+      row.sourceRowRole !== "same_claim" &&
+      row.dispositionReason !== "same_ccn_source_row" &&
+      row.sourceRowRole !== "different_event"
+    );
   }
   if (filter === "reject") return row.disposition === "WILL_REJECT";
   if (filter === "unlinked") return row.matchStatus === "UNLINKED";
@@ -223,7 +242,10 @@ function rowSearchHaystack(row: PreviewRow): string {
 
 function dispositionBadge(row: PreviewRow): { label: string; className: string } {
   if (row.dispositionReason === "same_ccn_source_row" || row.sourceRowRole === "same_claim") {
-    return { label: "Same claim", className: "text-sky-700" };
+    return { label: "Event / payment", className: "text-sky-700" };
+  }
+  if (row.dispositionReason === "different_event_retained" || row.sourceRowRole === "different_event") {
+    return { label: "Different event", className: "text-amber-700" };
   }
   if (row.disposition === "WILL_UPDATE") {
     return { label: "Will update", className: "text-sky-700" };
@@ -232,7 +254,7 @@ function dispositionBadge(row: PreviewRow): { label: string; className: string }
     return { label: "Will create", className: "text-emerald-600" };
   }
   if (row.dispositionReason === "different_event" || row.eventClassification === "DIFFERENT_EVENT") {
-    return { label: "Duplicate event", className: "text-amber-700" };
+    return { label: "Different event", className: "text-amber-700" };
   }
   if (row.matchStatus === "CONFLICT" || row.dispositionReason === "conflict") {
     return { label: "Conflict", className: "text-amber-600" };
@@ -250,8 +272,8 @@ function formatImportTimestamp(iso: string): string {
 
 function duplicateImportDescription(info: DuplicateImportInfo): string {
   const when = formatImportTimestamp(info.completedAt);
-  const file = info.fileName ? ` (${info.fileName})` : "";
-  return `This file was already imported on ${when}${file}. Job ${info.jobId.slice(0, 8)}…`;
+  const file = info.fileName ? ` Filename was ${info.fileName}.` : "";
+  return `The same file contents (SHA-256 checksum) were imported on ${when}.${file} Filename alone does not block a new file. Use Import anyway only if you intend to re-apply this exact file.`;
 }
 
 const CLAIM_IMPORT_MODE = "CREATE_ONLY" as const;
@@ -318,7 +340,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       setPreviewSearch("");
       setPreviewOpen(true);
       if (data.duplicateImport) {
-        toast.warning("This file was imported before", {
+        toast.warning("Same file contents were imported before", {
           description: duplicateImportDescription(data.duplicateImport),
         });
       }
@@ -342,9 +364,11 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
         setDuplicateImport(null);
         setPreviewOpen(false);
         setImportMsg(
-          `Import job ${data.jobId.slice(0, 8)}… — ${data.created} created, ${data.updated} updated, ${data.failed} failed`,
+          `Import job ${data.jobId.slice(0, 8)}… — ${data.matchStats.totalRows.toLocaleString("en-IN")} CSV rows · ${(data.matchStats.uniqueClaims ?? data.created + data.updated).toLocaleString("en-IN")} unique claims · ${data.created} created · ${data.updated} updated · ${data.failed} failed · ${data.matchStats.eventsCreated ?? 0} events imported · ${data.matchStats.eventsUpdated ?? 0} events updated`,
         );
-        toast.success(`Import complete: ${data.created} created, ${data.updated} updated`);
+        toast.success(
+          `Import complete: ${data.created} claims created, ${data.updated} updated, ${data.matchStats.eventsCreated ?? 0} events imported`,
+        );
         onImported?.();
       } catch (e) {
         toast.error(getSvkkErrorMessage(e, "Import failed"));
@@ -385,7 +409,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       <Label className="text-foreground/90 mb-2 block text-xs font-bold tracking-wide">
         Upload CSV / XLSX
         <span className="text-muted-foreground ml-2 font-normal">
-          Same claim event updates; a different event with the same CCN is rejected
+          One Claim Number is one claim. Extra CSV rows are stored as payment/events.
         </span>
       </Label>
       <div className="border-primary/20 bg-muted/20 rounded-xl border border-dashed p-3">
@@ -407,7 +431,7 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
               />
             </div>
             <Badge variant="secondary" className="shrink-0 font-bold">
-              Same-event update
+              1 CCN = 1 claim
             </Badge>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -456,9 +480,11 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
       {lastResult ? (
         <div className="text-muted-foreground mt-2 space-y-1 text-xs leading-relaxed">
           <p>
-            Matched {lastResult.matchStats.matchedExact} · Unlinked {lastResult.matchStats.unlinked} ·
-            Conflicts {lastResult.matchStats.conflicts} · Created {lastResult.created} · Updated{" "}
-            {lastResult.updated}
+            CSV rows {lastResult.matchStats.totalRows.toLocaleString("en-IN")} · Unique claims{" "}
+            {(lastResult.matchStats.uniqueClaims ?? lastResult.created + lastResult.updated).toLocaleString("en-IN")}{" "}
+            · Created {lastResult.created} · Updated {lastResult.updated} · Events imported{" "}
+            {lastResult.matchStats.eventsCreated ?? 0} · Events updated {lastResult.matchStats.eventsUpdated ?? 0} ·
+            Unlinked {lastResult.matchStats.unlinked} · Conflicts {lastResult.matchStats.conflicts}
           </p>
           {lastResult.errorReportUrl ? (
             <a className="text-primary font-bold underline" href={lastResult.errorReportUrl}>
@@ -474,16 +500,16 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
             <DialogTitle>Import preview</DialogTitle>
             <DialogDescription>
               {summary
-                ? `${summary.totalRows.toLocaleString("en-IN")} CSV rows · ${(summary.uniqueClaims ?? previewRows.length).toLocaleString("en-IN")} unique claims. Multiple rows can belong to the same Claim Number (TPA payments/events).`
+                ? `${summary.totalRows.toLocaleString("en-IN")} CSV rows · ${(summary.uniqueClaims ?? previewRows.length).toLocaleString("en-IN")} unique claims · ${(summary.willImportEvents ?? summary.totalRows).toLocaleString("en-IN")} claim events · ${summary.willCreate ?? 0} create · ${summary.willUpdate ?? 0} update · ${summary.unlinked} unlinked · ${summary.conflicts} conflicts · ${summary.differentEventBlocked ?? 0} different events.`
                 : `${previewRows.length.toLocaleString("en-IN")} rows from the file.`}{" "}
-              Warnings do not block import — only Unlinked and Conflicts do in Strict match.
+              Warnings do not block import — only Unlinked and Conflicts do in Strict match. The same filename with different contents is allowed.
             </DialogDescription>
           </DialogHeader>
 
           {duplicateImport ? (
             <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-100">
               <AlertTriangle className="text-amber-600" />
-              <AlertTitle>File already imported</AlertTitle>
+              <AlertTitle>Same file contents already imported</AlertTitle>
               <AlertDescription>{duplicateImportDescription(duplicateImport)}</AlertDescription>
             </Alert>
           ) : null}
@@ -508,11 +534,12 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
           {summary && (summary.differentEventBlocked ?? 0) > 0 ? (
             <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-100">
               <AlertTriangle className="text-amber-600" />
-              <AlertTitle>Duplicate claim events</AlertTitle>
+              <AlertTitle>Different admission/event</AlertTitle>
               <AlertDescription>
-                {summary.differentEventBlocked} row{summary.differentEventBlocked === 1 ? "" : "s"}{" "}
-                reuse a Claim Number with a different admission/event and will be rejected. Same
-                Claim Number with Additional / Deduction payments is one claim, not a conflict.
+                {summary.differentEventBlocked} row{summary.differentEventBlocked === 1 ? "" : "s"} reuse a
+                Claim Number with different admission/event details. Those source rows are retained as
+                flagged events — they are not discarded. Additional / Deduction payments on the same CCN
+                stay one claim.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -577,6 +604,12 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
                           <div className="text-muted-foreground text-[11px]">
                             {row.patientName || "No patient name"}
                           </div>
+                          {row.sourceRowCount && row.sourceRowCount > 1 ? (
+                            <div className="text-muted-foreground text-[11px]">
+                              {row.sourceRowCount} source rows → 1 claim + {row.sourceRowCount - 1}{" "}
+                              events
+                            </div>
+                          ) : null}
                         </TableCell>
                         <TableCell>
                           <div className="font-mono text-xs">{row.policyNo || "—"}</div>
@@ -648,8 +681,8 @@ export function ClaimCsvImportInline({ disabled = false, onImported }: ClaimCsvI
           ) : (
             <p className="text-muted-foreground text-xs">
               Holder / insurer warnings mean the file text differs from the policy register. The
-              claim still links by Policy Number. One policy can have many claims; repeated Claim
-              Numbers are payment/event rows of the same claim.
+              claim still links by Policy Number. One policy can have many claims. Repeated Claim
+              Numbers are payment/event rows of the same claim, not extra claims.
             </p>
           )}
 

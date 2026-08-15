@@ -1,3 +1,24 @@
+export type ClaimSourceEvent = {
+  id: string;
+  sourceRowNumber?: number | null;
+  kind: string;
+  outcome: string;
+  rejectionReason?: string | null;
+  claimType?: string | null;
+  actualLodgeType?: string | null;
+  statusText?: string | null;
+  claimAmount?: string | number | null;
+  reportedLodgeAmount?: string | number | null;
+  approvedAmount?: string | number | null;
+  deductionAmount?: string | number | null;
+  admissionDate?: string | null;
+  lodgeDate?: string | null;
+  paymentDate?: string | null;
+  paymentDetails?: string | null;
+  paymentInFavourOf?: string | null;
+  remark?: string | null;
+};
+
 export type ClaimDetail = {
   id: string;
   claimNo: string;
@@ -54,6 +75,7 @@ export type ClaimDetail = {
   paymentDate?: string | null;
   prsCrsDate?: string | null;
   matchStatus?: string | null;
+  events?: ClaimSourceEvent[];
   policyLinkWarning?: string | null;
   policy?: {
     policyNo: string | null;

@@ -120,8 +120,9 @@ function reject(
 }
 
 /**
- * Preview/import disposition: match gates first, then same-event UPDATE vs different-event REJECT.
- * CREATE_ONLY still updates same-event rows (hybrid CCN). File-checksum duplicate is unchanged.
+ * Preview/import disposition: match gates first, then same-event UPDATE.
+ * A different admission/event on an existing CCN updates the claim record in place
+ * without overwriting identity fields; the source row is retained as a flagged event.
  */
 export function decideClaimImportAction(opts: {
   matchStatus: ClaimPolicyMatchStatus;
@@ -146,7 +147,12 @@ export function decideClaimImportAction(opts: {
     return reject("not_found", eventClassification);
   }
   if (opts.existing && eventClassification === "DIFFERENT_EVENT") {
-    return reject("different_event", eventClassification);
+    return {
+      disposition: "WILL_UPDATE",
+      dispositionReason: "different_event_retained",
+      eventClassification,
+      extraWarnings: ["different_event"],
+    };
   }
   if (opts.existing) {
     return {
