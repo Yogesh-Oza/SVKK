@@ -51,7 +51,7 @@ function Field({
 export type ClaimFormFieldsProps = {
   form: ClaimEditFormValues;
   onChange: (key: keyof ClaimEditFormValues, value: string) => void;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "view";
   claimNo?: string;
   onClaimNoChange?: (value: string) => void;
   savedLinkedPolicyNo?: string | null;
@@ -69,15 +69,20 @@ export function ClaimFormFields({
 }: ClaimFormFieldsProps) {
   const set = (key: keyof ClaimEditFormValues) => (value: string) => onChange(key, value);
   const required = mode === "create";
+  const readOnly = mode === "view";
 
   return (
-    <div className="space-y-6">
+    <fieldset disabled={readOnly} className="m-0 space-y-6 border-0 p-0">
       <Section title="Identifiers">
         {mode === "create" ? (
           <Field label="Claim # *" className="sm:col-span-2">
             <Input value={claimNo ?? ""} onChange={(e) => onClaimNoChange?.(e.target.value)} />
           </Field>
-        ) : null}
+        ) : (
+          <Field label="Claim #" className="sm:col-span-2">
+            <Input value={claimNo ?? ""} readOnly disabled={readOnly} />
+          </Field>
+        )}
         <Field label="SVKK ID" hint={required ? "or filled from policy number" : undefined}>
           <Input value={form.svkkPublicId} onChange={(e) => set("svkkPublicId")(e.target.value)} />
         </Field>
@@ -104,11 +109,13 @@ export function ClaimFormFields({
         </Field>
         <Field label="Policy number" hint="links on save — not while typing">
           <Input value={form.policyNoText} onChange={(e) => set("policyNoText")(e.target.value)} />
-          <ClaimPolicyMatchHint
-            form={form}
-            savedLinkedPolicyNo={savedLinkedPolicyNo}
-            onFillEmpty={onFillEmptyFromPolicy}
-          />
+          {mode !== "view" ? (
+            <ClaimPolicyMatchHint
+              form={form}
+              savedLinkedPolicyNo={savedLinkedPolicyNo}
+              onFillEmpty={onFillEmptyFromPolicy}
+            />
+          ) : null}
         </Field>
         <Field label="Policy grouping" hint="CSV snapshot">
           <Input
@@ -170,7 +177,7 @@ export function ClaimFormFields({
           <Input value={form.diseaseCategory} onChange={(e) => set("diseaseCategory")(e.target.value)} />
         </Field>
         <Field label="Status">
-          <Select value={form.status} onValueChange={set("status")}>
+          <Select value={form.status} onValueChange={set("status")} disabled={readOnly}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -296,6 +303,7 @@ export function ClaimFormFields({
           <Select
             value={form.hospitalInPpn || "_"}
             onValueChange={(v) => set("hospitalInPpn")(v === "_" ? "" : v)}
+            disabled={readOnly}
           >
             <SelectTrigger>
               <SelectValue placeholder="—" />
@@ -343,6 +351,6 @@ export function ClaimFormFields({
           />
         </Field>
       </Section>
-    </div>
+    </fieldset>
   );
 }

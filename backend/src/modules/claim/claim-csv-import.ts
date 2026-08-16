@@ -6,6 +6,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { claimEventKeyFromRow } from "./claim-event-key.js";
 import { AppError } from "../../errors/app-error.js";
 import type { PolicyTypeCache } from "../policy/policy-csv-resolve.js";
 import {
@@ -214,6 +215,7 @@ function claimDataFromRow(
 
   return {
     claimNo: row.claimNo,
+    sourceEventKey: claimEventKeyFromRow(row),
     // Linked: party SVKK; unlinked: preserve CSV SVKK snapshot (never invent a link).
     svkkPublicId: match.svkkPublicId ?? row.svkkPublicIdCsv.trim() ?? "",
     policyYear,
@@ -310,7 +312,7 @@ export function claimEventIdentityFromRow(
   };
 }
 
-/** Evaluate match for preview without DB writes. Stats are counted per unique CCN. */
+/** Evaluate match for preview without DB writes. */
 export async function evaluateClaimRow(
   row: ParsedClaimRow,
   typeCache: PolicyTypeCache,
@@ -332,7 +334,7 @@ export type ImportClaimRowOutcome = {
   eventClassification?: string;
 };
 
-/** Import a single claim row (create, same-event update, or reject). */
+/** Import a single CSV row as its own claim (create or update by sourceEventKey). */
 export async function importClaimRow(
   row: ParsedClaimRow,
   opts: {
@@ -364,8 +366,9 @@ export async function importClaimRow(
   }
 
   const match = await matchPolicyForClaim(row.matchInput, opts.typeCache, opts.policyCache);
+  const sourceEventKey = claimEventKeyFromRow(row);
   const existingRow = await prisma.claim.findUnique({
-    where: { claimNo: row.claimNo },
+    where: { sourceEventKey },
     select: {
       id: true,
       claimNo: true,
@@ -449,21 +452,6 @@ export async function importClaimRow(
 
   const data = claimDataFromRow(row, matchWithWarnings, opts.importJobId, opts.userId);
   if (existingRow && decision.disposition === "WILL_UPDATE") {
-    if (decision.dispositionReason === "different_event_retained") {
-      await prisma.claim.update({
-        where: { id: existingRow.id },
-        data: opts.importJobId ? { importJobId: opts.importJobId } : {},
-      });
-      return {
-        result: "updated",
-        claimId: existingRow.id,
-        matchStatus: match.matchStatus,
-        verificationWarnings: warnings,
-        disposition: decision.disposition,
-        dispositionReason: decision.dispositionReason,
-        eventClassification: decision.eventClassification,
-      };
-    }
     const { createdBy, ...updateFields } = data;
     void createdBy;
     await prisma.claim.update({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,22 +19,18 @@ import type { ClaimDetail } from "./claim-detail-types";
 import {
   claimDetailToForm,
   emptyClaimEditForm,
-  formToClaimPatch,
-  mergeEmptyClaimFieldsFromPolicy,
   type ClaimEditFormValues,
 } from "./claim-edit-form";
 import { ClaimFormFields } from "./claim-form-fields";
 
-type ClaimEditDialogProps = {
+type ClaimViewDialogProps = {
   claimId: string | null;
   claimNo?: string | null;
   onClose: () => void;
-  onSaved: (detail: ClaimDetail) => void;
 };
 
-export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEditDialogProps) {
+export function ClaimViewDialog({ claimId, claimNo, onClose }: ClaimViewDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [meta, setMeta] = useState<{
     claimNo: string;
     policyNo: string;
@@ -74,68 +70,20 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
     };
   }, [claimId, onClose]);
 
-  function onChange(key: keyof ClaimEditFormValues, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  const fillEmptyFromPolicy = useCallback((patch: Partial<ClaimEditFormValues>) => {
-    setForm((prev) => mergeEmptyClaimFieldsFromPolicy(prev, patch));
-  }, []);
-
-  async function handleSave() {
-    if (!claimId) return;
-    const parsed = formToClaimPatch(form);
-    if (!parsed.ok) {
-      toast.error(parsed.error);
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await svkkJson<ClaimDetail & { policyLinkWarning?: string | null }>(
-        `/claims/${claimId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(parsed.body),
-        },
-      );
-      if (updated.policyLinkWarning) {
-        toast.success("Claim updated");
-        toast.warning(updated.policyLinkWarning);
-      } else if (updated.matchStatus === "UNLINKED") {
-        toast.success("Claim updated and unlinked from policy");
-      } else if (updated.matchStatus === "CONFLICT") {
-        toast.success("Claim updated");
-        toast.warning("Several policies share that Policy Number — claim was left unlinked");
-      } else if (updated.policyId) {
-        toast.success("Claim updated and linked to policy");
-      } else {
-        toast.success(
-          form.policyNoText.trim() ? "Claim updated" : "Claim updated (policy unlinked)",
-        );
-      }
-      onSaved(updated);
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <Dialog open={!!claimId} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <DialogTitle>Edit claim details</DialogTitle>
+          <DialogTitle>View claim details</DialogTitle>
           <DialogDescription>
-            Update claim fields. Matching runs when you click Save — typing a new Policy Number
-            does not change the saved link yet. Clearing it unlinks the claim on save.
+            All fields for this claim row. Same Claim Number can appear on more than one row when
+            the TPA split payments.
             {meta ? (
               <span className="mt-1 block font-mono text-xs">
                 {meta.claimNo}
                 {meta.policyNo !== "—"
-                  ? ` · Currently saved: ${meta.matchStatus === "MATCHED_EXACT" ? "Matched" : meta.matchStatus ?? "linked"} · ${meta.policyNo}`
-                  : " · Currently saved: not linked"}
+                  ? ` · ${meta.matchStatus === "MATCHED_EXACT" ? "Matched" : meta.matchStatus ?? "linked"} · ${meta.policyNo}`
+                  : " · not linked"}
               </span>
             ) : claimNo ? (
               <span className="mt-1 block font-mono text-xs">{claimNo}</span>
@@ -152,21 +100,17 @@ export function ClaimEditDialog({ claimId, claimNo, onClose, onSaved }: ClaimEdi
           ) : (
             <ClaimFormFields
               form={form}
-              onChange={onChange}
-              mode="edit"
+              onChange={() => undefined}
+              mode="view"
               claimNo={meta?.claimNo ?? claimNo ?? ""}
               savedLinkedPolicyNo={meta?.policyNo === "—" ? null : meta?.policyNo}
-              onFillEmptyFromPolicy={fillEmptyFromPolicy}
             />
           )}
         </div>
 
         <DialogFooter className="shrink-0 border-t px-6 py-4">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={loading || saving} onClick={() => void handleSave()}>
-            {saving ? "Saving…" : "Save changes"}
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

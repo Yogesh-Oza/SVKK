@@ -2,9 +2,9 @@ import { ClaimLinkMode, ClaimPolicyMatchStatus, CsvImportMode } from "@prisma/cl
 import { normalizePolicyNo } from "./claim-csv-normalize.js";
 
 /**
- * Same-event identity for hybrid CCN handling (Phase 1).
- * Policy linking still uses Policy Number only; this identity is only used to
- * decide CREATE vs UPDATE vs REJECT when claimNo already exists.
+ * Payment-row identity for import CREATE vs UPDATE.
+ * Policy linking still uses Policy Number only. Existing is looked up by
+ * sourceEventKey (not Claim Number), so the same CCN can create multiple claims.
  */
 export type ClaimEventIdentity = {
   claimNo: string;
@@ -120,9 +120,8 @@ function reject(
 }
 
 /**
- * Preview/import disposition: match gates first, then same-event UPDATE.
- * A different admission/event on an existing CCN updates the claim record in place
- * without overwriting identity fields; the source row is retained as a flagged event.
+ * Preview/import disposition: match gates first, then UPDATE when sourceEventKey
+ * already exists. Same Claim Number with a different payment identity is CREATE.
  */
 export function decideClaimImportAction(opts: {
   matchStatus: ClaimPolicyMatchStatus;
@@ -146,19 +145,11 @@ export function decideClaimImportAction(opts: {
   if (opts.importMode === CsvImportMode.UPDATE_ONLY && !opts.existing) {
     return reject("not_found", eventClassification);
   }
-  if (opts.existing && eventClassification === "DIFFERENT_EVENT") {
-    return {
-      disposition: "WILL_UPDATE",
-      dispositionReason: "different_event_retained",
-      eventClassification,
-      extraWarnings: ["different_event"],
-    };
-  }
   if (opts.existing) {
     return {
       disposition: "WILL_UPDATE",
       dispositionReason: eventClassification === "WEAK_IDENTITY" ? "weak_identity" : "same_event",
-      eventClassification,
+      eventClassification: eventClassification === "NEW" ? "SAME_EVENT" : eventClassification,
       extraWarnings: eventClassification === "WEAK_IDENTITY" ? ["event_identity_weak"] : [],
     };
   }

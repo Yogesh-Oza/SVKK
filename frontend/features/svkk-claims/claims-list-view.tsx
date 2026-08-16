@@ -42,6 +42,7 @@ import {
 import { ClaimAddDialog } from "@/features/svkk-claims/claim-add-dialog";
 import { ClaimCsvImportInline } from "@/features/svkk-claims/claim-csv-import-panel";
 import { ClaimEditDialog } from "@/features/svkk-claims/claim-edit-dialog";
+import { ClaimViewDialog } from "@/features/svkk-claims/claim-view-dialog";
 import type { ClaimDetail } from "@/features/svkk-claims/claim-detail-types";
 import {
   CategoryBadge,
@@ -322,6 +323,8 @@ export function ClaimsListView() {
 
   const [editClaimId, setEditClaimId] = useState<string | null>(null);
   const [editClaimNo, setEditClaimNo] = useState<string | null>(null);
+  const [viewClaimId, setViewClaimId] = useState<string | null>(null);
+  const [viewClaimNo, setViewClaimNo] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -697,7 +700,7 @@ export function ClaimsListView() {
     return <p className="text-destructive text-sm">Configure NEXT_PUBLIC_API_URL.</p>;
   }
 
-  const colCount = 26 + (canD ? 1 : 0) + (canU || canD ? 1 : 0);
+  const colCount = 26 + (canD ? 1 : 0) + (canRead ? 1 : 0);
   const allSelected = rows.length > 0 && rows.every((r) => selected[r.id]);
 
   return (
@@ -1031,7 +1034,8 @@ export function ClaimsListView() {
                 </Badge>
               </CardTitle>
               <CardDescription>
-                All matching claims — use Edit to update full claim details from the actions column.
+                All matching claims — each CSV payment is its own row. Use View for full fields;
+                Edit and Delete apply to that row only.
               </CardDescription>
             </div>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
@@ -1109,7 +1113,7 @@ export function ClaimsListView() {
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Match</TableHead>
                 <TableHead className="text-xs">Year</TableHead>
-                {(canU || canD) && <TableHead className="text-right text-xs">Actions</TableHead>}
+                {canRead ? <TableHead className="text-right text-xs">Actions</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1181,9 +1185,20 @@ export function ClaimsListView() {
                     </TableCell>
                     <TableCell className="text-xs">{matchLabel(c.matchStatus)}</TableCell>
                     <TableCell>{c.policyYear}</TableCell>
-                    {canU || canD ? (
+                    {canRead ? (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setViewClaimId(c.id);
+                              setViewClaimNo(c.claimNo);
+                            }}
+                          >
+                            View
+                          </Button>
                           {canU ? (
                             <Button
                               type="button"
@@ -1337,6 +1352,15 @@ export function ClaimsListView() {
       </Dialog>
 
       <ClaimAddDialog open={addOpen} onClose={() => setAddOpen(false)} onCreated={refresh} />
+
+      <ClaimViewDialog
+        claimId={viewClaimId}
+        claimNo={viewClaimNo}
+        onClose={() => {
+          setViewClaimId(null);
+          setViewClaimNo(null);
+        }}
+      />
 
       <ClaimEditDialog
         claimId={editClaimId}

@@ -9,7 +9,6 @@ import { requireAuth } from "../../middlewares/require-auth.js";
 import { requirePermission } from "../../middlewares/rbac.js";
 import { prisma } from "../../lib/prisma.js";
 import {
-  ClaimEventOutcome,
   ClaimLinkMode,
   ClaimPolicyMatchStatus,
   CsvImportEntity,
@@ -21,7 +20,6 @@ import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { loadMisScope } from "../../services/mis-scope.service.js";
 import { buildClaimErrorReportCsv, type ClaimCsvRowError } from "./claim-csv-errors.js";
-import { kindFromSourceRole, upsertClaimSourceEvent } from "./claim-csv-event.js";
 import {
   applyStatusMap,
   claimEventIdentityFromRow,
@@ -32,11 +30,10 @@ import {
   validateClaimRow,
 } from "./claim-csv-import.js";
 import {
-  decideGroupedClaimPreview,
-  groupParsedClaimRows,
-  normalizeClaimNo,
+  decidePerRowClaimPreview,
   type ExistingClaimIdentity,
 } from "./claim-csv-group.js";
+import { claimEventKeyFromRow } from "./claim-event-key.js";
 import {
   claimRowToMap,
   parseClaimFile,
@@ -147,6 +144,7 @@ async function loadParsedRows(
 
 const existingClaimSelect = {
   claimNo: true,
+  sourceEventKey: true,
   policyId: true,
   policyNoText: true,
   admissionDate: true,
@@ -158,6 +156,7 @@ const existingClaimSelect = {
 
 type ExistingClaimRow = {
   claimNo: string;
+  sourceEventKey: string | null;
   policyId: string | null;
   policyNoText: string | null;
   admissionDate: Date | null;
@@ -180,14 +179,20 @@ function existingToIdentity(row: ExistingClaimRow): ExistingClaimIdentity {
   };
 }
 
-async function loadExistingByClaimNo(claimNos: string[]): Promise<Map<string, ExistingClaimRow>> {
-  const unique = [...new Set(claimNos.map((n) => normalizeClaimNo(n)).filter(Boolean))];
-  if (!unique.length) return new Map();
+async function loadExistingBySourceEventKey(
+  rows: Array<Parameters<typeof claimEventKeyFromRow>[0]>,
+): Promise<Map<string, ExistingClaimRow>> {
+  const keys = [...new Set(rows.map((row) => claimEventKeyFromRow(row)).filter(Boolean))];
+  if (!keys.length) return new Map();
   const existing = await prisma.claim.findMany({
-    where: { claimNo: { in: unique } },
+    where: { sourceEventKey: { in: keys } },
     select: existingClaimSelect,
   });
-  return new Map(existing.map((c) => [c.claimNo, c]));
+  return new Map(
+    existing
+      .filter((c): c is ExistingClaimRow & { sourceEventKey: string } => Boolean(c.sourceEventKey))
+      .map((c) => [c.sourceEventKey, c]),
+  );
 }
 
 function isoDate(d: Date | null | undefined): string | null {
@@ -195,11 +200,12 @@ function isoDate(d: Date | null | undefined): string | null {
 }
 
 function toPublicPreviewRow(
-  grouped: ReturnType<typeof decideGroupedClaimPreview>["preview"][number],
-  existingByNo: Map<string, ExistingClaimRow>,
+  grouped: ReturnType<typeof decidePerRowClaimPreview>["preview"][number],
+  existingByKey: Map<string, ExistingClaimRow>,
 ) {
   const { row, match, decision, sourceRowRole, sourceRowCount } = grouped;
   const warnings = [...match.verificationWarnings, ...decision.extraWarnings];
+  const key = claimEventKeyFromRow(row);
   return {
     rowNumber: row.rowNumber,
     claimNo: row.claimNo,
@@ -219,7 +225,7 @@ function toPublicPreviewRow(
     matchStatus: match.matchStatus,
     matchReason: match.matchReason,
     verificationWarnings: warnings,
-    alreadyExists: Boolean(existingByNo.get(normalizeClaimNo(row.claimNo))),
+    alreadyExists: Boolean(existingByKey.get(key)),
     disposition: decision.disposition,
     dispositionReason: decision.dispositionReason,
     eventClassification: decision.eventClassification,
@@ -300,25 +306,20 @@ async function runClaimImport(
   const typeCache = await buildClaimImportTypeCache();
   const policyCache = await buildClaimImportPolicyCache();
   const scope = await loadMisScope(opts.userId, opts.permissions, "claim");
-  const groups = groupParsedClaimRows(parsedRows.map((row) => applyStatusMap(row, statusMap)));
+  const rows = parsedRows.map((row) => applyStatusMap(row, statusMap));
   const stats = emptyMatchStats();
-  stats.totalRows = parsedRows.length;
-  stats.uniqueClaims = groups.length;
-  stats.sameCcnExtraRows = groups.reduce(
-    (n, g) => n + g.sameEventRows.length + g.differentEventRows.length,
-    0,
-  );
+  stats.totalRows = rows.length;
+  stats.uniqueClaims = rows.length;
 
   let created = 0;
   let updated = 0;
   let failed = 0;
   const rowErrors: ClaimCsvRowError[] = [];
 
-  for (let batchStart = 0; batchStart < groups.length; batchStart += BATCH_SIZE) {
-    const batchEnd = Math.min(batchStart + BATCH_SIZE, groups.length);
+  for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, rows.length);
     for (let i = batchStart; i < batchEnd; i++) {
-      const group = groups[i]!;
-      const row = group.canonical;
+      const row = rows[i]!;
       try {
         const outcome = await importClaimRow(row, {
           typeCache,
@@ -341,68 +342,23 @@ async function runClaimImport(
 
         if (outcome.result === "failed" && outcome.error) {
           failed++;
-          stats.failedRows += group.rows.length;
-          for (const source of group.rows) {
-            rowErrors.push(sourceRowError(source, outcome.error));
-          }
+          stats.failedRows++;
+          rowErrors.push(sourceRowError(row, outcome.error));
           continue;
         }
 
         if (outcome.result === "created") created++;
         else if (outcome.result === "updated") updated++;
-
-        if (
-          outcome.dispositionReason === "different_event_retained" ||
-          outcome.eventClassification === "DIFFERENT_EVENT"
-        ) {
-          stats.differentEventBlocked++;
-        }
-        stats.differentEventBlocked += group.differentEventRows.length;
-
-        if (!opts.dryRun && outcome.claimId) {
-          const eventRows: Array<{
-            row: (typeof group.rows)[number];
-            role: "canonical" | "same_claim" | "different_event";
-          }> = [
-            { row: group.canonical, role: "canonical" },
-            ...group.sameEventRows.map((r) => ({ row: r, role: "same_claim" as const })),
-            ...group.differentEventRows.map((r) => ({ row: r, role: "different_event" as const })),
-          ];
-          for (const item of eventRows) {
-            const eventResult = await upsertClaimSourceEvent({
-              claimId: outcome.claimId,
-              row: item.row,
-              kind: kindFromSourceRole(item.role),
-              outcome:
-                item.role === "different_event"
-                  ? ClaimEventOutcome.IMPORTED
-                  : outcome.result === "updated" && item.role === "canonical"
-                    ? ClaimEventOutcome.UPDATED
-                    : ClaimEventOutcome.IMPORTED,
-              rejectionReason:
-                item.role === "different_event"
-                  ? "Claim Number already exists with different admission/event details. Source row retained."
-                  : null,
-              importJobId: job.id,
-            });
-            if (eventResult === "created") stats.eventsCreated++;
-            else stats.eventsUpdated++;
-          }
-        } else if (opts.dryRun) {
-          stats.eventsCreated += group.rows.length;
-        }
       } catch (e) {
         failed++;
-        stats.failedRows += group.rows.length;
+        stats.failedRows++;
         const message = e instanceof Error ? e.message : "Import failed";
-        for (const source of group.rows) {
-          rowErrors.push({
-            row: source.rowNumber,
-            error: message,
-            claimNo: source.claimNo,
-            policyNo: source.policyNo,
-          });
-        }
+        rowErrors.push({
+          row: row.rowNumber,
+          error: message,
+          claimNo: row.claimNo,
+          policyNo: row.policyNo,
+        });
       }
     }
   }
@@ -497,30 +453,26 @@ export function createClaimUploadRouter(env: Env) {
 
         const typeCache = await buildClaimImportTypeCache();
         const policyCache = await buildClaimImportPolicyCache();
-        const groups = groupParsedClaimRows(parsedRows);
-        const matchByCanonicalRow = new Map<number, Awaited<ReturnType<typeof evaluateClaimRow>>>();
-        for (const group of groups) {
-          matchByCanonicalRow.set(
-            group.canonical.rowNumber,
-            await evaluateClaimRow(group.canonical, typeCache, policyCache),
-          );
-        }
-
-        const existingRows = await loadExistingByClaimNo(groups.map((g) => g.canonical.claimNo));
-        const existingByNo = new Map(
-          [...existingRows.entries()].map(([claimNo, row]) => [
-            normalizeClaimNo(claimNo),
-            existingToIdentity(row),
-          ]),
+        const matchByRow = new Map<number, Awaited<ReturnType<typeof evaluateClaimRow>>>();
+        await Promise.all(
+          parsedRows.map(async (row) => {
+            matchByRow.set(row.rowNumber, await evaluateClaimRow(row, typeCache, policyCache));
+          }),
         );
-        const { preview, stats } = decideGroupedClaimPreview({
-          groups,
-          matchByCanonicalRow,
-          existingByNo,
+
+        const existingRows = await loadExistingBySourceEventKey(parsedRows);
+        const existingByKey = new Map(
+          [...existingRows.entries()].map(([key, row]) => [key, existingToIdentity(row)]),
+        );
+        const { preview, stats } = decidePerRowClaimPreview({
+          rows: parsedRows,
+          matchByRow,
+          existingByKey,
           linkMode,
           importMode,
           validateRow: validateClaimRow,
           identityFromRow: claimEventIdentityFromRow,
+          sourceKeyFromRow: claimEventKeyFromRow,
         });
 
         const prior = await findPriorCompletedClaimImport(checksum);

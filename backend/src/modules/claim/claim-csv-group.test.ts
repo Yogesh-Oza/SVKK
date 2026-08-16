@@ -6,12 +6,13 @@ import { ClaimLinkMode, ClaimPolicyMatchStatus, CsvImportMode } from "@prisma/cl
 import { DEFAULT_CLAIM_STATUS_MAP } from "./claim-status-map.js";
 import { parseClaimRow, validateClaimRow, claimEventIdentityFromRow } from "./claim-csv-import.js";
 import {
-  decideGroupedClaimPreview,
+  decidePerRowClaimPreview,
   groupParsedClaimRows,
   pickCanonicalClaimRow,
   primaryLodgePriority,
   type ExistingClaimIdentity,
 } from "./claim-csv-group.js";
+import { claimEventKeyFromRow } from "./claim-event-key.js";
 import {
   resolveClaimPolicyMatch,
   type ClaimMatchInput,
@@ -102,20 +103,20 @@ function unlinkedMatch(): ClaimMatchResult {
 function previewOf(
   rows: ReturnType<typeof parsed>[],
   match: ClaimMatchResult,
-  existingByNo: Map<string, ExistingClaimIdentity> = new Map(),
+  existingByKey: Map<string, ExistingClaimIdentity> = new Map(),
   linkMode: ClaimLinkMode = ClaimLinkMode.STRICT_MATCH,
 ) {
-  const groups = groupParsedClaimRows(rows);
-  const matchByCanonicalRow = new Map<number, ClaimMatchResult>();
-  for (const g of groups) matchByCanonicalRow.set(g.canonical.rowNumber, match);
-  return decideGroupedClaimPreview({
-    groups,
-    matchByCanonicalRow,
-    existingByNo,
+  const matchByRow = new Map<number, ClaimMatchResult>();
+  for (const row of rows) matchByRow.set(row.rowNumber, match);
+  return decidePerRowClaimPreview({
+    rows,
+    matchByRow,
+    existingByKey,
     linkMode,
     importMode: CsvImportMode.CREATE_ONLY,
     validateRow: validateClaimRow,
     identityFromRow: claimEventIdentityFromRow,
+    sourceKeyFromRow: claimEventKeyFromRow,
   });
 }
 
@@ -134,12 +135,14 @@ function ident(over: Partial<ExistingClaimIdentity> = {}): ExistingClaimIdentity
 }
 
 describe("schema: one policy, many claims", () => {
-  it("Claim.claimNo is unique and policyId is not", () => {
+  it("Claim.claimNo is indexed and sourceEventKey is unique", () => {
     const schema = readFileSync(join(__dirname, "../../../prisma/schema.prisma"), "utf8");
     const start = schema.indexOf("model Claim {");
     const end = schema.indexOf("\nmodel ", start + 1);
     const claimModel = schema.slice(start, end === -1 ? undefined : end);
-    expect(claimModel).toMatch(/claimNo\s+String\s+@unique/);
+    expect(claimModel).not.toMatch(/claimNo\s+String\s+@unique/);
+    expect(claimModel).toMatch(/@@index\(\[claimNo\]\)/);
+    expect(claimModel).toMatch(/sourceEventKey\s+String\?\s+@unique/);
     expect(claimModel).not.toMatch(/policyId\s+String\??\s+@unique/);
     expect(claimModel).toMatch(/@@index\(\[policyId\]\)/);
     expect(schema).toMatch(/model ClaimEvent/);
@@ -213,10 +216,9 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.conflicts).toBe(0);
     expect(stats.willReject).toBe(0);
     expect(stats.sameCcnExtraRows).toBe(0);
-    expect(stats.willImportEvents).toBe(3);
   });
 
-  it("Test 2 — same CCN payment rows → 1 claim, not 3", () => {
+  it("Test 2 — same CCN payment rows → 3 claims", () => {
     const { stats, preview } = previewOf(
       [
         parsed(2, { "Claim Type": "Non Cash Less", "Claim Amount": "50008" }),
@@ -225,13 +227,11 @@ describe("acceptance: claim CSV grouping + policy link", () => {
       ],
       matched("pol-1"),
     );
-    expect(stats.uniqueClaims).toBe(1);
-    expect(stats.willCreate).toBe(1);
+    expect(stats.uniqueClaims).toBe(3);
+    expect(stats.willCreate).toBe(3);
     expect(stats.sameCcnExtraRows).toBe(2);
     expect(stats.totalRows).toBe(3);
-    expect(stats.willImportEvents).toBe(3);
-    expect(preview.filter((p) => p.sourceRowRole === "same_claim")).toHaveLength(2);
-    expect(preview.filter((p) => p.decision.disposition === "WILL_CREATE")).toHaveLength(1);
+    expect(preview.filter((p) => p.decision.disposition === "WILL_CREATE")).toHaveLength(3);
     expect(preview.filter((p) => p.decision.disposition === "WILL_REJECT")).toHaveLength(0);
   });
 
@@ -275,16 +275,27 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(preview[0]!.decision.dispositionReason).toBe("unlinked");
   });
 
-  it("Test 5 — existing same CCN → update, no duplicate create", () => {
-    const existing = new Map([["CCN-001", ident()]]);
-    const { stats } = previewOf([parsed(2)], matched("pol-1"), existing);
+  it("Test 5 — existing sourceEventKey → update, no duplicate create", () => {
+    const row = parsed(2);
+    const existing = new Map([[claimEventKeyFromRow(row), ident()]]);
+    const { stats } = previewOf([row], matched("pol-1"), existing);
     expect(stats.willCreate).toBe(0);
     expect(stats.willUpdate).toBe(1);
     expect(stats.uniqueClaims).toBe(1);
   });
 
+  it("Test 5b — same CCN with a new payment identity → create", () => {
+    const existingRow = parsed(2, { "Claim Type": "Non Cash Less", "Claim Amount": "50008" });
+    const incoming = parsed(3, { "Claim Type": "Additional Payment", "Claim Amount": "600" });
+    const existing = new Map([[claimEventKeyFromRow(existingRow), ident()]]);
+    const { stats } = previewOf([incoming], matched("pol-1"), existing);
+    expect(stats.willCreate).toBe(1);
+    expect(stats.willUpdate).toBe(0);
+  });
+
   it("Test 6 — same policy, different CCN → create, no conflict", () => {
-    const existing = new Map([["CCN-001", ident()]]);
+    const existingRow = parsed(2, { "Claim Number": "CCN-001" });
+    const existing = new Map([[claimEventKeyFromRow(existingRow), ident()]]);
     const { stats } = previewOf(
       [parsed(2, { "Claim Number": "CCN-002" })],
       matched("pol-1"),
@@ -313,8 +324,9 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(groups[0]!.sameEventRows).toHaveLength(1);
   });
 
-  it("does not treat Additional/Deduction lodge types as a different claim", () => {
-    const existing = new Map([["CCN-001", ident()]]);
+  it("treats Additional/Deduction lodge types as separate claims on the same CCN", () => {
+    const existingRow = parsed(2, { "Claim Type": "Non Cash Less", "Claim Amount": "50008" });
+    const existing = new Map([[claimEventKeyFromRow(existingRow), ident()]]);
     const { stats, preview } = previewOf(
       [
         parsed(2, { "Claim Type": "Additional Payment", "Claim Amount": "600" }),
@@ -323,13 +335,13 @@ describe("acceptance: claim CSV grouping + policy link", () => {
       matched("pol-1"),
       existing,
     );
-    expect(stats.uniqueClaims).toBe(1);
+    expect(stats.uniqueClaims).toBe(2);
+    expect(stats.willCreate).toBe(1);
     expect(stats.willUpdate).toBe(1);
-    expect(stats.willCreate).toBe(0);
-    expect(preview.some((p) => p.decision.dispositionReason === "different_event")).toBe(false);
+    expect(preview.every((p) => p.decision.disposition !== "WILL_REJECT")).toBe(true);
   });
 
-  it("Test 7 — same CCN with different admission is flagged and retained", () => {
+  it("Test 7 — same CCN with different admission creates two claims", () => {
     const { stats, preview } = previewOf(
       [
         parsed(2, {
@@ -345,15 +357,10 @@ describe("acceptance: claim CSV grouping + policy link", () => {
       ],
       matched("pol-1"),
     );
-    expect(stats.uniqueClaims).toBe(1);
-    expect(stats.willCreate).toBe(1);
+    expect(stats.uniqueClaims).toBe(2);
+    expect(stats.willCreate).toBe(2);
     expect(stats.willReject).toBe(0);
-    expect(stats.differentEventBlocked).toBeGreaterThan(0);
-    expect(stats.willImportEvents).toBe(2);
-    const flagged = preview.filter((p) => p.sourceRowRole === "different_event");
-    expect(flagged).toHaveLength(1);
-    expect(flagged[0]!.decision.disposition).toBe("WILL_UPDATE");
-    expect(flagged[0]!.decision.dispositionReason).toBe("different_event_retained");
+    expect(preview.filter((p) => p.decision.disposition === "WILL_CREATE")).toHaveLength(2);
   });
 
   it("Test 8 — missing policy + Strict Match rejects the claim", () => {
@@ -366,11 +373,10 @@ describe("acceptance: claim CSV grouping + policy link", () => {
     expect(stats.unlinked).toBe(1);
     expect(stats.willReject).toBe(1);
     expect(stats.willCreate).toBe(0);
-    expect(stats.willImportEvents).toBe(0);
     expect(preview[0]!.decision.dispositionReason).toBe("unlinked");
   });
 
-  it("keeps five TPA rows for one CCN as one claim plus four events", () => {
+  it("keeps five TPA rows for one CCN as five claims", () => {
     const { stats, preview } = previewOf(
       [
         parsed(282, { "Claim Number": "MDI9918783", "Claim Type": "Non Cash Less", "Claim Amount": "50000" }),
@@ -381,14 +387,19 @@ describe("acceptance: claim CSV grouping + policy link", () => {
       ],
       matched("pol-1"),
     );
-    expect(stats.uniqueClaims).toBe(1);
+    expect(stats.uniqueClaims).toBe(5);
     expect(stats.totalRows).toBe(5);
-    expect(stats.willCreate).toBe(1);
+    expect(stats.willCreate).toBe(5);
     expect(stats.sameCcnExtraRows).toBe(4);
-    expect(stats.willImportEvents).toBe(5);
-    expect(preview.every((p) => p.decision.disposition !== "WILL_REJECT")).toBe(true);
-    expect(preview.filter((p) => p.sourceRowRole === "canonical")).toHaveLength(1);
-    expect(preview.filter((p) => p.sourceRowRole !== "canonical")).toHaveLength(4);
+    expect(preview.every((p) => p.decision.disposition === "WILL_CREATE")).toBe(true);
+
+    const sameFileAgain = previewOf(
+      preview.map((p) => p.row),
+      matched("pol-1"),
+      new Map(preview.map((p) => [claimEventKeyFromRow(p.row), ident({ claimNo: p.row.claimNo })])),
+    );
+    expect(sameFileAgain.stats.willCreate).toBe(0);
+    expect(sameFileAgain.stats.willUpdate).toBe(5);
   });
 
   it("Test 9 — missing policy + Allow Unlinked creates with no policy link", () => {

@@ -464,12 +464,18 @@ Env: `POLICY_IMPORT_MAX_ROWS` (default 10000), `CSV_DUPLICATE_MODE`, `ACCESS_TOK
    - Warnings only (never choose or reject the Policy): SVKK, Policy Type, Policy dates / year hint, Holder Name, Sum Insured, Insurance Company.
    - Optional `policyYearId` hint within the already matched Policy; year ambiguity does not un-match.
 4. **Link modes:** `STRICT_MATCH` (default, rejects UNLINKED) | `ALLOW_UNLINKED`. CONFLICT is rejected in both.
-5. **CCN (Phase 1 hybrid):** `claimNo` stays unique. Same event → UPDATE; different event → REJECT; weak identity (no admission/lodge/received and no lodge type) → UPDATE + `event_identity_weak`. File-checksum duplicate mode unchanged. `POST /claims` maps unique `claimNo` (`P2002`) to 409.
-6. **Preview:** Per-row `disposition` (`WILL_CREATE` | `WILL_UPDATE` | `WILL_REJECT`), `dispositionReason`, `eventClassification`; summary includes `willCreate`, `willUpdate`, `willReject`, `differentEventBlocked`.
+5. **One CSV row = one claim.** `claimNo` is **not** unique. The same Claim Number can appear on many register rows (TPA payment splits). Import identity is `Claim.sourceEventKey` (sha256 of CCN + policy no + lodge type + amounts + dates + payment details). Same key → UPDATE that row; new key → CREATE even if CCN already exists. Manual Add leaves `sourceEventKey` null and also allows duplicate Claim Numbers. File-checksum duplicate mode unchanged.
+6. **Preview:** Per-row `disposition` (`WILL_CREATE` | `WILL_UPDATE` | `WILL_REJECT`); summary `uniqueClaims` counts CSV rows (each is a claim). Register actions: View (all fields, `claim:read`), Edit, Delete.
 
-## Phase 2 claim schema (not approved)
+## Claim register (payment rows)
 
-Do **not** drop unique `claimNo` or add `claimEventKey` without explicit written approval. Trigger is material `DIFFERENT_EVENT` volume in preview `differentEventBlocked` / error reports after Phase 1 ships. Measure that volume before proposing Phase 2.
+Each imported CSV row is a full `Claim` with View / Edit / Delete. Lodge/Paid summary cards sum all rows. Deleting one payment does not delete other rows that share the Claim Number.
+
+**Migration:** `20260816120000_claim_source_event_key` — dropped unique `claim.claimNo`, added unique nullable `sourceEventKey`.
+
+## Phase 2 claim schema
+
+Unique `claimNo` has been dropped. `ClaimEvent` remains in the schema but import no longer writes event rows.
 
 ## API endpoints (claim import & MIS)
 
@@ -516,4 +522,4 @@ Requires `REDIS_URL`. Schema reserves `CsvImportJob.progressPercent`.
 
 - Sync import may timeout above ~5k rows on slow hosts — use Phase 2 queue.
 - Unlinked claims keep CSV `svkkPublicId` snapshot; linking is Policy Number only (SVKK mismatch is a warning).
-- Measure `differentEventBlocked` / DIFFERENT_EVENT volume from claim import preview and error reports before considering Phase 2 CCN schema.
+- Lodge/Paid totals sum every payment row. Same CCN with several TPA stages will add each row’s amounts.

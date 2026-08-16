@@ -67,6 +67,33 @@ describe("claimDetailToForm", () => {
     expect(form.policyNoText).toBe("PO-99");
     expect(form.policyGroupingText).toBe("RTY");
   });
+
+  it("maps all view fields for a payment row", () => {
+    const detail: ClaimDetail = {
+      id: "c1",
+      claimNo: "MDI9918783",
+      svkkPublicId: "SVKK1",
+      policyYear: "2024-25",
+      status: "APPROVED",
+      statusText: "Paid",
+      patientName: "Patient A",
+      hospitalName: "City Hospital",
+      illness: "Fever",
+      claimAmount: "31206",
+      approvedAmount: "31206",
+      claimType: "Additional Payment",
+      actualLodgeType: "Cash Less",
+      paymentDetails: "AXISCN1168346615",
+    };
+    const form = claimDetailToForm(detail);
+    expect(form.patientName).toBe("Patient A");
+    expect(form.hospitalName).toBe("City Hospital");
+    expect(form.illness).toBe("Fever");
+    expect(form.claimAmount).toBe("31206");
+    expect(form.approvedAmount).toBe("31206");
+    expect(form.claimType).toBe("Additional Payment");
+    expect(form.paymentDetails).toBe("AXISCN1168346615");
+  });
 });
 
 describe("mergeEmptyClaimFieldsFromPolicy", () => {

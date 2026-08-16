@@ -106,8 +106,9 @@ export function ClaimAddDialog({ open, onClose, onCreated }: ClaimAddDialogProps
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Add new claim entry</DialogTitle>
           <DialogDescription>
-            Claim # is required. Enter a Policy Number to auto-link and fill blank SVKK ID, year,
-            holder, type, grouping, category, and village from the policy — same as Edit.
+            Claim # is required and may match an existing Claim Number — each payment is its own
+            row. Enter a Policy Number to auto-link and fill blank SVKK ID, year, holder, type,
+            grouping, category, and village from the policy — same as Edit.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">

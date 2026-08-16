@@ -856,7 +856,9 @@ model CsvImportJob {
 
 model Claim {
   id                      String                  @id @default(cuid())
-  claimNo                 String                  @unique
+  claimNo                 String
+  /// CSV payment/status identity (sha256). Null for manual Add. Re-import upserts by this key.
+  sourceEventKey          String?                 @unique @db.VarChar(64)
   svkkPublicId            String                  @default("")
   insuredPartyId          String?
   insuredParty            InsuredParty?           @relation(fields: [insuredPartyId], references: [id], onDelete: SetNull)
@@ -928,6 +930,7 @@ model Claim {
   updatedAt               DateTime                @updatedAt
   events                  ClaimEvent[]
 
+  @@index([claimNo])
   @@index([svkkPublicId, policyYear])
   @@index([policyId])
   @@index([policyYearId])

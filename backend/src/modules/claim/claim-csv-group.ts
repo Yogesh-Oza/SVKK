@@ -239,3 +239,79 @@ export function decideGroupedClaimPreview(opts: {
   preview.sort((a, b) => a.row.rowNumber - b.row.rowNumber);
   return { preview, stats };
 }
+
+/**
+ * Preview/import decisions for every CSV row as its own claim.
+ * Lookup existing by sourceEventKey; same Claim Number with a new key is CREATE.
+ */
+export function decidePerRowClaimPreview(opts: {
+  rows: ParsedClaimRow[];
+  matchByRow: Map<number, ClaimMatchResult>;
+  existingByKey: Map<string, ExistingClaimIdentity>;
+  linkMode: ClaimLinkMode;
+  importMode?: CsvImportMode;
+  validateRow: (row: ParsedClaimRow) => string | null;
+  identityFromRow: (row: ParsedClaimRow, match?: { policyId?: string }) => ClaimEventIdentity;
+  sourceKeyFromRow: (row: ParsedClaimRow) => string;
+}): { preview: GroupedClaimPreviewRow[]; stats: ClaimImportMatchStats } {
+  const stats = emptyMatchStats();
+  const preview: GroupedClaimPreviewRow[] = [];
+  const seenKeys = new Map<string, ExistingClaimIdentity>();
+
+  for (const row of opts.rows) {
+    const match = opts.matchByRow.get(row.rowNumber);
+    if (!match) {
+      throw new Error(`Missing policy match for row ${row.rowNumber}`);
+    }
+
+    const key = opts.sourceKeyFromRow(row);
+    const incoming = opts.identityFromRow(row, match);
+    const existing = opts.existingByKey.get(key) ?? seenKeys.get(key) ?? null;
+    const decision = decideClaimImportAction({
+      matchStatus: match.matchStatus,
+      linkMode: opts.linkMode,
+      existing,
+      incoming,
+      importMode: opts.importMode,
+      validationError: opts.validateRow(row),
+    });
+
+    stats.uniqueClaims++;
+    if (decision.disposition === "WILL_CREATE") stats.willCreate++;
+    else if (decision.disposition === "WILL_UPDATE") stats.willUpdate++;
+    else stats.willReject++;
+
+    if (match.matchStatus === ClaimPolicyMatchStatus.MATCHED_EXACT) stats.matchedExact++;
+    else if (match.matchStatus === ClaimPolicyMatchStatus.UNLINKED) stats.unlinked++;
+    else if (match.matchStatus === ClaimPolicyMatchStatus.CONFLICT) stats.conflicts++;
+
+    const warnings = [...match.verificationWarnings, ...decision.extraWarnings];
+    if (warnings.length > 0) stats.verificationWarnings++;
+
+    if (decision.disposition !== "WILL_REJECT") {
+      seenKeys.set(key, incoming);
+    }
+
+    preview.push({
+      row,
+      match,
+      decision,
+      sourceRowRole: "canonical",
+      sourceRowCount: 1,
+    });
+  }
+
+  const ccnCounts = new Map<string, number>();
+  for (const row of opts.rows) {
+    const ccn = normalizeClaimNo(row.claimNo);
+    if (!ccn) continue;
+    ccnCounts.set(ccn, (ccnCounts.get(ccn) ?? 0) + 1);
+  }
+  for (const count of ccnCounts.values()) {
+    if (count > 1) stats.sameCcnExtraRows += count - 1;
+  }
+
+  stats.totalRows = opts.rows.length;
+  preview.sort((a, b) => a.row.rowNumber - b.row.rowNumber);
+  return { preview, stats };
+}

@@ -77,9 +77,9 @@ export function hashPreviewToken(token: string): string {
 export type ClaimImportMatchStats = {
   /** Raw CSV/XLSX data rows (payment/event lines). */
   totalRows: number;
-  /** Distinct Claim Numbers that will be created/updated/rejected. */
+  /** Distinct CSV rows that will be created/updated/rejected (one claim per row). */
   uniqueClaims: number;
-  /** CSV rows beyond the first/canonical row per Claim Number. */
+  /** Extra same-CCN rows in the file (informational; each is still a claim). */
   sameCcnExtraRows: number;
   matchedExact: number;
   unlinked: number;
@@ -91,9 +91,9 @@ export type ClaimImportMatchStats = {
   willCreate: number;
   willUpdate: number;
   willReject: number;
-  /** Source rows flagged as a different admission/event (still retained). */
+  /** @deprecated Events are no longer stored; kept at 0 for older clients. */
   differentEventBlocked: number;
-  /** CSV rows that will be stored as claim events (including the canonical row). */
+  /** @deprecated Events are no longer stored; kept at 0 for older clients. */
   willImportEvents: number;
   eventsCreated: number;
   eventsUpdated: number;

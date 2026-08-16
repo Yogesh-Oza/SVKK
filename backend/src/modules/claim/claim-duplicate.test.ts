@@ -110,7 +110,7 @@ describe("decideClaimImportAction", () => {
     ).toBe("conflict");
   });
 
-  it("CREATE_ONLY same event → WILL_UPDATE", () => {
+  it("existing sourceEventKey → WILL_UPDATE", () => {
     const incoming = ident();
     const d = decideClaimImportAction({
       matchStatus: ClaimPolicyMatchStatus.MATCHED_EXACT,
@@ -123,17 +123,15 @@ describe("decideClaimImportAction", () => {
     expect(d.eventClassification).toBe("SAME_EVENT");
   });
 
-  it("different event on existing CCN → WILL_UPDATE different_event_retained", () => {
+  it("different payment identity with no sourceEventKey match → WILL_CREATE", () => {
     const d = decideClaimImportAction({
       matchStatus: ClaimPolicyMatchStatus.MATCHED_EXACT,
       linkMode: ClaimLinkMode.STRICT_MATCH,
-      existing: ident({ admissionDate: utc(2024, 1, 1) }),
+      existing: null,
       incoming: ident(),
     });
-    expect(d.disposition).toBe("WILL_UPDATE");
-    expect(d.dispositionReason).toBe("different_event_retained");
-    expect(d.eventClassification).toBe("DIFFERENT_EVENT");
-    expect(d.extraWarnings).toContain("different_event");
+    expect(d.disposition).toBe("WILL_CREATE");
+    expect(d.dispositionReason).toBe("new");
   });
 
   it("weak identity → WILL_UPDATE + event_identity_weak", () => {

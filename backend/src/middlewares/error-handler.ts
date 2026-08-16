@@ -48,8 +48,8 @@ export function errorHandler(
     const target = Array.isArray(err.meta?.target)
       ? (err.meta.target as string[]).join(",")
       : String(err.meta?.target ?? "");
-    const message = target.toLowerCase().includes("claimno")
-      ? "A claim with this claim number already exists."
+    const message = target.toLowerCase().includes("sourceeventkey")
+      ? "A claim with this payment identity already exists."
       : "A record with this unique value already exists.";
     req.log?.warn({ err, meta: err.meta }, "unique constraint");
     return res.status(409).json({
