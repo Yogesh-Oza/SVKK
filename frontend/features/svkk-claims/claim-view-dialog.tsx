@@ -21,7 +21,7 @@ import {
   emptyClaimEditForm,
   type ClaimEditFormValues,
 } from "./claim-edit-form";
-import { ClaimFormFields } from "./claim-form-fields";
+import { ClaimViewFields } from "./claim-view-fields";
 
 type ClaimViewDialogProps = {
   claimId: string | null;
@@ -72,11 +72,11 @@ export function ClaimViewDialog({ claimId, claimNo, onClose }: ClaimViewDialogPr
 
   return (
     <Dialog open={!!claimId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex h-[min(92vh,960px)] max-h-[92vh] w-[min(98vw,1400px)] max-w-[min(98vw,1400px)]! flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(98vw,1400px)]!">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>View claim details</DialogTitle>
           <DialogDescription>
-            All fields for this claim row. Same Claim Number can appear on more than one row when
+            All fields for this payment row. Same Claim Number can appear on more than one row when
             the TPA split payments.
             {meta ? (
               <span className="mt-1 block font-mono text-xs">
@@ -98,13 +98,7 @@ export function ClaimViewDialog({ claimId, claimNo, onClose }: ClaimViewDialogPr
               Loading claim…
             </div>
           ) : (
-            <ClaimFormFields
-              form={form}
-              onChange={() => undefined}
-              mode="view"
-              claimNo={meta?.claimNo ?? claimNo ?? ""}
-              savedLinkedPolicyNo={meta?.policyNo === "—" ? null : meta?.policyNo}
-            />
+            <ClaimViewFields form={form} claimNo={meta?.claimNo ?? claimNo ?? ""} />
           )}
         </div>
 
