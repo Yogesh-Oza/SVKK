@@ -17,6 +17,7 @@ import {
   claimRowToMap,
   parseClaimFile,
 } from "../src/modules/claim/claim-csv-parse.js";
+import { ensureGeoDropdowns } from "../src/modules/dropdowns/ensure-dropdown-options.js";
 
 const prisma = new PrismaClient();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,11 @@ async function main() {
   const parsedRows = dataRows.map((row, i) =>
     parseClaimRow(i + 2, claimRowToMap(header, row), statusMap),
   );
+
+  await ensureGeoDropdowns({
+    villages: parsedRows.map((r) => r.villageCsv),
+    areas: parsedRows.map((r) => r.hospitalArea),
+  });
 
   let created = 0;
   let updated = 0;

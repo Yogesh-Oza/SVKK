@@ -17,8 +17,9 @@ import { buildErrorReportCsv, type CsvRowError } from "./policy-csv-errors.js";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
 import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
-import { parseCsv } from "./policy-csv-parse.js";
+import { getCsvField, parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
+import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
 
 const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
 
@@ -145,6 +146,19 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   }
 
   const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
+
+  if (!opts.dryRun && legacyFormat) {
+    const villages: string[] = [];
+    const areas: string[] = [];
+    const cities: string[] = [];
+    for (const row of dataRows) {
+      const map = rowToHeaderMap(header, row);
+      villages.push(getCsvField(map, "Village"));
+      areas.push(getCsvField(map, "area"));
+      cities.push(getCsvField(map, "city"));
+    }
+    await ensureGeoDropdowns({ villages, areas, cities });
+  }
 
   for (let batchStart = 0; batchStart < dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, dataRows.length);

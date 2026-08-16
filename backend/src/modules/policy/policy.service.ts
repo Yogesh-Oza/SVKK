@@ -25,6 +25,7 @@ import { createReceiptOnPolicyCreate, resolveReceiptAmount } from "../../service
 import { AppError } from "../../errors/app-error.js";
 import { writeActivityLog } from "../../services/activity-log.service.js";
 import { dispatchPolicyCreated, dispatchPolicyNumberOrDocumentUpdated } from "../../services/notification/notification-dispatch.js";
+import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
 import {
   policyYearFinancialCreateData,
   policyYearFinancialPatchData,
@@ -103,6 +104,12 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
   const mobileRaw = input.mobile?.trim() || input.whatsappNo?.trim() || "";
   const mobile = normalizeMobile(mobileRaw);
   const period = String(new Date().getFullYear());
+
+  await ensureGeoDropdowns({
+    villages: [input.village],
+    areas: [input.area],
+    cities: [input.city],
+  });
 
   const chart = await prisma.policyChart.findUnique({
     where: { id: input.policyChartId },
@@ -941,6 +948,12 @@ export async function updatePolicySections(input: {
     const slimParty = slimInsuredPartyPatch(routed.partyPatch);
     insuredPartyPatch = Object.keys(slimParty).length > 0 ? slimParty : undefined;
   }
+
+  await ensureGeoDropdowns({
+    villages: [policyPatch.village],
+    areas: [policyPatch.area],
+    cities: [policyPatch.city],
+  });
 
   const pData = Object.fromEntries(
     Object.entries(policyPatch).filter(([, v]) => v !== undefined),

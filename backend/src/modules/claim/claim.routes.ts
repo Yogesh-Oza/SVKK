@@ -28,6 +28,7 @@ import { claimDetailSelect } from "./claim-detail.js";
 import { resolveClaimManualPolicyLink, applyMatchedPolicySnapshots } from "./claim-policy-link.js";
 import { claimUpdateBodySchema } from "./claim-update.schema.js";
 import { parseClaimDate } from "./claim-csv-normalize.js";
+import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
 
 function queryToStringArray(v: unknown): string[] | undefined {
   if (v == null) return undefined;
@@ -314,6 +315,11 @@ export function createClaimRouter(env: Env) {
         req.permissions!,
         "claim",
       );
+
+      await ensureGeoDropdowns({
+        villages: [village],
+        areas: [body.hospitalArea],
+      });
 
       const resolvedSvkk = (snapshots.svkkPublicId ?? body.svkkPublicId).trim();
       const resolvedYear = (snapshots.policyYear ?? body.policyYear).trim();
@@ -664,6 +670,11 @@ export function createClaimRouter(env: Env) {
         req.permissions!,
         "claim",
       );
+
+      await ensureGeoDropdowns({
+        villages: [body.village],
+        areas: [body.hospitalArea],
+      });
 
       if (body.status === ClaimStatus.APPROVED) {
         update.approvedById = req.userId;

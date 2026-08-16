@@ -31,6 +31,19 @@ export type DropdownComboboxProps = {
   name?: string;
 };
 
+function findDropdownOption(options: DropdownOption[], value: string) {
+  if (!value) return null;
+  const exact = options.find((o) => o.value === value);
+  if (exact) return exact;
+  const lower = value.toLowerCase();
+  return (
+    options.find((o) => o.label === value) ??
+    options.find((o) => o.value.toLowerCase() === lower) ??
+    options.find((o) => o.label.toLowerCase() === lower) ??
+    null
+  );
+}
+
 export function DropdownCombobox({
   value,
   onChange,
@@ -46,7 +59,7 @@ export function DropdownCombobox({
 }: DropdownComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(
-    () => options.find((o) => o.value === value) ?? null,
+    () => findDropdownOption(options, value),
     [options, value],
   );
   // Persisted value that isn't (anymore) in the option list: still surface it
