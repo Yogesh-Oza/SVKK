@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/table";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { backendApi, svkkJson } from "@/lib/svkk/api";
+import { getSvkkErrorCode } from "@/lib/svkk/api-error";
 import { useOfflineStatus } from "@/lib/svkk/offline/use-offline-status";
 import {
   canAccessPolicyArchive,
@@ -109,8 +110,10 @@ export default function PolicyArchivePage() {
   const [data, setData] = useState<ArchivedListResponse | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [restoreId, setRestoreId] = useState<string | null>(null);
+  const [restoreAllowNegative, setRestoreAllowNegative] = useState(false);
   const [purgeId, setPurgeId] = useState<string | null>(null);
   const [bulkRestoreOpen, setBulkRestoreOpen] = useState(false);
+  const [bulkRestoreAllowNegative, setBulkRestoreAllowNegative] = useState(false);
   const [bulkPurgeOpen, setBulkPurgeOpen] = useState(false);
 
   const selectedIds = useMemo(
@@ -146,14 +149,21 @@ export default function PolicyArchivePage() {
     void load();
   }, [load]);
 
-  async function restoreOne(id: string) {
+  async function restoreOne(id: string, allowNegativeWallet = false) {
     setActionBusy(true);
     try {
-      await svkkJson(`/policies/${id}/restore`, { method: "POST" });
+      await backendApi.post(`/policies/${id}/restore`, {
+        allowNegativeWallet: allowNegativeWallet || undefined,
+      });
       toast.success("Policy restored");
       setRestoreId(null);
+      setRestoreAllowNegative(false);
       await load();
     } catch (e) {
+      if (getSvkkErrorCode(e) === "WALLET_INSUFFICIENT" && !allowNegativeWallet) {
+        setRestoreAllowNegative(true);
+        return;
+      }
       toast.error(apiErrorMessage(e, "Restore failed"));
     } finally {
       setActionBusy(false);
@@ -174,18 +184,23 @@ export default function PolicyArchivePage() {
     }
   }
 
-  async function bulkRestore() {
+  async function bulkRestore(allowNegativeWallet = false) {
     if (selectedIds.length === 0) return;
     setActionBusy(true);
     try {
-      await svkkJson("/policies/bulk-restore", {
-        method: "POST",
-        body: JSON.stringify({ ids: selectedIds }),
+      await backendApi.post("/policies/bulk-restore", {
+        ids: selectedIds,
+        allowNegativeWallet: allowNegativeWallet || undefined,
       });
       toast.success(`Restored ${selectedIds.length} polic${selectedIds.length === 1 ? "y" : "ies"}`);
       setBulkRestoreOpen(false);
+      setBulkRestoreAllowNegative(false);
       await load();
     } catch (e) {
+      if (getSvkkErrorCode(e) === "WALLET_INSUFFICIENT" && !allowNegativeWallet) {
+        setBulkRestoreAllowNegative(true);
+        return;
+      }
       toast.error(apiErrorMessage(e, "Bulk restore failed"));
     } finally {
       setActionBusy(false);
@@ -265,7 +280,14 @@ export default function PolicyArchivePage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground text-sm">{selectedIds.length} selected</span>
               {canRestore ? (
-                <Button type="button" size="sm" onClick={() => setBulkRestoreOpen(true)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setBulkRestoreAllowNegative(false);
+                    setBulkRestoreOpen(true);
+                  }}
+                >
                   Restore selected
                 </Button>
               ) : null}
@@ -340,7 +362,15 @@ export default function PolicyArchivePage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           {canRestore ? (
-                            <Button type="button" size="sm" variant="outline" onClick={() => setRestoreId(r.id)}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRestoreAllowNegative(false);
+                                setRestoreId(r.id);
+                              }}
+                            >
                               Restore
                             </Button>
                           ) : null}
@@ -441,25 +471,48 @@ export default function PolicyArchivePage() {
         </CardFooter>
       </Card>
 
-      <Dialog open={restoreId != null} onOpenChange={(o) => !o && setRestoreId(null)}>
+      <Dialog
+        open={restoreId != null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setRestoreId(null);
+            setRestoreAllowNegative(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Restore this policy year?</DialogTitle>
+            <DialogTitle>
+              {restoreAllowNegative ? "Wallet will go negative" : "Restore this policy year?"}
+            </DialogTitle>
             <DialogDescription>
-              Only this archived year will be restored. Restore fails if Policy No, Reference No, or the same year under
-              this SVKK is already used by an active policy (for example after recreating that year).
+              {restoreAllowNegative
+                ? "This archived year uses a CD amount greater than the current wallet balance. Restore anyway and allow a negative wallet balance?"
+                : "Only this archived year will be restored. Restore fails if Policy No, Reference No, or the same year under this SVKK is already used by an active policy (for example after recreating that year). If the year used a CD account, that debit is posted back to the wallet."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setRestoreId(null)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setRestoreId(null);
+                setRestoreAllowNegative(false);
+              }}
+            >
               Cancel
             </Button>
             <Button
               type="button"
+              variant={restoreAllowNegative ? "destructive" : "default"}
               disabled={actionBusy}
-              onClick={() => restoreId && void restoreOne(restoreId)}
+              onClick={() => restoreId && void restoreOne(restoreId, restoreAllowNegative)}
             >
-              {actionBusy ? "Restoring…" : "Restore"}
+              {actionBusy
+                ? "Restoring…"
+                : restoreAllowNegative
+                  ? "Restore anyway"
+                  : "Restore"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -490,21 +543,46 @@ export default function PolicyArchivePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={bulkRestoreOpen} onOpenChange={setBulkRestoreOpen}>
+      <Dialog
+        open={bulkRestoreOpen}
+        onOpenChange={(o) => {
+          setBulkRestoreOpen(o);
+          if (!o) setBulkRestoreAllowNegative(false);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Restore selected policies?</DialogTitle>
+            <DialogTitle>
+              {bulkRestoreAllowNegative ? "Wallet will go negative" : "Restore selected policies?"}
+            </DialogTitle>
             <DialogDescription>
-              {selectedIds.length} polic{selectedIds.length === 1 ? "y" : "ies"} will be restored. Conflicts on Policy
-              No, Reference No, or a duplicate year under the same SVKK will stop the batch.
+              {bulkRestoreAllowNegative
+                ? "At least one selected year uses a CD amount greater than the current wallet balance. Restore anyway and allow a negative wallet balance?"
+                : `${selectedIds.length} polic${selectedIds.length === 1 ? "y" : "ies"} will be restored. Conflicts on Policy No, Reference No, or a duplicate year under the same SVKK will stop the batch. CD amounts are posted back to the wallet.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setBulkRestoreOpen(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setBulkRestoreOpen(false);
+                setBulkRestoreAllowNegative(false);
+              }}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled={actionBusy} onClick={() => void bulkRestore()}>
-              {actionBusy ? "Restoring…" : "Restore"}
+            <Button
+              type="button"
+              variant={bulkRestoreAllowNegative ? "destructive" : "default"}
+              disabled={actionBusy}
+              onClick={() => void bulkRestore(bulkRestoreAllowNegative)}
+            >
+              {actionBusy
+                ? "Restoring…"
+                : bulkRestoreAllowNegative
+                  ? "Restore anyway"
+                  : "Restore"}
             </Button>
           </DialogFooter>
         </DialogContent>

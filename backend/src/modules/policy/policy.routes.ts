@@ -792,9 +792,13 @@ export function createPolicyRouter(env: Env) {
       if (!existing) throw new AppError("NOT_FOUND", "Archived policy not found", 404);
       assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
 
+      const body = z
+        .object({ allowNegativeWallet: z.boolean().optional() })
+        .parse(req.body ?? {});
       const row = await restoreArchivedPolicy({
         actorUserId: req.userId!,
         policyId: String(req.params.id),
+        allowNegativeWallet: body.allowNegativeWallet === true,
       });
       res.json({ id: row.id, policyNo: row.policyNo, referenceNo: row.referenceNo });
     } catch (e) {
@@ -828,7 +832,10 @@ export function createPolicyRouter(env: Env) {
     async (req, res, next) => {
       try {
         const body = z
-          .object({ ids: z.array(z.string().min(1)).min(1).max(200) })
+          .object({
+            ids: z.array(z.string().min(1)).min(1).max(200),
+            allowNegativeWallet: z.boolean().optional(),
+          })
           .parse(req.body);
         const scope = await loadPolicyReadScope(req.userId!, req.permissions!);
         for (const id of body.ids) {
@@ -842,7 +849,11 @@ export function createPolicyRouter(env: Env) {
           assertPolicyReadable(existing, req.userId!, req.permissions!, scope);
         }
         for (const id of body.ids) {
-          await restoreArchivedPolicy({ actorUserId: req.userId!, policyId: id });
+          await restoreArchivedPolicy({
+            actorUserId: req.userId!,
+            policyId: id,
+            allowNegativeWallet: body.allowNegativeWallet === true,
+          });
         }
         res.json({ ok: true, count: body.ids.length });
       } catch (e) {

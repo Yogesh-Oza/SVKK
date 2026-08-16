@@ -11,6 +11,7 @@ const insuredPartyDeleteMany = vi.hoisted(() => vi.fn());
 const activityLogFindFirst = vi.hoisted(() => vi.fn());
 const writeActivityLog = vi.hoisted(() => vi.fn());
 const transaction = vi.hoisted(() => vi.fn());
+const redebitPolicyWalletOnRestore = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/prisma.js", () => ({
   prisma: {
@@ -34,6 +35,10 @@ vi.mock("../../lib/prisma.js", () => ({
     },
     $transaction: (fn: (tx: unknown) => Promise<unknown>) => transaction(fn),
   },
+}));
+
+vi.mock("../wallet/wallet-policy-sync.js", () => ({
+  redebitPolicyWalletOnRestore: (...args: unknown[]) => redebitPolicyWalletOnRestore(...args),
 }));
 
 vi.mock("../../services/activity-log.service.js", () => ({
@@ -68,6 +73,20 @@ describe("restoreArchivedPolicy", () => {
     });
     writeActivityLog.mockResolvedValue(undefined);
     activityLogFindFirst.mockResolvedValue(null);
+    redebitPolicyWalletOnRestore.mockResolvedValue({
+      posted: false,
+      type: null,
+      amount: null,
+      txnId: null,
+      balanceAfter: null,
+    });
+    transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        policy: {
+          update: (...args: unknown[]) => policyUpdate(...args),
+        },
+      }),
+    );
   });
 
   it("restores snapshot policyNo and referenceNo", async () => {
@@ -91,16 +110,19 @@ describe("restoreArchivedPolicy", () => {
 
     const row = await restoreArchivedPolicy({ actorUserId: "u1", policyId: "p1" });
 
-    expect(policyUpdate).toHaveBeenCalledWith({
-      where: { id: "p1" },
-      data: {
-        deletedAt: null,
-        policyNo: "PN-1",
-        referenceNo: "REF-1",
-        archivedPolicyNo: null,
-        archivedReferenceNo: null,
-      },
-    });
+    expect(policyUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "p1" },
+        data: {
+          deletedAt: null,
+          policyNo: "PN-1",
+          referenceNo: "REF-1",
+          archivedPolicyNo: null,
+          archivedReferenceNo: null,
+        },
+      }),
+    );
+    expect(redebitPolicyWalletOnRestore).toHaveBeenCalled();
     expect(writeActivityLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: "POLICY_RESTORED", entityId: "p1" }),
     );
