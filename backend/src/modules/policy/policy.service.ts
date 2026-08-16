@@ -105,12 +105,6 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
   const mobile = normalizeMobile(mobileRaw);
   const period = String(new Date().getFullYear());
 
-  await ensureGeoDropdowns({
-    villages: [input.village],
-    areas: [input.area],
-    cities: [input.city],
-  });
-
   const chart = await prisma.policyChart.findUnique({
     where: { id: input.policyChartId },
     include: { policyType: true },

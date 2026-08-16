@@ -313,9 +313,15 @@ async function runClaimImport(
   stats.uniqueClaims = rows.length;
 
   if (!opts.dryRun) {
+    const villages = new Set<string>();
+    const areas = new Set<string>();
+    for (const row of rows) {
+      if (row.villageCsv) villages.add(row.villageCsv);
+      if (row.hospitalArea) areas.add(row.hospitalArea);
+    }
     await ensureGeoDropdowns({
-      villages: rows.map((r) => r.villageCsv),
-      areas: rows.map((r) => r.hospitalArea),
+      villages: [...villages],
+      areas: [...areas],
     });
   }
 

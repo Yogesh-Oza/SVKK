@@ -74,6 +74,7 @@ import {
 } from "./policy-detail-read.js";
 import { resolvePolicyRenewalStatus } from "./policy-renewal-status.js";
 import { queryFuturePremiumPolicyDetails } from "./future-premium-policies.js";
+import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
 
 const POLICY_READ_PERMISSIONS = ["policy:read", "future:read", "future:lookup"] as const;
 const POLICY_ARCHIVE_PERMISSIONS = ["policy:delete", "policy:restore", "policy:purge"] as const;
@@ -407,6 +408,11 @@ export function createPolicyRouter(env: Env) {
         req.permissions!,
         "policy",
       );
+      await ensureGeoDropdowns({
+        villages: [body.village],
+        areas: [body.area],
+        cities: [body.city],
+      });
       const out = await createPolicyWithYear({
         actorUserId: req.userId!,
         ...body,

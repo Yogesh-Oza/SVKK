@@ -1,7 +1,6 @@
 import { createHash } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
-import type { Prisma } from "@prisma/client";
 import { CsvImportMode, CsvJobStatus, CsvUpdateMode } from "@prisma/client";
 import type { Env } from "../../config/env.js";
 import { AppError } from "../../errors/app-error.js";
@@ -17,11 +16,45 @@ import { buildErrorReportCsv, type CsvRowError } from "./policy-csv-errors.js";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
 import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
-import { getCsvField, parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
+import { parseCsv } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
 import { ensureGeoDropdowns, backfillGeoDropdownsFromRecords } from "../dropdowns/ensure-dropdown-options.js";
 
 const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
+
+function csvColumnIndex(header: string[], ...names: string[]): number {
+  const want = names.map((n) => n.trim().toLowerCase());
+  return header.findIndex((h) => want.includes(h.trim().toLowerCase()));
+}
+
+/** Unique Village / Area / City labels from the CSV (in-memory; no DB). */
+function uniqueGeoFromPolicyCsv(header: string[], dataRows: string[][]) {
+  const villageIdx = csvColumnIndex(header, "Village");
+  const areaIdx = csvColumnIndex(header, "area");
+  const cityIdx = csvColumnIndex(header, "city");
+  const villages = new Set<string>();
+  const areas = new Set<string>();
+  const cities = new Set<string>();
+  for (const row of dataRows) {
+    if (villageIdx >= 0) {
+      const v = (row[villageIdx] ?? "").trim();
+      if (v) villages.add(v);
+    }
+    if (areaIdx >= 0) {
+      const v = (row[areaIdx] ?? "").trim();
+      if (v) areas.add(v);
+    }
+    if (cityIdx >= 0) {
+      const v = (row[cityIdx] ?? "").trim();
+      if (v) cities.add(v);
+    }
+  }
+  return {
+    villages: [...villages],
+    areas: [...areas],
+    cities: [...cities],
+  };
+}
 
 export type PolicyCsvImportJobResult = {
   jobId: string;
@@ -148,16 +181,7 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
 
   if (!opts.dryRun && legacyFormat) {
-    const villages: string[] = [];
-    const areas: string[] = [];
-    const cities: string[] = [];
-    for (const row of dataRows) {
-      const map = rowToHeaderMap(header, row);
-      villages.push(getCsvField(map, "Village"));
-      areas.push(getCsvField(map, "area"));
-      cities.push(getCsvField(map, "city"));
-    }
-    await ensureGeoDropdowns({ villages, areas, cities });
+    await ensureGeoDropdowns(uniqueGeoFromPolicyCsv(header, dataRows));
   }
 
   for (let batchStart = 0; batchStart < dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {

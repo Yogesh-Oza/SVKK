@@ -1,4 +1,4 @@
-import { DropdownType } from "@prisma/client";
+import { DropdownType, Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 
 const SKIP_LABEL = /^(na|n\/a|n\.a\.|null|none|-|—|\.|nil)$/i;
@@ -22,54 +22,118 @@ function matchKey(raw: string): string {
   return dropdownOptionSlug(raw);
 }
 
-export type EnsureDropdownResult = { created: number; reused: number };
+type WantedByType = Map<DropdownType, Map<string, string>>;
 
-/**
- * Insert missing AREA / VILLAGE (or CITY) master rows from import labels.
- * Matches existing options by slug of value or label (case-insensitive).
- * Re-activates inactive matches. Does not change labels of existing rows.
- */
-export async function ensureDropdownOptions(
+function collectWanted(
   type: DropdownType,
-  labels: Array<string | null | undefined>,
-): Promise<EnsureDropdownResult> {
-  const wanted = new Map<string, string>();
+  labels: Array<string | null | undefined> | undefined,
+  into: WantedByType,
+): void {
+  if (!labels?.length) return;
+  let bucket = into.get(type);
+  if (!bucket) {
+    bucket = new Map();
+    into.set(type, bucket);
+  }
   for (const raw of labels) {
     const label = parseDropdownImportLabel(raw);
     if (!label) continue;
     const slug = dropdownOptionSlug(label);
     if (!slug) continue;
-    if (!wanted.has(slug)) wanted.set(slug, label);
+    if (!bucket.has(slug)) bucket.set(slug, label);
+  }
+}
+
+export type EnsureDropdownResult = { created: number; reused: number };
+
+/**
+ * Insert missing dropdown rows for one type.
+ * Loads existing options once, then bulk-inserts with skipDuplicates
+ * (MySQL INSERT IGNORE / ON CONFLICT DO NOTHING).
+ */
+export async function ensureDropdownOptions(
+  type: DropdownType,
+  labels: Array<string | null | undefined>,
+): Promise<EnsureDropdownResult> {
+  return syncDropdownLabels(new Map([[type, labels]]));
+}
+
+/**
+ * Sync Village / Area / City in one findMany + one createMany (not per CSV row).
+ */
+export async function ensureGeoDropdowns(opts: {
+  villages?: Array<string | null | undefined>;
+  areas?: Array<string | null | undefined>;
+  cities?: Array<string | null | undefined>;
+}): Promise<EnsureDropdownResult> {
+  return syncDropdownLabels(
+    new Map([
+      [DropdownType.VILLAGE, opts.villages],
+      [DropdownType.AREA, opts.areas],
+      [DropdownType.CITY, opts.cities],
+    ]),
+  );
+}
+
+async function syncDropdownLabels(
+  labelsByType: Map<DropdownType, Array<string | null | undefined> | undefined>,
+): Promise<EnsureDropdownResult> {
+  const wanted: WantedByType = new Map();
+  for (const [type, labels] of labelsByType) {
+    collectWanted(type, labels, wanted);
   }
   if (wanted.size === 0) return { created: 0, reused: 0 };
 
+  const types = [...wanted.keys()];
   const existing = await prisma.dropdownOption.findMany({
-    where: { type },
-    select: { id: true, value: true, label: true, isActive: true },
+    where: { type: { in: types } },
+    select: { id: true, type: true, value: true, label: true, isActive: true },
   });
 
-  const byKey = new Map<string, (typeof existing)[number]>();
+  const byTypeKey = new Map<DropdownType, Map<string, (typeof existing)[number]>>();
   for (const row of existing) {
+    let map = byTypeKey.get(row.type);
+    if (!map) {
+      map = new Map();
+      byTypeKey.set(row.type, map);
+    }
     const v = matchKey(row.value);
     const l = matchKey(row.label);
-    if (v && !byKey.has(v)) byKey.set(v, row);
-    if (l && !byKey.has(l)) byKey.set(l, row);
+    if (v && !map.has(v)) map.set(v, row);
+    if (l && !map.has(l)) map.set(l, row);
   }
 
   let created = 0;
   let reused = 0;
-  const toCreate: Array<{ value: string; label: string }> = [];
+  const toCreate: Array<{
+    type: DropdownType;
+    value: string;
+    label: string;
+    sortOrder: number;
+    isActive: boolean;
+    isSystem: boolean;
+  }> = [];
   const toReactivate: string[] = [];
 
-  for (const [slug, label] of wanted) {
-    const hit = byKey.get(slug);
-    if (hit) {
-      reused++;
-      if (!hit.isActive) toReactivate.push(hit.id);
-      continue;
+  for (const [type, slugs] of wanted) {
+    const existingForType = byTypeKey.get(type) ?? new Map();
+    for (const [slug, label] of slugs) {
+      const hit = existingForType.get(slug);
+      if (hit) {
+        reused++;
+        if (!hit.isActive) toReactivate.push(hit.id);
+        continue;
+      }
+      toCreate.push({
+        type,
+        value: slug,
+        label,
+        sortOrder: 0,
+        isActive: true,
+        isSystem: false,
+      });
+      created++;
     }
-    toCreate.push({ value: slug, label });
-    created++;
   }
 
   if (toReactivate.length > 0) {
@@ -81,14 +145,7 @@ export async function ensureDropdownOptions(
 
   if (toCreate.length > 0) {
     await prisma.dropdownOption.createMany({
-      data: toCreate.map((row) => ({
-        type,
-        value: row.value,
-        label: row.label,
-        sortOrder: 0,
-        isActive: true,
-        isSystem: false,
-      })),
+      data: toCreate,
       skipDuplicates: true,
     });
   }
@@ -96,58 +153,52 @@ export async function ensureDropdownOptions(
   return { created, reused };
 }
 
-export async function ensureGeoDropdowns(opts: {
-  villages?: Array<string | null | undefined>;
-  areas?: Array<string | null | undefined>;
-  cities?: Array<string | null | undefined>;
-}): Promise<void> {
-  await Promise.all([
-    opts.villages?.length
-      ? ensureDropdownOptions(DropdownType.VILLAGE, opts.villages)
-      : Promise.resolve(),
-    opts.areas?.length
-      ? ensureDropdownOptions(DropdownType.AREA, opts.areas)
-      : Promise.resolve(),
-    opts.cities?.length
-      ? ensureDropdownOptions(DropdownType.CITY, opts.cities)
-      : Promise.resolve(),
+type DistinctRow = { value: string };
+
+async function distinctNonEmpty(query: Prisma.Sql): Promise<string[]> {
+  const rows = await prisma.$queryRaw<DistinctRow[]>(query);
+  const out: string[] = [];
+  for (const row of rows) {
+    if (row.value) out.push(row.value);
+  }
+  return out;
+}
+
+/**
+ * One DISTINCT per geo column (uses policy village/area indexes). Runs once after import.
+ */
+export async function distinctGeoValuesFromRecords(): Promise<{
+  villages: string[];
+  areas: string[];
+  cities: string[];
+}> {
+  const [policyVillages, policyAreas, policyCities, claimVillages, claimAreas] = await Promise.all([
+    distinctNonEmpty(
+      Prisma.sql`SELECT DISTINCT village AS value FROM policy WHERE deletedAt IS NULL AND village IS NOT NULL AND village <> ''`,
+    ),
+    distinctNonEmpty(
+      Prisma.sql`SELECT DISTINCT area AS value FROM policy WHERE deletedAt IS NULL AND area IS NOT NULL AND area <> ''`,
+    ),
+    distinctNonEmpty(
+      Prisma.sql`SELECT DISTINCT city AS value FROM policy WHERE deletedAt IS NULL AND city IS NOT NULL AND city <> ''`,
+    ),
+    distinctNonEmpty(
+      Prisma.sql`SELECT DISTINCT village AS value FROM claim WHERE village IS NOT NULL AND village <> ''`,
+    ),
+    distinctNonEmpty(
+      Prisma.sql`SELECT DISTINCT hospitalArea AS value FROM claim WHERE hospitalArea IS NOT NULL AND hospitalArea <> ''`,
+    ),
   ]);
+
+  return {
+    villages: [...policyVillages, ...claimVillages],
+    areas: [...policyAreas, ...claimAreas],
+    cities: policyCities,
+  };
 }
 
 /** Create missing Area / Village / City options from values already stored on policies and claims. */
-export async function backfillGeoDropdownsFromRecords(): Promise<void> {
-  const [policyVillages, policyAreas, policyCities, claimVillages, claimAreas] = await Promise.all([
-    prisma.policy.groupBy({
-      by: ["village"],
-      where: { deletedAt: null, village: { not: null } },
-    }),
-    prisma.policy.groupBy({
-      by: ["area"],
-      where: { deletedAt: null, area: { not: null } },
-    }),
-    prisma.policy.groupBy({
-      by: ["city"],
-      where: { deletedAt: null, city: { not: null } },
-    }),
-    prisma.claim.groupBy({
-      by: ["village"],
-      where: { village: { not: null } },
-    }),
-    prisma.claim.groupBy({
-      by: ["hospitalArea"],
-      where: { hospitalArea: { not: null } },
-    }),
-  ]);
-
-  await ensureGeoDropdowns({
-    villages: [
-      ...policyVillages.map((r) => r.village),
-      ...claimVillages.map((r) => r.village),
-    ],
-    areas: [
-      ...policyAreas.map((r) => r.area),
-      ...claimAreas.map((r) => r.hospitalArea),
-    ],
-    cities: policyCities.map((r) => r.city),
-  });
+export async function backfillGeoDropdownsFromRecords(): Promise<EnsureDropdownResult> {
+  const geo = await distinctGeoValuesFromRecords();
+  return ensureGeoDropdowns(geo);
 }
