@@ -113,3 +113,41 @@ export async function ensureGeoDropdowns(opts: {
       : Promise.resolve(),
   ]);
 }
+
+/** Create missing Area / Village / City options from values already stored on policies and claims. */
+export async function backfillGeoDropdownsFromRecords(): Promise<void> {
+  const [policyVillages, policyAreas, policyCities, claimVillages, claimAreas] = await Promise.all([
+    prisma.policy.groupBy({
+      by: ["village"],
+      where: { deletedAt: null, village: { not: null } },
+    }),
+    prisma.policy.groupBy({
+      by: ["area"],
+      where: { deletedAt: null, area: { not: null } },
+    }),
+    prisma.policy.groupBy({
+      by: ["city"],
+      where: { deletedAt: null, city: { not: null } },
+    }),
+    prisma.claim.groupBy({
+      by: ["village"],
+      where: { village: { not: null } },
+    }),
+    prisma.claim.groupBy({
+      by: ["hospitalArea"],
+      where: { hospitalArea: { not: null } },
+    }),
+  ]);
+
+  await ensureGeoDropdowns({
+    villages: [
+      ...policyVillages.map((r) => r.village),
+      ...claimVillages.map((r) => r.village),
+    ],
+    areas: [
+      ...policyAreas.map((r) => r.area),
+      ...claimAreas.map((r) => r.hospitalArea),
+    ],
+    cities: policyCities.map((r) => r.city),
+  });
+}

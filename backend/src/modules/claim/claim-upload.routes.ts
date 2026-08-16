@@ -38,7 +38,7 @@ import {
   claimRowToMap,
   parseClaimFile,
 } from "./claim-csv-parse.js";
-import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
+import { ensureGeoDropdowns, backfillGeoDropdownsFromRecords } from "../dropdowns/ensure-dropdown-options.js";
 import { buildClaimImportPolicyCache, buildClaimImportTypeCache } from "./claim-policy-match.js";
 import {
   createPreviewToken,
@@ -369,6 +369,10 @@ async function runClaimImport(
         });
       }
     }
+  }
+
+  if (!opts.dryRun) {
+    await backfillGeoDropdownsFromRecords();
   }
 
   stats.created = created;

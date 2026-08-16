@@ -19,7 +19,7 @@ import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
 import { getCsvField, parseCsv, rowToHeaderMap } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
-import { ensureGeoDropdowns } from "../dropdowns/ensure-dropdown-options.js";
+import { ensureGeoDropdowns, backfillGeoDropdownsFromRecords } from "../dropdowns/ensure-dropdown-options.js";
 
 const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
 
@@ -222,6 +222,10 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
         });
       }
     }
+  }
+
+  if (!opts.dryRun) {
+    await backfillGeoDropdownsFromRecords();
   }
 
   const durationMs = Math.round(performance.now() - startedAt);
