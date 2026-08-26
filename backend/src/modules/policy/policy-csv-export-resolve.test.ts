@@ -145,6 +145,16 @@ describe("parseCsvDate", () => {
     expect(d?.toISOString()).toBe("1996-09-29T00:00:00.000Z");
   });
 
+  it("parses DD.MM.YYYY Excel-style dates", () => {
+    const d = parseCsvDate("10.08.2026");
+    expect(d?.toISOString()).toBe("2026-08-10T00:00:00.000Z");
+  });
+
+  it("parses DD/MM/YYYY slash dates", () => {
+    const d = parseCsvDate("21/08/2026");
+    expect(d?.toISOString()).toBe("2026-08-21T00:00:00.000Z");
+  });
+
   it("still parses legacy YYYY-MM-DD imports", () => {
     const d = parseCsvDate("1996-09-29");
     expect(d?.toISOString()).toBe("1996-09-29T00:00:00.000Z");

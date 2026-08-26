@@ -561,7 +561,7 @@ export async function processLegacyPolicyCsvRow(
     if (isPolicyCourierUpdateMode(ctx.updateMode)) {
       validatePolicyCourierUpdateRow(map);
     } else {
-      validatePolicyFullUpdateRow(map);
+      validatePolicyFullUpdateRow(header, map);
     }
 
     const { match: policy, conflict } = await resolvePolicyForCsvUpdate(prisma, {

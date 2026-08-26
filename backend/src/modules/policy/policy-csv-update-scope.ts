@@ -1,5 +1,6 @@
 import type { CsvImportMode, CsvUpdateMode } from "@prisma/client";
 import { getCsvField } from "./policy-csv-parse.js";
+import { parseCsvDate } from "./policy-csv-utils.js";
 
 type CsvFieldMap = Map<string, string>;
 
@@ -21,6 +22,45 @@ export type PolicyUpdateFieldPreview = {
 };
 
 const PREVIEW_FIELD_LIMIT = 30;
+
+/** Date columns applied during policy CSV create/update (must parse in dry-run too). */
+const POLICY_CSV_DATE_HEADERS = [
+  "Policy start",
+  "Policy end",
+  "Holder DOB",
+  "PRE. END DATE",
+  "date_of_submission",
+  "courier_date",
+  "nominee_dob",
+  "refund_cheque_date",
+  "Refund Cheque Date",
+] as const;
+
+/** Parse every non-empty date cell that import would write (catches Excel DD.MM.YYYY etc. in preview). */
+export function validatePolicyCsvDateFields(header: string[], map: CsvFieldMap): void {
+  const seen = new Set<string>();
+  for (const key of POLICY_CSV_DATE_HEADERS) {
+    const value = getCsvField(map, key).trim();
+    if (!value) continue;
+    const norm = key.trim().toLowerCase();
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    parseCsvDate(value);
+  }
+  for (const h of header) {
+    const key = h.trim();
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (seen.has(lower)) continue;
+    if (!/(?:^|[\s_])(dob|date|start|end)(?:$|[\s_])/i.test(lower) && !/joining/i.test(lower)) {
+      continue;
+    }
+    const value = getCsvField(map, key).trim();
+    if (!value) continue;
+    seen.add(lower);
+    parseCsvDate(value);
+  }
+}
 
 /** UPDATE_ONLY + FULL: all non-empty CSV columns (except ref no) are applied. */
 export function isPolicyFullUpdateMode(
@@ -114,12 +154,14 @@ export function validatePolicyCourierUpdateRow(map: CsvFieldMap): void {
       "At least one updatable field is required (policy no, Policy start, Policy end, or courier fields)",
     );
   }
+  validatePolicyCsvDateFields([], map);
 }
 
 /** Validate a full v2 update row — ref no only; non-empty columns are applied. */
-export function validatePolicyFullUpdateRow(map: CsvFieldMap): void {
+export function validatePolicyFullUpdateRow(header: string[], map: CsvFieldMap): void {
   const refNo = getCsvField(map, "ref no").trim();
   if (!refNo) {
     throw new Error("ref no is required for policy update");
   }
+  validatePolicyCsvDateFields(header, map);
 }

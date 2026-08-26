@@ -49,12 +49,19 @@ describe("policy-csv-update-scope", () => {
     ]);
   });
 
-  it("validatePolicyFullUpdateRow requires ref no only", () => {
-    const map = rowToHeaderMap(["ref no", "policy no"], ["", "PN-1"]);
-    expect(() => validatePolicyFullUpdateRow(map)).toThrow(/ref no is required/);
+  it("validatePolicyFullUpdateRow requires ref no and parses dates", () => {
+    const header = ["ref no", "policy no", "Policy start"];
+    const map = rowToHeaderMap(header, ["", "PN-1", "10.08.2026"]);
+    expect(() => validatePolicyFullUpdateRow(header, map)).toThrow(/ref no is required/);
 
     const validMap = rowToHeaderMap(["ref no"], ["REF-1"]);
-    expect(() => validatePolicyFullUpdateRow(validMap)).not.toThrow();
+    expect(() => validatePolicyFullUpdateRow(["ref no"], validMap)).not.toThrow();
+
+    const dotted = rowToHeaderMap(header, ["REF-1", "PN-1", "10.08.2026"]);
+    expect(() => validatePolicyFullUpdateRow(header, dotted)).not.toThrow();
+
+    const bad = rowToHeaderMap(header, ["REF-1", "PN-1", "not-a-date"]);
+    expect(() => validatePolicyFullUpdateRow(header, bad)).toThrow(/invalid date/);
   });
 });
 

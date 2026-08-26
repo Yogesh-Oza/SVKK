@@ -21,18 +21,27 @@ export function fmtCsvDate(d: Date | null | undefined): string {
   return `\t${day}-${month}-${year}`;
 }
 
-/** Parse policy CSV date cells (export format, ISO legacy, or locale fallback). */
+/** Parse policy CSV date cells (export format, ISO legacy, Excel/dot forms, or locale fallback). */
 export function parseCsvDate(raw: string): Date | undefined {
-  const t = raw.trim();
+  const t = raw.trim().replace(/^\t+/, "");
   if (!t) return undefined;
 
-  const ddMmYyyy = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(t);
+  // DD-MM-YYYY / DD/MM/YYYY / DD.MM.YYYY (common in Indian Excel exports)
+  const ddMmYyyy = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(t);
   if (ddMmYyyy) {
     const day = Number(ddMmYyyy[1]);
     const month = Number(ddMmYyyy[2]);
     const year = Number(ddMmYyyy[3]);
     const d = new Date(Date.UTC(year, month - 1, day));
-    if (!Number.isNaN(d.getTime())) return d;
+    if (
+      !Number.isNaN(d.getTime()) &&
+      d.getUTCFullYear() === year &&
+      d.getUTCMonth() === month - 1 &&
+      d.getUTCDate() === day
+    ) {
+      return d;
+    }
+    throw new Error(`invalid date: ${raw}`);
   }
 
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);

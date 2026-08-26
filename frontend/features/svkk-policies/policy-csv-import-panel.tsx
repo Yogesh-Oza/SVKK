@@ -77,7 +77,67 @@ type ImportResult = {
   csvVersion?: string;
   warnings?: string[];
   errorReportUrl?: string;
+  status?: string;
+  async?: boolean;
+  progressPercent?: number;
 };
+
+type JobPollResult = {
+  id: string;
+  status: string;
+  createdCount?: number | null;
+  updatedCount?: number | null;
+  failCount?: number | null;
+  successCount?: number | null;
+  durationMs?: number | null;
+  csvVersion?: string | null;
+  warningsJson?: string | null;
+  errorReportUrl?: string;
+  progressPercent?: number | null;
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPolicyImportJob(jobId: string): Promise<ImportResult> {
+  const started = Date.now();
+  const maxWaitMs = 15 * 60 * 1000;
+  for (;;) {
+    const { data } = await backendApi.get<JobPollResult>(`/upload/csv/${jobId}`);
+    if (data.status === "COMPLETED" || data.status === "FAILED") {
+      let warnings: string[] | undefined;
+      if (data.warningsJson) {
+        try {
+          warnings = JSON.parse(data.warningsJson) as string[];
+        } catch {
+          warnings = [data.warningsJson];
+        }
+      }
+      const created = data.createdCount ?? 0;
+      const updated = data.updatedCount ?? 0;
+      const failed = data.failCount ?? 0;
+      return {
+        jobId: data.id,
+        created,
+        updated,
+        failed,
+        valid: data.successCount ?? created + updated,
+        invalid: failed,
+        durationMs: data.durationMs ?? Date.now() - started,
+        csvVersion: data.csvVersion ?? undefined,
+        warnings,
+        errorReportUrl: data.errorReportUrl,
+        status: data.status,
+        progressPercent: data.progressPercent ?? 100,
+      };
+    }
+    if (Date.now() - started > maxWaitMs) {
+      throw new Error("Import is still running after 15 minutes. Check Jobs / try again shortly.");
+    }
+    await sleep(1500);
+  }
+}
 
 type PolicyCsvImportMode = "CREATE_ONLY" | "UPDATE_POLICY";
 
@@ -326,11 +386,15 @@ export function PolicyCsvImportInline({
       if (!previewToken) return;
       setConfirmBusy(true);
       try {
-        const { data } = await backendApi.post<ImportResult>("/upload/policy-csv/confirm", {
+        const { data: started } = await backendApi.post<ImportResult>("/upload/policy-csv/confirm", {
           previewToken,
           force,
           allowNegativeWallet: walletImpact?.wouldGoNegative === true ? true : undefined,
         });
+        const data =
+          started.async || started.status === "PROCESSING" || started.status === "PENDING"
+            ? await waitForPolicyImportJob(started.jobId)
+            : started;
         setLastResult(data);
         setDuplicateImport(null);
         setWalletImpact(null);
@@ -344,7 +408,7 @@ export function PolicyCsvImportInline({
         );
         if (data.failed > 0) {
           toast.message("Import finished with errors", {
-            description: `${data.failed} row(s) failed.`,
+            description: `${data.failed} row(s) failed.${data.errorReportUrl ? " Download the error CSV for details." : ""}`,
           });
         } else if (isUpdateMode) {
           toast.success(`Update complete: ${data.updated} policy row(s) updated`);

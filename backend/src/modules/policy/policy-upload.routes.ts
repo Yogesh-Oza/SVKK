@@ -209,9 +209,11 @@ export function createPolicyUploadRouter(env: Env) {
           force: body.force,
           previewToken: body.previewToken,
           allowNegativeWallet: body.allowNegativeWallet === true,
+          // Return immediately so nginx (default 60s) cannot 504 on large updates.
+          wait: false,
         });
 
-        res.status(201).json(result);
+        res.status(result.async ? 202 : 201).json(result);
       } catch (e) {
         next(e);
       }

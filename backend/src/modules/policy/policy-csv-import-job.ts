@@ -14,13 +14,15 @@ import {
 } from "./policy-csv-format.js";
 import { buildErrorReportCsv, type CsvRowError } from "./policy-csv-errors.js";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
-import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
+import { buildPolicyTypeCache, type PolicyTypeCache } from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
 import { ensureGeoDropdowns, backfillGeoDropdownsFromRecords } from "../dropdowns/ensure-dropdown-options.js";
+import type { GeoScope } from "../../services/mis-scope.service.js";
 
 const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
+const PROGRESS_EVERY = 25;
 
 function csvColumnIndex(header: string[], ...names: string[]): number {
   const want = names.map((n) => n.trim().toLowerCase());
@@ -71,6 +73,10 @@ export type PolicyCsvImportJobResult = {
   errors: string[];
   warnings: string[];
   errorReportUrl?: string;
+  /** Present when confirm returns before the job finishes (avoids nginx 504). */
+  status?: CsvJobStatus;
+  async?: boolean;
+  progressPercent?: number;
 };
 
 type RunOpts = {
@@ -84,6 +90,11 @@ type RunOpts = {
   force: boolean;
   previewToken?: string;
   allowNegativeWallet?: boolean;
+  /**
+   * When false, return immediately with status PROCESSING and finish in the background.
+   * Use for HTTP confirm so nginx/proxy timeouts cannot cut off large imports.
+   */
+  wait?: boolean;
 };
 
 function validateLegacyRow(updateMode: CsvUpdateMode, header: string[], row: string[]) {
@@ -115,10 +126,211 @@ async function findPriorCompletedImport(checksum: string, updateMode: CsvUpdateM
   });
 }
 
+type ProcessCtx = {
+  jobId: string;
+  userId: string;
+  permissions: Set<string>;
+  scope: GeoScope;
+  importMode: CsvImportMode;
+  updateMode: CsvUpdateMode;
+  dryRun: boolean;
+  allowNegativeWallet: boolean;
+  header: string[];
+  dataRows: string[][];
+  headerOffset: number;
+  csvVersion?: string;
+  warnings: string[];
+  supportedFormat: boolean;
+  legacyFormat: boolean;
+  typeCache: PolicyTypeCache | null;
+  startedAt: number;
+  uploadDir: string;
+};
+
+async function finishJobFailed(jobId: string, message: string, startedAt: number): Promise<void> {
+  await prisma.csvImportJob.update({
+    where: { id: jobId },
+    data: {
+      status: CsvJobStatus.FAILED,
+      failCount: 1,
+      durationMs: Math.round(performance.now() - startedAt),
+      completedAt: new Date(),
+      warningsJson: JSON.stringify([message]),
+    },
+  });
+}
+
+async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImportJobResult> {
+  let created = 0;
+  let updated = 0;
+  let fail = 0;
+  const errors: string[] = [];
+  const rowErrors: CsvRowError[] = [];
+
+  await prisma.csvImportJob.update({
+    where: { id: ctx.jobId },
+    data: {
+      status: CsvJobStatus.PROCESSING,
+      rowCount: ctx.dataRows.length,
+      progressPercent: 0,
+    },
+  });
+
+  if (!ctx.dryRun && ctx.legacyFormat) {
+    await ensureGeoDropdowns(uniqueGeoFromPolicyCsv(ctx.header, ctx.dataRows));
+  }
+
+  for (let batchStart = 0; batchStart < ctx.dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, ctx.dataRows.length);
+    for (let i = batchStart; i < batchEnd; i++) {
+      const row = ctx.dataRows[i]!;
+      const rowNum = i + ctx.headerOffset;
+      const svkkIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
+      const policyIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "policy no");
+      const refIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "ref no");
+      const svkkId = svkkIdx >= 0 ? (row[svkkIdx] ?? "") : "";
+      const policyNo = policyIdx >= 0 ? (row[policyIdx] ?? "") : "";
+      const refNo = refIdx >= 0 ? (row[refIdx] ?? "") : "";
+
+      try {
+        if (ctx.dryRun) {
+          if (ctx.supportedFormat && ctx.typeCache) {
+            const outcome = await processLegacyPolicyCsvRow(ctx.header, row, {
+              userId: ctx.userId,
+              permissions: ctx.permissions,
+              scope: ctx.scope,
+              importMode: ctx.importMode,
+              updateMode: ctx.updateMode,
+              typeCache: ctx.typeCache,
+              dryRun: true,
+              allowNegativeWallet: ctx.allowNegativeWallet,
+            });
+            if (outcome === "created") created++;
+            else updated++;
+          } else {
+            validateLegacyRow(ctx.updateMode, ctx.header, row);
+            updated++;
+          }
+        } else if (ctx.supportedFormat && ctx.typeCache) {
+          const outcome = await processLegacyPolicyCsvRow(ctx.header, row, {
+            userId: ctx.userId,
+            permissions: ctx.permissions,
+            scope: ctx.scope,
+            importMode: ctx.importMode,
+            updateMode: ctx.updateMode,
+            typeCache: ctx.typeCache,
+            allowNegativeWallet: ctx.allowNegativeWallet,
+          });
+          if (outcome === "created") created++;
+          else updated++;
+        } else {
+          throw new Error("Non-legacy CSV format is not supported in this import path");
+        }
+      } catch (err) {
+        fail++;
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`row ${rowNum}: ${message}`);
+        rowErrors.push({
+          row: rowNum,
+          error: message,
+          svkkId: svkkId || undefined,
+          policyNo: policyNo || undefined,
+          refNo: refNo || undefined,
+        });
+      }
+
+      if ((i + 1) % PROGRESS_EVERY === 0 || i + 1 === ctx.dataRows.length) {
+        const pct = Math.min(99, Math.round(((i + 1) / Math.max(ctx.dataRows.length, 1)) * 100));
+        await prisma.csvImportJob.update({
+          where: { id: ctx.jobId },
+          data: {
+            progressPercent: pct,
+            createdCount: created,
+            updatedCount: updated,
+            failCount: fail,
+            successCount: created + updated,
+          },
+        });
+      }
+    }
+  }
+
+  if (!ctx.dryRun) {
+    await backfillGeoDropdownsFromRecords();
+  }
+
+  const durationMs = Math.round(performance.now() - ctx.startedAt);
+  const valid = created + updated;
+  const status = fail > 0 && valid === 0 ? CsvJobStatus.FAILED : CsvJobStatus.COMPLETED;
+
+  let errorReportPath: string | undefined;
+  if (rowErrors.length > 0) {
+    errorReportPath = join(ctx.uploadDir, `errors-${ctx.jobId}.csv`);
+    await writeFile(errorReportPath, buildErrorReportCsv(rowErrors), "utf8");
+  }
+
+  await prisma.csvImportJob.update({
+    where: { id: ctx.jobId },
+    data: {
+      status,
+      rowCount: ctx.dataRows.length,
+      successCount: valid,
+      failCount: fail,
+      createdCount: created,
+      updatedCount: updated,
+      durationMs,
+      csvVersion: ctx.csvVersion,
+      warningsJson: ctx.warnings.length ? JSON.stringify(ctx.warnings) : undefined,
+      errorReportS3Key: errorReportPath,
+      progressPercent: 100,
+      completedAt: new Date(),
+    },
+  });
+
+  await writeActivityLog({
+    userId: ctx.userId,
+    module: "upload",
+    action: ctx.dryRun ? "CSV_VALIDATED" : "CSV_IMPORTED",
+    entityType: "CsvImportJob",
+    entityId: ctx.jobId,
+    afterData: {
+      created,
+      updated,
+      fail,
+      dryRun: ctx.dryRun,
+      durationMs,
+      importMode: ctx.importMode,
+    },
+  });
+
+  return {
+    jobId: ctx.jobId,
+    mode: ctx.importMode,
+    dryRun: ctx.dryRun,
+    rowCount: ctx.dataRows.length,
+    created,
+    updated,
+    failed: fail,
+    valid,
+    invalid: fail,
+    durationMs,
+    csvVersion: ctx.csvVersion,
+    errors: errors.slice(0, 50),
+    warnings: ctx.warnings,
+    errorReportUrl: errorReportPath ? `/upload/csv/${ctx.jobId}/errors.csv` : undefined,
+    status,
+    progressPercent: 100,
+  };
+}
+
 /**
  * Run legacy/v2 policy CSV import or validation job.
+ * Pass `wait: false` to return while processing continues (confirm path).
  */
-export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<PolicyCsvImportJobResult> {
+export async function runPolicyCsvImportJob(
+  env: Env,
+  opts: RunOpts,
+): Promise<PolicyCsvImportJobResult> {
   const checksum = createHash("sha256").update(opts.fileBuffer).digest("hex");
   const prior = await findPriorCompletedImport(checksum, opts.updateMode);
 
@@ -146,6 +358,7 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
       previewTokenHash: opts.previewToken ? hashPolicyPreviewToken(opts.previewToken) : undefined,
       createdById: opts.userId,
       status: CsvJobStatus.PENDING,
+      progressPercent: 0,
     },
   });
 
@@ -157,15 +370,9 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   const allRows = parseCsv(text);
   const { csvVersion, header, dataRows } = parseCsvWithOptionalVersion(allRows);
   if (!header.length) {
+    await finishJobFailed(job.id, "CSV has no header row", startedAt);
     throw new AppError("CSV_EMPTY", "CSV has no header row", 400);
   }
-
-  let created = 0;
-  let updated = 0;
-  let fail = 0;
-  const errors: string[] = [];
-  const rowErrors: CsvRowError[] = [];
-  const warnings = collectDeprecatedHeaderWarnings(header);
 
   const policyScope = await loadMisScope(opts.userId, opts.permissions, "policy");
   const legacyFormat = isLegacyPolicyCsvFormat(header);
@@ -175,135 +382,65 @@ export async function runPolicyCsvImportJob(env: Env, opts: RunOpts): Promise<Po
   const typeCache = supportedFormat ? await buildPolicyTypeCache(prisma) : null;
 
   if (!supportedFormat) {
+    await finishJobFailed(job.id, "Unsupported CSV format for policy import", startedAt);
     throw new AppError("CSV_FORMAT", "Unsupported CSV format for policy import", 400);
   }
 
   const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
+  const warnings = collectDeprecatedHeaderWarnings(header);
 
-  if (!opts.dryRun && legacyFormat) {
-    await ensureGeoDropdowns(uniqueGeoFromPolicyCsv(header, dataRows));
-  }
-
-  for (let batchStart = 0; batchStart < dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
-    const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, dataRows.length);
-    for (let i = batchStart; i < batchEnd; i++) {
-      const row = dataRows[i]!;
-      const rowNum = i + headerOffset;
-      const svkkIdx = header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
-      const policyIdx = header.findIndex((h) => h.trim().toLowerCase() === "policy no");
-      const refIdx = header.findIndex((h) => h.trim().toLowerCase() === "ref no");
-      const svkkId = svkkIdx >= 0 ? (row[svkkIdx] ?? "") : "";
-      const policyNo = policyIdx >= 0 ? (row[policyIdx] ?? "") : "";
-      const refNo = refIdx >= 0 ? (row[refIdx] ?? "") : "";
-
-      try {
-        if (opts.dryRun) {
-          if (supportedFormat && typeCache) {
-            const outcome = await processLegacyPolicyCsvRow(header, row, {
-              userId: opts.userId,
-              permissions: opts.permissions,
-              scope: policyScope,
-              importMode: opts.importMode,
-              updateMode: opts.updateMode,
-              typeCache,
-              dryRun: true,
-              allowNegativeWallet: opts.allowNegativeWallet === true,
-            });
-            if (outcome === "created") created++;
-            else updated++;
-          } else {
-            validateLegacyRow(opts.updateMode, header, row);
-            updated++;
-          }
-          continue;
-        }
-
-        if (supportedFormat && typeCache) {
-          const outcome = await processLegacyPolicyCsvRow(header, row, {
-            userId: opts.userId,
-            permissions: opts.permissions,
-            scope: policyScope,
-            importMode: opts.importMode,
-            updateMode: opts.updateMode,
-            typeCache,
-            allowNegativeWallet: opts.allowNegativeWallet === true,
-          });
-          if (outcome === "created") created++;
-          else updated++;
-        } else {
-          throw new Error("Non-legacy CSV format is not supported in this import path");
-        }
-      } catch (err) {
-        fail++;
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`row ${rowNum}: ${message}`);
-        rowErrors.push({
-          row: rowNum,
-          error: message,
-          svkkId: svkkId || undefined,
-          policyNo: policyNo || undefined,
-          refNo: refNo || undefined,
-        });
-      }
-    }
-  }
-
-  if (!opts.dryRun) {
-    await backfillGeoDropdownsFromRecords();
-  }
-
-  const durationMs = Math.round(performance.now() - startedAt);
-  const valid = created + updated;
-  const status = fail > 0 && valid === 0 ? CsvJobStatus.FAILED : CsvJobStatus.COMPLETED;
-
-  let errorReportPath: string | undefined;
-  if (rowErrors.length > 0) {
-    errorReportPath = join(env.UPLOAD_DIR, `errors-${job.id}.csv`);
-    await writeFile(errorReportPath, buildErrorReportCsv(rowErrors), "utf8");
-  }
-
-  await prisma.csvImportJob.update({
-    where: { id: job.id },
-    data: {
-      status,
-      rowCount: dataRows.length,
-      successCount: valid,
-      failCount: fail,
-      createdCount: created,
-      updatedCount: updated,
-      durationMs,
-      csvVersion,
-      warningsJson: warnings.length ? JSON.stringify(warnings) : undefined,
-      errorReportS3Key: errorReportPath,
-      completedAt: new Date(),
-    },
-  });
-
-  await writeActivityLog({
-    userId: opts.userId,
-    module: "upload",
-    action: opts.dryRun ? "CSV_VALIDATED" : "CSV_IMPORTED",
-    entityType: "CsvImportJob",
-    entityId: job.id,
-    afterData: { created, updated, fail, dryRun: opts.dryRun, durationMs, importMode: opts.importMode },
-  });
-
-  return {
+  const ctx: ProcessCtx = {
     jobId: job.id,
-    mode: opts.importMode,
+    userId: opts.userId,
+    permissions: opts.permissions,
+    scope: policyScope,
+    importMode: opts.importMode,
+    updateMode: opts.updateMode,
     dryRun: opts.dryRun,
-    rowCount: dataRows.length,
-    created,
-    updated,
-    failed: fail,
-    valid,
-    invalid: fail,
-    durationMs,
+    allowNegativeWallet: opts.allowNegativeWallet === true,
+    header,
+    dataRows,
+    headerOffset,
     csvVersion,
-    errors: errors.slice(0, 50),
     warnings,
-    errorReportUrl: errorReportPath ? `/upload/csv/${job.id}/errors.csv` : undefined,
+    supportedFormat,
+    legacyFormat,
+    typeCache,
+    startedAt,
+    uploadDir: env.UPLOAD_DIR,
   };
+
+  const wait = opts.wait !== false;
+  if (!wait) {
+    void processPolicyCsvImportJob(ctx).catch(async (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      try {
+        await finishJobFailed(job.id, message, startedAt);
+      } catch {
+        /* ignore secondary failure */
+      }
+    });
+    return {
+      jobId: job.id,
+      mode: opts.importMode,
+      dryRun: opts.dryRun,
+      rowCount: dataRows.length,
+      created: 0,
+      updated: 0,
+      failed: 0,
+      valid: 0,
+      invalid: 0,
+      durationMs: Math.round(performance.now() - startedAt),
+      csvVersion,
+      errors: [],
+      warnings,
+      status: CsvJobStatus.PROCESSING,
+      async: true,
+      progressPercent: 0,
+    };
+  }
+
+  return processPolicyCsvImportJob(ctx);
 }
 
 /** Load a stored preview file and run import (confirm step). */
