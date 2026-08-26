@@ -189,19 +189,21 @@ describe("policy-csv-preview", () => {
     ]);
   });
 
-  it("buildPolicyImportPreview caps previewRows at POLICY_PREVIEW_ROW_LIMIT", async () => {
+  it("buildPolicyImportPreview returns every row (like claims preview)", async () => {
     vi.mocked(resolvePolicyForCsvImport).mockResolvedValue({
       match: null,
       matchedBy: null,
     });
     vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("created");
 
-    const dataRows = Array.from({ length: POLICY_PREVIEW_ROW_LIMIT + 5 }, () => [...row]);
+    const total = 25;
+    const dataRows = Array.from({ length: total }, () => [...row]);
     const { previewRows, summary } = await buildPolicyImportPreview(header, dataRows, 2, previewCtx);
 
-    expect(previewRows).toHaveLength(POLICY_PREVIEW_ROW_LIMIT);
-    expect(summary.totalRows).toBe(POLICY_PREVIEW_ROW_LIMIT + 5);
-    expect(summary.ready).toBe(POLICY_PREVIEW_ROW_LIMIT + 5);
+    expect(previewRows).toHaveLength(total);
+    expect(summary.totalRows).toBe(total);
+    expect(summary.ready).toBe(total);
+    expect(POLICY_PREVIEW_ROW_LIMIT).toBe(Number.POSITIVE_INFINITY);
   });
 
   it("buildPolicyImportPreview sums create-row CD as wallet debit", async () => {

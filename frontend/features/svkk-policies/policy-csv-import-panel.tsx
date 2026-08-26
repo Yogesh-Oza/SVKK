@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { getSvkkErrorMessage } from "@/lib/svkk/api-error";
 import { backendApi } from "@/lib/svkk/api";
-import { AlertTriangle, Download, FileSpreadsheet, Upload } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Search, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -56,6 +57,8 @@ type PolicyPreviewSummary = {
   errors: number;
   conflicts: number;
 };
+
+type PreviewFilter = "all" | "attention" | "ready" | "exists" | "error" | "conflict";
 
 type DuplicateImportInfo = {
   jobId: string;
@@ -98,10 +101,106 @@ const IMPORT_MODE_CONFIG: Record<
 };
 
 function statusBadge(status: PolicyPreviewStatus): { label: string; className: string } {
-  if (status === "READY") return { label: "Ready", className: "text-emerald-600" };
-  if (status === "EXISTS") return { label: "Exists", className: "text-amber-600" };
-  if (status === "CONFLICT") return { label: "Conflict", className: "text-destructive" };
+  if (status === "READY") return { label: "Will update", className: "text-sky-700" };
+  if (status === "EXISTS") return { label: "Already exists", className: "text-amber-600" };
+  if (status === "CONFLICT") return { label: "Conflict", className: "text-amber-600" };
   return { label: "Error", className: "text-destructive" };
+}
+
+function createStatusBadge(status: PolicyPreviewStatus): { label: string; className: string } {
+  if (status === "READY") return { label: "Will create", className: "text-emerald-600" };
+  if (status === "EXISTS") return { label: "Already exists", className: "text-amber-600" };
+  if (status === "CONFLICT") return { label: "Conflict", className: "text-amber-600" };
+  return { label: "Error", className: "text-destructive" };
+}
+
+/** Explain outcome and how to fix errors/conflicts (claims-style guidance). */
+function statusExplain(row: PolicyPreviewRow, isUpdateMode: boolean): string {
+  const msg = (row.errorMessage ?? "").trim();
+  const lower = msg.toLowerCase();
+
+  if (row.status === "READY") {
+    if (isUpdateMode) {
+      const n = row.updateFields?.length ?? 0;
+      return n > 0
+        ? `Matched by ref no. ${n} field${n === 1 ? "" : "s"} will be written to the policy.`
+        : "Matched by ref no. No non-empty updatable fields in this row.";
+    }
+    return "Identifiers are free. This row will create a new policy.";
+  }
+
+  if (row.status === "EXISTS") {
+    return "A live policy already matches these identifiers. Switch to Update policy, or remove this row from the create file.";
+  }
+
+  if (row.status === "CONFLICT") {
+    if (lower.includes("svkk id does not match")) {
+      return `${msg} Fix: use the SVKK ID already on that ref no, or correct the ref no.`;
+    }
+    if (lower.includes("year") && lower.includes("does not match")) {
+      return `${msg} Fix: set Year to the policy’s period year, or clear Year so only ref no is used.`;
+    }
+    if (lower.includes("policy no already belongs")) {
+      return `${msg} Fix: use a unique policy no, or keep the existing policy no for this ref no.`;
+    }
+    if (lower.includes("conflicting identifiers")) {
+      return `${msg} Fix: make ref no, SVKK ID, and policy no point to the same policy.`;
+    }
+    if (lower.includes("multiple policies")) {
+      return `${msg} Fix: add a unique ref no (and year if needed) so only one policy matches.`;
+    }
+    return msg
+      ? `${msg} Fix the conflicting columns in the CSV, then preview again.`
+      : "Identifiers match more than one policy. Disambiguate with ref no / year / policy no.";
+  }
+
+  // ERROR
+  if (lower.includes("not found") && lower.includes("ref no")) {
+    return `${msg} Fix: use an existing Reference No from the policy register, or create the policy first.`;
+  }
+  if (lower.includes("ref no is required")) {
+    return "Ref no is required for updates. Add the Reference No column and fill every row.";
+  }
+  if (lower.includes("product type") || lower.includes("invalid product")) {
+    return `${msg} Fix: use a Product Type from the sample CSV / allowed list.`;
+  }
+  if (lower.includes("required") || lower.includes("missing") || lower.includes("invalid")) {
+    return msg
+      ? `${msg} Fix the highlighted field in the CSV, then preview again.`
+      : "Validation failed. Compare this row to the sample CSV and fix required fields.";
+  }
+  return msg || "This row failed validation. Fix the CSV and preview again.";
+}
+
+function rowNeedsAttention(row: PolicyPreviewRow): boolean {
+  return row.status === "ERROR" || row.status === "CONFLICT" || row.status === "EXISTS";
+}
+
+function rowMatchesFilter(row: PolicyPreviewRow, filter: PreviewFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "attention") return rowNeedsAttention(row);
+  if (filter === "ready") return row.status === "READY";
+  if (filter === "exists") return row.status === "EXISTS";
+  if (filter === "error") return row.status === "ERROR";
+  if (filter === "conflict") return row.status === "CONFLICT";
+  return true;
+}
+
+function rowSearchHaystack(row: PolicyPreviewRow): string {
+  return [
+    row.refNo,
+    row.policyNo,
+    row.svkkId,
+    row.holderName,
+    row.productType,
+    row.village,
+    row.errorMessage,
+    row.detailMessage,
+    ...(row.updateFields?.flatMap((f) => [f.field, f.value]) ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function formatImportTimestamp(iso: string): string {
@@ -148,6 +247,8 @@ export function PolicyCsvImportInline({
   const [walletImpact, setWalletImpact] = useState<PolicyCsvWalletImpact | null>(null);
   const [lastResult, setLastResult] = useState<ImportResult | null>(null);
   const [importMsg, setImportMsg] = useState("");
+  const [previewFilter, setPreviewFilter] = useState<PreviewFilter>("all");
+  const [previewSearch, setPreviewSearch] = useState("");
 
   const modeConfig = IMPORT_MODE_CONFIG[importMode];
   const isUpdateMode = importMode === "UPDATE_POLICY";
@@ -205,6 +306,8 @@ export function PolicyCsvImportInline({
       setHeaderWarnings(data.warnings ?? []);
       setDuplicateImport(data.duplicateImport ?? null);
       setWalletImpact(data.walletImpact ?? null);
+      setPreviewFilter("all");
+      setPreviewSearch("");
       setPreviewOpen(true);
       if (data.duplicateImport) {
         toast.warning("This file was imported before", {
@@ -264,6 +367,29 @@ export function PolicyCsvImportInline({
       (summary.errors > 0 || summary.conflicts > 0 || summary.alreadyExists > 0);
 
   const blockConfirm = Boolean(duplicateImport) && !confirmDisabled;
+
+  const attentionCount = previewRows.filter(rowNeedsAttention).length;
+  const searchNeedle = previewSearch.trim().toLowerCase();
+  const visibleRows = previewRows.filter((row) => {
+    if (!rowMatchesFilter(row, previewFilter)) return false;
+    if (!searchNeedle) return true;
+    return rowSearchHaystack(row).includes(searchNeedle);
+  });
+
+  const filterChips: { id: PreviewFilter; label: string; count: number }[] = [
+    { id: "all", label: "All rows", count: summary?.totalRows ?? previewRows.length },
+    { id: "attention", label: "Needs attention", count: attentionCount },
+    {
+      id: "ready",
+      label: isUpdateMode ? "Will update" : "Will create",
+      count: summary?.ready ?? 0,
+    },
+    ...(!isUpdateMode
+      ? [{ id: "exists" as const, label: "Already exist", count: summary?.alreadyExists ?? 0 }]
+      : []),
+    { id: "error", label: "Errors", count: summary?.errors ?? 0 },
+    { id: "conflict", label: "Conflicts", count: summary?.conflicts ?? 0 },
+  ];
 
   return (
     <>
@@ -356,9 +482,7 @@ export function PolicyCsvImportInline({
               size="sm"
               className="h-auto p-0 text-xs font-bold"
               onClick={() =>
-                onDownloadErrorReport
-                  ? void onDownloadErrorReport(lastResult.jobId)
-                  : undefined
+                onDownloadErrorReport ? void onDownloadErrorReport(lastResult.jobId) : undefined
               }
             >
               Download error CSV
@@ -368,12 +492,18 @@ export function PolicyCsvImportInline({
       ) : null}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className={isUpdateMode ? "max-w-5xl" : "max-w-4xl"}>
+        <DialogContent className="flex h-[min(92vh,920px)] max-h-[92vh] w-[min(98vw,1280px)] max-w-[min(98vw,1280px)] flex-col gap-3 overflow-hidden sm:max-w-[min(98vw,1280px)]">
           <DialogHeader>
-            <DialogTitle>Policy import preview</DialogTitle>
+            <DialogTitle>
+              {isUpdateMode ? "Policy update preview" : "Policy import preview"}
+            </DialogTitle>
             <DialogDescription>
-              First {previewRows.length} row(s) shown. Review status before confirming{" "}
-              {isUpdateMode ? "full policy update" : "create-only import"}.
+              {summary
+                ? `${summary.totalRows.toLocaleString("en-IN")} CSV rows · ${summary.ready} ${isUpdateMode ? "update" : "create"} · ${!isUpdateMode ? `${summary.alreadyExists} already exist · ` : ""}${summary.errors} errors · ${summary.conflicts} conflicts.`
+                : `${previewRows.length.toLocaleString("en-IN")} rows from the file.`}{" "}
+              {isUpdateMode
+                ? "Rows match by Reference No. Fix every Error and Conflict before confirming."
+                : "Create-only blocks on Errors, Conflicts, and rows that already exist."}
             </DialogDescription>
           </DialogHeader>
 
@@ -404,110 +534,132 @@ export function PolicyCsvImportInline({
           ) : null}
 
           {summary ? (
-            <p className="text-muted-foreground text-sm">
-              {summary.ready} ready
-              {!isUpdateMode ? ` · ${summary.alreadyExists} already exist` : ""} · {summary.errors}{" "}
-              errors · {summary.conflicts} conflicts · {summary.totalRows} total rows
-            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {filterChips.map((chip) => (
+                <Button
+                  key={chip.id}
+                  type="button"
+                  size="sm"
+                  variant={previewFilter === chip.id ? "default" : "outline"}
+                  className="h-7 px-2.5 text-xs font-bold"
+                  onClick={() => setPreviewFilter(chip.id)}
+                >
+                  {chip.label} {chip.count}
+                </Button>
+              ))}
+            </div>
           ) : null}
 
-          <div className="max-h-96 overflow-auto rounded border">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <Input
+              value={previewSearch}
+              onChange={(e) => setPreviewSearch(e.target.value)}
+              placeholder="Search ref no, policy no, SVKK ID, holder, village, field values…"
+              className="h-8 pl-8 text-sm"
+            />
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            Showing {visibleRows.length.toLocaleString("en-IN")} of{" "}
+            {previewRows.length.toLocaleString("en-IN")} CSV rows
+            {previewFilter !== "all" ? ` · filter: ${previewFilter}` : ""}
+          </p>
+
+          <div className="min-h-0 flex-1 overflow-auto rounded border">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-background sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Ref no</TableHead>
-                  {!isUpdateMode ? <TableHead>Policy no</TableHead> : null}
-                  {!isUpdateMode ? <TableHead>SVKK ID</TableHead> : null}
-                  {!isUpdateMode ? <TableHead>Holder</TableHead> : null}
-                  {!isUpdateMode ? <TableHead>Product</TableHead> : null}
-                  <TableHead>Status</TableHead>
-                  {isUpdateMode ? (
-                    <>
-                      <TableHead>Field</TableHead>
-                      <TableHead>New value</TableHead>
-                    </>
-                  ) : (
-                    <TableHead>Detail</TableHead>
-                  )}
+                  <TableHead className="w-12">Row</TableHead>
+                  <TableHead>Ref / Holder</TableHead>
+                  <TableHead>Policy / SVKK</TableHead>
+                  <TableHead>Product / Village</TableHead>
+                  <TableHead>What happens</TableHead>
+                  <TableHead>Why</TableHead>
+                  <TableHead>{isUpdateMode ? "Changes" : "Detail"}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {previewRows.flatMap((row) => {
-                  const badge = statusBadge(row.status);
-                  const updateFields =
-                    row.updateFields && row.updateFields.length > 0
-                      ? row.updateFields
-                      : isUpdateMode && row.status === "READY"
-                        ? [{ field: "—", value: "No updatable fields" }]
-                        : [{ field: "—", value: "—" }];
-
-                  if (!isUpdateMode) {
+                {visibleRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-muted-foreground py-8 text-center text-sm">
+                      No policies match this filter or search.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  visibleRows.map((row) => {
+                    const badge = isUpdateMode
+                      ? statusBadge(row.status)
+                      : createStatusBadge(row.status);
+                    const updateFields = row.updateFields ?? [];
                     return (
-                      <TableRow key={row.rowNumber}>
-                        <TableCell className="text-xs">{row.rowNumber}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.refNo || "—"}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.policyNo || "—"}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.svkkId || "—"}</TableCell>
-                        <TableCell className="text-xs">{row.holderName || "—"}</TableCell>
-                        <TableCell className="text-xs">{row.productType || "—"}</TableCell>
-                        <TableCell className={`text-xs font-bold ${badge.className}`}>
+                      <TableRow
+                        key={row.rowNumber}
+                        className="[content-visibility:auto] [contain-intrinsic-size:auto_64px]"
+                      >
+                        <TableCell className="text-muted-foreground text-xs tabular-nums">
+                          {row.rowNumber}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono text-xs">{row.refNo || "—"}</div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.holderName || "No holder name"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono text-xs">{row.policyNo || "—"}</div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.svkkId || "—"}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[140px] text-xs">
+                          <div className="truncate" title={row.productType || undefined}>
+                            {row.productType || "—"}
+                          </div>
+                          <div className="text-muted-foreground text-[11px]">
+                            {row.village || "—"}
+                          </div>
+                        </TableCell>
+                        <TableCell className={`text-xs font-semibold ${badge.className}`}>
                           {badge.label}
                         </TableCell>
                         <TableCell
-                          className={`max-w-[280px] truncate text-xs ${
-                            row.errorMessage ? "text-destructive" : "text-muted-foreground"
+                          className={`max-w-[320px] text-xs whitespace-normal ${
+                            row.status === "ERROR" || row.status === "CONFLICT"
+                              ? "text-destructive"
+                              : "text-muted-foreground"
                           }`}
                         >
-                          {row.errorMessage ?? row.detailMessage ?? (row.status === "READY" ? "OK" : "—")}
+                          {statusExplain(row, isUpdateMode)}
+                        </TableCell>
+                        <TableCell className="max-w-[280px] text-xs">
+                          {isUpdateMode && row.status === "READY" && updateFields.length > 0 ? (
+                            <ul className="space-y-0.5">
+                              {updateFields.map((entry) => (
+                                <li key={`${row.rowNumber}-${entry.field}`} className="leading-snug">
+                                  <span className="text-muted-foreground">{entry.field}</span>
+                                  <span className="text-muted-foreground"> → </span>
+                                  <span className="font-mono break-all">{entry.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : isUpdateMode && row.status === "READY" ? (
+                            <span className="text-muted-foreground">No updatable fields</span>
+                          ) : row.errorMessage &&
+                            (row.status === "ERROR" || row.status === "CONFLICT") ? (
+                            <span className="text-destructive font-mono text-[11px] break-all">
+                              {row.errorMessage}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {row.detailMessage ?? (row.status === "READY" ? "OK" : "—")}
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
-                  }
-
-                  if (row.errorMessage || row.status !== "READY") {
-                    return (
-                      <TableRow key={row.rowNumber}>
-                        <TableCell className="text-xs">{row.rowNumber}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.refNo || "—"}</TableCell>
-                        <TableCell className={`text-xs font-bold ${badge.className}`}>
-                          {badge.label}
-                        </TableCell>
-                        <TableCell colSpan={2} className="text-destructive text-xs">
-                          {row.errorMessage ?? row.detailMessage ?? "—"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }
-
-                  return updateFields.map((entry, index) => (
-                    <TableRow key={`${row.rowNumber}-${entry.field}-${index}`}>
-                      {index === 0 ? (
-                        <>
-                          <TableCell className="text-xs align-top" rowSpan={updateFields.length}>
-                            {row.rowNumber}
-                          </TableCell>
-                          <TableCell
-                            className="font-mono text-xs align-top"
-                            rowSpan={updateFields.length}
-                          >
-                            {row.refNo || "—"}
-                          </TableCell>
-                          <TableCell
-                            className={`text-xs font-bold align-top ${badge.className}`}
-                            rowSpan={updateFields.length}
-                          >
-                            {badge.label}
-                          </TableCell>
-                        </>
-                      ) : null}
-                      <TableCell className="text-xs">{entry.field}</TableCell>
-                      <TableCell className="font-mono text-xs whitespace-normal break-words">
-                        {entry.value}
-                      </TableCell>
-                    </TableRow>
-                  ));
-                })}
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
@@ -515,10 +667,16 @@ export function PolicyCsvImportInline({
           {confirmDisabled ? (
             <p className="text-destructive text-xs">
               {isUpdateMode
-                ? "Update mode: fix error or conflict rows before importing."
-                : "Create-only mode: fix error, conflict, or duplicate rows before importing."}
+                ? `Update blocked: fix ${summary?.errors ?? 0} error${(summary?.errors ?? 0) === 1 ? "" : "s"} and ${summary?.conflicts ?? 0} conflict${(summary?.conflicts ?? 0) === 1 ? "" : "s"} in the CSV, then preview again. Use the Errors / Conflicts chips to find them.`
+                : `Create blocked: fix errors, conflicts, and ${summary?.alreadyExists ?? 0} already-existing row${(summary?.alreadyExists ?? 0) === 1 ? "" : "s"} first. Use Needs attention to list them.`}
             </p>
-          ) : null}
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              {isUpdateMode
+                ? "Ready rows update the matched policy by Reference No. Only non-empty CSV columns are applied."
+                : "Ready rows will create new policies. Identifiers must not already exist."}
+            </p>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="secondary" onClick={() => setPreviewOpen(false)}>

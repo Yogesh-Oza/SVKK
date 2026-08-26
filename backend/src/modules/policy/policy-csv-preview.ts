@@ -27,7 +27,8 @@ import type { GeoScope } from "../../services/mis-scope.service.js";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 
-export const POLICY_PREVIEW_ROW_LIMIT = 20;
+/** @deprecated Preview returns every parsed row (capped by POLICY_IMPORT_MAX_ROWS on upload). Kept for test imports. */
+export const POLICY_PREVIEW_ROW_LIMIT = Number.POSITIVE_INFINITY;
 
 export type PolicyPreviewRowStatus = "READY" | "EXISTS" | "ERROR" | "CONFLICT";
 
@@ -298,7 +299,7 @@ async function evaluatePolicyPreviewRowInternal(
   }
 }
 
-/** Build preview table rows (first N) and aggregate summary for all rows. */
+/** Build preview table rows (all rows) and aggregate summary. */
 export async function buildPolicyImportPreview(
   header: string[],
   dataRows: string[][],
@@ -311,7 +312,7 @@ export async function buildPolicyImportPreview(
 }> {
   const summary = emptyPolicyPreviewSummary();
   summary.totalRows = dataRows.length;
-  const all: PolicyPreviewRow[] = [];
+  const previewRows: PolicyPreviewRow[] = [];
   let totalDebit = new Prisma.Decimal(0);
   let totalCredit = new Prisma.Decimal(0);
 
@@ -319,13 +320,12 @@ export async function buildPolicyImportPreview(
     const row = dataRows[i]!;
     const rowNumber = i + headerOffset;
     const evaluated = await evaluatePolicyPreviewRowInternal(header, row, rowNumber, ctx);
-    all.push(evaluated.row);
+    previewRows.push(evaluated.row);
     recordSummary(summary, evaluated.row.status);
     if (evaluated.walletDelta.gt(0)) totalDebit = totalDebit.plus(evaluated.walletDelta);
     else if (evaluated.walletDelta.lt(0)) totalCredit = totalCredit.plus(evaluated.walletDelta.abs());
   }
 
-  const limit = Math.min(POLICY_PREVIEW_ROW_LIMIT, all.length);
   const current = await loadCurrentWalletBalance();
   const walletImpact =
     current == null
@@ -341,5 +341,5 @@ export async function buildPolicyImportPreview(
           };
         })();
 
-  return { previewRows: all.slice(0, limit), summary, walletImpact };
+  return { previewRows, summary, walletImpact };
 }
