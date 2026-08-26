@@ -22,7 +22,6 @@ import { isImportablePolicyUrl } from "./policy-csv-format.js";
 import { getCsvField, rowToHeaderMap } from "./policy-csv-parse.js";
 import {
   isPolicyCourierUpdateMode,
-  isPolicyFullUpdateMode,
   isPolicyRefNoUpdateMode,
   validatePolicyCourierUpdateRow,
   validatePolicyFullUpdateRow,
@@ -35,6 +34,8 @@ import {
   resolvePolicyForCsvImport,
   resolvePolicyForCsvUpdate,
   resolvePolicyTypeFromCache,
+  type PolicyCsvUpdateLookupCache,
+  type PolicyCsvUpdateMatch,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
 import { prisma } from "../../lib/prisma.js";
@@ -55,6 +56,8 @@ export type LegacyCsvRowContext = {
   typeCache: PolicyTypeCache;
   dryRun?: boolean;
   allowNegativeWallet?: boolean;
+  /** Prefetched policies for UPDATE_ONLY — avoids per-row DB lookups. */
+  updateLookupCache?: PolicyCsvUpdateLookupCache | null;
 };
 
 function parseOptionalDate(raw: string): Date | undefined {
@@ -196,6 +199,7 @@ async function updatePolicyCourierCsvRow(
   header: string[],
   row: string[],
   ctx: LegacyCsvRowContext,
+  prematched?: PolicyCsvUpdateMatch | null,
 ): Promise<void> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
@@ -209,14 +213,17 @@ async function updatePolicyCourierCsvRow(
     throw new Error("policy:update permission required for CSV update");
   }
 
-  const { match: policy, conflict } = await resolvePolicyForCsvUpdate(tx, {
-    refNo,
-    svkkId,
-    policyNo,
-    year: yearCsv,
-  });
+  let policy = prematched ?? null;
+  if (!policy) {
+    const resolved = await resolvePolicyForCsvUpdate(
+      tx,
+      { refNo, svkkId, policyNo, year: yearCsv },
+      ctx.updateLookupCache,
+    );
+    if (resolved.conflict) throw new Error(resolved.conflict);
+    policy = resolved.match;
+  }
 
-  if (conflict) throw new Error(conflict);
   if (!policy) {
     throw new Error(`Policy not found for ref no=${refNo || "—"}`);
   }
@@ -262,9 +269,10 @@ async function updatePolicyCsvRow(
   header: string[],
   row: string[],
   ctx: LegacyCsvRowContext,
+  prematched?: PolicyCsvUpdateMatch | null,
 ): Promise<void> {
   if (isPolicyCourierUpdateMode(ctx.updateMode)) {
-    await updatePolicyCourierCsvRow(tx, header, row, ctx);
+    await updatePolicyCourierCsvRow(tx, header, row, ctx, prematched);
     return;
   }
 
@@ -274,12 +282,28 @@ async function updatePolicyCsvRow(
   const policyNo = getCsvField(map, "policy no");
   const yearCsv = getCsvField(map, "year");
 
-  const { match: policy, conflict } =
-    ctx.importMode === "UPDATE_ONLY"
-      ? await resolvePolicyForCsvUpdate(tx, { refNo, svkkId, policyNo, year: yearCsv })
-      : await resolvePolicyForCsvImport(tx, { svkkId, policyNo, refNo, year: yearCsv });
+  let policy = prematched ?? null;
+  if (!policy) {
+    if (ctx.importMode === "UPDATE_ONLY") {
+      const resolved = await resolvePolicyForCsvUpdate(
+        tx,
+        { refNo, svkkId, policyNo, year: yearCsv },
+        ctx.updateLookupCache,
+      );
+      if (resolved.conflict) throw new Error(resolved.conflict);
+      policy = resolved.match;
+    } else {
+      const resolved = await resolvePolicyForCsvImport(tx, {
+        svkkId,
+        policyNo,
+        refNo,
+        year: yearCsv,
+      });
+      if (resolved.conflict) throw new Error(resolved.conflict);
+      policy = resolved.match;
+    }
+  }
 
-  if (conflict) throw new Error(conflict);
   if (!policy) {
     throw new Error(
       ctx.importMode === "UPDATE_ONLY"
@@ -564,12 +588,11 @@ export async function processLegacyPolicyCsvRow(
       validatePolicyFullUpdateRow(header, map);
     }
 
-    const { match: policy, conflict } = await resolvePolicyForCsvUpdate(prisma, {
-      refNo,
-      svkkId,
-      policyNo,
-      year: yearCsv,
-    });
+    const { match: policy, conflict } = await resolvePolicyForCsvUpdate(
+      prisma,
+      { refNo, svkkId, policyNo, year: yearCsv },
+      ctx.updateLookupCache,
+    );
 
     if (conflict) throw new Error(conflict);
     if (!policy) {
@@ -579,9 +602,9 @@ export async function processLegacyPolicyCsvRow(
     if (ctx.dryRun) return "updated";
     await prisma.$transaction(async (tx) => {
       if (isPolicyCourierUpdateMode(ctx.updateMode)) {
-        await updatePolicyCourierCsvRow(tx, header, row, ctx);
+        await updatePolicyCourierCsvRow(tx, header, row, ctx, policy);
       } else {
-        await updatePolicyCsvRow(tx, header, row, ctx);
+        await updatePolicyCsvRow(tx, header, row, ctx, policy);
       }
     });
     return "updated";

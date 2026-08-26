@@ -88,6 +88,29 @@ describe("formatActivityLogSummary", () => {
     expect(s).toContain("10 ok");
     expect(s).toContain("2 failed");
   });
+
+  it("formats csv import from created/updated fields", () => {
+    const s = formatActivityLogSummary({
+      id: "3b",
+      module: "upload",
+      action: "CSV_IMPORTED",
+      entityType: "CsvImportJob",
+      entityId: "j2",
+      beforeData: null,
+      afterData: {
+        created: 0,
+        updated: 1576,
+        fail: 0,
+        importMode: "UPDATE_ONLY",
+        fileName: "policy no udate.csv",
+      },
+      createdAt: new Date(),
+    });
+    expect(s).toContain("1576 ok");
+    expect(s).toContain("0 failed");
+    expect(s).toContain("update");
+    expect(s).toContain("policy no udate.csv");
+  });
 });
 
 describe("formatActivityLogDetails", () => {
@@ -104,5 +127,30 @@ describe("formatActivityLogDetails", () => {
     });
     expect(d.some((line) => line.includes("NVKK2025JAN0003"))).toBe(true);
     expect(d.some((line) => line.includes("p1"))).toBe(false);
+  });
+
+  it("includes csv import outcome details", () => {
+    const d = formatActivityLogDetails({
+      id: "2",
+      module: "upload",
+      action: "CSV_IMPORTED",
+      entityType: "CsvImportJob",
+      entityId: "j1",
+      beforeData: null,
+      afterData: {
+        fileName: "policy no udate.csv",
+        rowCount: 1576,
+        created: 0,
+        updated: 1576,
+        fail: 0,
+        importMode: "UPDATE_ONLY",
+        updateMode: "FULL",
+        durationMs: 62220,
+      },
+      createdAt: new Date(),
+    });
+    expect(d.some((line) => line.includes("policy no udate.csv"))).toBe(true);
+    expect(d.some((line) => line.includes("Updated: 1576"))).toBe(true);
+    expect(d.some((line) => line.includes("Rows: 1576"))).toBe(true);
   });
 });

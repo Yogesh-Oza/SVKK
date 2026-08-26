@@ -133,6 +133,7 @@ export type CsvPolicyMatch = {
 /** CSV match keys. `year` scopes SVKK / policy-no lookups to one policy-year row. */
 export type MatchInput = { svkkId: string; policyNo: string; refNo: string; year?: string };
 
+/** Full graph for create/import matching (members/payments needed for some create paths). */
 const policyInclude = {
   insuredParty: true,
   years: {
@@ -149,7 +150,29 @@ const policyInclude = {
   },
 } satisfies Prisma.PolicyInclude;
 
+/**
+ * Slim graph for CSV update match — years only (no members/payments).
+ * Loading payments/members per row is the main bottleneck on ~1.5k updates.
+ */
+const policyIncludeForCsvUpdate = {
+  insuredParty: true,
+  years: {
+    where: { deletedAt: null },
+    orderBy: { yearLabel: "desc" as const },
+  },
+} satisfies Prisma.PolicyInclude;
+
 type PolicyWithRelations = Prisma.PolicyGetPayload<{ include: typeof policyInclude }>;
+export type PolicyCsvUpdateMatch = Prisma.PolicyGetPayload<{ include: typeof policyIncludeForCsvUpdate }>;
+
+/** Prefetched ref-no / policy-no indexes for UPDATE_ONLY CSV jobs. */
+export type PolicyCsvUpdateLookupCache = {
+  byRefNo: Map<string, PolicyCsvUpdateMatch>;
+  /** Live policy ids currently using each policy no. */
+  idsByPolicyNo: Map<string, string[]>;
+};
+
+const UPDATE_LOOKUP_CHUNK = 500;
 
 /** True when the policy's period / year rows include `year`. */
 export function policyMatchesCsvYear(
@@ -227,6 +250,97 @@ async function findByRefNo(
     where: { deletedAt: null, referenceNo: refNo },
     include: policyInclude,
   });
+}
+
+async function findByRefNoForUpdate(
+  tx: Prisma.TransactionClient,
+  refNo: string,
+): Promise<PolicyCsvUpdateMatch | null> {
+  return tx.policy.findFirst({
+    where: { deletedAt: null, referenceNo: refNo },
+    include: policyIncludeForCsvUpdate,
+  });
+}
+
+function addPolicyNoOwner(map: Map<string, string[]>, policyNo: string | null | undefined, id: string) {
+  const key = (policyNo ?? "").trim();
+  if (!key) return;
+  const list = map.get(key);
+  if (list) list.push(id);
+  else map.set(key, [id]);
+}
+
+/**
+ * Batch-load policies for UPDATE_ONLY CSV preview/import (one query per chunk of ref nos).
+ * Also indexes policy numbers so collision checks stay in memory.
+ */
+export async function buildPolicyCsvUpdateLookupCache(
+  tx: Prisma.TransactionClient,
+  input: { refNos: string[]; policyNos?: string[] },
+): Promise<PolicyCsvUpdateLookupCache> {
+  const refNos = [...new Set(input.refNos.map((r) => r.trim()).filter(Boolean))];
+  const policyNos = [...new Set((input.policyNos ?? []).map((p) => p.trim()).filter(Boolean))];
+  const byRefNo = new Map<string, PolicyCsvUpdateMatch>();
+  const idsByPolicyNo = new Map<string, string[]>();
+
+  for (let i = 0; i < refNos.length; i += UPDATE_LOOKUP_CHUNK) {
+    const chunk = refNos.slice(i, i + UPDATE_LOOKUP_CHUNK);
+    const rows = await tx.policy.findMany({
+      where: { deletedAt: null, referenceNo: { in: chunk } },
+      include: policyIncludeForCsvUpdate,
+    });
+    for (const row of rows) {
+      if (row.referenceNo) byRefNo.set(row.referenceNo, row);
+      addPolicyNoOwner(idsByPolicyNo, row.policyNo, row.id);
+    }
+  }
+
+  const missingPolicyNos = policyNos.filter((pn) => !idsByPolicyNo.has(pn));
+  for (let i = 0; i < missingPolicyNos.length; i += UPDATE_LOOKUP_CHUNK) {
+    const chunk = missingPolicyNos.slice(i, i + UPDATE_LOOKUP_CHUNK);
+    const rows = await tx.policy.findMany({
+      where: { deletedAt: null, policyNo: { in: chunk } },
+      select: { id: true, policyNo: true },
+    });
+    for (const row of rows) {
+      addPolicyNoOwner(idsByPolicyNo, row.policyNo, row.id);
+    }
+  }
+
+  return { byRefNo, idsByPolicyNo };
+}
+
+type CsvUpdateMatchInput = { refNo: string; svkkId?: string; policyNo?: string; year?: string };
+
+function resolvePolicyForCsvUpdateFromCache(
+  cache: PolicyCsvUpdateLookupCache,
+  input: CsvUpdateMatchInput,
+): { match: PolicyCsvUpdateMatch | null; conflict?: string } {
+  const refNo = input.refNo.trim();
+  if (!refNo) return { match: null };
+
+  const policy = cache.byRefNo.get(refNo) ?? null;
+  if (!policy) return { match: null };
+
+  const svkkId = (input.svkkId ?? "").trim();
+  if (svkkId && policy.insuredParty.svkkPublicId !== svkkId) {
+    return { match: null, conflict: "SVKK ID does not match policy for ref no" };
+  }
+
+  const year = (input.year ?? "").trim();
+  if (year && !policyMatchesCsvYear(policy, year)) {
+    return { match: null, conflict: `Year "${year}" does not match policy for ref no` };
+  }
+
+  const policyNo = (input.policyNo ?? "").trim();
+  if (policyNo && policy.policyNo !== policyNo) {
+    const owners = cache.idsByPolicyNo.get(policyNo) ?? [];
+    if (owners.some((id) => id !== policy.id)) {
+      return { match: null, conflict: "policy no already belongs to another policy" };
+    }
+  }
+
+  return { match: policy };
 }
 
 /**
@@ -325,22 +439,25 @@ export async function resolvePolicyForCsvImport(
   return { match: null, matchedBy: null };
 }
 
-type CsvUpdateMatchInput = { refNo: string; svkkId?: string; policyNo?: string; year?: string };
-
 /**
  * Ref-no-only lookup for POLICY_COURIER / FULL CSV updates.
- * Flags SVKK ID, year, and policy-no collisions with other policies.
+ * Pass `cache` from buildPolicyCsvUpdateLookupCache to avoid per-row DB hits.
  */
 export async function resolvePolicyForCsvUpdate(
   tx: Prisma.TransactionClient,
   input: CsvUpdateMatchInput,
-): Promise<{ match: PolicyWithRelations | null; conflict?: string }> {
+  cache?: PolicyCsvUpdateLookupCache | null,
+): Promise<{ match: PolicyCsvUpdateMatch | null; conflict?: string }> {
+  if (cache) {
+    return resolvePolicyForCsvUpdateFromCache(cache, input);
+  }
+
   const refNo = input.refNo.trim();
   if (!refNo) {
     return { match: null };
   }
 
-  const policy = await findByRefNo(tx, refNo);
+  const policy = await findByRefNoForUpdate(tx, refNo);
   if (!policy) {
     return { match: null };
   }

@@ -30,12 +30,20 @@ vi.mock("./policy-csv-resolve.js", async (importOriginal) => {
     ...actual,
     resolvePolicyForCsvImport: vi.fn(),
     resolvePolicyForCsvUpdate: vi.fn(),
+    buildPolicyCsvUpdateLookupCache: vi.fn(async () => ({
+      byRefNo: new Map(),
+      idsByPolicyNo: new Map(),
+    })),
   };
 });
 
 import { Prisma } from "@prisma/client";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
-import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
+import {
+  buildPolicyCsvUpdateLookupCache,
+  resolvePolicyForCsvImport,
+  resolvePolicyForCsvUpdate,
+} from "./policy-csv-resolve.js";
 import { getOrCreateWallet } from "../wallet/wallet.service.js";
 
 function mockTypeCache(): PolicyTypeCache {
@@ -144,7 +152,6 @@ describe("policy-csv-preview", () => {
     vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
       match: { id: "p1" } as never,
     });
-    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
 
     const updateHeader = ["ref no", "policy no", "Holder name", "Courier Status"];
     const updateRow = ["REF-1", "PN-1", "New Holder", "YES"];
@@ -156,7 +163,8 @@ describe("policy-csv-preview", () => {
     });
     expect(result.status).toBe("READY");
     expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
-    expect(processLegacyPolicyCsvRow).toHaveBeenCalled();
+    expect(resolvePolicyForCsvUpdate).toHaveBeenCalled();
+    expect(processLegacyPolicyCsvRow).not.toHaveBeenCalled();
     expect(result.detailMessage).toMatch(/policy no = PN-1/);
     expect(result.updateFields).toEqual([
       { field: "policy no", value: "PN-1" },
@@ -169,7 +177,6 @@ describe("policy-csv-preview", () => {
     vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
       match: { id: "p1" } as never,
     });
-    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
 
     const updateHeader = ["ref no", "policy no", "Courier Status"];
     const updateRow = ["REF-1", "PN-1", "YES"];
@@ -181,7 +188,8 @@ describe("policy-csv-preview", () => {
     });
     expect(result.status).toBe("READY");
     expect(resolvePolicyForCsvImport).not.toHaveBeenCalled();
-    expect(processLegacyPolicyCsvRow).toHaveBeenCalled();
+    expect(resolvePolicyForCsvUpdate).toHaveBeenCalled();
+    expect(processLegacyPolicyCsvRow).not.toHaveBeenCalled();
     expect(result.detailMessage).toMatch(/policy no = PN-1/);
     expect(result.updateFields).toEqual([
       { field: "policy no", value: "PN-1" },
@@ -227,10 +235,18 @@ describe("policy-csv-preview", () => {
   });
 
   it("buildPolicyImportPreview uses update-row CD delta vs current policy", async () => {
+    vi.mocked(buildPolicyCsvUpdateLookupCache).mockResolvedValue({
+      byRefNo: new Map([
+        [
+          "REF-1",
+          { id: "p1", cdAccountUsed: true, cdAmount: new Prisma.Decimal("1000") } as never,
+        ],
+      ]),
+      idsByPolicyNo: new Map(),
+    });
     vi.mocked(resolvePolicyForCsvUpdate).mockResolvedValue({
       match: { id: "p1", cdAccountUsed: true, cdAmount: new Prisma.Decimal("1000") } as never,
     });
-    vi.mocked(processLegacyPolicyCsvRow).mockResolvedValue("updated");
 
     const updateHeader = ["ref no", "cd_account_status", "cd_amount"];
     const updateRow = ["REF-1", "Yes", "400"];
@@ -240,6 +256,7 @@ describe("policy-csv-preview", () => {
       updateMode: "FULL",
     });
 
+    expect(buildPolicyCsvUpdateLookupCache).toHaveBeenCalled();
     expect(walletImpact).toEqual({
       totalDebit: 0,
       totalCredit: 600,

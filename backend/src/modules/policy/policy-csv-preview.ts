@@ -12,20 +12,22 @@ import {
   processLegacyPolicyCsvRow,
   type LegacyCsvRowContext,
 } from "./policy-csv-import.js";
-import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate } from "./policy-csv-resolve.js";
+import { resolvePolicyForCsvImport, resolvePolicyForCsvUpdate, buildPolicyCsvUpdateLookupCache } from "./policy-csv-resolve.js";
 import {
   isPolicyCourierUpdateMode,
-  isPolicyFullUpdateMode,
   isPolicyRefNoUpdateMode,
   describePolicyCourierUpdateFields,
   describeCsvRowUpdateFields,
   listPolicyCourierUpdateFieldValues,
   listCsvRowUpdateFieldValues,
+  validatePolicyCourierUpdateRow,
+  validatePolicyFullUpdateRow,
 } from "./policy-csv-update-scope.js";
-import type { PolicyTypeCache } from "./policy-csv-resolve.js";
+import type { PolicyCsvUpdateLookupCache, PolicyTypeCache } from "./policy-csv-resolve.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
+const PREVIEW_CONCURRENCY = Number(process.env.POLICY_PREVIEW_CONCURRENCY ?? 24) || 24;
 
 /** @deprecated Preview returns every parsed row (capped by POLICY_IMPORT_MAX_ROWS on upload). Kept for test imports. */
 export const POLICY_PREVIEW_ROW_LIMIT = Number.POSITIVE_INFINITY;
@@ -198,6 +200,11 @@ function previewEval(row: PolicyPreviewRow, walletDelta = new Prisma.Decimal(0))
   return { row, walletDelta: row.status === "READY" ? walletDelta : new Prisma.Decimal(0) };
 }
 
+type PreviewCtx = Pick<
+  LegacyCsvRowContext,
+  "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId" | "updateLookupCache"
+>;
+
 /**
  * Dry-run evaluation for one legacy/v2 policy CSV row (CREATE_ONLY preview).
  */
@@ -205,7 +212,7 @@ export async function evaluatePolicyPreviewRow(
   header: string[],
   row: string[],
   rowNumber: number,
-  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
+  ctx: PreviewCtx,
 ): Promise<PolicyPreviewRow> {
   const evaluated = await evaluatePolicyPreviewRowInternal(header, row, rowNumber, ctx);
   return evaluated.row;
@@ -215,7 +222,7 @@ async function evaluatePolicyPreviewRowInternal(
   header: string[],
   row: string[],
   rowNumber: number,
-  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
+  ctx: PreviewCtx,
 ): Promise<PreviewEval> {
   const map = rowToHeaderMap(header, row);
   const refNo = getCsvField(map, "ref no");
@@ -235,21 +242,28 @@ async function evaluatePolicyPreviewRowInternal(
 
   try {
     if (isPolicyRefNoUpdateMode(ctx.importMode, ctx.updateMode)) {
-      const { match, conflict } = await resolvePolicyForCsvUpdate(prisma, {
-        refNo,
-        svkkId,
-        policyNo,
-        year: yearCsv,
-      });
+      if (isPolicyCourierUpdateMode(ctx.updateMode)) {
+        validatePolicyCourierUpdateRow(map);
+      } else {
+        validatePolicyFullUpdateRow(header, map);
+      }
+
+      const { match, conflict } = await resolvePolicyForCsvUpdate(
+        prisma,
+        { refNo, svkkId, policyNo, year: yearCsv },
+        ctx.updateLookupCache,
+      );
 
       if (conflict) {
         return previewEval({ ...base, status: "CONFLICT", errorMessage: conflict });
       }
-
-      await processLegacyPolicyCsvRow(header, row, {
-        ...ctx,
-        dryRun: true,
-      });
+      if (!match) {
+        return previewEval({
+          ...base,
+          status: "ERROR",
+          errorMessage: `Policy not found (UPDATE_ONLY mode; ref no=${refNo || "—"})`,
+        });
+      }
 
       const updateFields = isPolicyCourierUpdateMode(ctx.updateMode)
         ? listPolicyCourierUpdateFieldValues(map)
@@ -299,12 +313,30 @@ async function evaluatePolicyPreviewRowInternal(
   }
 }
 
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i]!, i);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 /** Build preview table rows (all rows) and aggregate summary. */
 export async function buildPolicyImportPreview(
   header: string[],
   dataRows: string[][],
   headerOffset: number,
-  ctx: Pick<LegacyCsvRowContext, "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId">,
+  ctx: PreviewCtx,
 ): Promise<{
   previewRows: PolicyPreviewRow[];
   summary: PolicyPreviewSummary;
@@ -312,18 +344,37 @@ export async function buildPolicyImportPreview(
 }> {
   const summary = emptyPolicyPreviewSummary();
   summary.totalRows = dataRows.length;
+
+  let updateLookupCache: PolicyCsvUpdateLookupCache | null | undefined = ctx.updateLookupCache;
+  if (
+    updateLookupCache == null &&
+    isPolicyRefNoUpdateMode(ctx.importMode, ctx.updateMode)
+  ) {
+    const refIdx = header.findIndex((h) => h.trim().toLowerCase() === "ref no");
+    const policyIdx = header.findIndex((h) => h.trim().toLowerCase() === "policy no");
+    const refNos: string[] = [];
+    const policyNos: string[] = [];
+    for (const row of dataRows) {
+      if (refIdx >= 0) refNos.push((row[refIdx] ?? "").trim());
+      if (policyIdx >= 0) policyNos.push((row[policyIdx] ?? "").trim());
+    }
+    updateLookupCache = await buildPolicyCsvUpdateLookupCache(prisma, { refNos, policyNos });
+  }
+
+  const rowCtx: PreviewCtx = { ...ctx, updateLookupCache };
+
+  const evaluated = await mapPool(dataRows, PREVIEW_CONCURRENCY, async (row, i) =>
+    evaluatePolicyPreviewRowInternal(header, row, i + headerOffset, rowCtx),
+  );
+
   const previewRows: PolicyPreviewRow[] = [];
   let totalDebit = new Prisma.Decimal(0);
   let totalCredit = new Prisma.Decimal(0);
-
-  for (let i = 0; i < dataRows.length; i++) {
-    const row = dataRows[i]!;
-    const rowNumber = i + headerOffset;
-    const evaluated = await evaluatePolicyPreviewRowInternal(header, row, rowNumber, ctx);
-    previewRows.push(evaluated.row);
-    recordSummary(summary, evaluated.row.status);
-    if (evaluated.walletDelta.gt(0)) totalDebit = totalDebit.plus(evaluated.walletDelta);
-    else if (evaluated.walletDelta.lt(0)) totalCredit = totalCredit.plus(evaluated.walletDelta.abs());
+  for (const item of evaluated) {
+    previewRows.push(item.row);
+    recordSummary(summary, item.row.status);
+    if (item.walletDelta.gt(0)) totalDebit = totalDebit.plus(item.walletDelta);
+    else if (item.walletDelta.lt(0)) totalCredit = totalCredit.plus(item.walletDelta.abs());
   }
 
   const current = await loadCurrentWalletBalance();

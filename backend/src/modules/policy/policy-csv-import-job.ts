@@ -14,15 +14,21 @@ import {
 } from "./policy-csv-format.js";
 import { buildErrorReportCsv, type CsvRowError } from "./policy-csv-errors.js";
 import { processLegacyPolicyCsvRow } from "./policy-csv-import.js";
-import { buildPolicyTypeCache, type PolicyTypeCache } from "./policy-csv-resolve.js";
+import {
+  buildPolicyCsvUpdateLookupCache,
+  buildPolicyTypeCache,
+  type PolicyCsvUpdateLookupCache,
+  type PolicyTypeCache,
+} from "./policy-csv-resolve.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
 import { ensureGeoDropdowns, backfillGeoDropdownsFromRecords } from "../dropdowns/ensure-dropdown-options.js";
 import type { GeoScope } from "../../services/mis-scope.service.js";
+import { isPolicyRefNoUpdateMode } from "./policy-csv-update-scope.js";
 
 const CSV_IMPORT_BATCH_SIZE = Number(process.env.CSV_IMPORT_BATCH_SIZE ?? 500) || 500;
-const PROGRESS_EVERY = 25;
+const PROGRESS_EVERY = Number(process.env.CSV_IMPORT_PROGRESS_EVERY ?? 100) || 100;
 
 function csvColumnIndex(header: string[], ...names: string[]): number {
   const want = names.map((n) => n.trim().toLowerCase());
@@ -135,6 +141,7 @@ type ProcessCtx = {
   updateMode: CsvUpdateMode;
   dryRun: boolean;
   allowNegativeWallet: boolean;
+  fileName: string;
   header: string[];
   dataRows: string[][];
   headerOffset: number;
@@ -143,6 +150,7 @@ type ProcessCtx = {
   supportedFormat: boolean;
   legacyFormat: boolean;
   typeCache: PolicyTypeCache | null;
+  updateLookupCache: PolicyCsvUpdateLookupCache | null;
   startedAt: number;
   uploadDir: string;
 };
@@ -180,14 +188,15 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
     await ensureGeoDropdowns(uniqueGeoFromPolicyCsv(ctx.header, ctx.dataRows));
   }
 
+  const svkkIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
+  const policyIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "policy no");
+  const refIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "ref no");
+
   for (let batchStart = 0; batchStart < ctx.dataRows.length; batchStart += CSV_IMPORT_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + CSV_IMPORT_BATCH_SIZE, ctx.dataRows.length);
     for (let i = batchStart; i < batchEnd; i++) {
       const row = ctx.dataRows[i]!;
       const rowNum = i + ctx.headerOffset;
-      const svkkIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "svkk id");
-      const policyIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "policy no");
-      const refIdx = ctx.header.findIndex((h) => h.trim().toLowerCase() === "ref no");
       const svkkId = svkkIdx >= 0 ? (row[svkkIdx] ?? "") : "";
       const policyNo = policyIdx >= 0 ? (row[policyIdx] ?? "") : "";
       const refNo = refIdx >= 0 ? (row[refIdx] ?? "") : "";
@@ -204,6 +213,7 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
               typeCache: ctx.typeCache,
               dryRun: true,
               allowNegativeWallet: ctx.allowNegativeWallet,
+              updateLookupCache: ctx.updateLookupCache,
             });
             if (outcome === "created") created++;
             else updated++;
@@ -220,6 +230,7 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
             updateMode: ctx.updateMode,
             typeCache: ctx.typeCache,
             allowNegativeWallet: ctx.allowNegativeWallet,
+            updateLookupCache: ctx.updateLookupCache,
           });
           if (outcome === "created") created++;
           else updated++;
@@ -294,12 +305,20 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
     entityType: "CsvImportJob",
     entityId: ctx.jobId,
     afterData: {
+      fileName: ctx.fileName,
+      rowCount: ctx.dataRows.length,
       created,
       updated,
       fail,
+      failed: fail,
+      success: valid,
+      successCount: valid,
+      failCount: fail,
       dryRun: ctx.dryRun,
       durationMs,
       importMode: ctx.importMode,
+      updateMode: ctx.updateMode,
+      errorReportUrl: errorReportPath ? `/upload/csv/${ctx.jobId}/errors.csv` : undefined,
     },
   });
 
@@ -389,6 +408,19 @@ export async function runPolicyCsvImportJob(
   const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
   const warnings = collectDeprecatedHeaderWarnings(header);
 
+  let updateLookupCache: PolicyCsvUpdateLookupCache | null = null;
+  if (isPolicyRefNoUpdateMode(opts.importMode, opts.updateMode)) {
+    const refIdx = header.findIndex((h) => h.trim().toLowerCase() === "ref no");
+    const policyIdx = header.findIndex((h) => h.trim().toLowerCase() === "policy no");
+    const refNos: string[] = [];
+    const policyNos: string[] = [];
+    for (const row of dataRows) {
+      if (refIdx >= 0) refNos.push((row[refIdx] ?? "").trim());
+      if (policyIdx >= 0) policyNos.push((row[policyIdx] ?? "").trim());
+    }
+    updateLookupCache = await buildPolicyCsvUpdateLookupCache(prisma, { refNos, policyNos });
+  }
+
   const ctx: ProcessCtx = {
     jobId: job.id,
     userId: opts.userId,
@@ -398,6 +430,7 @@ export async function runPolicyCsvImportJob(
     updateMode: opts.updateMode,
     dryRun: opts.dryRun,
     allowNegativeWallet: opts.allowNegativeWallet === true,
+    fileName: opts.fileName,
     header,
     dataRows,
     headerOffset,
@@ -406,6 +439,7 @@ export async function runPolicyCsvImportJob(
     supportedFormat,
     legacyFormat,
     typeCache,
+    updateLookupCache,
     startedAt,
     uploadDir: env.UPLOAD_DIR,
   };

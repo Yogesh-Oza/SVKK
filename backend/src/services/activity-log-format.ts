@@ -146,13 +146,25 @@ export function formatActivityLogSummary(row: ActivityLogRow): string {
     }
     case "CSV_IMPORTED":
     case "CSV_VALIDATED": {
-      const success = after?.successCount ?? after?.success;
-      const fail = after?.failCount ?? after?.fail;
+      const created = Number(after?.created ?? 0);
+      const updated = Number(after?.updated ?? 0);
+      const successRaw = after?.successCount ?? after?.success;
+      const success =
+        successRaw !== undefined && successRaw !== null
+          ? Number(successRaw)
+          : created + updated;
+      const fail = Number(after?.failCount ?? after?.fail ?? after?.failed ?? 0);
       const dry = after?.dryRun === true ? " (dry run)" : "";
-      if (success !== undefined || fail !== undefined) {
-        return `${base}${dry}: ${success ?? 0} ok, ${fail ?? 0} failed`;
-      }
-      return `${base}${dry}`;
+      const mode = pickStr(after?.importMode);
+      const modeHint =
+        mode === "UPDATE_ONLY"
+          ? " (update)"
+          : mode === "CREATE_ONLY"
+            ? " (create)"
+            : "";
+      const file = pickStr(after?.fileName);
+      const fileHint = file ? ` — ${file}` : "";
+      return `${base}${dry}${modeHint}: ${success} ok, ${fail} failed${fileHint}`;
     }
     case "EMAIL_SENT":
     case "EMAIL_FAILED":
@@ -214,7 +226,24 @@ export function formatActivityLogDetails(
   }
 
   if (row.action === "CSV_IMPORTED" || row.action === "CSV_VALIDATED") {
+    const file = pickStr(after?.fileName);
+    if (file) lines.push(`File: ${file}`);
     if (after?.rowCount !== undefined) lines.push(`Rows: ${String(after.rowCount)}`);
+    const created = after?.created;
+    const updated = after?.updated;
+    const fail = after?.failCount ?? after?.fail ?? after?.failed;
+    if (created !== undefined) lines.push(`Created: ${String(created)}`);
+    if (updated !== undefined) lines.push(`Updated: ${String(updated)}`);
+    if (fail !== undefined) lines.push(`Failed: ${String(fail)}`);
+    const mode = pickStr(after?.importMode);
+    if (mode) lines.push(`Mode: ${mode.replace(/_/g, " ")}`);
+    const updateMode = pickStr(after?.updateMode);
+    if (updateMode) lines.push(`Update scope: ${updateMode}`);
+    if (after?.durationMs !== undefined) {
+      lines.push(`Duration: ${String(after.durationMs)} ms`);
+    }
+    const errUrl = pickStr(after?.errorReportUrl);
+    if (errUrl) lines.push(`Error report: ${errUrl}`);
   }
 
   if (row.module === "email") {
