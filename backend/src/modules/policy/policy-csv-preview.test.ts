@@ -64,6 +64,10 @@ const previewCtx = {
   permissions: new Set(["upload:csv"]),
   scope: { villages: [], areas: [] } as never,
   typeCache: mockTypeCache(),
+  categories: [
+    { id: "cat-a", key: "a", name: "Category A" },
+    { id: "cat-d", key: "d", name: "Category D" },
+  ],
   importMode: "CREATE_ONLY" as const,
 };
 

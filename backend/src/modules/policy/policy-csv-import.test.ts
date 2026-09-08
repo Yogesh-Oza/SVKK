@@ -47,6 +47,10 @@ const baseCtx = {
   permissions: new Set(["upload:csv", "policy:create", "policy:update"]),
   scope: { villages: [], areas: [] } as never,
   typeCache: mockTypeCache(),
+  categories: [
+    { id: "cat-a", key: "a", name: "Category A" },
+    { id: "cat-d", key: "d", name: "Category D" },
+  ],
 };
 
 const testHeader = [

@@ -16,6 +16,11 @@ import {
   resolvePolicyTypeFromCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
+import {
+  categoryAllowedLabels,
+  resolveCategoryFromInput,
+  type CategoryRef,
+} from "../../lib/category-display.js";
 import { buildCombinedRemarksFromParts, parseCsvDate } from "./policy-csv-utils.js";
 
 function parseOptionalDate(raw: string): Date | undefined {
@@ -95,6 +100,7 @@ export async function createPolicyFromCsvRow(
     permissions: Set<string>;
     scope: GeoScope;
     typeCache: PolicyTypeCache;
+    categories: CategoryRef[];
     allowNegativeWallet?: boolean;
   },
 ): Promise<void> {
@@ -144,6 +150,20 @@ export async function createPolicyFromCsvRow(
   const svkkPremium = parseOptionalDecimal(getCsvField(map, "SVKK premium"));
   const netPremium = parseOptionalDecimal(getCsvField(map, "Net premium"));
 
+  const categoryRaw = getCsvField(map, "Category");
+  let categoryId: string | undefined;
+  let categoryText: string | undefined;
+  if (categoryRaw) {
+    const resolved = resolveCategoryFromInput(categoryRaw, ctx.categories);
+    if (!resolved) {
+      throw new Error(
+        `Invalid Category "${categoryRaw}". Allowed: ${categoryAllowedLabels(ctx.categories)}`,
+      );
+    }
+    categoryId = resolved.id;
+    categoryText = resolved.key;
+  }
+
   await createPolicyWithYear({
     actorUserId: ctx.actorUserId,
     partyName: requireField(map, "Holder name"),
@@ -173,7 +193,8 @@ export async function createPolicyFromCsvRow(
     previousEndDate: parseOptionalDate(getCsvField(map, "PRE. END DATE")) ?? null,
     insuranceCompany: getCsvField(map, "Insurance company") || undefined,
     tpa: getCsvField(map, "TPA") || undefined,
-    categoryText: getCsvField(map, "Category") || undefined,
+    categoryText,
+    categoryId,
     holderGender: getCsvField(map, "Holder gender") || undefined,
     holderRelationship: getCsvField(map, "Holder relationship") || undefined,
     holderAge: parseOptionalInt(getCsvField(map, "Holder age")) ?? undefined,

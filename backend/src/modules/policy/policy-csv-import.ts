@@ -45,6 +45,11 @@ import {
   effectiveCdAmount,
   syncPolicyWallet,
 } from "../wallet/wallet-policy-sync.js";
+import {
+  categoryAllowedLabels,
+  resolveCategoryFromInput,
+  type CategoryRef,
+} from "../../lib/category-display.js";
 
 export type CsvUpsertResult = "created" | "updated";
 
@@ -55,6 +60,8 @@ export type LegacyCsvRowContext = {
   importMode: CsvImportMode;
   updateMode?: CsvUpdateMode;
   typeCache: PolicyTypeCache;
+  /** Loaded once per import job — used to set policy.categoryId from Category column. */
+  categories: CategoryRef[];
   dryRun?: boolean;
   allowNegativeWallet?: boolean;
   /** Prefetched policies for UPDATE_ONLY — avoids per-row DB lookups. */
@@ -357,7 +364,16 @@ async function updatePolicyCsvRow(
   const tpa = getCsvField(map, "TPA");
   if (tpa) policyUpdate.tpa = tpa;
   const category = getCsvField(map, "Category");
-  if (category) policyUpdate.categoryText = category;
+  if (category) {
+    const resolved = resolveCategoryFromInput(category, ctx.categories);
+    if (!resolved) {
+      throw new Error(
+        `Invalid Category "${category}". Allowed: ${categoryAllowedLabels(ctx.categories)}`,
+      );
+    }
+    policyUpdate.category = { connect: { id: resolved.id } };
+    policyUpdate.categoryText = resolved.key;
+  }
   const holderGender = getCsvField(map, "Holder gender");
   if (holderGender) policyUpdate.holderGender = holderGender;
   const holderRel = getCsvField(map, "Holder relationship");
@@ -655,6 +671,7 @@ export async function processLegacyPolicyCsvRow(
     permissions: ctx.permissions,
     scope: ctx.scope,
     typeCache: ctx.typeCache,
+    categories: ctx.categories,
     allowNegativeWallet: ctx.allowNegativeWallet === true,
   });
   return "created";

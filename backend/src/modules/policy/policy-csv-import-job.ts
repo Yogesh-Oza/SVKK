@@ -20,6 +20,7 @@ import {
   type PolicyCsvUpdateLookupCache,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
+import { loadCategoryRefs, type CategoryRef } from "../../lib/category-display.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import { hashPolicyPreviewToken } from "./policy-csv-preview.js";
@@ -150,6 +151,7 @@ type ProcessCtx = {
   supportedFormat: boolean;
   legacyFormat: boolean;
   typeCache: PolicyTypeCache | null;
+  categories: CategoryRef[];
   updateLookupCache: PolicyCsvUpdateLookupCache | null;
   startedAt: number;
   uploadDir: string;
@@ -211,6 +213,7 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
               importMode: ctx.importMode,
               updateMode: ctx.updateMode,
               typeCache: ctx.typeCache,
+              categories: ctx.categories,
               dryRun: true,
               allowNegativeWallet: ctx.allowNegativeWallet,
               updateLookupCache: ctx.updateLookupCache,
@@ -229,6 +232,7 @@ async function processPolicyCsvImportJob(ctx: ProcessCtx): Promise<PolicyCsvImpo
             importMode: ctx.importMode,
             updateMode: ctx.updateMode,
             typeCache: ctx.typeCache,
+            categories: ctx.categories,
             allowNegativeWallet: ctx.allowNegativeWallet,
             updateLookupCache: ctx.updateLookupCache,
           });
@@ -399,6 +403,7 @@ export async function runPolicyCsvImportJob(
     opts.updateMode === CsvUpdateMode.POLICY_COURIER && isPolicyCourierUpdateCsvFormat(header);
   const supportedFormat = legacyFormat || policyCourierUpdateFormat;
   const typeCache = supportedFormat ? await buildPolicyTypeCache(prisma) : null;
+  const categories = supportedFormat ? await loadCategoryRefs() : [];
 
   if (!supportedFormat) {
     await finishJobFailed(job.id, "Unsupported CSV format for policy import", startedAt);
@@ -439,6 +444,7 @@ export async function runPolicyCsvImportJob(
     supportedFormat,
     legacyFormat,
     typeCache,
+    categories,
     updateLookupCache,
     startedAt,
     uploadDir: env.UPLOAD_DIR,

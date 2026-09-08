@@ -14,6 +14,7 @@ import { loadMisScope } from "../../services/mis-scope.service.js";
 import { isLegacyPolicyCsvFormat, isPolicyCourierUpdateCsvFormat, parseCsvWithOptionalVersion } from "./policy-csv-format.js";
 import { runPolicyCsvImportFromPath } from "./policy-csv-import-job.js";
 import { buildPolicyTypeCache } from "./policy-csv-resolve.js";
+import { loadCategoryRefs } from "../../lib/category-display.js";
 import { collectDeprecatedHeaderWarnings } from "./policy-csv-slots.js";
 import { parseCsv } from "./policy-csv-parse.js";
 import {
@@ -140,6 +141,7 @@ export function createPolicyUploadRouter(env: Env) {
 
         const policyScope = await loadMisScope(req.userId!, req.permissions!, "policy");
         const typeCache = await buildPolicyTypeCache(prisma);
+        const categories = await loadCategoryRefs();
         const headerOffset = allRows[0]?.[0]?.trim().toUpperCase() === "CSV_VERSION" ? 3 : 2;
 
         const { previewRows, summary, walletImpact } = await buildPolicyImportPreview(
@@ -153,6 +155,7 @@ export function createPolicyUploadRouter(env: Env) {
             importMode,
             updateMode,
             typeCache,
+            categories,
           },
         );
 

@@ -202,7 +202,14 @@ function previewEval(row: PolicyPreviewRow, walletDelta = new Prisma.Decimal(0))
 
 type PreviewCtx = Pick<
   LegacyCsvRowContext,
-  "importMode" | "updateMode" | "typeCache" | "permissions" | "scope" | "userId" | "updateLookupCache"
+  | "importMode"
+  | "updateMode"
+  | "typeCache"
+  | "categories"
+  | "permissions"
+  | "scope"
+  | "userId"
+  | "updateLookupCache"
 >;
 
 /**
