@@ -92,11 +92,11 @@ export async function syncPolicyListVkkPremium(db: PolicyDbClient, policyId: str
   const latest = await db.policyYear.findFirst({
     where: { policyId, deletedAt: null },
     orderBy: { yearLabel: "desc" },
-    select: { vkkPremium: true },
+    select: { svkkPremium: true, vkkPremium: true },
   });
   await db.policy.update({
     where: { id: policyId },
-    data: { listVkkPremium: latest?.vkkPremium ?? null },
+    data: { listVkkPremium: latest?.svkkPremium ?? latest?.vkkPremium ?? null },
   });
 }
 
@@ -198,7 +198,9 @@ export async function createPolicyWithYear(input: CreatePolicyInput) {
     const expected =
       input.expectedNetPremium != null
         ? input.expectedNetPremium
-        : (input.amountReceived != null ? input.amountReceived : null);
+        : input.netPremium != null
+          ? input.netPremium
+          : (input.amountReceived != null ? input.amountReceived : null);
 
     const personsCount = input.personsInsuredCount ?? input.members.length;
     const holderAgeAtExpiry = ageOnDate(

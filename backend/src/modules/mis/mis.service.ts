@@ -132,7 +132,8 @@ export async function getDashboardMetrics(
   const pWhere = buildPolicyReadWhere(scope, filterVillage, userId, permissions);
   const { start, end } = asOfDayBoundsUTC(asOfDate);
 
-  const [totalPolicies, completedPayments, expectedAgg, yearWindowCount] = await Promise.all([
+  const [totalPolicies, completedPayments, expectedFromPrimary, expectedFromNetFallback, yearWindowCount] =
+    await Promise.all([
     prisma.policy.count({ where: pWhere }),
     prisma.payment.aggregate({
       where: {
@@ -154,10 +155,12 @@ export async function getDashboardMetrics(
       },
       _sum: { amount: true },
     }),
+    // Match policy list: expectedNetPremium ?? netPremium (per-row COALESCE via two aggregates).
     prisma.policyYear.aggregate({
       where: {
         deletedAt: null,
         policy: pWhere,
+        expectedNetPremium: { not: null },
         OR: [
           { policyStart: null, policyEnd: null },
           {
@@ -169,6 +172,24 @@ export async function getDashboardMetrics(
         ],
       },
       _sum: { expectedNetPremium: true },
+    }),
+    prisma.policyYear.aggregate({
+      where: {
+        deletedAt: null,
+        policy: pWhere,
+        expectedNetPremium: null,
+        netPremium: { not: null },
+        OR: [
+          { policyStart: null, policyEnd: null },
+          {
+            AND: [
+              { OR: [{ policyStart: null }, { policyStart: { lte: end } }] },
+              { OR: [{ policyEnd: null }, { policyEnd: { gte: start } }] },
+            ],
+          },
+        ],
+      },
+      _sum: { netPremium: true },
     }),
     prisma.policyYear.count({
       where: {
@@ -187,7 +208,9 @@ export async function getDashboardMetrics(
     }),
   ]);
 
-  const expected = Number(expectedAgg._sum.expectedNetPremium ?? 0);
+  const expected =
+    Number(expectedFromPrimary._sum.expectedNetPremium ?? 0) +
+    Number(expectedFromNetFallback._sum.netPremium ?? 0);
   const paid = Number(completedPayments._sum.amount ?? 0);
   return {
     asOfDate: asOfDate.toISOString(),

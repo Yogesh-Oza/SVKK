@@ -79,4 +79,40 @@ describe("queryPolicyMemberReport age buckets", () => {
     expect(peopleSql).toContain("ip.dateOfBirth");
     expect(peopleSql).toContain("THEN p.id END)");
   });
+
+  it("sums VKK/Co with svkkPremium/netPremium fallbacks (same as policy list)", async () => {
+    const captured: string[] = [];
+    const prisma = {
+      $queryRaw: async (query: Prisma.Sql) => {
+        captured.push(sqlText(query));
+        return [];
+      },
+    };
+
+    await queryPolicyMemberReport(prisma as never, {
+      scopeOnP: Prisma.sql`1=1`,
+      periodStart: new Date("2026-01-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-07-30T23:59:59.999Z"),
+      asOf: new Date("2026-07-30T12:00:00.000Z"),
+      ageAsOf: new Date("2026-07-30T12:00:00.000Z"),
+      groupBy: "village",
+      categoryKeys: [],
+      policyGroupings: [],
+      villages: [],
+      areas: [],
+      sumInsureds: [],
+      periodMonthTexts: [],
+      policyStartMonths: [],
+      policyStartYears: [],
+      createdFrom: null,
+      createdTo: null,
+      fiscalLabels: [],
+      restrictPolicyYearToAsOf: true,
+    });
+
+    const finSql = captured.find((sql) => sql.includes("AS sVkk"));
+    expect(finSql).toBeTruthy();
+    expect(finSql).toContain("COALESCE(py.svkkPremium, py.vkkPremium, 0)");
+    expect(finSql).toContain("COALESCE(py.expectedNetPremium, py.netPremium, 0)");
+  });
 });

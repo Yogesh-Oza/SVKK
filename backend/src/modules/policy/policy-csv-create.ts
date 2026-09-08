@@ -141,6 +141,9 @@ export async function createPolicyFromCsvRow(
 
   const payments = collectPaymentsFromCsvMap(map);
 
+  const svkkPremium = parseOptionalDecimal(getCsvField(map, "SVKK premium"));
+  const netPremium = parseOptionalDecimal(getCsvField(map, "Net premium"));
+
   await createPolicyWithYear({
     actorUserId: ctx.actorUserId,
     partyName: requireField(map, "Holder name"),
@@ -207,8 +210,10 @@ export async function createPolicyFromCsvRow(
     grossPremium: parseOptionalDecimal(getCsvField(map, "Gross premium")),
     taxPercent: parseOptionalDecimal(getCsvField(map, "Tax %")),
     taxAmount: parseOptionalDecimal(getCsvField(map, "Tax amount")),
-    svkkPremium: parseOptionalDecimal(getCsvField(map, "SVKK premium")),
-    netPremium: parseOptionalDecimal(getCsvField(map, "Net premium")),
+    svkkPremium,
+    vkkPremium: svkkPremium,
+    netPremium,
+    expectedNetPremium: netPremium,
     vkkCommission: parseOptionalDecimal(getCsvField(map, "VKK commission")),
     commissionAmount: parseOptionalDecimal(getCsvField(map, "Commission amount")),
     yearPolicyHolderPremium: parseOptionalDecimal(getCsvField(map, "Policy Holder Premium")),

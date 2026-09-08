@@ -83,7 +83,8 @@ export type VillageAggregateRow = {
 };
 
 /**
- * Village-level counts and expected premium (sum of `PolicyYear.expectedNetPremium` in window).
+ * Village-level counts and expected premium in window.
+ * Same fallback as policy list: `expectedNetPremium ?? netPremium`.
  * All raw MIS SQL is centralized here. `scopeOnP` must be a `Prisma.sql` fragment for alias `p` only.
  */
 export async function queryVillageAggregates(
@@ -97,7 +98,7 @@ export async function queryVillageAggregates(
       p.village AS village,
       COUNT(DISTINCT p.id) AS totalPolicies,
       COUNT(DISTINCT m.id) AS totalMembers,
-      COALESCE(SUM(py.expectedNetPremium), 0) AS sumExpectedPremium
+      COALESCE(SUM(COALESCE(py.expectedNetPremium, py.netPremium, 0)), 0) AS sumExpectedPremium
     FROM ${sqlTable("policy")} p
     INNER JOIN ${sqlTable("policyYear")} py ON py.policyId = p.id AND py.deletedAt IS NULL
       AND ${yearActive}
@@ -144,6 +145,7 @@ export type MonthlyPremiumBucketRow = {
 
 /**
  * Sum of expected net premium by calendar month of `PolicyYear.policyStart` (rolling window ending at as-of).
+ * Same fallback as policy list: `expectedNetPremium ?? netPremium`.
  */
 export async function queryDashboardMonthlyPremium(
   prisma: PrismaClient,
@@ -156,7 +158,7 @@ export async function queryDashboardMonthlyPremium(
     SELECT
       YEAR(py.policyStart) AS y,
       MONTH(py.policyStart) AS m,
-      COALESCE(SUM(py.expectedNetPremium), 0) AS premium
+      COALESCE(SUM(COALESCE(py.expectedNetPremium, py.netPremium, 0)), 0) AS premium
     FROM ${sqlTable("policyYear")} py
     INNER JOIN ${sqlTable("policy")} p ON py.policyId = p.id AND p.deletedAt IS NULL
     WHERE py.deletedAt IS NULL
@@ -616,8 +618,8 @@ export async function queryPolicyMemberReport(
         ${dim} AS dim,
         p.id AS pid,
         p.adProductVariant AS adVar,
-        MAX(COALESCE(py.vkkPremium, 0)) AS sVkk,
-        MAX(COALESCE(py.expectedNetPremium, 0)) AS sCo,
+        MAX(COALESCE(py.svkkPremium, py.vkkPremium, 0)) AS sVkk,
+        MAX(COALESCE(py.expectedNetPremium, py.netPremium, 0)) AS sCo,
         MAX(COALESCE(py.grossPremium, 0)) AS sGross,
         MAX(COALESCE(py.commissionAmount, 0)) AS sComm,
         MAX(COALESCE(py.twoLacFloater, 0)) AS sTwoLac,
@@ -671,8 +673,8 @@ export async function queryPolicyMemberReport(
         ${dim} AS dim,
         p.id AS pid,
         p.adProductVariant AS adVar,
-        COALESCE(py.vkkPremium, 0) AS sVkk,
-        COALESCE(py.expectedNetPremium, 0) AS sCo,
+        COALESCE(py.svkkPremium, py.vkkPremium, 0) AS sVkk,
+        COALESCE(py.expectedNetPremium, py.netPremium, 0) AS sCo,
         COALESCE(py.grossPremium, 0) AS sGross,
         COALESCE(py.commissionAmount, 0) AS sComm,
         COALESCE(py.twoLacFloater, 0) AS sTwoLac,

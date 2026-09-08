@@ -38,6 +38,7 @@ import {
   type PolicyCsvUpdateMatch,
   type PolicyTypeCache,
 } from "./policy-csv-resolve.js";
+import { syncPolicyListVkkPremium } from "./policy.service.js";
 import { prisma } from "../../lib/prisma.js";
 import { createPolicyFromCsvRow, validateCreateRequiredFields } from "./policy-csv-create.js";
 import {
@@ -517,9 +518,17 @@ async function updatePolicyCsvRow(
     const taxAmt = getCsvField(map, "Tax amount");
     if (taxAmt) yearUpdate.taxAmount = parseOptionalDecimal(taxAmt);
     const svkk = getCsvField(map, "SVKK premium");
-    if (svkk) yearUpdate.svkkPremium = parseOptionalDecimal(svkk);
+    if (svkk) {
+      const parsed = parseOptionalDecimal(svkk);
+      yearUpdate.svkkPremium = parsed;
+      yearUpdate.vkkPremium = parsed;
+    }
     const net = getCsvField(map, "Net premium");
-    if (net) yearUpdate.netPremium = parseOptionalDecimal(net);
+    if (net) {
+      const parsed = parseOptionalDecimal(net);
+      yearUpdate.netPremium = parsed;
+      yearUpdate.expectedNetPremium = parsed;
+    }
     const vkkComm = getCsvField(map, "VKK commission");
     if (vkkComm) yearUpdate.vkkCommission = parseOptionalDecimal(vkkComm);
     const commAmt = getCsvField(map, "Commission amount");
@@ -558,6 +567,8 @@ async function updatePolicyCsvRow(
       await replaceYearPaymentsFromCsv(tx, year.id, paymentsFromCsv);
     }
   }
+
+  await syncPolicyListVkkPremium(tx, policy.id);
 }
 
 /** @deprecated Use processLegacyPolicyCsvRow */

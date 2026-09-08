@@ -573,7 +573,7 @@ export function policyDetailToAdFormValues(
     chequeDate,
     chequeStatus,
     reasonDishonoured,
-    vkkPremium: decStr(y.vkkPremium),
+    vkkPremium: decStr(y.svkkPremium ?? y.vkkPremium),
     coPremium: decStr(y.expectedNetPremium ?? y.netPremium),
     grossPremium: decStr(y.grossPremium),
     taxPercent: decStr(y.taxPercent),

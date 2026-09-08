@@ -333,4 +333,56 @@ describe("policyDetailToAdFormValues", () => {
       dishonourReason: "test 2",
     });
   });
+
+  it("falls back vkkPremium and coPremium from svkkPremium / netPremium", () => {
+    const values = policyDetailToAdFormValues({
+      id: "p-fallback",
+      policyNo: null,
+      referenceNo: null,
+      village: "Ghanithar",
+      area: null,
+      remarks: null,
+      adProductVariant: null,
+      insuranceCompany: null,
+      tpa: null,
+      categoryText: null,
+      holderRelationship: null,
+      holderGender: null,
+      holderAge: null,
+      personsInsuredCount: 1,
+      policyGrouping: "SVKK",
+      policyGroup: "SVKK",
+      periodYearText: "2026-27",
+      periodMonthText: "July",
+      insuredParty: {
+        svkkPublicId: "SVKKJUL4776",
+        name: "Mithiben",
+        customerId: null,
+        mobile: null,
+        email: null,
+        pan: null,
+        aadhaarNo: null,
+        dateOfBirth: null,
+      },
+      policyType: { id: "t1", name: "AD", key: "ad" },
+      category: null,
+      years: [
+        {
+          id: "y1",
+          yearLabel: "2026-27",
+          sumInsured: "100000",
+          vkkPremium: null,
+          svkkPremium: "55491",
+          expectedNetPremium: null,
+          netPremium: "55491",
+          members: [],
+        },
+      ],
+    } as Parameters<typeof policyDetailToAdFormValues>[0]);
+
+    expect(values.vkkPremium).toBe("55491");
+    expect(values.svkkPremiumCalc).toBe("55491");
+    expect(values.coPremium).toBe("55491");
+    expect(values.netPremiumCalc).toBe("55491");
+  });
 });

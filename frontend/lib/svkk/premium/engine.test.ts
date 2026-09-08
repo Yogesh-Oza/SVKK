@@ -133,3 +133,59 @@ describe("calculateAge", () => {
     expect(futureAge).not.toBe((currentAge ?? 0) + 3);
   });
 });
+
+describe("normalizeMember relationship", () => {
+  it("keeps selected relations instead of coercing them to member", () => {
+    expect(
+      normalizeMember({ name: "Kavita", relationship: "Mother" }, 1, "individual").relationship,
+    ).toBe("mother");
+    expect(
+      normalizeMember({ name: "Dad", relationship: "Father" }, 1, "family_floater").relationship,
+    ).toBe("father");
+    expect(
+      normalizeMember({ name: "Bro", relationship: "Brother" }, 1, "individual").relationship,
+    ).toBe("brother");
+    expect(
+      normalizeMember({ name: "Hasti", relationship: "Daughter" }, 1, "individual").relationship,
+    ).toBe("daughter");
+    expect(
+      normalizeMember({ name: "Arnav", relationship: "Son" }, 1, "individual").relationship,
+    ).toBe("son");
+    expect(
+      normalizeMember({ name: "Wife", relationship: "Spouse" }, 1, "individual").relationship,
+    ).toBe("spouse");
+  });
+
+  it("defaults blank member relationship only, and locks holder to self", () => {
+    expect(normalizeMember({ name: "Blank" }, 1, "individual").relationship).toBe("member");
+    expect(
+      normalizeMember({ name: "Holder", relationship: "Mother" }, 0, "individual").relationship,
+    ).toBe("self");
+  });
+
+  it("shows mother in the quote table, not member", () => {
+    const quote = quoteFromInput(state, {
+      policyType: "individual",
+      memberCount: 2,
+      sumInsured: 200000,
+      endDate: "14-10-2026",
+      members: [
+        {
+          name: "Pradeep Champshi chheda",
+          dob: "01-06-1982",
+          relationship: "self",
+          gender: "male",
+          addOnRider: 0,
+        },
+        {
+          name: "Kavita Pradeep Chheda",
+          dob: "03-07-1989",
+          relationship: "Mother",
+          gender: "female",
+          addOnRider: 0,
+        },
+      ],
+    });
+    expect(quote.rows[1]?.relationship).toBe("mother");
+  });
+});
