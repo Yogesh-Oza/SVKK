@@ -13,6 +13,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   allExportUiKeys,
+  buildPolicyCsvExportColumnGroups,
+  serializePolicyCsvExportColumnGroups,
   type PolicyCsvExportColumnGroup,
 } from "@/features/svkk-policies/policy-csv-export-columns";
 
@@ -36,15 +38,23 @@ export function PolicyCsvExportDialog({
   onOpenChange,
   onExport,
   exporting,
+  includeCommission = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onExport: (columns: string[]) => Promise<void>;
   exporting: boolean;
+  includeCommission?: boolean;
 }) {
-  const [groups, setGroups] = useState<PolicyCsvExportColumnGroup[]>([]);
+  const fallbackGroups = useMemo(
+    () => serializePolicyCsvExportColumnGroups(buildPolicyCsvExportColumnGroups({ includeCommission })),
+    [includeCommission],
+  );
+  const [groups, setGroups] = useState<PolicyCsvExportColumnGroup[]>(() => fallbackGroups);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(allExportUiKeys(fallbackGroups)),
+  );
 
   const uiKeys = useMemo(() => allExportUiKeys(groups), [groups]);
   const selectedUiCount = useMemo(
@@ -53,20 +63,33 @@ export function PolicyCsvExportDialog({
   );
 
   const loadGroups = useCallback(async () => {
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      setGroups(fallbackGroups);
+      setSelected(new Set(allExportUiKeys(fallbackGroups)));
+      return;
+    }
     setLoading(true);
     try {
       const data = await svkkJson<ExportColumnsResponse>("/policies/export-columns");
-      const nextGroups = data.groups ?? [];
+      const nextGroups = (data.groups ?? []).length > 0 ? data.groups : fallbackGroups;
       setGroups(nextGroups);
       setSelected(new Set(allExportUiKeys(nextGroups)));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load export columns");
-      setGroups([]);
-      setSelected(new Set());
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        toast.error(e instanceof Error ? e.message : "Could not load export columns");
+      }
+      setGroups(fallbackGroups);
+      setSelected(new Set(allExportUiKeys(fallbackGroups)));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fallbackGroups]);
+
+  useEffect(() => {
+    setGroups(fallbackGroups);
+    setSelected(new Set(allExportUiKeys(fallbackGroups)));
+  }, [fallbackGroups]);
 
   useEffect(() => {
     if (!open) return;

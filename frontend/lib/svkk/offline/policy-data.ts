@@ -9,7 +9,9 @@ import { AxiosError } from "axios";
 import {
   buildOfflineFiltersMeta,
   buildOfflinePolicyListPage,
+  filterCachedPolicyRows,
   mapCachedRowsToGroupedList as groupCachedRows,
+  sortCachedPolicyRows,
   type OfflineListFilters,
 } from "./list-group-offline";
 import { getCachedReferenceBundle } from "./offline-reference";
@@ -168,6 +170,41 @@ export async function loadOfflinePolicyListPage(input: {
     page: input.page,
     pageSize: input.pageSize,
   });
+}
+
+const OFFLINE_CSV_MAX_ROWS = 100_000;
+
+/** Ungrouped cached policies matching the table filters, plus details when present. */
+export async function loadOfflinePoliciesForCsvExport(input: {
+  search?: string;
+  filters?: OfflineListFilters;
+  sort?: string;
+}): Promise<{
+  rows: OfflinePolicyListRow[];
+  detailsById: Map<string, SvkkPolicyDetailForForm>;
+  truncated: boolean;
+}> {
+  const searched = input.search?.trim()
+    ? await searchCachedPolicies(input.search)
+    : await getCachedPolicyList();
+  const filtered = filterCachedPolicyRows(searched, input.filters ?? {});
+  const sorted = sortCachedPolicyRows(filtered, input.sort ?? "createdAt");
+  const truncated = sorted.length > OFFLINE_CSV_MAX_ROWS;
+  const rows = truncated ? sorted.slice(0, OFFLINE_CSV_MAX_ROWS) : sorted;
+
+  const db = getOfflineDb();
+  const detailsById = new Map<string, SvkkPolicyDetailForForm>();
+  const chunkSize = 200;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const stored = await db.policies_detail.bulkGet(chunk.map((r) => r.id));
+    for (let j = 0; j < chunk.length; j++) {
+      const row = stored[j];
+      if (row) detailsById.set(chunk[j]!.id, expandDetail(row));
+    }
+  }
+
+  return { rows, detailsById, truncated };
 }
 
 export async function getOfflineCategories(): Promise<

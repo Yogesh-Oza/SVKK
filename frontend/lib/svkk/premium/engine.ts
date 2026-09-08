@@ -86,17 +86,30 @@ export function relationshipOptions(policy: PolicyKey, index: number): string[] 
   return ["member", "spouse", "son", "daughter", "parent"];
 }
 
+/** Keep the selected relation (Mother, Father, …). Only blank rows use the default. */
+function normalizeRelationshipValue(
+  raw: unknown,
+  policy: PolicyKey,
+  index: number,
+): string {
+  if (index === 0) return "self";
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (value) return value;
+  return relationshipOptions(policy, index)[0]!;
+}
+
+export function isDaughterRelationship(rel: string): boolean {
+  return rel.trim().toLowerCase() === "daughter";
+}
+
 export function normalizeMember(
   member: Partial<MemberInput>,
   index: number,
   policy: PolicyKey,
 ): MemberInput {
-  const options = relationshipOptions(policy, index);
-  const relationship = options.includes(String(member.relationship))
-    ? String(member.relationship)
-    : options[0]!;
+  const relationship = normalizeRelationshipValue(member.relationship, policy, index);
   const gender: MemberInput["gender"] =
-    relationship === "daughter"
+    isDaughterRelationship(relationship)
       ? "female"
       : ((member.gender as MemberInput["gender"]) || (index === 0 ? "male" : ""));
   const sumInsuredRaw = member.sumInsured;
@@ -139,7 +152,7 @@ export function ensureMembers(
       name: idx === 0 ? "Policy Holder" : "Member " + idx,
       dob: "",
       relationship: rel,
-      gender: rel === "daughter" ? "female" : "",
+      gender: isDaughterRelationship(rel) ? "female" : "",
       addOnRider: 0,
     });
   }
@@ -243,7 +256,7 @@ export function discountPct(
   const d: DiscountConfig | undefined = defs[policy]?.discount;
   if (!d) return 0;
   if (d.type === "daughter") {
-    return rel === "daughter" && gender === "female" ? asNumber(d.daughter) : 0;
+    return isDaughterRelationship(rel) && gender === "female" ? asNumber(d.daughter) : 0;
   }
   if (d.different === "yes") {
     return role === "holder" ? asNumber(d.holder) : asNumber(d.member);
@@ -263,7 +276,7 @@ function ashaKiranHolderChartIndex(
   const eligible: { index: number; age: number }[] = [];
   members.forEach((member, index) => {
     const normalized = normalizeMember(member, index, "asha_kiran");
-    if (normalized.relationship === "daughter") return;
+    if (isDaughterRelationship(normalized.relationship)) return;
     const age = customAge(normalized.dob, endDate);
     if (age == null) return;
     eligible.push({ index, age });

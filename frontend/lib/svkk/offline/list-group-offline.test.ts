@@ -3,6 +3,7 @@ import type { OfflinePolicyListRow } from "./types";
 import {
   buildOfflinePolicyListPage,
   mapCachedRowsToGroupedList,
+  sortCachedPolicyRows,
 } from "./list-group-offline";
 
 function row(partial: Partial<OfflinePolicyListRow> & { id: string; svkkId: string }): OfflinePolicyListRow {
@@ -88,5 +89,19 @@ describe("buildOfflinePolicyListPage", () => {
     });
     expect(page.total).toBe(1);
     expect(page.items[0]?.svkkPublicId).toBe("A");
+  });
+});
+
+describe("sortCachedPolicyRows", () => {
+  it("sorts ungrouped policies by name without collapsing SVKK groups", () => {
+    const sorted = sortCachedPolicyRows(
+      [
+        row({ id: "p2", svkkId: "SVKK200", holderName: "Bob", createdAt: "2026-01-02T00:00:00.000Z" }),
+        row({ id: "p1", svkkId: "SVKK100", holderName: "Alice", createdAt: "2026-01-01T00:00:00.000Z" }),
+        row({ id: "p3", svkkId: "SVKK100", holderName: "Alice", yearLabel: "2024-25", periodYearText: "2024-25" }),
+      ],
+      "name_asc",
+    );
+    expect(sorted.map((r) => r.id)).toEqual(["p1", "p3", "p2"]);
   });
 });

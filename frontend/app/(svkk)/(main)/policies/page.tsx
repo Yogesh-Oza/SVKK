@@ -89,6 +89,7 @@ import { useReceiptSettings } from "@/lib/svkk/use-receipt-settings";
 import {
   canDeletePolicy,
   canExportPolicy,
+  canSeeCommission,
   canUpdatePolicy,
   hasPermission,
 } from "@/lib/svkk/permissions";
@@ -271,6 +272,7 @@ export default function SvkkPoliciesPage() {
   const canEdit = canUpdatePolicy(perms);
   const canExport = canExportPolicy(perms);
   const canCsvUpload = hasPermission(perms, "upload:csv");
+  const includeCommission = canSeeCommission(perms);
   const receiptImageUrls = useReceiptSettings();
   const { options: ddOptions } = useDropdownOptions();
 
@@ -488,9 +490,74 @@ export default function SvkkPoliciesPage() {
     return q.toString();
   }, [queryString]);
 
+  const offlineExportInput = useMemo(() => {
+    const dateFromParam = toIsoDateParam(dateFrom);
+    const dateToParam = toIsoDateParam(dateTo);
+    const renewalFilterActive = Boolean(renewalFilter);
+    return {
+      search: searchApplied,
+      sort,
+      filters: {
+        villages,
+        periodYears,
+        periodMonths,
+        categoryIds,
+        categoryKeys: categoryKeysForQuery,
+        policyTypeIds,
+        areas,
+        sumInsureds,
+        policyGroupings,
+        ...(renewalFilter === "pending" ? { renewalPending: true } : {}),
+        ...(renewalFilter && renewalFilter !== "pending" ? { renewalBucket: renewalFilter } : {}),
+        ...(!renewalFilterActive && dateFromParam ? { dateFrom: dateFromParam } : {}),
+        ...(!renewalFilterActive && dateToParam ? { dateTo: dateToParam } : {}),
+      },
+    };
+  }, [
+    searchApplied,
+    sort,
+    villages,
+    periodYears,
+    periodMonths,
+    categoryIds,
+    categoryKeysForQuery,
+    policyTypeIds,
+    areas,
+    sumInsureds,
+    policyGroupings,
+    renewalFilter,
+    dateFrom,
+    dateTo,
+  ]);
+
   const exportPoliciesCsv = useCallback(async (columns: string[]) => {
     setExportBusy(true);
+    const exportFromCache = async () => {
+      const { exportCachedPoliciesCsv } = await import(
+        "@/features/svkk-policies/policy-csv-export-offline"
+      );
+      return exportCachedPoliciesCsv({
+        ...offlineExportInput,
+        selectedUiKeys: columns,
+        includeCommission,
+      });
+    };
     try {
+      const offline = typeof navigator !== "undefined" && !navigator.onLine;
+      if (offline) {
+        try {
+          const result = await exportFromCache();
+          toast.success(
+            result.truncated
+              ? `Exported first ${result.rowCount.toLocaleString()} cached policies`
+              : `Exported ${result.rowCount.toLocaleString()} cached ${result.rowCount === 1 ? "policy" : "policies"}`,
+          );
+          setExportDialogOpen(false);
+        } catch (offlineErr) {
+          toast.error(offlineErr instanceof Error ? offlineErr.message : "Export failed");
+        }
+        return;
+      }
       const q = new URLSearchParams(exportQueryString);
       if (columns.length > 0) {
         for (const col of columns) {
@@ -520,11 +587,27 @@ export default function SvkkPoliciesPage() {
       }
       setExportDialogOpen(false);
     } catch (e) {
+      const { isLikelyOfflineError } = await import("@/lib/svkk/offline/policy-data");
+      if (isLikelyOfflineError(e)) {
+        try {
+          const result = await exportFromCache();
+          toast.success(
+            result.truncated
+              ? `Exported first ${result.rowCount.toLocaleString()} cached policies`
+              : `Exported ${result.rowCount.toLocaleString()} cached ${result.rowCount === 1 ? "policy" : "policies"}`,
+          );
+          setExportDialogOpen(false);
+          return;
+        } catch (offlineErr) {
+          toast.error(offlineErr instanceof Error ? offlineErr.message : "Export failed");
+          return;
+        }
+      }
       toast.error(e instanceof Error ? e.message : "Export failed");
     } finally {
       setExportBusy(false);
     }
-  }, [exportQueryString]);
+  }, [exportQueryString, includeCommission, offlineExportInput]);
 
   const downloadPolicyCsvSample = useCallback(async () => {
     try {
@@ -1920,6 +2003,7 @@ export default function SvkkPoliciesPage() {
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         exporting={exportBusy}
+        includeCommission={includeCommission}
         onExport={exportPoliciesCsv}
       />
     </motion.div>

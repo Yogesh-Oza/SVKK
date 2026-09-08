@@ -64,9 +64,10 @@ export function normPolicy(v: unknown): PolicyKey {
 }
 
 function normRel(v: unknown, policy: PolicyKey, index: number): string {
-  const key = normKey(v);
+  const key = String(v ?? "").trim().toLowerCase();
+  if (key) return key;
   const options = relationshipOptions(policy, index);
-  return options.includes(key) ? key : options[0]!;
+  return options[0]!;
 }
 
 /** Map export labels (Male/Female/M/F) to quote gender. */

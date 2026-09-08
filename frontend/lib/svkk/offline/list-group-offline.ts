@@ -151,6 +151,53 @@ export function filterCachedPolicyRows(
   return rows.filter((r) => !r.deletedAt && rowMatchesFilters(r, filters));
 }
 
+/** Ungrouped sort for CSV export (one row per cached policy). */
+export function sortCachedPolicyRows(
+  rows: OfflinePolicyListRow[],
+  sort: string,
+): OfflinePolicyListRow[] {
+  const key = sort.replace(/_(asc|desc)$/, "");
+  const direction: "asc" | "desc" = sort.endsWith("_desc")
+    ? "desc"
+    : sort.endsWith("_asc")
+      ? "asc"
+      : key === "createdAt"
+        ? "desc"
+        : "asc";
+
+  const cmpStr = (a: string, b: string) =>
+    direction === "desc" ? b.localeCompare(a) : a.localeCompare(b);
+
+  const created = (row: OfflinePolicyListRow) =>
+    new Date(row.createdAt || row.updatedAt).getTime();
+
+  return [...rows].sort((a, b) => {
+    switch (key) {
+      case "createdAt":
+        return direction === "desc" ? created(b) - created(a) : created(a) - created(b);
+      case "name":
+        return cmpStr(a.holderName ?? "", b.holderName ?? "");
+      case "customerId":
+        return cmpStr(a.customerId ?? "", b.customerId ?? "");
+      case "categoryName":
+      case "categoryKey":
+        return cmpStr(a.categoryName ?? a.categoryKey ?? "", b.categoryName ?? b.categoryKey ?? "");
+      case "policyTypeName":
+        return cmpStr(a.policyTypeName ?? "", b.policyTypeName ?? "");
+      case "periodMonthText":
+        return cmpStr(a.periodMonthText ?? "", b.periodMonthText ?? "");
+      case "svkkId":
+        return cmpStr(a.svkkId, b.svkkId);
+      case "village":
+        return cmpStr(a.village ?? "", b.village ?? "");
+      case "policyNo":
+        return cmpStr(a.policyNo ?? "", b.policyNo ?? "");
+      default:
+        return created(b) - created(a);
+    }
+  });
+}
+
 export function mapCachedRowsToGroupedList(rows: OfflinePolicyListRow[]): OfflineGroupedPolicy[] {
   const bySvkk = new Map<string, OfflinePolicyListRow[]>();
   for (const r of rows) {
