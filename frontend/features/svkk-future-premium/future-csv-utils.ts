@@ -75,7 +75,7 @@ export function normExportGender(v: unknown, rel: string, index: number): Member
   const g = String(v || "").trim().toLowerCase();
   if (g === "male" || g === "m") return "male";
   if (g === "female" || g === "f") return "female";
-  if (rel === "daughter") return "female";
+  if (rel.trim().toLowerCase() === "daughter") return "female";
   if (index === 0) return "";
   return "";
 }

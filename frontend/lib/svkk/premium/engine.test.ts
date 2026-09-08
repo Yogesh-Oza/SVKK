@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateAge, quoteFromInput } from "./engine";
+import { calculateAge, normalizeMember, quoteFromInput } from "./engine";
 import { SAMPLE_CHARTS, SAMPLE_DEFS } from "./sample-data";
 import type { PremiumState } from "./types";
 
