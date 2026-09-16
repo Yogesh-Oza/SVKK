@@ -18,7 +18,6 @@ import { OfflineStatusBanner } from "@/components/svkk/offline-status-banner";
 import { useSvkkAuth } from "@/contexts/svkk-auth-context";
 import { canSeeCommission } from "@/lib/svkk/permissions";
 import { getSvkkApiBase } from "@/lib/svkk/config";
-import { dateParse } from "@/lib/svkk/form-date";
 import { PolicyDateInput } from "@/features/svkk-policies/policy-date-input";
 import { POLICY_PERIOD_MONTH_LABELS_CALENDAR_ORDER } from "@/lib/svkk/policy-period-months";
 import {
@@ -103,7 +102,13 @@ import {
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
 import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
-import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
+import {
+  buildCarryForwardTurning25AlertMessage,
+  memberAgeAfterCarryForward,
+  projectPolicyEndAfterCarryForward,
+  resolveFormAgeAnchor,
+} from "./member-age-25-alert";
+import { customAge } from "@/lib/svkk/premium/engine";
 import { dobFromAgeUsingToday, shouldApplyDobFromAge } from "./age-dob-reverse";
 import { CategoryBcBasePremiumDialog } from "./category-bc-base-premium-dialog";
 import {
@@ -186,13 +191,8 @@ function ageFromDobOnAnchor(iso: string, anchorIso: string): string {
   if (!iso || !anchorIso) {
     return "";
   }
-  const dob = dateParse(iso);
-  const anchor = dateParse(anchorIso);
-  if (!dob || !anchor || anchor.getTime() < dob.getTime()) {
-    return "";
-  }
-  const years = Math.floor((anchor.getTime() - dob.getTime()) / (365.2425 * 24 * 60 * 60 * 1000));
-  return years >= 0 ? String(years) : "";
+  const years = customAge(iso, anchorIso);
+  return years != null && years >= 0 ? String(years) : "";
 }
 
 function parseInr(value: string): number {
@@ -522,7 +522,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
   const openReceiptPreviewRef = useRef<(() => void) | null>(null);
 
-  /** Carry Forward only: male member is 25 on prior end, or turns 24→25 on the new year. */
+  /** Carry Forward only: male member was 24 and becomes 25 on the new policy year. */
   const showCarryForwardTurning25Alert = useCallback(
     (members: AdMemberRow[], priorAnchorIso: string, afterDismiss?: () => void) => {
       const message = buildCarryForwardTurning25AlertMessage(members, priorAnchorIso);
@@ -1382,6 +1382,14 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             setAgeManual({});
             setAutoCalcLocked(false);
 
+            const newAgeAnchor =
+              projectPolicyEndAfterCarryForward(priorPolicyEnd) || priorPolicyEnd;
+            const holderAgeAfterCf = carriedValues.dob.trim()
+              ? ageFromDobOnAnchor(carriedValues.dob, newAgeAnchor)
+              : carriedValues.age.trim() && Number.isFinite(Number(carriedValues.age))
+                ? String(Number(carriedValues.age) + 1)
+                : carriedValues.age;
+
             await formik.setValues({
               ...carriedValues,
               year: shiftedYear,
@@ -1392,9 +1400,15 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               policyEnd: "",
               refNo: nextReferenceNo,
               policyGroup: carriedGroupRaw || resolvedGrouping,
+              age: holderAgeAfterCf,
               // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
               basicPremiumPs: "",
-              members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
+              members: carriedValues.members.map((m) => ({
+                ...m,
+                basicPremium: "",
+                // Advance ages to the new policy year so 24 → 25 is visible after CF.
+                age: memberAgeAfterCarryForward(m, priorPolicyEnd, newAgeAnchor),
+              })),
               twoLakhF: "",
               grossPremium: "",
               taxAmount: "",
@@ -1460,7 +1474,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           }
         };
 
-        // Male age-25 notice (already 25, or 24→25) before applying carry-forward changes.
+        // Male 24 → 25 notice only when the new policy year age becomes 25.
         const didShow = showCarryForwardTurning25Alert(carriedValues.members, priorPolicyEnd, () => {
           void proceed();
         });
@@ -1967,7 +1981,8 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     return () => clearTimeout(timer);
   }, [isEdit, missingUrl, suppressSuggestions, fetchSvkkId, fetchHolderName, loadFetchSuggestions]);
 
-  const ageAnchorDate = values.previousEndDate || values.policyEnd;
+  // Prefer current policy end; after carry-forward (end cleared) use prior end + 1 year.
+  const ageAnchorDate = resolveFormAgeAnchor(values.policyEnd, values.previousEndDate);
 
   useEffect(() => {
     if (autoCalcLocked || ageManual.age) return;

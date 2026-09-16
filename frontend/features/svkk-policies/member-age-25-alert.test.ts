@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { AdMemberRow } from "./ad-member-types";
 import {
   buildCarryForwardTurning25AlertMessage,
+  memberAgeAfterCarryForward,
   membersTurning25OnCarryForward,
   projectPolicyEndAfterCarryForward,
+  resolveFormAgeAnchor,
   resolveMemberAge,
 } from "./member-age-25-alert";
 
@@ -48,27 +50,19 @@ describe("carry forward turning 25 alert", () => {
     expect(names).toEqual(["Ravi"]);
   });
 
-  it("flags male members already 25 on the prior policy end", () => {
+  it("does not flag when still 24 on the prior year (must become 25 after CF)", () => {
+    // DOB after both anchors → stays 23→24, never the 24→25 notice.
+    const names = membersTurning25OnCarryForward(
+      [member({ name: "Ravi", dob: "2001-08-15", gender: "M" })],
+      "2025-06-15",
+      "2026-06-15",
+    );
+    expect(names).toEqual([]);
+  });
+
+  it("does not flag when prior age is already 25 (only 24→25 on CF)", () => {
     const names = membersTurning25OnCarryForward(
       [member({ name: "Ravi", age: "25", gender: "M" })],
-      "2025-05-01",
-      "2026-05-01",
-    );
-    expect(names).toEqual(["Ravi"]);
-  });
-
-  it("flags male members already 25 via DOB on the prior policy end", () => {
-    const names = membersTurning25OnCarryForward(
-      [member({ name: "Ravi", dob: "2000-01-01", age: "24", gender: "M" })],
-      "2025-05-01",
-      "2026-05-01",
-    );
-    expect(names).toEqual(["Ravi"]);
-  });
-
-  it("does not flag when prior age is outside 24–25", () => {
-    const names = membersTurning25OnCarryForward(
-      [member({ name: "Ravi", age: "26", gender: "M" })],
       "2025-05-01",
       "2026-05-01",
     );
@@ -118,5 +112,27 @@ describe("carry forward turning 25 alert", () => {
     );
     expect(names).toEqual(["Ravi"]);
     expect(projectPolicyEndAfterCarryForward("30-04-2025")).toBe("2026-04-30");
+  });
+
+  it("after carry-forward uses prior end + 1 year for form age anchor", () => {
+    expect(resolveFormAgeAnchor("", "30-04-2025")).toBe("2026-04-30");
+    expect(resolveFormAgeAnchor("30-04-2026", "30-04-2025")).toBe("30-04-2026");
+  });
+
+  it("advances member age to 25 on carry forward when prior age was 24", () => {
+    expect(
+      memberAgeAfterCarryForward(
+        member({ name: "Ravi", age: "24", gender: "M" }),
+        "2025-05-01",
+        "2026-05-01",
+      ),
+    ).toBe("25");
+    expect(
+      memberAgeAfterCarryForward(
+        member({ name: "Ravi", dob: "2001-06-15", gender: "M" }),
+        "2025-06-15",
+        "2026-06-15",
+      ),
+    ).toBe("25");
   });
 });

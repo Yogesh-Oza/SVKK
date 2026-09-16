@@ -72,9 +72,8 @@ function resolveNewAgeOnCarryForward(
 }
 
 /**
- * Male members who need the carry-forward age notice:
- * - already 25 on the prior policy end, or
- * - were 24 on the prior end and turn 25 on the new policy year.
+ * Male members who were 24 on the prior policy end and turn 25 on the
+ * carried-forward year. Do not flag while still 24 on the new year.
  */
 export function membersTurning25OnCarryForward(
   members: readonly AdMemberRow[],
@@ -96,17 +95,6 @@ export function membersTurning25OnCarryForward(
       continue;
     }
     const priorAge = resolveMemberAge(member, priorAnchorIso);
-    if (priorAge === null) {
-      continue;
-    }
-
-    // Already 25 on prior policy year — still need action on renew/carry-forward.
-    if (priorAge === CARRY_FORWARD_NEW_AGE) {
-      names.push(member.name.trim() || "Member");
-      continue;
-    }
-
-    // Turning 24 → 25 on the carried-forward year.
     if (priorAge !== CARRY_FORWARD_PRIOR_AGE) {
       continue;
     }
@@ -117,6 +105,35 @@ export function membersTurning25OnCarryForward(
     names.push(member.name.trim() || "Member");
   }
   return names;
+}
+
+/**
+ * Form age as-of date: use policy end when set; after carry-forward (end cleared)
+ * use prior end + 1 year so ages show the new policy year (e.g. 24 → 25).
+ */
+export function resolveFormAgeAnchor(policyEnd: string, previousEndDate: string): string {
+  if (policyEnd.trim()) {
+    return policyEnd.trim();
+  }
+  if (previousEndDate.trim()) {
+    return projectPolicyEndAfterCarryForward(previousEndDate) || previousEndDate.trim();
+  }
+  return "";
+}
+
+/** Age string for a member on the carried-forward policy year. */
+export function memberAgeAfterCarryForward(
+  member: AdMemberRow,
+  priorAnchorIso: string,
+  newAnchorIso?: string,
+): string {
+  const projectedNewAnchor =
+    newAnchorIso?.trim() || projectPolicyEndAfterCarryForward(priorAnchorIso);
+  if (!projectedNewAnchor) {
+    return member.age;
+  }
+  const newAge = resolveNewAgeOnCarryForward(member, priorAnchorIso, projectedNewAnchor);
+  return newAge != null ? String(newAge) : member.age;
 }
 
 /** Alert copy for carry-forward turning-25 notice (informational only). */
