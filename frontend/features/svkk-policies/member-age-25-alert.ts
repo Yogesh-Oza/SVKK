@@ -71,7 +71,11 @@ function resolveNewAgeOnCarryForward(
   return priorAge + 1;
 }
 
-/** Male members who were 24 on the prior policy end and turn 25 on the carried-forward year. */
+/**
+ * Male members who need the carry-forward age notice:
+ * - already 25 on the prior policy end, or
+ * - were 24 on the prior end and turn 25 on the new policy year.
+ */
 export function membersTurning25OnCarryForward(
   members: readonly AdMemberRow[],
   priorAnchorIso: string,
@@ -92,6 +96,17 @@ export function membersTurning25OnCarryForward(
       continue;
     }
     const priorAge = resolveMemberAge(member, priorAnchorIso);
+    if (priorAge === null) {
+      continue;
+    }
+
+    // Already 25 on prior policy year — still need action on renew/carry-forward.
+    if (priorAge === CARRY_FORWARD_NEW_AGE) {
+      names.push(member.name.trim() || "Member");
+      continue;
+    }
+
+    // Turning 24 → 25 on the carried-forward year.
     if (priorAge !== CARRY_FORWARD_PRIOR_AGE) {
       continue;
     }

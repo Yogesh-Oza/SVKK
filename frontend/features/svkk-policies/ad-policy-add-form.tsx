@@ -522,7 +522,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
   const runAfterMemberAgeAlertRef = useRef<(() => void) | null>(null);
   const openReceiptPreviewRef = useRef<(() => void) | null>(null);
 
-  /** Carry Forward only: male member was 24 and turns 25 on the new policy year. */
+  /** Carry Forward only: male member is 25 on prior end, or turns 24→25 on the new year. */
   const showCarryForwardTurning25Alert = useCallback(
     (members: AdMemberRow[], priorAnchorIso: string, afterDismiss?: () => void) => {
       const message = buildCarryForwardTurning25AlertMessage(members, priorAnchorIso);
@@ -1460,7 +1460,7 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
           }
         };
 
-        // Male 24 → 25 turning-age popup before applying carry-forward changes.
+        // Male age-25 notice (already 25, or 24→25) before applying carry-forward changes.
         const didShow = showCarryForwardTurning25Alert(carriedValues.members, priorPolicyEnd, () => {
           void proceed();
         });

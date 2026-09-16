@@ -48,9 +48,27 @@ describe("carry forward turning 25 alert", () => {
     expect(names).toEqual(["Ravi"]);
   });
 
-  it("does not flag when prior age is not 24", () => {
+  it("flags male members already 25 on the prior policy end", () => {
     const names = membersTurning25OnCarryForward(
       [member({ name: "Ravi", age: "25", gender: "M" })],
+      "2025-05-01",
+      "2026-05-01",
+    );
+    expect(names).toEqual(["Ravi"]);
+  });
+
+  it("flags male members already 25 via DOB on the prior policy end", () => {
+    const names = membersTurning25OnCarryForward(
+      [member({ name: "Ravi", dob: "2000-01-01", age: "24", gender: "M" })],
+      "2025-05-01",
+      "2026-05-01",
+    );
+    expect(names).toEqual(["Ravi"]);
+  });
+
+  it("does not flag when prior age is outside 24–25", () => {
+    const names = membersTurning25OnCarryForward(
+      [member({ name: "Ravi", age: "26", gender: "M" })],
       "2025-05-01",
       "2026-05-01",
     );
