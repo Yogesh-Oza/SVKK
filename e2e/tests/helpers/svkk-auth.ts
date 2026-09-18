@@ -42,7 +42,9 @@ export async function loginAsSvkkAdmin(page: Page) {
             (errText ? ` UI error: ${errText}` : ` ${(err as Error).message}`),
         );
       }
-      await page.waitForTimeout(1_500);
+      if (!page.isClosed()) {
+        await page.waitForTimeout(1_500);
+      }
     }
   }
 }
