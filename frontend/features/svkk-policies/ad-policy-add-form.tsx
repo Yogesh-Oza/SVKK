@@ -102,12 +102,7 @@ import {
   shouldUnlockAutoCalc,
 } from "./ad-policy-auto-calc";
 import { resolvePolicyGroupingForAutoId } from "./ad-policy-id-helpers";
-import {
-  buildCarryForwardTurning25AlertMessage,
-  memberAgeAfterCarryForward,
-  projectPolicyEndAfterCarryForward,
-  resolveFormAgeAnchor,
-} from "./member-age-25-alert";
+import { buildCarryForwardTurning25AlertMessage } from "./member-age-25-alert";
 import { customAge } from "@/lib/svkk/premium/engine";
 import { dobFromAgeUsingToday, shouldApplyDobFromAge } from "./age-dob-reverse";
 import { CategoryBcBasePremiumDialog } from "./category-bc-base-premium-dialog";
@@ -1382,14 +1377,6 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
             setAgeManual({});
             setAutoCalcLocked(false);
 
-            const newAgeAnchor =
-              projectPolicyEndAfterCarryForward(priorPolicyEnd) || priorPolicyEnd;
-            const holderAgeAfterCf = carriedValues.dob.trim()
-              ? ageFromDobOnAnchor(carriedValues.dob, newAgeAnchor)
-              : carriedValues.age.trim() && Number.isFinite(Number(carriedValues.age))
-                ? String(Number(carriedValues.age) + 1)
-                : carriedValues.age;
-
             await formik.setValues({
               ...carriedValues,
               year: shiftedYear,
@@ -1400,15 +1387,10 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
               policyEnd: "",
               refNo: nextReferenceNo,
               policyGroup: carriedGroupRaw || resolvedGrouping,
-              age: holderAgeAfterCf,
               // Recalculate from Calculated Premium Summary (quote), not prior-year DB amounts.
               basicPremiumPs: "",
-              members: carriedValues.members.map((m) => ({
-                ...m,
-                basicPremium: "",
-                // Advance ages to the new policy year so 24 → 25 is visible after CF.
-                age: memberAgeAfterCarryForward(m, priorPolicyEnd, newAgeAnchor),
-              })),
+              // Keep prior-year ages as-is (do not +1 everyone on CF).
+              members: carriedValues.members.map((m) => ({ ...m, basicPremium: "" })),
               twoLakhF: "",
               grossPremium: "",
               taxAmount: "",
@@ -1981,8 +1963,9 @@ export function AdPolicyAddForm({ policyId, editYearLabel }: AdPolicyAddFormProp
     return () => clearTimeout(timer);
   }, [isEdit, missingUrl, suppressSuggestions, fetchSvkkId, fetchHolderName, loadFetchSuggestions]);
 
-  // Prefer current policy end; after carry-forward (end cleared) use prior end + 1 year.
-  const ageAnchorDate = resolveFormAgeAnchor(values.policyEnd, values.previousEndDate);
+  // After CF, policyEnd is cleared and previousEndDate holds the prior end — keep
+  // ages anchored to that prior end (do not project +1 year / bump every member).
+  const ageAnchorDate = values.policyEnd || values.previousEndDate;
 
   useEffect(() => {
     if (autoCalcLocked || ageManual.age) return;

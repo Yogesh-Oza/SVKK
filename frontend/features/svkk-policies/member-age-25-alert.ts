@@ -108,20 +108,17 @@ export function membersTurning25OnCarryForward(
 }
 
 /**
- * Form age as-of date: use policy end when set; after carry-forward (end cleared)
- * use prior end + 1 year so ages show the new policy year (e.g. 24 → 25).
+ * Form age as-of date: prefer current policy end; otherwise prior end
+ * (after carry-forward clears policyEnd — ages stay on prior year, not +1).
  */
 export function resolveFormAgeAnchor(policyEnd: string, previousEndDate: string): string {
   if (policyEnd.trim()) {
     return policyEnd.trim();
   }
-  if (previousEndDate.trim()) {
-    return projectPolicyEndAfterCarryForward(previousEndDate) || previousEndDate.trim();
-  }
-  return "";
+  return previousEndDate.trim();
 }
 
-/** Age string for a member on the carried-forward policy year. */
+/** @deprecated Ages are no longer auto-advanced on CF; kept for callers/tests. */
 export function memberAgeAfterCarryForward(
   member: AdMemberRow,
   priorAnchorIso: string,

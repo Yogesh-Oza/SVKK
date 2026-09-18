@@ -114,12 +114,12 @@ describe("carry forward turning 25 alert", () => {
     expect(projectPolicyEndAfterCarryForward("30-04-2025")).toBe("2026-04-30");
   });
 
-  it("after carry-forward uses prior end + 1 year for form age anchor", () => {
-    expect(resolveFormAgeAnchor("", "30-04-2025")).toBe("2026-04-30");
+  it("after carry-forward keeps prior end as form age anchor (no +1 year bump)", () => {
+    expect(resolveFormAgeAnchor("", "30-04-2025")).toBe("30-04-2025");
     expect(resolveFormAgeAnchor("30-04-2026", "30-04-2025")).toBe("30-04-2026");
   });
 
-  it("advances member age to 25 on carry forward when prior age was 24", () => {
+  it("can still project member age +1 for alert math without mutating form", () => {
     expect(
       memberAgeAfterCarryForward(
         member({ name: "Ravi", age: "24", gender: "M" }),
