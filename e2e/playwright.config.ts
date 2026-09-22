@@ -6,6 +6,14 @@ loadE2eEnv();
 const baseURL = process.env.BASE_URL || "https://svkk.techui.co.in";
 const headed = process.env.HEADED !== "0" && process.env.CI !== "true";
 
+/** nginx site gate (outside app login) — optional for local BASE_URL */
+const basicAuthUser = process.env.BASIC_AUTH_USER?.trim();
+const basicAuthPassword = process.env.BASIC_AUTH_PASSWORD ?? "";
+const httpCredentials =
+  basicAuthUser && basicAuthPassword
+    ? { username: basicAuthUser, password: basicAuthPassword }
+    : undefined;
+
 /**
  * SVKK live e2e — loads credentials/URL from `e2e/.env`.
  * Default: headed Chromium, one worker, fresh browser context per test.
@@ -23,6 +31,7 @@ export default defineConfig({
   ],
   use: {
     baseURL,
+    ...(httpCredentials ? { httpCredentials } : {}),
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

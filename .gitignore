@@ -41,5 +41,8 @@ yarn-error.log*
 next-env.d.ts
 manual-test-results
 
+# local / server DB dumps (may contain PII)
+/db-backups/
+
 scripts_for_server
 
